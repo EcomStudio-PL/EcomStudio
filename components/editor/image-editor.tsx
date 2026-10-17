@@ -708,7 +708,9 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
                 <span className="truncate text-[12px] font-semibold">{t(`editor.s.${section}`)}</span>
               </button>
             ))}
-            {guide.button && <span className="flex shrink-0">{guide.button}</span>}
+            {/* As tall as a section chip (the row stretches to its tallest
+                item), so adding it does not grow the dock. */}
+            {guide.button && <span className="flex shrink-0 [&>button]:h-auto [&>button]:py-1.5">{guide.button}</span>}
           </div>
           <div className="flex items-stretch gap-1.5">
             <button type="button" onClick={() => void download()} disabled={!ready || busy !== null}

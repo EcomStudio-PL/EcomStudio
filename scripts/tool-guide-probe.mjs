@@ -25,8 +25,11 @@
  *   /probe-tmp/guide?kind=compress | ?kind=resize     the batch workbenches
  *   /probe-tmp/guide?kind=photo&photo=remove_bg       PhotoToolWorkspace
  *   /probe-tmp/guide?kind=editor                      ImageEditor (available, no initial image) —
- *                                                     the guide "editor", button at the end of the
- *                                                     timeline strip (Cofnij · Ponów · Historia zmian)
+ *                                                     the guide "editor": from lg up its button ends
+ *                                                     the timeline strip (Cofnij · Ponów · Historia
+ *                                                     zmian · Samouczek); below lg it is the LAST item
+ *                                                     of the phone dock's scrolling section-chip row
+ *                                                     and the strip holds no visible button
  *   /probe-tmp/guide?kind=workbench&slug=upscale      ToolWorkbench — slugs upscale / expand /
  *                                                     watermark (guides tool_upscale / tool_expand /
  *                                                     tool_watermark, button in the "Ustawienia"
@@ -259,6 +262,9 @@ const V2 = {
   tool_watermark: { url: "/probe-tmp/guide?kind=workbench&slug=watermark", name: "watermark" },
 };
 const WORKBENCH_TOOLS = ["tool_upscale", "tool_expand", "tool_watermark"];
+/** lib/images/editor-state.ts SECTIONS: the dock's section chips, one per section. */
+const SECTIONS_N = /export const SECTIONS[^=]*= \[([^\]]*)\]/.exec(fs.readFileSync(new URL("../lib/images/editor-state.ts", import.meta.url), "utf8"))[1]
+  .split(",").filter((s) => s.trim()).length;
 const IMG = {
   wide: { url: "/launch/hero-dino.webp", width: 1808, height: 1152, alt: "" },
   tall: { url: "/showcase/moda-ghost.webp", width: 340, height: 425, alt: "" },
@@ -357,8 +363,8 @@ const GROUPS = [
   ["14", "Compress / Resize workbench"],
   ["15", "starter screenshots light/dark × 3 widths"],
   ["P", "PhotoToolWorkspace (tool_remove_bg)"],
-  ["E", "editor: button ends the timeline strip (icon below sm), no wrap vs baseline, auto-open, steps, no starter"],
-  ["W", "workbenches: button in the Ustawienia header, panel height vs baseline, auto-open, steps, no starter; relight none"],
+  ["E", "editor: ≥lg button ends the timeline strip, <lg it ends the dock's chip row; strip/dock vs baseline; auto-open, steps, no starter; Ctrl+Z / drop ignored while open"],
+  ["W", "workbenches: button in the Ustawienia header, panel height vs baseline, auto-open, steps, no starter; relight none; drop ignored while open"],
   ["S", "editor + workbench: PL/EN/DE × light/dark (label, aria, dialog layout, screenshots)"],
   ["X", "open → step 3 → Escape: page did not scroll, gallery pixels unchanged"],
   ["N", "network: nothing written, nothing reaches Supabase from the browser"],
@@ -723,6 +729,8 @@ const fmtOverlaps = (t) => (t.overlaps.length ? t.overlaps.map((o) => `${o.pair}
 const run = (id) => !ONLY || ONLY.has(id);
 const section = (id) => console.log(`\n── ${id}. ${GROUPS.find((g) => g[0] === id)[1]} ──`);
 const pngBuf = await sharp({ create: { width: 640, height: 480, channels: 3, background: "#c86e9a" } }).png().toBuffer();
+/** A second, portrait photo (2:3): the one dropped over the open tutorial. */
+const pngTall = await sharp({ create: { width: 200, height: 300, channels: 3, background: "#3a6fd8" } }).png().toBuffer();
 
 /* ── warm-up: compile the harness once ─────────────────────────────────── */
 {
@@ -1762,7 +1770,11 @@ const stripGeom = (P) => P.page.evaluate((undoLabel) => {
   const truncated = [...strip.querySelectorAll("span")]
     .filter((s) => getComputedStyle(s).textOverflow === "ellipsis" && s.scrollWidth > s.clientWidth + 1).map((s) => s.textContent.trim());
   const outside = boxes.filter((b) => b.x2 > r.right + 0.5 || b.x1 < r.left - 0.5).map((b) => b.n);
-  const btn = strip.querySelector("[data-guide-open]");
+  // The strip's guide button is in the DOM at every width (span.hidden.lg:block):
+  // only a VISIBLE one counts as "in the strip".
+  const inStrip = [...strip.querySelectorAll("[data-guide-open]")];
+  const btn = inStrip.find(vis) ?? null;
+  const hiddenWrap = inStrip.filter((b) => !vis(b)).map((b) => getComputedStyle(b.parentElement).display);
   let guide = null;
   if (btn) {
     const bb = btn.getBoundingClientRect();
@@ -1786,10 +1798,67 @@ const stripGeom = (P) => P.page.evaluate((undoLabel) => {
   }
   return {
     h: Math.round(r.height * 10) / 10, w: Math.round(r.width), rows: rows.length, count: kids.length, overlaps, truncated, outside, guide,
+    // Every visible item's box (rounded): the baseline's items must not move.
+    sig: boxes.map((b) => [b.x1, b.y1, b.x2, b.y2].map(Math.round)),
+    inStrip: inStrip.length, hiddenWrap,
     inDom: document.querySelectorAll("[data-guide-open]").length,
+    shown: [...document.querySelectorAll("[data-guide-open]")].filter(vis).length,
     docOverflow: document.documentElement.scrollWidth > innerWidth,
   };
 }, DICT[P.locale].editor.undo);
+/** Items of `t.sig` that moved by more than 1px against the baseline's (same index). */
+const movedItems = (t, b) => b.sig.map((s, i) => [i, s, t.sig[i]]).filter(([, s, x]) => !x || s.some((v, k) => Math.abs(v - x[k]) > 1))
+  .map(([i, s, x]) => `#${i + 1} ${JSON.stringify(s)} → ${JSON.stringify(x ?? null)}`);
+
+/** The editor's phone dock ([data-gen-dock], lg:hidden): its card, the
+ *  horizontally scrolling section-chip row and the guide button in it.
+ *  `end`: scroll the chip row all the way to the end first. */
+const dockGeom = (P, end = false) => P.page.evaluate((end) => {
+  const dock = document.querySelector("[data-gen-dock]");
+  const R = (v) => Math.round(v * 10) / 10;
+  const vis = (el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== "hidden"; };
+  if (!dock) return { inDom: false, shown: false };
+  const shown = getComputedStyle(dock).display !== "none" && dock.getBoundingClientRect().height > 0;
+  const card = dock.querySelector(".dock");
+  const row = card?.querySelector(".thin-scroll") ?? null;
+  const room = document.documentElement.style.getPropertyValue("--gen-dock-room") || null;
+  if (!shown || !card || !row) return { inDom: true, shown, room, display: getComputedStyle(dock).display };
+  if (end) row.scrollLeft = row.scrollWidth;
+  const rr = row.getBoundingClientRect();
+  const kids = [...row.children];
+  const btn = row.querySelector("[data-guide-open]");
+  let guide = null;
+  if (btn) {
+    const bb = btn.getBoundingClientRect();
+    const label = btn.querySelector("span");
+    const lr = label?.getBoundingClientRect();
+    const ls = label ? getComputedStyle(label) : null;
+    const at = document.elementFromPoint(bb.left + bb.width / 2, bb.top + bb.height / 2);
+    guide = {
+      lastChild: Boolean(row.lastElementChild?.contains(btn)),
+      // the five section chips first, the button's wrapper last
+      chipsBefore: kids.slice(0, -1).filter((k) => k.tagName === "BUTTON").length,
+      fullyInRow: bb.left >= rr.left - 0.5 && bb.right <= rr.right + 0.5 && bb.top >= rr.top - 0.5 && bb.bottom <= rr.bottom + 0.5,
+      inView: bb.left >= -0.5 && bb.right <= innerWidth + 0.5 && bb.top >= -0.5 && bb.bottom <= innerHeight + 0.5,
+      hit: Boolean(at && btn.contains(at)),
+      labelVisible: Boolean(label && ls.position !== "absolute" && lr.width > 1 && lr.height > 1),
+      labelText: label?.textContent.trim() ?? null,
+      aria: btn.getAttribute("aria-label"), title: btn.getAttribute("title"), haspopup: btn.getAttribute("aria-haspopup"),
+      clipped: btn.scrollWidth > btn.clientWidth + 1,
+      visible: vis(btn), w: R(bb.width), h: R(bb.height), left: R(bb.left - rr.left), right: R(rr.right - bb.right),
+    };
+  }
+  return {
+    inDom: true, shown, room,
+    dockH: R(dock.getBoundingClientRect().height), dockTop: R(dock.getBoundingClientRect().top),
+    cardH: R(card.getBoundingClientRect().height), rowH: R(rr.height), rowW: R(rr.width),
+    scrollW: row.scrollWidth, clientW: row.clientWidth, scrollLeft: Math.round(row.scrollLeft), maxScroll: row.scrollWidth - row.clientWidth,
+    scrolls: row.scrollWidth > row.clientWidth + 1, kids: kids.length,
+    chipH: kids.filter((k) => k.tagName === "BUTTON").map((k) => R(k.getBoundingClientRect().height)),
+    guide,
+    docOverflow: document.documentElement.scrollWidth > innerWidth,
+  };
+}, end);
 
 /** The workbench's settings panel: its "Ustawienia" header row and the guide button in it. */
 const settingsGeom = (P) => P.page.evaluate((label) => {
@@ -1939,23 +2008,201 @@ async function stepsWalk(id, tool, url, l = "pl") {
   await closeP(P);
 }
 
+/* ── shortcuts and drops behind the open tutorial ──────────────────────── */
+
+/** The editor with a photo in it (the harness mounts it with none): through
+ *  its own hidden file input, the same door the "Wybierz zdjęcie" button opens. */
+async function editorWithPhoto(w, l = "pl") {
+  const P = await openPage({ vp: VP[w], locale: l, url: URLS.editor, guide: guideFor("editor", l, { seen: 1, noStarter: true }) });
+  await P.page.locator('input[type="file"]').first().setInputFiles({ name: "probe-4x3.png", mimeType: "image/png", buffer: pngBuf });
+  const ok = await until(() => edState(P).then((s) => s.ready), 15000);
+  return { P, ok };
+}
+/** The row-2 workspace strip (it holds the zoom slider): its flip button. */
+const flipBtn = (P) => P.page.locator(".panel", { has: P.page.locator(`input[type="range"][aria-label="${DICT[P.locale].editor.zoom}"]`) })
+  .locator(`button[aria-label="${DICT[P.locale].editor.t.flipH}"]`);
+/** What the history and the photo look like from outside: Cofnij / Ponów
+ *  enabled (= the timeline cursor can move back / forward), flip pressed, and
+ *  the canvas's aspect ratio (the loaded photo: 4:3 vs the dropped 2:3). */
+const edState = (P) => P.page.evaluate(({ undo, redo, flip, zoom }) => {
+  const strip = [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === undo)?.parentElement;
+  const btn = (label) => [...(strip?.querySelectorAll("button") ?? [])].find((b) => b.textContent.trim() === label);
+  const ws = document.querySelector(`input[type="range"][aria-label="${zoom}"]`)?.closest(".panel");
+  const f = ws?.querySelector(`button[aria-label="${flip}"]`);
+  const c = document.querySelector("canvas");
+  const cw = c ? parseFloat(c.style.width) : 0, ch = c ? parseFloat(c.style.height) : 0;
+  return {
+    ready: Boolean(f && !f.disabled && c && cw > 0),
+    canUndo: btn(undo) ? !btn(undo).disabled : null, canRedo: btn(redo) ? !btn(redo).disabled : null,
+    flipped: f?.getAttribute("aria-pressed") === "true",
+    ratio: cw && ch ? Math.round((cw / ch) * 100) / 100 : null,
+  };
+}, { undo: DICT[P.locale].editor.undo, redo: DICT[P.locale].editor.redo, flip: DICT[P.locale].editor.t.flipH, zoom: DICT[P.locale].editor.zoom });
+const sameEd = (a, b) => a.canUndo === b.canUndo && a.canRedo === b.canRedo && a.flipped === b.flipped && a.ratio === b.ratio;
+
+/** A real-shaped file drag: dragenter → dragover → (two frames: is the drop
+ *  overlay up?) → drop, dispatched on `target` with a DataTransfer that
+ *  carries `buf` as a PNG. Every event bubbles to the window listeners of
+ *  useFileDrop, exactly as a release over the tutorial would. */
+async function dropFile(P, target, buf, overlayTitle) {
+  return P.page.evaluate(async ({ target, b64, title }) => {
+    const bin = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bin], "probe-drop.png", { type: "image/png" }));
+    const el = document.querySelector(target);
+    if (!el) return { missing: target };
+    const r = el.getBoundingClientRect();
+    const ev = (type) => new DragEvent(type, { bubbles: true, cancelable: true, composed: true, dataTransfer: dt, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+    const overlay = () => {
+      const o = [...document.querySelectorAll("div.pointer-events-none.z-50")].find((d) => d.textContent.includes(title));
+      return o ? o.style.visibility === "visible" && o.getAttribute("aria-hidden") === "false" : null;
+    };
+    const frames = () => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(res, 60))));
+    el.dispatchEvent(ev("dragenter"));
+    const over = ev("dragover");
+    el.dispatchEvent(over);
+    await frames();
+    const overlayOnEnter = overlay();
+    const drop = ev("drop");
+    el.dispatchEvent(drop);
+    await frames();
+    return { overlayOnEnter, overlayAfter: overlay(), overPrevented: over.defaultPrevented, dropPrevented: drop.defaultPrevented, dropEffect: dt.dropEffect, types: [...dt.types] };
+  }, { target, b64: buf.toString("base64"), title: overlayTitle });
+}
+const SHEET = '[data-tool-tutorial] [role="dialog"]';
+const SCRIM = "[data-tool-tutorial] > .scrim";
+
+/** Ctrl/Cmd+Z and Ctrl+Shift+Z do nothing while the tutorial is open — and
+ *  do work once it is closed (the positive control that makes the first
+ *  result mean something). */
+async function undoBehindTutorial(w) {
+  const tag = `[editor ${w}]`;
+  const { P, ok } = await editorWithPhoto(w);
+  if (!check("E", `${tag} a photo loads through the editor's own file input (the harness has none)`, ok, await edState(P))) { await closeP(P); return; }
+  const s0 = await edState(P);
+  await press(P, flipBtn(P));
+  await sleep(250);
+  const s1 = await edState(P);
+  check("E", `${tag} an edit (Odbij w poziomie) → flip pressed, Cofnij enabled, Ponów disabled (history cursor 1)`,
+    !s0.canUndo && !s0.flipped && s1.flipped && s1.canUndo && !s1.canRedo, { before: s0, after: s1 });
+  const openIt = async () => { await press(P, P.page.locator(GUIDE_BTN)); return waitDialog(P); };
+  if (!check("E", `${tag} tutorial opens over the edited photo`, await openIt())) { await closeP(P); return; }
+  await P.page.keyboard.press("Control+z");
+  await sleep(250);
+  const s2 = await edState(P);
+  await P.page.keyboard.press("Meta+z");
+  await sleep(250);
+  const s2m = await edState(P);
+  // A key aimed at the page itself (focus on <body>, e.g. after a click on the picture).
+  await P.page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", code: "KeyZ", ctrlKey: true, bubbles: true, cancelable: true })));
+  await sleep(250);
+  const s2b = await edState(P);
+  check("E", `${tag} tutorial OPEN: Ctrl+Z, Cmd+Z and a Ctrl+Z keydown on <body> do NOT undo (flip still pressed, Cofnij still enabled, Ponów still disabled), dialog still open`,
+    sameEd(s2, s1) && sameEd(s2m, s1) && sameEd(s2b, s1) && (await dialogCount(P)) === 1, { ctrlZ: s2, metaZ: s2m, bodyCtrlZ: s2b, open: await dialogCount(P) });
+  await P.page.keyboard.press("Escape");
+  await waitClosed(P);
+  await sleep(200);
+  await P.page.keyboard.press("Control+z");
+  await sleep(250);
+  const s3 = await edState(P);
+  check("E", `${tag} positive control — tutorial CLOSED: Ctrl+Z undoes (flip off, Cofnij disabled, Ponów enabled)`, !s3.flipped && !s3.canUndo && s3.canRedo, s3);
+  if (!(await openIt())) { check("E", `${tag} tutorial reopens`, false); await closeP(P); return; }
+  await P.page.keyboard.press("Control+Shift+z");
+  await sleep(250);
+  const s4 = await edState(P);
+  check("E", `${tag} tutorial OPEN: Ctrl+Shift+Z does NOT redo (history unchanged)`, sameEd(s4, s3) && (await dialogCount(P)) === 1, s4);
+  await P.page.keyboard.press("Escape");
+  await waitClosed(P);
+  await sleep(200);
+  await P.page.keyboard.press("Control+Shift+z");
+  await sleep(250);
+  const s5 = await edState(P);
+  check("E", `${tag} positive control — tutorial CLOSED: Ctrl+Shift+Z redoes (flip on again, Ponów disabled)`, s5.flipped && s5.canUndo && !s5.canRedo, s5);
+  await closeP(P);
+}
+
+/** A photo dropped over the open tutorial (the sheet, the scrim) is ignored:
+ *  no overlay, nothing replaced — and the drop is still swallowed, so the
+ *  browser does not navigate to the file. Closed, the same drop lands. */
+async function editorDropBehindTutorial(w) {
+  const tag = `[editor ${w}]`;
+  const { P, ok } = await editorWithPhoto(w);
+  if (!check("E", `${tag} a photo loads (drop test)`, ok)) { await closeP(P); return; }
+  await press(P, flipBtn(P));
+  await sleep(250);
+  const s1 = await edState(P);
+  await press(P, P.page.locator(GUIDE_BTN));
+  if (!check("E", `${tag} tutorial opens (drop test)`, await waitDialog(P))) { await closeP(P); return; }
+  const title = DICT.pl.editor.drop;
+  const onSheet = await dropFile(P, SHEET, pngTall, title);
+  await sleep(900);
+  const s2 = await edState(P);
+  const onScrim = await dropFile(P, SCRIM, pngTall, title);
+  await sleep(900);
+  const s3 = await edState(P);
+  check("E", `${tag} tutorial OPEN: a PNG dropped on the sheet and on the scrim → no drop overlay, photo NOT replaced (canvas ${s1.ratio} kept, edit + history kept)`,
+    onSheet.overlayOnEnter === false && onScrim.overlayOnEnter === false && sameEd(s2, s1) && sameEd(s3, s1) && s1.flipped && s1.canUndo,
+    { onSheet, onScrim, before: s1, afterSheet: s2, afterScrim: s3 });
+  check("E", `${tag} tutorial OPEN: the drop is still preventDefault-ed (the browser does not open the file), dialog still open`,
+    onSheet.dropPrevented && onScrim.dropPrevented && (await dialogCount(P)) === 1, { sheet: onSheet.dropPrevented, scrim: onScrim.dropPrevented, open: await dialogCount(P) });
+  await P.page.keyboard.press("Escape");
+  await waitClosed(P);
+  await sleep(200);
+  const pos = await dropFile(P, "main", pngTall, title);
+  await until(() => edState(P).then((s) => s.ratio !== s1.ratio), 5000);
+  const s4 = await edState(P);
+  check("E", `${tag} positive control — tutorial CLOSED: the same drop raises the overlay and replaces the photo (canvas ${s1.ratio} → ~0.67, history reset)`,
+    pos.overlayOnEnter === true && pos.dropPrevented && s4.ratio !== s1.ratio && Math.abs(s4.ratio - 2 / 3) < 0.03 && !s4.canUndo && !s4.flipped, { drop: pos, after: s4 });
+  await closeP(P);
+}
+
+/** The workbench queue as the seller sees it: "Kolejka (n)". */
+const queueSize = (P) => P.page.evaluate((re) => {
+  const p = [...document.querySelectorAll("p.overline")].find((x) => new RegExp(re).test(x.textContent.trim()));
+  return p ? Number(/\d+/.exec(p.textContent)[0]) : 0;
+}, `^${DICT.pl.tools.queue.replace(/[()]/g, "\\$&").replace("{n}", "\\d+")}$`);
+async function workbenchDropBehindTutorial(tool, w) {
+  const tag = `[${V2[tool].name} ${w}]`;
+  const P = await openPage({ vp: VP[w], url: V2[tool].url, guide: guideFor(tool, "pl", { seen: 1, noStarter: true }) });
+  await press(P, P.page.locator(GUIDE_BTN));
+  if (!check("W", `${tag} tutorial opens (drop test)`, await waitDialog(P))) { await closeP(P); return; }
+  const title = DICT.pl.tools.dropManyTitle;
+  const onSheet = await dropFile(P, SHEET, pngBuf, title);
+  const onScrim = await dropFile(P, SCRIM, pngBuf, title);
+  await sleep(900);
+  const q1 = await queueSize(P);
+  check("W", `${tag} tutorial OPEN: a PNG dropped on the sheet and on the scrim → no drop overlay, nothing queued`,
+    onSheet.overlayOnEnter === false && onScrim.overlayOnEnter === false && q1 === 0, { onSheet, onScrim, queue: q1 });
+  check("W", `${tag} tutorial OPEN: the drop is still preventDefault-ed (no navigation to the file), dialog still open`,
+    onSheet.dropPrevented && onScrim.dropPrevented && (await dialogCount(P)) === 1);
+  await P.page.keyboard.press("Escape");
+  await waitClosed(P);
+  await sleep(200);
+  const pos = await dropFile(P, "main", pngBuf, title);
+  await until(async () => (await queueSize(P)) > 0, 5000);
+  const q2 = await queueSize(P);
+  check("W", `${tag} positive control — tutorial CLOSED: the same drop raises the overlay and queues the file ("${fill(DICT.pl.tools.queue, { n: 1 })}")`,
+    pos.overlayOnEnter === true && pos.dropPrevented && q2 === 1, { drop: pos, queue: q2 });
+  await closeP(P);
+}
+
 if (run("E")) {
   section("E");
-  // E1. Where the button is, and the strip against a no-guide baseline.
+  // E1. Where the button is — the end of the timeline strip from lg (1024)
+  // up, the end of the phone dock's chip row below it — and the strip and the
+  // dock against a no-guide baseline (guide=null: no button anywhere).
   const pre = [];
-  for (const w of [320, 360, 390, 834, 1440]) for (const l of LOCALES) {
+  for (const w of [320, 360, 390, 834, 1024, 1440]) for (const l of LOCALES) {
     const combo = `${w}-${l}`;
+    const desk = w >= 1024;
     const P = await openPage({ vp: VP[w], locale: l, url: URLS.editor, guide: guideFor("editor", l, { seen: 1, noStarter: true }) });
     const B = await openPage({ vp: VP[w], locale: l, url: URLS.editor, guide: guideFor("editor", l, { seen: 1, noGuide: true }) });
     const t = await stripGeom(P), b = await stripGeom(B);
     if (!check("E", `[${combo}] timeline strip rendered (with and without the guide)`, Boolean(t && b), { t: Boolean(t), b: Boolean(b) })) { await closeP(P); await closeP(B); continue; }
     const g = t.guide;
-    check("E", `[${combo}] the guide button is the LAST item of the timeline strip, right-aligned (ml-auto), clickable, unclipped`,
-      Boolean(g && g.lastChild && Math.abs(g.rightGap) <= 1 && g.hit && !g.clipped && g.inView && t.inDom === 1), g ?? { inDom: t.inDom });
-    const small = w < 640;
-    check("E", `[${combo}] ${small ? "below sm: icon only (label sr-only)" : "sm and up: label visible"}; aria-label "${TG(l, "openAria")}", aria-haspopup dialog`,
-      Boolean(g && g.labelSrOnly === small && g.labelText === TG(l, "open") && g.aria === TG(l, "openAria") && g.haspopup === "dialog"), g);
     check("E", `[${combo}] baseline (guide=null): no button anywhere`, b.inDom === 0, b.inDom);
+    check("E", `[${combo}] exactly ONE visible guide button on the page (${desk ? "the strip's" : "the dock's"})`, t.shown === 1, { shown: t.shown, inDom: t.inDom });
+    // The strip against its baseline: rows, height, and every baseline item where it was.
     const reg = [];
     if (t.rows !== b.rows) reg.push(`rows ${t.rows} vs baseline ${b.rows}`);
     if (Math.abs(t.h - b.h) > 1) reg.push(`height ${t.h} vs baseline ${b.h}`);
@@ -1963,20 +2210,69 @@ if (run("E")) {
     if (t.outside.length) reg.push(`outside the strip: ${t.outside.join(", ")}`);
     if (t.truncated.length > b.truncated.length) reg.push(`truncated labels: ${t.truncated.join(", ")}`);
     if (t.docOverflow && !b.docOverflow) reg.push("page scrolls sideways");
-    // Where the baseline already wraps, the button riding on the second row
-    // is the strip's own wrap, not this feature's.
-    if (g && !g.sameRowAsUndo && b.rows === 1) reg.push("button not on Cofnij's row");
-    check("E", `[${combo}] strip vs no-guide baseline: same rows and height (±1px), no overlap/overflow/truncation${b.rows === 1 ? ", button on Cofnij's row" : ""}`, reg.length === 0,
-      { reg, with: { rows: t.rows, h: t.h, n: t.count }, baseline: { rows: b.rows, h: b.h, n: b.count } });
-    if (b.rows === 1) check("E", `[${combo}] strip is ONE row with the button (baseline: 1 row, ${b.h}px)`, t.rows === 1, { rows: t.rows, h: t.h });
-    else { pre.push(`${combo}: baseline already ${b.rows} rows`); info("E", `[${combo}] baseline strip already wraps (${b.rows} rows, ${b.h}px) — PRE-EXISTING; with the guide ${t.rows} rows, ${t.h}px`); }
-    info("E", `[${combo}] strip ${t.w}px wide, ${t.rows} row(s) ${t.h}px, ${t.count} items; button ${g?.w}×${g?.h}`);
+    const moved = movedItems(t, b);
+    if (moved.length) reg.push(`baseline items moved: ${moved.join("; ")}`);
+    if (t.count !== b.count + (desk ? 1 : 0)) reg.push(`visible items ${t.count} vs baseline ${b.count}${desk ? " + the button" : ""}`);
+    if (desk && g && !g.sameRowAsUndo && b.rows === 1) reg.push("button not on Cofnij's row");
+    check("E", `[${combo}] strip vs no-guide baseline: same rows and height (±1px), baseline items unmoved, no overlap/overflow/truncation${desk && b.rows === 1 ? ", button on Cofnij's row" : ""}`,
+      reg.length === 0, { reg, with: { rows: t.rows, h: t.h, n: t.count }, baseline: { rows: b.rows, h: b.h, n: b.count } });
+    if (b.rows === 1) check("E", `[${combo}] strip is ONE row${desk ? " with the button" : ""} (baseline: 1 row, ${b.h}px)`, t.rows === 1, { rows: t.rows, h: t.h });
+    else { pre.push(`${combo}: baseline ${b.rows} rows / ${b.h}px, with the guide ${t.rows} rows / ${t.h}px`); info("E", `[${combo}] baseline strip already wraps (${b.rows} rows, ${b.h}px) — PRE-EXISTING; with the guide ${t.rows} rows, ${t.h}px`); }
+    const d = await dockGeom(P), db = await dockGeom(B);
+    if (desk) {
+      check("E", `[${combo}] ≥lg: the guide button is the LAST item of the timeline strip, right-aligned (ml-auto), clickable, unclipped`,
+        Boolean(g && g.lastChild && Math.abs(g.rightGap) <= 1 && g.hit && !g.clipped && g.inView), g ?? { inStrip: t.inStrip, hiddenWrap: t.hiddenWrap });
+      check("E", `[${combo}] ≥lg: label "${TG(l, "open")}" visible (not sr-only); aria-label/title "${TG(l, "openAria")}", aria-haspopup dialog`,
+        Boolean(g && !g.labelSrOnly && g.labelText === TG(l, "open") && g.aria === TG(l, "openAria") && g.title === TG(l, "openAria") && g.haspopup === "dialog"), g);
+      check("E", `[${combo}] ≥lg: the phone dock is not shown (lg:hidden), so its button is not either`, !d.shown && !db.shown, { dock: d, baseline: db });
+    } else {
+      check("E", `[${combo}] <lg: NO visible guide button in the timeline strip (its wrapper is display:none)`,
+        g === null && t.inStrip === 1 && t.hiddenWrap.every((x) => x === "none"), { guide: g, inStrip: t.inStrip, hiddenWrap: t.hiddenWrap });
+      if (!check("E", `[${combo}] <lg: the dock is shown, with and without the guide`, d.shown && db.shown, { d, db })) { await closeP(P); await closeP(B); continue; }
+      const dg = d.guide;
+      check("E", `[${combo}] <lg: the guide button is the LAST item of the dock's chip row, after the ${SECTIONS_N} section chips`,
+        Boolean(dg && dg.lastChild && dg.chipsBefore === SECTIONS_N && d.kids === db.kids + 1), { guide: dg, kids: d.kids, baselineKids: db.kids });
+      check("E", `[${combo}] <lg: labelled "${TG(l, "open")}" (label visible, not sr-only); aria-label/title "${TG(l, "openAria")}", aria-haspopup dialog; unclipped`,
+        Boolean(dg && dg.labelVisible && dg.labelText === TG(l, "open") && dg.aria === TG(l, "openAria") && dg.title === TG(l, "openAria") && dg.haspopup === "dialog" && !dg.clipped), dg);
+      const dockReg = [];
+      if (Math.abs(d.dockH - db.dockH) > 0.5) dockReg.push(`dock ${d.dockH} vs baseline ${db.dockH}`);
+      if (Math.abs(d.cardH - db.cardH) > 0.5) dockReg.push(`card ${d.cardH} vs baseline ${db.cardH}`);
+      if (Math.abs(d.rowH - db.rowH) > 0.5) dockReg.push(`chip row ${d.rowH} vs baseline ${db.rowH}`);
+      if (JSON.stringify(d.chipH) !== JSON.stringify(db.chipH)) dockReg.push(`chip heights ${JSON.stringify(d.chipH)} vs baseline ${JSON.stringify(db.chipH)}`);
+      if (Math.abs(d.dockTop - db.dockTop) > 0.5) dockReg.push(`dock top ${d.dockTop} vs baseline ${db.dockTop}`);
+      if (d.room !== db.room) dockReg.push(`--gen-dock-room ${d.room} vs baseline ${db.room}`);
+      if (d.docOverflow && !db.docOverflow) dockReg.push("page scrolls sideways");
+      check("E", `[${combo}] <lg: dock height unchanged vs baseline (dock, card, chip row, chip heights, --gen-dock-room)`, dockReg.length === 0,
+        { dockReg, with: { dockH: d.dockH, cardH: d.cardH, rowH: d.rowH, chipH: d.chipH, btnH: dg?.h, room: d.room }, baseline: { dockH: db.dockH, cardH: db.cardH, rowH: db.rowH, chipH: db.chipH, room: db.room } });
+      // Reachable: scrolled to its end, the row shows the whole button.
+      const e = await dockGeom(P, true);
+      check("E", `[${combo}] <lg: chip row scrolled to its end → the button is FULLY inside the row and the viewport, hit-testable${d.scrolls ? ` (row scrolls: ${d.scrollW} > ${d.clientW})` : " (row fits, no scroll needed)"}`,
+        Boolean(e.guide && e.guide.fullyInRow && e.guide.inView && e.guide.hit && e.scrollLeft >= e.maxScroll - 1), { guide: e.guide, scrollLeft: e.scrollLeft, maxScroll: e.maxScroll });
+      if (l === "pl" || dockReg.length) await shot(P.page, `editor-dock-end-${w}-${l}`);
+      // …and it opens the tutorial (Playwright scrolls it into view first, as a finger would).
+      await P.page.evaluate(() => { const r = document.querySelector("[data-gen-dock] .thin-scroll"); if (r) r.scrollLeft = 0; });
+      const db2 = P.page.locator("[data-gen-dock] [data-guide-open]");
+      await press(P, db2);
+      const opened = await waitDialog(P);
+      const st = opened ? await tutorialSteps(P) : null;
+      check("E", `[${combo}] <lg: the dock button opens the editor tutorial ("${DICT[l].toolGuideDefaults.editor.tutorial.title}")`,
+        opened && st?.title === DICT[l].toolGuideDefaults.editor.tutorial.title, st && { title: st.title });
+      if (opened) {
+        await P.page.keyboard.press("Escape");
+        await waitClosed(P);
+        await sleep(120);
+        check("E", `[${combo}] <lg: Escape closes it; focus back on the dock's button`,
+          (await dialogCount(P)) === 0 && (await P.page.evaluate(() => Boolean(document.activeElement?.closest("[data-gen-dock]") && document.activeElement.hasAttribute("data-guide-open")))));
+      }
+      info("E", `[${combo}] dock ${d.dockH}px (baseline ${db.dockH}), chip row ${d.rowW}px wide, content ${d.scrollW}px, ${d.kids} items; button ${dg?.w}×${dg?.h} (chips ${d.chipH.join("/")})`);
+    }
+    info("E", `[${combo}] strip ${t.w}px wide, ${t.rows} row(s) ${t.h}px, ${t.count} visible items${g ? `; button ${g.w}×${g.h}` : "; no visible button"}`);
     if (l === "pl" || reg.length) await shot(P.page, `editor-strip-${w}-${l}`);
     if (reg.length) await shot(B.page, `editor-strip-BASELINE-noguide-${w}-${l}`);
     await closeP(P);
     await closeP(B);
   }
-  if (pre.length) info("E", `pre-existing wraps: ${pre.join(" | ")}`);
+  if (pre.length) info("E", `pre-existing wraps (baseline, not counted): ${pre.join(" | ")}`);
   // E2. Auto-open once per version; the rules that keep it closed.
   for (const w of [1440, 390]) await autoOpenRules("E", "editor", URLS.editor, w);
   await negativeRules("E", "editor", URLS.editor);
@@ -1988,6 +2284,9 @@ if (run("E")) {
     check("E", "the editor asks /api/tool-guides for tool=editor only", [...new Set(P.rec.guideReqs)].join() === "editor", P.rec.guideReqs);
     await closeP(P);
   }
+  // E5. Ctrl/Cmd+Z behind the open tutorial; E6. a file dropped behind it.
+  for (const w of [1440, 390]) await undoBehindTutorial(w);
+  for (const w of [1440, 390]) await editorDropBehindTutorial(w);
 }
 
 if (run("W")) {
@@ -2050,6 +2349,10 @@ if (run("W")) {
     info("W", `[upscale available=0 but live=true, seen 0 — inconsistent answer] dialog mounted ${await dialogCount(P)}, mark-seen POSTs ${P.rec.actions.length}${P.rec.actions.length && !(await dialogCount(P)) ? " (marked seen without being shown: the unavailable panel renders no guide.dialog)" : ""}`);
     await closeP(P);
   }
+  // W7. A file dropped while the tutorial is open is ignored.
+  await workbenchDropBehindTutorial("tool_upscale", 1440);
+  await workbenchDropBehindTutorial("tool_upscale", 390);
+  await workbenchDropBehindTutorial("tool_watermark", 1440);
 }
 
 if (run("S")) {
@@ -2060,14 +2363,20 @@ if (run("S")) {
     const combo = `${V2[tool].name}-${w}-${theme}-${l}`;
     const P = await openPage({ vp: VP[w], theme, locale: l, url: V2[tool].url, guide: guideFor(tool, l, { seen: 1, noStarter: true }) });
     const themeOk = await P.page.evaluate((th) => document.documentElement.classList.contains("dark") === (th === "dark"), theme);
+    // The VISIBLE button: the editor keeps one in the strip (shown from lg)
+    // and one in the phone dock (shown below lg); both always in the DOM.
     const btn = await P.page.evaluate(() => {
-      const b = document.querySelector("[data-guide-open]");
+      const shown = [...document.querySelectorAll("[data-guide-open]")].filter((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+      const b = shown[0];
       const s = b?.querySelector("span");
-      return b ? { aria: b.getAttribute("aria-label"), title: b.getAttribute("title"), label: s?.textContent.trim(), srOnly: s ? s.getBoundingClientRect().width <= 1 : null } : null;
+      return b ? {
+        shown: shown.length, inDock: Boolean(b.closest("[data-gen-dock]")),
+        aria: b.getAttribute("aria-label"), title: b.getAttribute("title"), label: s?.textContent.trim(), srOnly: s ? s.getBoundingClientRect().width <= 1 : null,
+      } : null;
     });
-    const iconOnly = tool === "editor" && w < 640;
-    check("S", `[${combo}] theme applied; button aria/title "${TG(l, "openAria")}", label "${TG(l, "open")}"${iconOnly ? " (sr-only)" : ""}`,
-      themeOk && btn && btn.aria === TG(l, "openAria") && btn.title === TG(l, "openAria") && btn.label === TG(l, "open") && btn.srOnly === iconOnly, { themeOk, btn });
+    const wantDock = tool === "editor" && w < 1024;
+    check("S", `[${combo}] theme applied; one visible button${tool === "editor" ? (wantDock ? " (in the dock)" : " (in the strip)") : ""}, aria/title "${TG(l, "openAria")}", label "${TG(l, "open")}" visible`,
+      themeOk && btn && btn.shown === 1 && btn.inDock === wantDock && btn.aria === TG(l, "openAria") && btn.title === TG(l, "openAria") && btn.label === TG(l, "open") && btn.srOnly === false, { themeOk, btn });
     await shot(P.page, `v2-${combo}`);
     const b = P.page.locator(GUIDE_BTN);
     await b.scrollIntoViewIfNeeded();

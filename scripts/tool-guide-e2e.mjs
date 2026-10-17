@@ -24,8 +24,11 @@
  *   Run `stubs` BEFORE the baseline; every capture (baseline / regress) first clears the guide
  *   rows and guide pictures (LOCAL DB), so the old and the new build are photographed over the
  *   same data.
- *   node scripts/tool-guide-e2e.mjs all        # on the NEW build: regress (check 12) then checks 1–11
- *   node scripts/tool-guide-e2e.mjs checks     # only checks 1–11 (TG_E2E_ONLY=1,4,7 to subset)
+ *   node scripts/tool-guide-e2e.mjs all        # on the NEW build: regress (check 12) then checks 1–11 + 13
+ *   node scripts/tool-guide-e2e.mjs checks     # only checks 1–11 + 13 (TG_E2E_ONLY=1,4,7 to subset)
+ *   Check 13 (the generator's admin "live" status vs the local stack's usable models) is
+ *   meaningful in both states: run it with the stubs (a usable model → live) and again after
+ *   `unstub` (no credential → not live): TG_E2E_ONLY=13 node scripts/tool-guide-e2e.mjs checks
  *   node scripts/tool-guide-e2e.mjs regress    # only check 12 (needs the baseline)
  *   node scripts/tool-guide-e2e.mjs reset      # LOCAL DB: drop the guide rows/pictures this probe wrote
  *   node scripts/tool-guide-e2e.mjs unstub     # LOCAL DB: remove the stubs again (back to the stack's seed)
@@ -82,6 +85,9 @@ for (const [name, value] of [["TG_E2E_DB", DB], ["TG_E2E_REST", REST], ["TG_E2E_
 const { login, launchBrowser, USERS } = await import(pathToFileURL(path.join(E2E_DIR, "login.mjs")).href);
 const requireRepo = createRequire(path.join(REPO, "package.json"));
 const sharp = requireRepo("sharp");
+// libvips caches file loads by path: a retake written over the same file was measured from
+// the cached FIRST capture (seen: three "retakes" of a page whose file on disk was fine).
+sharp.cache(false);
 
 fs.mkdirSync(SHOTS, { recursive: true });
 const log = (s) => console.error(`[tg-e2e] ${s}`);
@@ -229,6 +235,8 @@ function resetGuides() {
   sql("begin; delete from public.media_slots where slot_key like 'guide.%'; delete from public.tool_guides; commit;");
 }
 
+let check10Net = [];
+
 /* ── scoreboard ────────────────────────────────────────────────────────── */
 
 const board = [];
@@ -345,6 +353,39 @@ async function guideApi(page, tool) {
     const r = await fetch(`/api/tool-guides?tool=${k}`, { cache: "no-store" });
     return { status: r.status, body: await r.json().catch(() => null) };
   }, tool);
+}
+
+/**
+ * Where the Samouczek button sits right now. The editor puts it at the end of the timeline
+ * strip (the row holding "Cofnij") from lg up, and as the LAST item of the phone dock's
+ * scrolling section-chip row ([data-gen-dock], lg:hidden) below lg.
+ */
+async function guidePlacement(page) {
+  return page.evaluate((undoLabel) => {
+    const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none"; };
+    const all = [...document.querySelectorAll("[data-guide-open]")];
+    const dock = document.querySelector("[data-gen-dock]");
+    const row = dock?.querySelector(".thin-scroll") ?? null;
+    const box = (e) => { const r = e.getBoundingClientRect(); return { x0: Math.round(r.left), y0: Math.round(r.top), x1: Math.round(r.right), y1: Math.round(r.bottom) }; };
+    const where = (b) => {
+      const holder = b.parentElement?.parentElement ?? null;
+      const inStrip = Boolean(holder && !holder.closest("[data-gen-dock]") && [...holder.querySelectorAll("button")].some((x) => x.textContent.trim() === undoLabel));
+      const inDockRow = Boolean(row && row.contains(b));
+      return {
+        inStrip, inDockRow, inDock: Boolean(b.closest("[data-gen-dock]")),
+        lastInDockRow: Boolean(inDockRow && row.lastElementChild?.contains(b)),
+        rect: box(b),
+      };
+    };
+    return {
+      total: all.length,
+      visible: all.filter(vis).map(where),
+      hidden: all.filter((b) => !vis(b)).map((b) => where(b)).map(({ inStrip, inDockRow }) => ({ inStrip, inDockRow })),
+      dockVisible: Boolean(dock && vis(dock)),
+      dockRow: row ? { ...box(row), scrollWidth: row.scrollWidth, clientWidth: row.clientWidth, chips: row.children.length } : null,
+      viewport: { w: innerWidth, h: innerHeight },
+    };
+  }, t("pl", "editor.undo"));
 }
 
 /* ── pixel diff (sharp) ────────────────────────────────────────────────── */
@@ -472,7 +513,12 @@ async function capture(browser, dir) {
       const q = await snap(cust.page, url, file, vp.height);
       const button = await visibleCount(cust.page, "[data-guide-open]");
       const buttonRect = await docRect(cust.page, "[data-guide-open]");
-      meta.pages.push({ role: "customer", url, viewport: `${vp.width}x${vp.height}`, file: path.basename(file), guideButton: button, buttonRect, ...q });
+      // The phone dock's section-chip row (the editor and the generator have a dock): on the
+      // editor it holds the Samouczek button below lg. A fixed element sits in a full-page
+      // capture where it sits in the first viewport (checked on the baseline pictures).
+      const dockRowRect = await docRect(cust.page, "[data-gen-dock] .thin-scroll");
+      const placement = await guidePlacement(cust.page);
+      meta.pages.push({ role: "customer", url, viewport: `${vp.width}x${vp.height}`, file: path.basename(file), guideButton: button, buttonRect, dockRowRect, placement: placement.visible, ...q });
       log(`captured ${path.basename(file)} (guide button visible: ${button}, retakes ${q.retakes}, spread ${q.spread.all}/${q.spread.top})`);
     }
   }
@@ -526,13 +572,23 @@ async function pickInPicker(page, file, avoid = [], { upload = false } = {}) {
     await picker.getByRole("button", { name: t("pl", "media.upload") }).waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
   }
   const id = have[0];
-  await page.waitForTimeout(1500);
-  // How many tiles the picker shows for this one library file (should be exactly one).
-  const tiles = await picker.locator(`[data-picker-item="${id}"]`).count();
+  // How many tiles the picker shows per library file (should be exactly one each). An upload
+  // refreshes the page behind the picker, so the count is sampled for 6 s (every 250 ms) and
+  // the WORST moment is kept: a duplicate that shows up once the refresh lands is caught.
+  let tiles = 0, worst = { maxPerId: 0, dupes: [] }, samples = 0;
+  for (let i = 0; i < 24; i++) {
+    await page.waitForTimeout(250);
+    const list = await ids();
+    const per = list.reduce((m, x) => m.set(x, (m.get(x) ?? 0) + 1), new Map());
+    const max = Math.max(0, ...per.values());
+    tiles = Math.max(tiles, per.get(id) ?? 0);
+    if (max >= worst.maxPerId) worst = { maxPerId: max, total: list.length, distinct: per.size, dupes: [...per].filter(([, n]) => n > 1).map(([k, n]) => `${k}×${n}`) };
+    samples++;
+  }
   const shotName = await shot(page, `a5-picker-${uploaded ? "after-upload" : "existing"}`);
   await picker.locator(`[data-picker-item="${id}"]`).first().click();
   await picker.waitFor({ state: "hidden", timeout: 10_000 });
-  return { id, uploaded, tiles, shot: shotName };
+  return { id, uploaded, tiles, perId: { ...worst, samples }, shot: shotName };
 }
 
 /* ── admin editor helpers ──────────────────────────────────────────────── */
@@ -637,19 +693,28 @@ async function check12(browser) {
       guideButton: { baseline: b.guideButton, current: p.guideButton }, tabs: { baseline: b.tabs, current: p.tabs },
       guideSection: { baseline: b.guideSectionOnPage, current: p.guideSectionOnPage }, diffImage: path.join("diff", p.file) };
     // Where a difference is ALLOWED: customer pages — the Samouczek button's box (either
-    // build); admin basics — the tab bar (the new tab) and, from the removed guide section's
-    // top down, everything (the page is shorter by that section).
+    // build) and, on the editor only, the phone dock's section-chip row (the button is its
+    // last item below lg; the row's scroll extent changes with it); admin basics — the tab
+    // bar (the new tab) and, from the removed guide section's top down, everything (the page
+    // is shorter by that section).
     const pad = 8;
     const inside = (band, r) => r && band.x0 >= r.x0 - pad && band.x1 <= r.x1 + pad && band.y0 >= r.y0 - pad && band.y1 <= r.y1 + pad;
     const limitY = p.role === "admin" && b.sectionRect ? b.sectionRect.y0 - 24 : Infinity;
-    const allowed = p.role === "customer" ? [p.buttonRect, b.buttonRect] : [p.tabsRect, b.tabsRect];
+    const editorDock = p.url === "/tools/editor" ? [p.dockRowRect, b.dockRowRect ?? null] : [];
+    const allowed = p.role === "customer" ? [p.buttonRect, b.buttonRect, ...editorDock] : [p.tabsRect, b.tabsRect];
     const outside = d.bands.filter((band) => band.y0 < limitY && !allowed.some((r) => inside(band, r)));
     row.allowedAreas = { rects: allowed, belowY: Number.isFinite(limitY) ? limitY : null };
     row.unexplainedBands = outside;
     report.regression.push(row);
     log(`diff ${p.file}: ${d.diffPct}% (${d.size.baseline} → ${d.size.current}), bands ${JSON.stringify(d.bands.slice(0, 4))}, unexplained ${outside.length}`);
-    record(12, `${p.file}: ${d.diffPct}% differs; every difference inside the allowed area (${p.role === "customer" ? "the Samouczek button" : "the tab bar + the removed guide section"})`,
-      outside.length === 0 && d.bandCount <= 12, { diffPct: d.diffPct, size: d.size, bands: d.bands.slice(0, 6), unexplained: outside.slice(0, 6), button: { baseline: b.guideButton, current: p.guideButton }, tabs: p.tabs, diffImage: row.diffImage });
+    record(12, `${p.file}: ${d.diffPct}% differs; every difference inside the allowed area (${p.role === "customer" ? (editorDock.length ? "the Samouczek button + the phone dock chip row" : "the Samouczek button") : "the tab bar + the removed guide section"})`,
+      outside.length === 0 && d.bandCount <= 12, { diffPct: d.diffPct, size: d.size, bands: d.bands.slice(0, 6), unexplained: outside.slice(0, 6), button: { baseline: b.guideButton, current: p.guideButton }, placement: p.placement, allowed: allowed.filter(Boolean), tabs: p.tabs, diffImage: row.diffImage });
+  }
+  for (const p of after.pages.filter((x) => x.url === "/tools/editor")) {
+    const phone = p.viewport.startsWith("390");
+    const v = p.placement ?? [];
+    record(12, `${p.file}: the editor's one visible Samouczek button is ${phone ? "the last item of the phone dock's chip row" : "in the timeline strip (not in the dock)"}`,
+      v.length === 1 && (phone ? v[0].inDockRow && v[0].lastInDockRow && !v[0].inStrip : v[0].inStrip && !v[0].inDock), { placement: v });
   }
   record(12, "regression pages re-captured and diffed (per-page % + diff image; see report.regression)", report.regression.length === after.pages.length,
     report.regression.map((r) => `${r.file}: ${r.diffPct}%`));
@@ -699,6 +764,11 @@ async function runChecks(browser) {
       const btnVisible = await btn.isVisible().catch(() => false);
       const s2 = await shot(C, `c1-${tool}-closed-with-button`);
       record(1, `${tool}: X closes it and the Samouczek button is visible`, closed && btnVisible, { closed, btnVisible, shot: s2 });
+      if (tool === "editor") {
+        const pl = await guidePlacement(C);
+        record(1, `editor at ${DESKTOP.width}×${DESKTOP.height}: exactly one visible Samouczek button, at the end of the timeline strip; the phone dock is hidden`,
+          pl.visible.length === 1 && pl.visible[0].inStrip && !pl.visible[0].inDock && !pl.dockVisible, pl);
+      }
       // Reopen by hand, walk every step to the end, finish with the primary button.
       let walked = false, reopened = false;
       if (btnVisible) {
@@ -720,6 +790,52 @@ async function runChecks(browser) {
       const again = await customerVisit(C, tool, { wait: 3500 });
       record(1, `${tool}: second visit does not auto-open`, !again, { again });
     }
+    // The editor and the three workbenches on a PHONE (390×844): first visit opens the tutorial
+    // once, the button is there after closing it (the editor's: the LAST item of the bottom
+    // dock's scrolling chip row, nothing in the strip), it reopens the tutorial, and a second
+    // visit does not auto-open.
+    const PHONE = { width: 390, height: 844 };
+    await C.setViewportSize(PHONE);
+    for (const tool of ["editor", "tool_upscale", "tool_expand", "tool_watermark"]) {
+      if (!live[tool]) { record(1, `${tool} on ${PHONE.width}×${PHONE.height}: skipped — not live locally`, false, { live: live[tool] }); continue; }
+      resetSeen(CUSTOMER_ID);
+      const opened = await customerVisit(C, tool);
+      const tut = opened ? await readTutorial(C) : null;
+      const want = shippedTutorial("pl", tool);
+      const s1 = await shot(C, `c1p-${tool}-phone-auto-open`);
+      record(1, `${tool} on ${PHONE.width}×${PHONE.height}: auto-opens once on first visit with its own steps`,
+        opened && tut?.title === want.title && tut?.steps.length === want.steps.length && seenOf(CUSTOMER_ID)[tool] === 1,
+        { opened, title: tut?.title, steps: tut?.steps.length, seen: seenOf(CUSTOMER_ID)[tool], shot: s1 });
+      await C.locator("[data-guide-close]").click().catch(() => {});
+      await C.locator(TUTORIAL).waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+      const pl = await guidePlacement(C);
+      const v = pl.visible;
+      if (tool === "editor") {
+        // Show the end of the chip row in the screenshot (the button is past the fifth chip).
+        await C.evaluate(() => { const r = document.querySelector("[data-gen-dock] .thin-scroll"); if (r) r.scrollLeft = r.scrollWidth; });
+        await C.waitForTimeout(200);
+      }
+      const s2 = await shot(C, `c1p-${tool}-phone-button`);
+      const placed = tool === "editor"
+        ? v.length === 1 && v[0].inDockRow && v[0].lastInDockRow && !v[0].inStrip && pl.dockVisible && pl.hidden.some((h) => h.inStrip)
+        : v.length === 1 && !v[0].inDock;
+      record(1, tool === "editor"
+        ? `editor on ${PHONE.width}×${PHONE.height}: one visible Samouczek button — the LAST item of the bottom dock's chip row; the strip's copy is hidden`
+        : `${tool} on ${PHONE.width}×${PHONE.height}: one visible Samouczek button after closing`, placed, { ...pl, shot: s2 });
+      let reopened = false, closedAgain = false;
+      if (v.length > 0) {
+        await C.locator("[data-guide-open]:visible").first().click();
+        reopened = await C.locator(TUTORIAL).waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false);
+        const s3 = await shot(C, `c1p-${tool}-phone-reopened`);
+        report.phoneReopen = { ...(report.phoneReopen ?? {}), [tool]: s3 };
+        await C.keyboard.press("Escape");
+        closedAgain = await C.locator(TUTORIAL).waitFor({ state: "detached", timeout: 5000 }).then(() => true).catch(() => false);
+      }
+      record(1, `${tool} on ${PHONE.width}×${PHONE.height}: the button reopens the tutorial (Escape closes it)`, reopened && closedAgain, { reopened, closedAgain });
+      const again = await customerVisit(C, tool, { wait: 3500 });
+      record(1, `${tool} on ${PHONE.width}×${PHONE.height}: second visit does not auto-open`, !again, { again });
+    }
+    await C.setViewportSize(DESKTOP);
     // Video is not a guide tool: no tutorial, no button.
     await go(C, "/wideo", 2500);
     const vDialogs = await C.locator(TUTORIAL).count();
@@ -879,6 +995,8 @@ async function runChecks(browser) {
     E.starterAsset = p2.id;
     record(5, `${tool}: starter picture chosen through the picker (${p2.uploaded ? "uploaded" : "existing library file"}), listed once`, Boolean(p2.id) && p2.tiles === 1,
       { asset: p2.id, uploaded: p2.uploaded, tiles: p2.tiles, shot: p2.shot });
+    record(5, `${tool}: after the upload the picker shows exactly one tile per library file (no duplicate of any id over 6 s)`, p2.perId.maxPerId === 1,
+      { ...p2.perId, libraryImages: Number(sql("select count(*) from public.media_assets where kind = 'image'")) });
     const sform = await shot(A, `a5-${tool}-form-before-save`, { fullPage: true });
     const row = await saveGuide(A, tool, 5);
     record(5, `${tool}: "Zapisz i opublikuj" saved the edits`, Boolean(row), { version: row?.tutorial_version, shot: sform });
@@ -1036,15 +1154,45 @@ async function runChecks(browser) {
 
   /* 10 — the admin panel on phone, tablet and PC. */
   await guarded(10, async () => {
+    // The admin page's own requests (RSC navigations/prefetches included), kept to explain a
+    // tab click that does not navigate: what was asked, answered, failed — and when.
+    const net = [];
+    const keep = (e) => { net.push({ at: Date.now(), ...e }); if (net.length > 400) net.shift(); };
+    const local = (u) => u.startsWith(BASE) ? u.slice(BASE.length) : null;
+    A.on("request", (r) => { const u = local(r.url()); if (u && !u.startsWith("/_next/static")) keep({ ev: "req", m: r.method(), u, rsc: r.headers()["rsc"] ?? null, prefetch: r.headers()["next-router-prefetch"] ?? null }); });
+    A.on("requestfinished", async (r) => { const u = local(r.url()); if (u && !u.startsWith("/_next/static")) { const res = await r.response().catch(() => null); keep({ ev: "done", u, s: res?.status() ?? null, ms: Math.round(r.timing().responseEnd) }); } });
+    A.on("response", (r) => { const u = local(r.url()); if (u && !u.startsWith("/_next/static")) keep({ ev: "res", u, s: r.status(), ct: r.headers()["content-type"] ?? null }); });
+    A.on("requestfailed", (r) => { const u = local(r.url()); if (u && !u.startsWith("/_next/static")) keep({ ev: "fail", u, err: r.failure()?.errorText }); });
+    A.on("console", (m) => keep({ ev: "console", type: m.type(), text: m.text().slice(0, 300) }));
+    A.on("framenavigated", (f) => { if (f === A.mainFrame()) keep({ ev: "nav", u: local(f.url()) ?? f.url() }); });
+    check10Net = net;
     for (const tool of ["compress", "tool_upscale"]) {
       for (const vp of [{ width: 390, height: 844, name: "phone" }, { width: 834, height: 1112, name: "tablet" }, DESKTOP]) {
         await A.setViewportSize({ width: vp.width, height: vp.height });
         await go(A, `/admin/ai/${tool}?tab=basics`, 300);
         // The tab bar: scrollable, and Samouczek reachable by a click.
         const bar = await A.locator("nav[data-tool-tabs]").evaluate((n) => ({ overflowX: getComputedStyle(n).overflowX, scrollWidth: n.scrollWidth, clientWidth: n.clientWidth }));
-        await A.locator("nav[data-tool-tabs] a").filter({ hasText: t("pl", "aicc.tab.guide") }).click();
-        await A.waitForURL((u) => u.search.includes("tab=guide"), { timeout: 20_000 }).catch(() => {});
-        await A.locator(`[data-tool-guide-editor="${tool}"]`).waitFor({ state: "visible", timeout: 30_000 });
+        const tabLink = A.locator("nav[data-tool-tabs] a").filter({ hasText: t("pl", "aicc.tab.guide") });
+        // What is under the tab's centre at click time (a covering element would swallow the click).
+        const hit = await tabLink.evaluate((a) => { const r = a.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], topIsLink: Boolean(top && (top === a || a.contains(top))), top: top?.outerHTML.slice(0, 200) ?? null }; });
+        const t0 = Date.now();
+        await tabLink.click();
+        const navMs = await A.waitForURL((u) => u.search.includes("tab=guide"), { timeout: 20_000 }).then(() => Date.now() - t0).catch(() => null);
+        const shown = await A.locator(`[data-tool-guide-editor="${tool}"]`).waitFor({ state: "visible", timeout: 30_000 }).then(() => true).catch(() => false);
+        if (!shown) {
+          // Not a crash: record what the page shows instead, then reach the tab by URL so the
+          // remaining layout checks still run (the miss itself stays a failure).
+          const state = await A.evaluate(() => ({ url: location.pathname + location.search, current: document.querySelector('nav[data-tool-tabs] a[aria-current="page"]')?.textContent.trim() ?? null, editors: document.querySelectorAll("[data-tool-guide-editor]").length, main: (document.querySelector("main")?.innerText ?? "").slice(0, 300) }));
+          const sMiss = await shot(A, `a10-${tool}-${vp.name ?? "pc"}-tab-click-miss`, { fullPage: true });
+          const around = check10Net.filter((e) => e.at >= t0 - 3000).map((e) => ({ ...e, at: e.at - t0 }));
+          const hydrated = await A.evaluate(() => Boolean(window.next?.router) || Boolean(document.querySelector("nav[data-tool-tabs] a")?.__reactProps$ || Object.keys(document.querySelector("nav[data-tool-tabs] a") ?? {}).some((k) => k.startsWith("__reactProps"))));
+          report.check10Misses = [...(report.check10Misses ?? []), { tool, vp: `${vp.width}x${vp.height}`, navMs, hit, state, hydrated, net: around }];
+          record(10, `${tool} at ${vp.width}×${vp.height}: a click on the Samouczek tab opens the editor (within 20 s + 30 s)`, false, { navMs, hit, state, hydrated, netEvents: around.length, shot: sMiss });
+          await go(A, `/admin/ai/${tool}?tab=guide`, 300);
+          await A.locator(`[data-tool-guide-editor="${tool}"]`).waitFor({ state: "visible", timeout: 30_000 });
+        } else if (navMs === null || navMs > 5000) {
+          report.flakes = [...(report.flakes ?? []), `check 10 ${tool} ${vp.width}x${vp.height}: tab click took ${navMs ?? ">20000"} ms to navigate`];
+        }
         await settle(A, 300);
         const m = await A.evaluate(() => {
           const vw = document.documentElement.clientWidth;
@@ -1187,6 +1335,47 @@ async function runChecks(browser) {
       { status: d1.status, custBefore: custBefore.generator, custAfter: custAfter.generator, adminUnchanged: JSON.stringify(adminBefore) === JSON.stringify(adminAfter) });
     record(11, "(d) customer PATCH of the admin's user_preferences → 0 rows (RLS)", empty(d2) || refused(d2), d2);
     record(11, "(d) anon mark_tool_tutorial_seen → refused", refused(d3) || d3.status >= 400, d3);
+  });
+
+  /* 13 — the generator's admin status says "live" only when a usable model exists locally:
+   *  the admin block ([data-guide-live]) vs the LOCAL DB's usable custom models (the router's
+   *  rule, recomputed in SQL) vs the customer page's own gate ("no models" state) vs the API. */
+  await guarded(13, async () => {
+    // getUsableModels: active image model, active provider, an adapter registered for the
+    // provider (lib/ai/registry.ts: google, fal, openai) and an active stored credential;
+    // customModels: visible_custom.
+    const usable = sqlJson(`select m.name, p.slug as provider from public.ai_models m join public.ai_providers p on p.id = m.provider_id
+       where m.active and m.type = 'image' and p.active and m.visible_custom and p.slug in ('google','fal','openai')
+         and exists (select 1 from public.ai_provider_credentials c where c.provider_id = p.id and c.active)
+       order by m.sort_order`);
+    const local = {
+      usableCustomModels: usable,
+      providers: sqlJson("select p.slug, p.active, exists (select 1 from public.ai_provider_credentials c where c.provider_id = p.id and c.active) as has_credential, (select string_agg(c.last_four, ',') from public.ai_provider_credentials c where c.provider_id = p.id) as credential_last_four from public.ai_providers p order by p.slug"),
+      activeImageModels: sqlJson("select m.name, p.slug as provider, m.visible_custom from public.ai_models m join public.ai_providers p on p.id = m.provider_id where m.active and m.type = 'image' order by m.sort_order"),
+      generatorAvailability: sql("select coalesce((select status from public.feature_availability where feature_key = 'generator'), '(registry default)')"),
+    };
+    const expectLive = usable.length > 0;
+    await go(A, "/admin/ai/generator?tab=guide", 400);
+    await A.locator('[data-tool-guide-editor="generator"]').waitFor({ state: "visible", timeout: 30_000 });
+    const adminLive = await A.locator("[data-guide-live]").getAttribute("data-guide-live");
+    const adminBadge = (await A.locator("[data-guide-live]").textContent())?.trim();
+    const notLiveText = await A.locator("[data-guide-not-live]").textContent().catch(() => null);
+    await A.locator("[data-guide-status]").scrollIntoViewIfNeeded().catch(() => {});
+    const sa = await shot(A, `a13-generator-status-${expectLive ? "with-model" : "no-model"}`);
+    resetSeen(CUSTOMER_ID);
+    await go(C, "/generator", 600);
+    const noModels = await C.getByText(t("pl", "generator.noModelsTitle"), { exact: true }).count();
+    const dialog = await C.locator(TUTORIAL).count();
+    const buttons = await visibleCount(C, "[data-guide-open]");
+    const sc = await shot(C, `c13-generator-${expectLive ? "with-model" : "no-model"}`);
+    if (dialog) { await C.keyboard.press("Escape"); await C.waitForTimeout(300); }
+    const api = await guideApi(C, "generator");
+    report.generatorStatus = [...(report.generatorStatus ?? []), { local, adminLive, adminBadge, notLiveText, customerNoModelsState: noModels > 0, customerDialog: dialog, customerButtons: buttons, apiLive: api.body?.live }];
+    record(13, `generator admin status block says "${expectLive ? "live" : "not live"}" — the local stack has ${usable.length} usable custom model(s)${usable.length ? ` (${usable.map((m) => `${m.provider}/${m.name}`).join(", ")})` : ""}`,
+      adminLive === (expectLive ? "yes" : "no"), { adminLive, adminBadge, notLiveText, local, shot: sa });
+    record(13, `generator customer page agrees: ${expectLive ? "the gallery is mounted" : "the \"no models\" state"}; ${expectLive ? "the tutorial auto-opens and the button is present" : "no tutorial auto-open and no button"}`,
+      (noModels > 0) === !expectLive && (expectLive ? dialog > 0 : dialog === 0 && buttons === 0), { noModelsState: noModels > 0, dialog, buttons, shot: sc });
+    record(13, "generator /api/tool-guides live agrees with the admin block", api.body?.live === expectLive, { apiStatus: api.status, live: api.body?.live });
   });
 
   await admin.ctx.close();

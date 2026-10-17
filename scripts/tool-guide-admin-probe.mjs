@@ -1605,10 +1605,55 @@ async function group6() {
   await P.page.locator(`${DLG} [data-guide-close]`).click();
   await E.dialog.waitFor({ state: "detached" });
 
-  // PER-STEP PREVIEW: each card's eye opens the same dialog AT that step.
-  for (const k of [3, N, 1]) {
-    await E.stepPreview(k).click();
+  // PER-STEP PREVIEW: each card's eye opens the same dialog AT that step —
+  // from its FIRST painted frame. A MutationObserver (every committed DOM
+  // state, before paint) and a requestAnimationFrame loop (every frame) both
+  // record which step section is the visible one, the counter and the
+  // progressbar; nothing but step k may ever appear in either.
+  const firstFrames = async (open, k) => {
+    await P.page.evaluate((sel) => {
+      const log = { mut: [], raf: [], frames: 0, firstFrameAt: null, done: false };
+      window.__probeFirstFrame = log;
+      const read = () => {
+        const dlg = document.querySelector(sel);
+        if (!dlg) return null;
+        const secs = [...dlg.querySelectorAll("section[data-guide-step]")];
+        return {
+          on: secs.filter((s) => s.getAttribute("aria-hidden") === "false").map((s) => s.getAttribute("data-guide-step")).join(","),
+          visible: secs.filter((s) => getComputedStyle(s).visibility === "visible").map((s) => s.getAttribute("data-guide-step")).join(","),
+          counter: dlg.querySelector("[data-guide-counter]")?.textContent?.trim() ?? null,
+          now: dlg.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow") ?? null,
+        };
+      };
+      const push = (arr) => {
+        const r = read();
+        if (!r) return;
+        const key = JSON.stringify(r);
+        if (arr.length && arr[arr.length - 1].key === key) return;
+        arr.push({ key, ...r });
+      };
+      const mo = new MutationObserver(() => push(log.mut));
+      mo.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+      const tick = () => {
+        if (document.querySelector(sel)) { if (log.firstFrameAt === null) log.firstFrameAt = log.frames; push(log.raf); }
+        if (++log.frames < 60 && !log.done) requestAnimationFrame(tick); else mo.disconnect();
+      };
+      requestAnimationFrame(tick);
+    }, DLG);
+    await open();
     await E.dialog.waitFor();
+    await until(() => P.page.evaluate(() => window.__probeFirstFrame.frames >= 60), 5000);
+    const log = await P.page.evaluate(() => { const l = window.__probeFirstFrame; l.done = true; return { mut: l.mut, raf: l.raf, firstFrameAt: l.firstFrameAt }; });
+    const want = { on: String(k), visible: String(k), counter: TG(l, "counter", { n: k, total: N }), now: String(k) };
+    const bad = [...log.mut.map((s) => ["mutation", s]), ...log.raf.map((s) => ["frame", s])]
+      .filter(([, s]) => s.on !== want.on || s.visible !== want.visible || s.counter !== want.counter || s.now !== want.now)
+      .map(([w, s]) => `${w}: step ${s.visible || "none"} visible, "${s.counter}"`);
+    return { ok: log.raf.length > 0 && log.mut.length > 0 && bad.length === 0, bad, states: { mut: log.mut.length, raf: log.raf.length, firstFrameAt: log.firstFrameAt }, first: log.raf[0] ?? null };
+  };
+  for (const k of [3, N, 1]) {
+    const ff = await firstFrames(() => E.stepPreview(k).click(), k);
+    check(6, `step ${k}'s preview: step ${k} is the visible one from the FIRST painted frame — no other step in any committed DOM state (MutationObserver) or frame (rAF)`,
+      ff.ok, ff);
     await sleep(250);
     d = await dialogState(P);
     const cur = await P.page.evaluate((sel) => document.querySelector(`${sel} section[aria-hidden="false"]`)?.getAttribute("data-guide-step") ?? null, DLG);
@@ -1622,8 +1667,17 @@ async function group6() {
     const back = await P.page.evaluate((n) => document.activeElement?.getAttribute("data-guide-step-preview") === String(n), k);
     check(6, `…Escape closes it and focus returns to step ${k}'s preview button`, back);
   }
-  await E.previewTut.click();
-  await E.dialog.waitFor();
+  {
+    // The last per-step preview above was step 1: open step N's again first,
+    // so "starts at step 1" is measured right after a preview that was NOT at 1.
+    await E.stepPreview(N).click();
+    await E.dialog.waitFor();
+    await P.page.keyboard.press("Escape");
+    await E.dialog.waitFor({ state: "detached" });
+    await sleep(100);
+    const ff = await firstFrames(() => E.previewTut.click(), 1);
+    check(6, `after step ${N}'s preview, the whole-tutorial preview shows step 1 from its first painted frame (no frame of step ${N})`, ff.ok, ff);
+  }
   await sleep(200);
   check(6, "after a per-step preview, the whole-tutorial preview starts at step 1 again", (await dialogState(P))?.counter === TG(l, "counter", { n: 1, total: N }));
   await P.page.keyboard.press("Escape");
