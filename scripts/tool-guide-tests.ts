@@ -879,7 +879,10 @@ async function sectionF() {
   }
   check("F5b a tool missing from the availability map → not live", (await live("compress", () => { delete guideState.availability.compress; })).r === false);
   check("F5c the availability read throws → not live (the cautious answer)", (await live("generator", () => { guideState.availabilityThrow = true; })).r === false);
-  check("F6 generator is live as soon as it is ACTIVE (the gallery only mounts with a usable model)", (await live("generator")).r === true);
+  check("F6 generator: live when ACTIVE and a usable model for a customer's own prompt exists (the page mounts its gallery only then)",
+    (await live("generator")).r === true
+      && (await live("generator", () => { guideState.usableModels = []; })).r === false
+      && (await live("generator", () => { guideState.usableModels = [{ id: "m-hidden", visible_custom: false }]; })).r === false);
   const batchCat = () => { guideState.catalogue = [{ slug: "format", available: true }, { slug: "compress", available: false }]; };
   check("F6b resize/compress: live iff their service-catalogue entry (\"format\" / \"compress\") is available — read like their pages, without the admin flag",
     (await live("resize", batchCat, true)).r === true && (await live("compress", batchCat, true)).r === false
@@ -1703,7 +1706,14 @@ function sectionH() {
     !seenImports.includes("@/lib/server/tool-guides") && seenImports.includes("@/lib/server/tool-guides-published"));
   const implFiles = ["lib/tool-guides.ts", "lib/server/tool-guides.ts", "lib/server/tool-guides-published.ts", "lib/services/tool-guides.ts",
     "app/api/tool-guides/route.ts", "app/actions/tool-guide-seen.ts", "app/actions/tool-guides.ts", ...comp];
-  const paid = implFiles.flatMap((f) => importsOf(f).filter((x) => /^@\/lib\/ai\/|credit|ledger|wallet|usage|billing|stripe|provider-credentials|@\/lib\/server\/generation|@\/lib\/server\/engine\/(?!tool-run$)/.test(x.spec)).map((x) => `${f} → ${x.spec}`));
+  // The one allowed lib/ai import: the generator page's own read-only gate
+  // (which image models a customer's prompt can use) — no provider is called.
+  const allowed = new Set(["lib/server/tool-guides.ts → @/lib/ai/router"]);
+  const paid = implFiles.flatMap((f) => importsOf(f).filter((x) => /^@\/lib\/ai\/|credit|ledger|wallet|usage|billing|stripe|provider-credentials|@\/lib\/server\/generation|@\/lib\/server\/engine\/(?!tool-run$)/.test(x.spec)).map((x) => `${f} → ${x.spec}`))
+    .filter((x) => !allowed.has(x));
+  const routerNames = importsOf("lib/server/tool-guides.ts").find((x) => x.spec === "@/lib/ai/router");
+  check("H35b … and that one import is exactly the read-only usable-model listing (customModels, getUsableModels)",
+    !!routerNames && /^\s*import\s*\{\s*customModels,\s*getUsableModels\s*\}\s*from\s*"@\/lib\/ai\/router";/m.test(read("lib/server/tool-guides.ts")));
   check("H35 presentation only: no guide file imports lib/ai, a credit/ledger/usage/billing module, provider credentials or the generation runner",
     paid.length === 0, short(paid));
   const routeSrc = code(read("app/api/tool-guides/route.ts"));

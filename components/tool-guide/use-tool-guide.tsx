@@ -17,16 +17,14 @@ import { TutorialModal, preloadGuideChunks } from "./lazy";
  * the starter-gallery decision needs. A failed fetch leaves everything as it
  * was before this feature — no button, no example effects, no dialog.
  */
-export function useToolGuide(tool: GuideToolKey | null, opts: {
-  /** Icon only between lg and xl (a gallery toolbar at its tightest). */
-  compactLabel?: boolean;
-  /** Icon only on a phone (a strip of named buttons that must not wrap). */
-  iconOnPhone?: boolean;
-} = {}): {
+export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: boolean } = {}): {
   response: GuideResponse | null;
   /** Still asking: the empty gallery waits for the answer rather than
    *  flashing one empty state and then another. */
   pending: boolean;
+  /** The tutorial is on screen: the tool's own shortcuts and drop targets
+   *  stand down while it is. */
+  open: boolean;
   button: ReactNode;
   dialog: ReactNode;
 } {
@@ -103,12 +101,12 @@ export function useToolGuide(tool: GuideToolKey | null, opts: {
       aria-label={t("toolGuide.openAria")} title={t("toolGuide.openAria")} aria-haspopup="dialog"
       className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-line px-3 text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink">
       <BookOpen size={14} aria-hidden className="text-accent" />
-      <span className={cn(opts.compactLabel && "lg:max-xl:sr-only", opts.iconOnPhone && "max-sm:sr-only")}>{t("toolGuide.open")}</span>
+      <span className={cn(opts.compactLabel && "lg:max-xl:sr-only")}>{t("toolGuide.open")}</span>
     </button>
   ) : null;
 
   // Mounted only while open: nothing of it sits in the page otherwise.
   const dialog = tutorial && open ? <TutorialModal open onClose={close} tutorial={tutorial} /> : null;
 
-  return { response, pending, button, dialog };
+  return { response, pending, open, button, dialog };
 }

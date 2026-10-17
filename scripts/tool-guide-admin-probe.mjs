@@ -504,6 +504,17 @@ const LIMITS = Object.fromEntries([.../GUIDE_LIMITS = \{([^}]*)\}/.exec(TG_SRC)[
 const ARTS = Object.fromEntries([.../DEFAULT_STEP_ARTS[^=]*= \{([\s\S]*?)\n\};/.exec(TG_SRC)[1].matchAll(/(\w+): \[([^\]]*)\]/g)]
   .map((m) => [m[1], m[2].split(",").map((s) => s.trim().replace(/"/g, "")).filter(Boolean)]));
 const TOOLS = ["retouch", "ecommerce_thumbnail", "compress", "fashion_flat_lay"];
+/** The v2 screens with no results gallery: guideHasStarter(tool) === false
+ *  (lib/tool-guides.ts surfaces "editor" / "workbench"). */
+const NO_STARTER = ["editor", "tool_upscale", "tool_expand", "tool_watermark"];
+{
+  const keys = /GUIDE_TOOL_KEYS = \[([\s\S]*?)\] as const/.exec(TG_SRC)[1];
+  const wb = /WORKBENCH_TOOLS: readonly GuideToolKey\[\] = \[([^\]]*)\]/.exec(TG_SRC)[1];
+  const missing = NO_STARTER.filter((t) => !keys.includes(`"${t}"`) || !ARTS[t] || (t !== "editor" && !wb.includes(`"${t}"`)));
+  if (missing.length) throw new Error(`lib/tool-guides.ts no longer lists ${missing.join(", ")} as no-starter guide tools`);
+}
+const hasStarter = (tool) => !NO_STARTER.includes(tool);
+const MAX_VERSION = 1000000;
 
 /** defaultGuideContent's shipped(): this language, else Polish. */
 function shipped(l, tool, keyPath) {
@@ -547,14 +558,17 @@ async function until(fn, timeout = 10000, step = 50) {
 /* ── bookkeeping ───────────────────────────────────────────────────────── */
 
 const GROUPS = [
-  ["1", "renders for 4 tools with the shipped defaults, PL/EN/DE labels, no raw keys"],
+  ["1", "renders for 8 tools (4 with a starter, 4 without) with the shipped defaults, PL/EN/DE labels, no raw keys"],
+  ["Z", "editor / tool_upscale / tool_expand / tool_watermark: no starter controls; tutorial edit + save + preview work"],
+  ["S", "status block: saved / never saved, last saved at + by, copy, version, steps, live / not live, published line"],
   ["2", "switches → tutorialEnabled / starterEnabled in the payload"],
   ["3", "per-language editing, PL title required, limits, markup, invisible chars"],
-  ["4", "steps: add ≤6, remove ≥1, reorder; pictures move WITH their step"],
-  ["5", "pictures: AssetPicker (portal) pick / replace / remove, Escape"],
-  ["6", "preview: real TutorialModal + starter desktop/phone frames"],
-  ["7", "save & publish: payload, showAgain, base chain, conflict, images_failed, reset"],
-  ["8", "layout 390/834/1440 × light/dark × pl/en/de"],
+  ["4", "steps: add ≤6, delete WITH confirm, reorder; pictures move WITH their step; Zmień ilustrację"],
+  ["5", "pictures: Zmień ilustrację → AssetPicker (portal) pick / replace / remove, Escape"],
+  ["6", "preview: real TutorialModal (whole + per step) + starter desktop/phone frames"],
+  ["7", "save & publish: payload, base chain, conflict, images_failed, reset"],
+  ["A", "Pokaż ponownie wszystkim: button + confirm → showToolGuideAgainAction, disabled while dirty / off / at max"],
+  ["8", "layout 390/834/1440 × light/dark × pl/en/de (+ a no-starter tool and the illustration chooser)"],
   ["9", "keyboard / a11y: names, focus visible, dialog focus trap + restore"],
   ["N", "network: nothing reaches Supabase or any other origin from the browser"],
   ["C", "console: no unexpected errors / page errors"],
@@ -637,7 +651,7 @@ async function openEditor(o = {}) {
   const ctx = await newContext({ vp, theme, locale, sid });
   const page = await ctx.newPage();
   const P = {
-    ctx, page, sid, vp, theme, locale, tool: o.tool ?? "retouch", row: o.row ?? "none", cat: o.cat !== false,
+    ctx, page, sid, vp, theme, locale, tool: o.tool ?? "retouch", row: o.row ?? "none", cat: o.cat !== false, live: o.live !== false,
     rec: { supabase: [], external: [], actions: [], rsc: [], console: [], errors: [] },
   };
   allPages.push(P);
@@ -650,6 +664,7 @@ async function openEditor(o = {}) {
 async function goEditor(P) {
   const q = new URLSearchParams({ tool: P.tool, row: P.row });
   if (!P.cat) q.set("cat", "0");
+  if (!P.live) q.set("live", "0");
   await P.page.goto(`${BASE}/probe-tmp/admin-guide?${q}`, { waitUntil: "domcontentloaded", timeout: 240000 });
   await hydrated(P);
 }
@@ -688,23 +703,41 @@ const L = (P) => {
     step: (n) => p.locator(`[data-guide-step-form="${n}"]`),
     stepTitle: (n) => p.locator(`[data-guide-step-form="${n}"] input`),
     stepBody: (n) => p.locator(`[data-guide-step-form="${n}"] textarea`),
-    stepArt: (n) => p.locator(`[data-guide-step-form="${n}"] select`),
+    /** The step card's "Aktualna ilustracja" block (data value photo | art). */
+    stepIll: (n) => p.locator(`[data-guide-step-form="${n}"] [data-guide-step-illustration]`),
+    changeIll: (n) => p.locator(`[data-guide-change-illustration="${n}"]`),
+    stepPreview: (n) => p.locator(`[data-guide-step-preview="${n}"]`),
+    // "Zmień ilustrację": the shared Modal holding the photo button and the drawings.
+    chooser: p.locator('[role="dialog"][aria-modal="true"]').filter({ has: p.locator("[data-guide-illustration-chooser]") }),
+    chooserPick: p.locator("[data-guide-illustration-chooser]").getByRole("button", { name: new RegExp(`^(${esc(A(l, "pickFromLibrary"))}|${esc(A(l, "changePhoto"))})$`) }),
+    chooserRemovePhoto: p.locator("[data-guide-illustration-chooser]").getByRole("button", { name: A(l, "illustration.removePhoto"), exact: true }),
+    chooserArt: (art) => p.locator(`[data-guide-illustration-chooser] [data-guide-art="${art}"]`),
     starterTitle: p.locator("[data-guide-starter-form] input"),
     starterBody: p.locator("[data-guide-starter-form] textarea"),
     lang: (code) => p.locator(`${ED} [role="group"][aria-label="${A(l, "lang.label")}"] button`).nth(LOCALES.indexOf(code)),
+    switches: p.locator(`${ED} [role="switch"]`),
     tutSwitch: p.locator(`${ED} [role="switch"]`).nth(0),
     staSwitch: p.locator(`${ED} [role="switch"]`).nth(1),
     save: p.locator("[data-guide-save]"),
     status: p.locator(`${ED} span[aria-live="polite"]`),
-    again: p.locator(`${ED} input[type="checkbox"]`),
+    statusBlock: p.locator("[data-guide-status]"),
+    version: p.locator("[data-guide-version]"),
+    published: p.locator("[data-guide-published]"),
+    savedAt: p.locator("[data-guide-saved-at]"),
+    savedBy: p.locator("[data-guide-saved-by]"),
+    savedNote: p.locator("[data-guide-saved-note]"),
+    live: p.locator("[data-guide-live]"),
+    notLive: p.locator("[data-guide-not-live]"),
+    again: p.locator("[data-guide-show-again]"),
+    againConfirm: p.locator(`[role="dialog"][aria-label="${A(l, "again.confirmTitle")}"]`),
     error: p.locator("[data-guide-error]"),
     conflict: p.locator("[data-guide-conflict]"),
     add: p.getByRole("button", { name: A(l, "step.add"), exact: true }),
     up: (n) => p.getByRole("button", { name: A(l, "step.up", { n }), exact: true }),
     down: (n) => p.getByRole("button", { name: A(l, "step.down", { n }), exact: true }),
     remove: (n) => p.getByRole("button", { name: A(l, "step.remove", { n }), exact: true }),
-    stepPick: (n) => p.locator(`[data-guide-step-form="${n}"]`).getByRole("button", { name: new RegExp(`^(${esc(A(l, "pickFromLibrary"))}|${esc(A(l, "changePhoto"))})$`) }),
-    stepClear: (n) => p.locator(`[data-guide-step-form="${n}"]`).getByRole("button", { name: A(l, "removePhoto"), exact: true }),
+    removeConfirm: (n) => p.locator(`[role="dialog"][aria-label="${A(l, "step.removeConfirmTitle", { n })}"]`),
+    stepClear: (n) => p.locator(`[data-guide-step-form="${n}"]`).getByRole("button", { name: A(l, "illustration.removePhoto"), exact: true }),
     starterPick: p.locator("[data-guide-starter-form]").getByRole("button", { name: new RegExp(`^(${esc(A(l, "pickFromLibrary"))}|${esc(A(l, "changePhoto"))})$`) }),
     starterClear: p.locator("[data-guide-starter-form]").getByRole("button", { name: A(l, "removePhoto"), exact: true }),
     picker: p.locator('[role="dialog"][aria-modal="true"]').filter({ has: p.locator("[data-picker-search]") }),
@@ -742,12 +775,42 @@ async function setRaw(loc, v) {
 const langMeta = async (P, code) => (await L(P).lang(code).locator("span").nth(1).textContent())?.trim();
 const pressed = async (P, code) => (await L(P).lang(code).getAttribute("aria-pressed")) === "true";
 
+/** The starter's PhotoControl: its own button opens the AssetPicker. */
 async function pick(P, opener, key) {
   await opener.click();
   const dlg = L(P).picker;
   await dlg.waitFor({ state: "visible", timeout: 10000 });
   await dlg.locator(`[data-picker-item="${LIB[key].id}"]`).click();
   await dlg.waitFor({ state: "detached", timeout: 10000 });
+}
+/** A step's photo: "Zmień ilustrację" → the chooser's library button → the
+ *  AssetPicker → the file. */
+async function pickStep(P, n, key) {
+  const E = L(P);
+  await E.changeIll(n).click();
+  await E.chooser.waitFor({ state: "visible", timeout: 10000 });
+  await E.chooserPick.click();
+  await E.chooser.waitFor({ state: "detached", timeout: 10000 });
+  await E.picker.waitFor({ state: "visible", timeout: 10000 });
+  await E.picker.locator(`[data-picker-item="${LIB[key].id}"]`).click();
+  await E.picker.waitFor({ state: "detached", timeout: 10000 });
+}
+/** A drawing picked in step n's chooser. */
+async function chooseArt(P, n, art) {
+  const E = L(P);
+  await E.changeIll(n).click();
+  await E.chooser.waitFor({ state: "visible", timeout: 10000 });
+  await E.chooserArt(art).click();
+  await E.chooser.waitFor({ state: "detached", timeout: 10000 });
+}
+/** Delete step n through its confirm dialog. */
+async function removeStep(P, n) {
+  const E = L(P);
+  await E.remove(n).click();
+  const c = E.removeConfirm(n);
+  await c.waitFor({ state: "visible", timeout: 10000 });
+  await c.getByRole("button", { name: A(P.locale, "step.removeConfirm"), exact: true }).click();
+  await c.waitFor({ state: "detached", timeout: 10000 });
 }
 /** Which library file a PhotoControl shows (by its thumbnail), or null. */
 async function photoOf(loc) {
@@ -757,6 +820,30 @@ async function photoOf(loc) {
     return img ? new URL(img.getAttribute("src"), location.href).pathname : null;
   });
 }
+/** What step n's card shows as its current illustration: the photo's path, or null (a drawing). */
+async function stepPhoto(P, n) {
+  return L(P).stepIll(n).evaluate((el) => {
+    const img = el.querySelector("img");
+    return img ? new URL(img.getAttribute("src"), location.href).pathname : null;
+  });
+}
+/** The drawing step n names ("Rysunek: <art>"), as the art key, or null. */
+async function stepArtOf(P, n) {
+  const cap = (await L(P).stepIll(n).locator("p").nth(1).textContent())?.trim() ?? "";
+  for (const art of Object.keys(DICT[P.locale].aicc).filter((k) => k.startsWith("guide.art.")).map((k) => k.slice("guide.art.".length))) {
+    if (cap === A(P.locale, "illustration.drawing", { name: A(P.locale, `art.${art}`) })) return art;
+  }
+  return null;
+}
+/** A sentence with {placeholders} as a pattern (formatInstant's output is not predicted). */
+function pattern(s) {
+  return new RegExp(`^${s.split(/(\{\w+\})/).map((part) => (/^\{\w+\}$/.test(part) ? ".+" : esc(part))).join("")}$`);
+}
+const versionShown = async (P) => Number((await L(P).version.textContent())?.trim());
+const againHint = async (P) => P.page.evaluate(() => {
+  const b = document.querySelector("[data-guide-show-again]");
+  return document.getElementById(b?.getAttribute("aria-describedby") ?? "")?.textContent?.trim() ?? null;
+});
 
 /** Click "Zapisz i opublikuj" and wait for the stub's answer (and the refresh). */
 async function save(P, { waitRefresh = true } = {}) {
@@ -862,44 +949,58 @@ const shouldRun = (id) => !ONLY || ONLY.has(String(id));
 
 async function group1() {
   console.log("\n[1] renders for each tool with the shipped defaults, PL/EN/DE labels");
-  for (const tool of TOOLS) {
+  for (const tool of [...TOOLS, ...NO_STARTER]) {
+    const starter = hasStarter(tool);
     for (const l of LOCALES) {
       const P = await openEditor({ tool, locale: l });
       const E = L(P);
       const n = ARTS[tool].length;
       const tag = `${tool}/${l}`;
-      check(1, `${tag}: ${n} default steps rendered`, (await E.steps.count()) === n, { got: await E.steps.count(), want: n });
+      check(1, `${tag}: ${n} default steps rendered (DEFAULT_STEP_ARTS.${tool})`, (await E.steps.count()) === n, { got: await E.steps.count(), want: n });
       const text = (await E.card.textContent()).replace(/\s+/g, " ");
       const want = [
-        A(l, "title"), A(l, "sub"), A(l, "usingDefault"), A(l, "version", { n: 1 }), A(l, "tutorialEnabled"),
-        A(l, "tutorialEnabledHint"), A(l, "starterEnabled"), A(l, "starterEnabledHint"), A(l, "lang.label"),
+        A(l, "title"), A(l, "sub"), A(l, "settings.heading"),
+        A(l, "status.heading"), A(l, "status.publication"), A(l, "status.neverSaved"), A(l, "status.copy"), A(l, "usingDefault"),
+        A(l, "status.version"), A(l, "status.steps"), A(l, "status.customers"), A(l, "status.live"),
+        A(l, "status.neverSavedHint"), A(l, "status.liveHint"), A(l, "again.button"), A(l, "again.hint", { n: 1, next: 2 }),
+        A(l, "tutorialEnabled"), A(l, "tutorialEnabledHint"), A(l, "lang.label"),
         A(l, "lang.required"), A(l, "lang.optional"), A(l, "lang.hint"), A(l, "tutorial.heading"),
         A(l, "preview.tutorial"), `${A(l, "tutorial.title")} · PL`, `${A(l, "tutorial.body")} · PL`,
         A(l, "steps.heading", { n, max: MAX_STEPS }), A(l, "step.label", { n: 1 }), `${A(l, "step.title")} · PL`,
-        `${A(l, "step.body")} · PL`, A(l, "step.art"), A(l, "step.artHint"), A(l, "step.photo"), A(l, "step.noPhoto"),
-        A(l, "pickFromLibrary"), A(l, "step.add"), A(l, "starter.heading"), A(l, "preview.starter"),
-        `${A(l, "starter.title")} · PL`, A(l, "starter.image"), A(l, "starter.usingCatalogue"),
-        A(l, "starter.fallbackNote"), A(l, "showAgain"), A(l, "showAgainHint", { n: 1, next: 2 }),
+        `${A(l, "step.body")} · PL`, A(l, "illustration.current"), A(l, "illustration.change"),
+        A(l, "illustration.drawing", { name: A(l, `art.${ARTS[tool][0]}`) }),
+        A(l, "step.add"), A(l, "starter.heading"),
+        ...(starter ? [
+          A(l, "starterEnabled"), A(l, "starterEnabledHint"), A(l, "preview.starter"),
+          `${A(l, "starter.title")} · PL`, A(l, "starter.image"), A(l, "starter.usingCatalogue"),
+          A(l, "starter.fallbackNote"), A(l, "pickFromLibrary"),
+        ] : [A(l, "starter.none")]),
         A(l, "resetDefaults"), A(l, "clean"), A(l, "save"), A(l, "required"), A(l, "optional"),
-        A(l, `art.${ARTS[tool][0]}`),
       ].map((s) => s.replace(/\s+/g, " "));
       const missing = want.filter((s) => !text.includes(s));
       check(1, `${tag}: every expected aicc.guide label is on screen in ${l.toUpperCase()}`, missing.length === 0, missing);
+      check(1, `${tag}: status block — version 1, ${n} steps, live`, (await versionShown(P)) === 1
+        && (await E.statusBlock.textContent()).includes(A(l, "status.steps")) && (await E.live.getAttribute("data-guide-live")) === "yes",
+        { version: await E.version.textContent(), live: await E.live.getAttribute("data-guide-live") });
+      // The arts each step card draws, as the shipped tutorial has them.
+      const arts = await Promise.all(Array.from({ length: n }, (_, i) => stepArtOf(P, i + 1)));
+      check(1, `${tag}: each step card shows its shipped drawing (${ARTS[tool].join(", ")}) in the tutorial's frame`,
+        JSON.stringify(arts) === JSON.stringify(ARTS[tool])
+        && (await P.page.locator('[data-guide-step-illustration="art"] div[class*="aspect-[16/10]"]').evaluateAll((els) => els.filter((e) => e.querySelector("svg") && !e.querySelector("img")).length)) === n, arts);
       // The shipped copy, per language tab.
       for (const code of LOCALES) {
         if (code !== "pl") await E.lang(code).click();
         const vals = {
           tt: await E.tutTitle.inputValue(), tb: await E.tutBody.inputValue(),
-          st: await E.starterTitle.inputValue(), sb: await E.starterBody.inputValue(),
+          ...(starter ? { st: await E.starterTitle.inputValue(), sb: await E.starterBody.inputValue() } : {}),
           steps: await Promise.all(Array.from({ length: n }, (_, i) => E.stepTitle(i + 1).inputValue())),
-          arts: await Promise.all(Array.from({ length: n }, (_, i) => E.stepArt(i + 1).inputValue())),
         };
         const exp = {
           tt: shipped(code, tool, "tutorial.title"), tb: shipped(code, tool, "tutorial.body"),
-          st: shipped(code, tool, "starter.title"), sb: shipped(code, tool, "starter.body"),
-          steps: Array.from({ length: n }, (_, i) => defStepTitle(code, tool, i + 1)), arts: ARTS[tool],
+          ...(starter ? { st: shipped(code, tool, "starter.title"), sb: shipped(code, tool, "starter.body") } : {}),
+          steps: Array.from({ length: n }, (_, i) => defStepTitle(code, tool, i + 1)),
         };
-        check(1, `${tag}: form holds the shipped ${code.toUpperCase()} copy (titles, bodies, ${n} step titles, arts)`,
+        check(1, `${tag}: form holds the shipped ${code.toUpperCase()} copy (titles, bodies, ${n} step titles)`,
           JSON.stringify(vals) === JSON.stringify(exp), { vals, exp });
         const lbl = await E.tutTitle.evaluate((el) => el.labels?.[0]?.textContent ?? "");
         check(1, `${tag}: field labels follow the edited language (${code.toUpperCase()})`, lbl === `${A(l, "tutorial.title")} · ${code.toUpperCase()}`, lbl);
@@ -909,9 +1010,115 @@ async function group1() {
         }
       }
       await E.lang("pl").click();
+      if (!starter) {
+        const ns = {
+          switches: await E.switches.count(),
+          starterInputs: await P.page.locator("[data-guide-starter-form] input, [data-guide-starter-form] textarea").count(),
+          previewSta: await E.previewSta.count(),
+          starterButtons: await P.page.locator("[data-guide-starter-form] button").count(),
+          none: (await P.page.locator('[data-guide-starter-form="none"]').textContent().catch(() => ""))?.replace(/\s+/g, " ").trim(),
+          leaked: [A(l, "starterEnabled"), A(l, "starter.image"), A(l, "starter.fallbackNote"), A(l, "preview.starter"), `${A(l, "starter.title")} · `]
+            .filter((s) => text.includes(s)),
+        };
+        check(1, `${tag}: NO starter controls — one switch (tutorial), no starter fields/picture/preview, only the "${A(l, "starter.none").slice(0, 40)}…" note`,
+          ns.switches === 1 && ns.starterInputs === 0 && ns.previewSta === 0 && ns.starterButtons === 0
+          && ns.none === `${A(l, "starter.heading")}${A(l, "starter.none")}`.replace(/\s+/g, " ") && ns.leaked.length === 0, ns);
+      } else {
+        check(1, `${tag}: two switches (tutorial, starter) and the starter form`, (await E.switches.count()) === 2 && (await E.starterTitle.count()) === 1);
+      }
       const probs = await textProblems(P);
       check(1, `${tag}: no raw keys / "undefined" / humanised missing keys`, probs.length === 0, probs.slice(0, 8));
       check(1, `${tag}: save starts disabled (nothing to save)`, await E.save.isDisabled());
+      if (l === "pl" && !starter) await shot(P, `1-${tool}-1440-light-pl`, { fullPage: true });
+      await close(P);
+    }
+  }
+}
+
+/* ── Z. NO-STARTER TOOLS ───────────────────────────────────────────────── */
+
+async function groupZ() {
+  console.log("\n[Z] the four tools without a results gallery");
+  for (const tool of NO_STARTER) {
+    const P = await openEditor({ tool, row: "none" });
+    const E = L(P);
+    const l = P.locale;
+    const n = ARTS[tool].length;
+    check("Z", `${tool}: tutorial switch starts on; no starter switch`, (await E.switches.count()) === 1 && (await E.tutSwitch.getAttribute("aria-checked")) === "true");
+    // The tutorial preview works on these screens too.
+    await E.previewTut.click();
+    await E.dialog.waitFor();
+    const d = await dialogState(P);
+    check("Z", `${tool}: preview opens the TutorialModal with ${n} steps ("${TG(l, "counter", { n: 1, total: n })}") and the shipped title`,
+      d?.counter === TG(l, "counter", { n: 1, total: n }) && d?.steps?.length === n && d?.title === shipped("pl", tool, "tutorial.title"), d && { counter: d.counter, steps: d.steps.length, title: d.title });
+    await P.page.keyboard.press("Escape");
+    await E.dialog.waitFor({ state: "detached" });
+    // An edit to the copy saves; the hidden starter copy goes as it was (the
+    // validator's Polish starter title is never the admin's problem here).
+    await E.tutTitle.fill(`Samouczek ${tool} (probe)`);
+    await pickStep(P, 2, "B");
+    const r = await save(P);
+    check("Z", `${tool}: save ok; payload starterEnabled=false (as it was), images.starter=null, step 2 = B, length ${n}`,
+      r.answer?.ok === true && r.call?.starterEnabled === false && r.call?.images?.starter === null
+      && r.call?.images?.steps?.[1] === LIB.B.id && r.call?.images?.steps?.length === n, { answer: r.answer, call: r.call && { starterEnabled: r.call.starterEnabled, images: r.call.images } });
+    check("Z", `${tool}: payload content has the edited title and the shipped (hidden) starter copy, untouched`,
+      r.call?.content?.tutorial?.title?.pl === `Samouczek ${tool} (probe)` && r.call?.content?.starter?.title?.pl === shipped("pl", tool, "starter.title"),
+      { tutorial: r.call?.content?.tutorial?.title, starter: r.call?.content?.starter?.title });
+    check("Z", `${tool}: stub row written with starter_enabled=false`, r.row?.starter_enabled === false && r.row?.tutorial_enabled === true, r.row);
+    // Switching the tutorial off on such a tool: the one switch, the one flag.
+    await E.tutSwitch.click();
+    const q = await save(P);
+    check("Z", `${tool}: tutorial switched off → payload tutorialEnabled=false, starterEnabled=false`, q.call?.tutorialEnabled === false && q.call?.starterEnabled === false && q.answer?.ok === true, q.call);
+    check("Z", `${tool}: …and "${A(l, "again.button")}" is disabled with the 'switched off' hint`,
+      (await E.again.isDisabled()) && (await againHint(P)) === A(l, "again.offHint"), { disabled: await E.again.isDisabled(), hint: await againHint(P) });
+    await close(P);
+  }
+}
+
+/* ── S. STATUS BLOCK ───────────────────────────────────────────────────── */
+
+async function groupS() {
+  console.log("\n[S] status block");
+  for (const l of ["pl", "de"]) {
+    // Never saved, live.
+    {
+      const P = await openEditor({ tool: "retouch", row: "none", locale: l });
+      const E = L(P);
+      const sb = (await E.statusBlock.textContent()).replace(/\s+/g, " ");
+      check("S", `[${l}] no row: "${A(l, "status.neverSaved")}", no last-saved line, the never-saved hint, "${A(l, "usingDefault")}", version 1, 4 steps, "${A(l, "status.live")}" + live hint`,
+        sb.includes(A(l, "status.neverSaved")) && (await E.savedAt.count()) === 0 && sb.includes(A(l, "status.neverSavedHint"))
+        && sb.includes(A(l, "usingDefault")) && (await versionShown(P)) === 1 && sb.includes(`${A(l, "status.steps")}4`)
+        && (await E.live.getAttribute("data-guide-live")) === "yes" && sb.includes(A(l, "status.liveHint")) && (await E.notLive.count()) === 0, sb);
+      check("S", `[${l}] the published line is empty before any write of this session`, ((await E.published.textContent()) ?? "").trim() === "");
+      await E.add.click();
+      check("S", `[${l}] steps count follows the form (add → 5) and the copy badge flips to "${A(l, "usingCustom")}"`,
+        (await E.statusBlock.textContent()).replace(/\s+/g, " ").includes(`${A(l, "status.steps")}5`) && (await E.statusBlock.textContent()).includes(A(l, "usingCustom")));
+      await E.stepTitle(5).fill("Krok piąty (probe)");
+      const r = await save(P);
+      const pub = ((await E.published.textContent()) ?? "").trim();
+      check("S", `[${l}] after a save: "${A(l, "status.saved")}", last saved = the answer's time, by "Probe Admin", the published line "${A(l, "status.publishedAt").replace("{when}", "…")}", the saved note`,
+        r.answer?.ok === true && (await E.statusBlock.textContent()).includes(A(l, "status.saved"))
+        && sameInstant(await E.savedAt.getAttribute("datetime"), r.answer.data.updatedAt)
+        && ((await E.savedBy.textContent()) ?? "").trim() === A(l, "status.by", { name: "Probe Admin" })
+        && pattern(A(l, "status.publishedAt")).test(pub) && pattern(A(l, "status.publishedShort")).test(((await E.savedNote.textContent()) ?? "").trim()),
+        { pub, savedAt: await E.savedAt.getAttribute("datetime"), by: await E.savedBy.textContent().catch(() => null), answer: r.answer });
+      await shot(P, `S-status-after-save-1440-light-${l}`);
+      await close(P);
+    }
+    // A saved custom row, not live (switchboard "Wkrótce").
+    {
+      const P = await openEditor({ tool: "fashion_flat_lay", row: "custom", locale: l, live: false });
+      const E = L(P);
+      const sb = (await E.statusBlock.textContent()).replace(/\s+/g, " ");
+      check("S", `[${l}] saved custom row: "${A(l, "status.saved")}", saved at 2026-10-01T08:00:00.111111, by Probe Admin, "${A(l, "usingCustom")}", version 3, 3 steps, no never-saved hint`,
+        sb.includes(A(l, "status.saved")) && sameInstant(await E.savedAt.getAttribute("datetime"), "2026-10-01T08:00:00.111111+00:00")
+        && ((await E.savedBy.textContent()) ?? "").trim() === A(l, "status.by", { name: "Probe Admin" })
+        && sb.includes(A(l, "usingCustom")) && (await versionShown(P)) === 3 && sb.includes(`${A(l, "status.steps")}3`) && !sb.includes(A(l, "status.neverSavedHint")), sb);
+      const nl = ((await E.notLive.textContent()) ?? "").trim();
+      check("S", `[${l}] not live: "${A(l, "status.notLive")}" badge and the status sentence naming "Wkrótce"`,
+        (await E.live.getAttribute("data-guide-live")) === "no" && (await E.live.textContent()).includes(A(l, "status.notLive"))
+        && nl === A(l, "status.notLiveStatus", { status: "Wkrótce" }) && !sb.includes(A(l, "status.liveHint")), { nl });
+      await shot(P, `S-status-not-live-1440-light-${l}`);
       await close(P);
     }
   }
@@ -952,7 +1159,7 @@ async function group2() {
     (await F.tutSwitch.getAttribute("aria-checked")) === "false" && (await F.staSwitch.getAttribute("aria-checked")) === "false"
     && (await Q.page.getByText(A(l, "preview.offTutorial"), { exact: true }).count()) === 1
     && (await Q.page.getByText(A(l, "preview.offStarter"), { exact: true }).count()) === 1
-    && (await F.card.textContent()).includes(A(l, "version", { n: 2 })));
+    && (await versionShown(Q)) === 2);
   await F.staSwitch.click();
   r = await save(Q);
   check(2, "row 'off' → starter on: payload tutorialEnabled=false, starterEnabled=true, base = the saved row's updated_at",
@@ -1089,19 +1296,54 @@ async function group4() {
     const E = L(P);
     const l = P.locale;
     const n0 = ARTS[tool].length;
-    check(4, "first step: 'up' disabled; last step: 'down' disabled; remove enabled",
-      (await E.up(1).isDisabled()) && (await E.down(n0).isDisabled()) && !(await E.remove(1).isDisabled()) && !(await E.down(1).isDisabled()));
+    check(4, "first step: 'up' disabled; last step: 'down' disabled; remove enabled; every card has its own preview button",
+      (await E.up(1).isDisabled()) && (await E.down(n0).isDisabled()) && !(await E.remove(1).isDisabled()) && !(await E.down(1).isDisabled())
+      && (await P.page.locator("[data-guide-step-preview]").count()) === n0);
     while ((await E.steps.count()) < MAX_STEPS) await E.add.click();
     check(4, `add up to ${MAX_STEPS}: add disabled, 'max reached' shown, heading ${MAX_STEPS} of ${MAX_STEPS}`,
       (await E.steps.count()) === MAX_STEPS && (await E.add.isDisabled())
       && (await E.card.textContent()).includes(A(l, "step.maxReached", { max: MAX_STEPS }))
       && (await E.card.textContent()).includes(A(l, "steps.heading", { n: MAX_STEPS, max: MAX_STEPS })));
     const f = await field(E.stepTitle(MAX_STEPS));
-    check(4, "a new step: empty title flagged 'required' (PL), art 'settings', no photo",
-      f.value === "" && f.problem === A(l, "problem.required") && (await E.stepArt(MAX_STEPS).inputValue()) === "settings", f);
+    check(4, "a new step: empty title flagged 'required' (PL), its card shows the 'settings' drawing, no photo",
+      f.value === "" && f.problem === A(l, "problem.required") && (await stepArtOf(P, MAX_STEPS)) === "settings"
+      && (await E.stepIll(MAX_STEPS).getAttribute("data-guide-step-illustration")) === "art" && (await stepPhoto(P, MAX_STEPS)) === null, f);
     await E.add.click({ force: true }).catch(() => {});
     check(4, `a click on the disabled add button does not make a ${MAX_STEPS + 1}th step`, (await E.steps.count()) === MAX_STEPS);
-    while ((await E.steps.count()) > 1) await E.remove(await E.steps.count()).click();
+
+    // DELETE ASKS FIRST: cancel, Escape and the X keep the step.
+    await E.stepTitle(MAX_STEPS).fill("Do usunięcia (probe)");
+    await E.remove(MAX_STEPS).click();
+    const c = E.removeConfirm(MAX_STEPS);
+    await c.waitFor({ state: "visible", timeout: 10000 });
+    const cfm = await P.page.evaluate((lbl) => {
+      const d = document.querySelector(`[role="dialog"][aria-label="${lbl}"]`);
+      const btns = [...(d?.querySelectorAll("button") ?? [])].map((b) => ({ text: b.textContent.trim(), aria: b.getAttribute("aria-label"), cls: b.className }));
+      return { parentIsBody: d?.parentElement === document.body, modal: d?.getAttribute("aria-modal"), text: d?.textContent ?? "", btns };
+    }, A(l, "step.removeConfirmTitle", { n: MAX_STEPS }));
+    check(4, `delete asks first: a portalled confirm "${A(l, "step.removeConfirmTitle", { n: MAX_STEPS })}" with its body, "${COMMON(l, "cancel")}" and a danger "${A(l, "step.removeConfirm")}"`,
+      cfm.parentIsBody && cfm.modal === "true" && cfm.text.includes(A(l, "step.removeConfirmBody"))
+      && cfm.btns.some((b) => b.text === COMMON(l, "cancel")) && cfm.btns.some((b) => b.text === A(l, "step.removeConfirm")), cfm);
+    check(4, "…while it is open the step is still there", (await E.steps.count()) === MAX_STEPS);
+    await c.getByRole("button", { name: COMMON(l, "cancel"), exact: true }).click();
+    await c.waitFor({ state: "detached" });
+    check(4, "cancel → the step stays (6 steps, its title kept)", (await E.steps.count()) === MAX_STEPS && (await E.stepTitle(MAX_STEPS).inputValue()) === "Do usunięcia (probe)");
+    await E.remove(MAX_STEPS).click();
+    await c.waitFor({ state: "visible" });
+    await P.page.keyboard.press("Escape");
+    await c.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check(4, "Escape → the confirm closes, the step stays", (await c.count()) === 0 && (await E.steps.count()) === MAX_STEPS);
+    await E.remove(MAX_STEPS).click();
+    await c.waitFor({ state: "visible" });
+    await c.getByRole("button", { name: COMMON(l, "close"), exact: true }).click();
+    await c.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    check(4, "the confirm's X → the step stays", (await c.count()) === 0 && (await E.steps.count()) === MAX_STEPS);
+    // The confirm names the RIGHT step: delete step 2 of 6, the others close up.
+    const t3 = await E.stepTitle(3).inputValue();
+    await removeStep(P, 2);
+    check(4, "confirm on step 2 → step 2 removed, the old step 3 is now step 2", (await E.steps.count()) === MAX_STEPS - 1 && (await E.stepTitle(2).inputValue()) === t3,
+      { count: await E.steps.count(), now2: await E.stepTitle(2).inputValue(), was3: t3 });
+    while ((await E.steps.count()) > 1) await removeStep(P, await E.steps.count());
     check(4, "remove down to 1: remove/up/down disabled on the last remaining step",
       (await E.steps.count()) === 1 && (await E.remove(1).isDisabled()) && (await E.up(1).isDisabled()) && (await E.down(1).isDisabled()));
     const r = await save(P);
@@ -1137,46 +1379,96 @@ async function group4() {
     if (prev) check(7, `${label}: base = the updatedAt the previous save answered`, r.call?.base === prev.data.updatedAt, { base: r.call?.base, prev: prev.data.updatedAt });
     return r;
   };
-  await pick(P, E.stepPick(1), "A"); model[0].img = "A";
-  await pick(P, E.stepPick(3), "B"); model[2].img = "B";
+  await pickStep(P, 1, "A"); model[0].img = "A";
+  await pickStep(P, 3, "B"); model[2].img = "B";
   await expectSave("assign A→1, B→3", true);
   await E.down(1).click(); [model[0], model[1]] = [model[1], model[0]];
   await expectSave("step 1 moved down");
   await E.up(3).click(); [model[1], model[2]] = [model[2], model[1]];
   await expectSave("step 3 moved up");
-  await E.remove(1).click(); model.splice(0, 1);
-  await expectSave("step 1 removed");
+  await removeStep(P, 1); model.splice(0, 1);
+  await expectSave("step 1 removed (confirmed)");
   await E.add.click(); model.push({ title: "Nowy krok (probe)", art: "settings", img: null });
   await E.stepTitle(4).fill("Nowy krok (probe)");
-  await pick(P, E.stepPick(4), "C"); model[3].img = "C";
+  await pickStep(P, 4, "C"); model[3].img = "C";
   await E.up(4).click(); [model[2], model[3]] = [model[3], model[2]];
   await expectSave("new step 4 with C, moved up to 3");
-  await E.remove(2).click(); model.splice(1, 1);
+  await removeStep(P, 2); model.splice(1, 1);
   const shown = [];
-  for (let i = 1; i <= model.length; i++) shown.push(await photoOf(E.step(i)));
+  for (let i = 1; i <= model.length; i++) shown.push(await stepPhoto(P, i));
   const wantShown = model.map((m) => (m.img ? LIB[m.img].url : null));
-  check(4, "the form's thumbnails follow the steps too", JSON.stringify(shown) === JSON.stringify(wantShown), { shown, wantShown });
+  check(4, "the cards' current illustrations follow the steps too", JSON.stringify(shown) === JSON.stringify(wantShown), { shown, wantShown });
   const titlesShown = await Promise.all(model.map((_, i) => E.stepTitle(i + 1).inputValue()));
   check(4, "the form's titles follow the steps", JSON.stringify(titlesShown) === JSON.stringify(model.map((m) => m.title)), titlesShown);
-  await expectSave("step 2 removed");
+  await expectSave("step 2 removed (confirmed)");
+
+  // "Zmień ilustrację" → a DRAWING: the step shows it from now on, so a photo
+  // lying over it goes; on a photo-less step it is a change of copy.
+  const withPhoto = model.findIndex((m) => m.img) + 1;
+  await chooseArt(P, withPhoto, "compare"); model[withPhoto - 1].art = "compare"; model[withPhoto - 1].img = null;
+  check(4, `chooser → drawing "compare" on step ${withPhoto} (had a photo): the card now shows the drawing, the photo is gone`,
+    (await stepArtOf(P, withPhoto)) === "compare" && (await stepPhoto(P, withPhoto)) === null, { art: await stepArtOf(P, withPhoto), photo: await stepPhoto(P, withPhoto) });
+  const noPhoto = model.findIndex((m) => !m.img) + 1;
+  await chooseArt(P, noPhoto, "download"); model[noPhoto - 1].art = "download";
+  check(4, `chooser → drawing "download" on photo-less step ${noPhoto}`, (await stepArtOf(P, noPhoto)) === "download");
+  await expectSave("drawings chosen in the chooser");
+  // The chooser marks the current drawing (aria-pressed) and offers all of them.
+  await E.changeIll(noPhoto).click();
+  await E.chooser.waitFor();
+  const ch = await P.page.evaluate(() => {
+    const c = document.querySelector("[data-guide-illustration-chooser]");
+    const arts = [...c.querySelectorAll("[data-guide-art]")];
+    return { n: arts.length, pressed: arts.filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.getAttribute("data-guide-art")) };
+  });
+  check(4, `chooser lists every drawing (${Object.keys(DICT.pl.aicc).filter((k) => k.startsWith("guide.art.")).length}) and marks only the current one ("download")`,
+    ch.n === Object.keys(DICT.pl.aicc).filter((k) => k.startsWith("guide.art.")).length && JSON.stringify(ch.pressed) === '["download"]', ch);
+  await P.page.keyboard.press("Escape");
+  await E.chooser.waitFor({ state: "detached" });
   const st = await api(P.sid);
   const slots = Array.from({ length: MAX_STEPS }, (_, i) => st.slots[`guide.${tool}.tutorial.${i + 1}`]?.mediaId ?? null);
   info(4, `stub slots after the last save (mirrors the real action's by-position write): [${names(slots)}]`);
   await close(P);
+
+  // The SAME drawing on a photo step only drops the photo: still the shipped copy.
+  {
+    const Q = await openEditor({ tool: "compress", row: "none" });
+    const F = L(Q);
+    await pickStep(Q, 2, "A");
+    let q = await save(Q);
+    check(4, "compress: photo A on step 2 alone → content null, images.steps[1] = A", q.call?.content === null && q.call?.images?.steps?.[1] === LIB.A.id, q.call);
+    await chooseArt(Q, 2, ARTS.compress[1]);
+    check(4, `…chooser → the step's own drawing ("${ARTS.compress[1]}") → photo removed, copy still the default (badge "${A(Q.locale, "usingDefault")}")`,
+      (await stepPhoto(Q, 2)) === null && (await F.statusBlock.textContent()).includes(A(Q.locale, "usingDefault")));
+    q = await save(Q);
+    check(4, "…saved: content null, images.steps[1] null", q.call?.content === null && q.call?.images?.steps?.[1] === null && q.answer?.ok === true, q.call);
+    await close(Q);
+  }
 }
 
 /* ── 5. PICTURES / PICKER ──────────────────────────────────────────────── */
 
 async function group5() {
-  console.log("\n[5] pictures, AssetPicker");
+  console.log("\n[5] pictures, the illustration chooser, AssetPicker");
   const P = await openEditor({ tool: "retouch", row: "none" });
   const E = L(P);
   const l = P.locale;
-  await E.stepPick(2).click();
+  // The chooser first: one place for both kinds of illustration.
+  await E.changeIll(2).click();
+  await E.chooser.waitFor({ state: "visible" });
+  const chg = await P.page.evaluate(() => {
+    const d = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].find((x) => x.querySelector("[data-guide-illustration-chooser]"));
+    return { label: d?.getAttribute("aria-label"), parentIsBody: d?.parentElement === document.body, text: d?.textContent.replace(/\s+/g, " ") ?? "" };
+  });
+  check(5, `"${A(l, "illustration.change")}" on step 2 opens a portalled chooser titled "… · ${A(l, "step.label", { n: 2 })}" with the photo and drawings sections`,
+    chg.parentIsBody && chg.label === `${A(l, "illustration.change")} · ${A(l, "step.label", { n: 2 })}`
+    && [A(l, "illustration.photoHeading"), A(l, "illustration.photoHint"), A(l, "illustration.drawingsHeading"), A(l, "illustration.drawingsHint"), A(l, "pickFromLibrary")].every((x) => chg.text.includes(x))
+    && (await E.chooserRemovePhoto.count()) === 0, chg);
+  await E.chooserPick.click();
+  await E.chooser.waitFor({ state: "detached" });
   const dlg = E.picker;
   await dlg.waitFor({ state: "visible" });
   const label = await dlg.getAttribute("aria-label");
-  check(5, "picker for step 2 is titled '<pickTitle> · <step 2>'", label === `${A(l, "pickTitle")} · ${A(l, "step.label", { n: 2 })}`, label);
+  check(5, "…its library button closes it and opens the picker titled '<pickTitle> · <step 2>'", label === `${A(l, "pickTitle")} · ${A(l, "step.label", { n: 2 })}`, label);
   const geo = await P.page.evaluate(() => {
     const d = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].find((x) => x.querySelector("[data-picker-search]"));
     const r = d.getBoundingClientRect();
@@ -1187,9 +1479,10 @@ async function group5() {
       rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], vw: innerWidth, vh: innerHeight,
       hits: pts.map(([x, y]) => d.contains(document.elementFromPoint(x, y))),
       items: [...d.querySelectorAll("[data-picker-item]")].map((b) => b.getAttribute("data-picker-item")),
+      dialogs: document.querySelectorAll('[role="dialog"][aria-modal="true"]').length,
     };
   });
-  check(5, "picker is portalled to <body> (not inside the Card's backdrop-filter)", geo.parentIsBody && !geo.insideCard, geo);
+  check(5, "picker is portalled to <body> (not inside the Card's backdrop-filter), and the only dialog open", geo.parentIsBody && !geo.insideCard && geo.dialogs === 1, geo);
   check(5, "picker covers the whole viewport and is the topmost element at centre/corners/top",
     geo.rect[0] === 0 && geo.rect[1] === 0 && geo.rect[2] === geo.vw && geo.rect[3] === geo.vh && geo.hits.every(Boolean), geo);
   check(5, "picker offers only images with a URL (A–D), not the video (E) nor the url-less file (F)",
@@ -1202,32 +1495,54 @@ async function group5() {
   await dlg.locator(`[data-picker-item="${LIB.A.id}"]`).click();
   await dlg.waitFor({ state: "detached" });
   const s2 = (await E.step(2).textContent()).replace(/\s+/g, " ");
-  check(5, "pick A → picker closes; step 2 shows A's thumbnail, name, size, 'change'/'remove', 'photo covers the art' hint",
-    (await photoOf(E.step(2))) === LIB.A.url && s2.includes(LIB.A.title) && s2.includes(LIB.A.dims)
-    && s2.includes(A(l, "changePhoto")) && s2.includes(A(l, "removePhoto")) && s2.includes(A(l, "step.artCovered")), s2);
-  await pick(P, E.stepPick(2), "B");
-  check(5, "change → B replaces A on step 2", (await photoOf(E.step(2))) === LIB.B.url);
+  check(5, "pick A → picker closes; step 2's card shows A as its current illustration, 'Zdjęcie z biblioteki: <name> · 1808×1152', and the remove-photo button",
+    (await stepPhoto(P, 2)) === LIB.A.url && (await E.stepIll(2).getAttribute("data-guide-step-illustration")) === "photo"
+    && s2.includes(A(l, "illustration.photo", { name: LIB.A.title })) && s2.includes(LIB.A.dims)
+    && (await E.stepClear(2).count()) === 1, s2);
+  await E.changeIll(2).click();
+  await E.chooser.waitFor();
+  const ch2 = (await E.chooser.textContent()).replace(/\s+/g, " ");
+  check(5, "with a photo the chooser offers 'change photo' + 'remove photo' and warns that a drawing replaces the photo",
+    ch2.includes(A(l, "changePhoto")) && (await E.chooserRemovePhoto.count()) === 1 && ch2.includes(A(l, "illustration.drawingsReplacePhoto"))
+    && (await P.page.locator('[data-guide-illustration-chooser] [data-guide-art][aria-pressed="true"]').count()) === 0, ch2.slice(0, 200));
+  await P.page.keyboard.press("Escape");
+  await E.chooser.waitFor({ state: "detached" });
+  await pickStep(P, 2, "B");
+  check(5, "change → B replaces A on step 2", (await stepPhoto(P, 2)) === LIB.B.url);
   await E.stepClear(2).click();
   const s2b = (await E.step(2).textContent()).replace(/\s+/g, " ");
-  check(5, "remove → step 2 back to 'no photo', art hint back, button 'choose from library'",
-    (await photoOf(E.step(2))) === null && s2b.includes(A(l, "step.noPhoto")) && s2b.includes(A(l, "step.artHint")) && s2b.includes(A(l, "pickFromLibrary")), s2b);
+  check(5, "remove photo (on the card) → step 2 back to its drawing 'Rysunek: <art>'",
+    (await stepPhoto(P, 2)) === null && s2b.includes(A(l, "illustration.drawing", { name: A(l, `art.${ARTS.retouch[1]}`) })) && (await E.stepClear(2).count()) === 0, s2b);
+  await pickStep(P, 2, "C");
+  await E.changeIll(2).click();
+  await E.chooser.waitFor();
+  await E.chooserRemovePhoto.click();
+  await E.chooser.waitFor({ state: "detached" });
+  check(5, "remove photo (in the chooser) → chooser closes, step 2 back to its drawing", (await stepPhoto(P, 2)) === null);
 
-  // Escape closes the picker and nothing else.
+  // Escape closes the top dialog and nothing else.
   await E.previewSta.click();
   await E.starterPreview.waitFor();
-  await E.stepPick(1).click();
+  await E.changeIll(1).click();
+  await E.chooser.waitFor({ state: "visible" });
+  await P.page.keyboard.press("Escape");
+  await E.chooser.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  check(5, "Escape closes the chooser (and nothing else)", (await E.chooser.count()) === 0 && (await E.starterPreview.count()) === 1);
+  await E.changeIll(1).click();
+  await E.chooser.waitFor({ state: "visible" });
+  await E.chooserPick.click();
   await dlg.waitFor({ state: "visible" });
   await dlg.locator("[data-picker-search]").focus();
   await P.page.keyboard.press("Escape");
   await dlg.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
   check(5, "Escape (focus in the picker's search) closes the picker",
-    (await dlg.count()) === 0);
+    (await dlg.count()) === 0 && (await E.chooser.count()) === 0);
   check(5, "…and nothing else: the starter preview stays open, the editor and its state stay",
     (await E.starterPreview.count()) === 1 && (await E.previewSta.getAttribute("aria-expanded")) === "true"
     && (await E.steps.count()) === ARTS.retouch.length);
   check(5, "…and the page scroll lock is released", (await P.page.evaluate(() => document.body.style.overflow)) === "");
 
-  // The starter picture.
+  // The starter picture (its own PhotoControl, no chooser).
   await pick(P, E.starterPick, "C");
   const frames = await P.page.evaluate(() => [...document.querySelectorAll("[data-preview-frame] [data-starter-gallery] img")].map((i) => new URL(i.getAttribute("src"), location.href).pathname));
   check(5, "starter: pick C → its control and BOTH preview frames show C",
@@ -1256,7 +1571,7 @@ async function group6() {
   const N = ARTS[tool].length;
   await E.tutTitle.fill("Podgląd PL (probe)");
   await E.stepTitle(2).fill("Krok drugi (probe)");
-  await pick(P, E.stepPick(2), "B");
+  await pickStep(P, 2, "B");
   await E.previewTut.click();
   await E.dialog.waitFor();
   let d = await dialogState(P);
@@ -1288,6 +1603,30 @@ async function group6() {
   check(6, `next ×${N - 1} → "${TG(l, "counter", { n: N, total: N })}", primary = "${TG(l, "start")}"`,
     d?.counter === TG(l, "counter", { n: N, total: N }) && d?.next === TG(l, "start"), d);
   await P.page.locator(`${DLG} [data-guide-close]`).click();
+  await E.dialog.waitFor({ state: "detached" });
+
+  // PER-STEP PREVIEW: each card's eye opens the same dialog AT that step.
+  for (const k of [3, N, 1]) {
+    await E.stepPreview(k).click();
+    await E.dialog.waitFor();
+    await sleep(250);
+    d = await dialogState(P);
+    const cur = await P.page.evaluate((sel) => document.querySelector(`${sel} section[aria-hidden="false"]`)?.getAttribute("data-guide-step") ?? null, DLG);
+    const nameOk = (await E.stepPreview(k).getAttribute("aria-label")) === A(l, "step.preview", { n: k });
+    check(6, `step ${k}'s preview button ("${A(l, "step.preview", { n: k })}") opens the preview AT step ${k} ("${TG(l, "counter", { n: k, total: N })}")${k === N ? `, primary "${TG(l, "start")}"` : ""}`,
+      nameOk && d?.counter === TG(l, "counter", { n: k, total: N }) && cur === String(k) && (k !== N || d?.next === TG(l, "start"))
+      && d?.steps?.[k - 1]?.title === want[k - 1], { counter: d?.counter, cur, next: d?.next, title: d?.steps?.[k - 1]?.title, nameOk });
+    await P.page.keyboard.press("Escape");
+    await E.dialog.waitFor({ state: "detached" });
+    await sleep(100);
+    const back = await P.page.evaluate((n) => document.activeElement?.getAttribute("data-guide-step-preview") === String(n), k);
+    check(6, `…Escape closes it and focus returns to step ${k}'s preview button`, back);
+  }
+  await E.previewTut.click();
+  await E.dialog.waitFor();
+  await sleep(200);
+  check(6, "after a per-step preview, the whole-tutorial preview starts at step 1 again", (await dialogState(P))?.counter === TG(l, "counter", { n: 1, total: N }));
+  await P.page.keyboard.press("Escape");
   await E.dialog.waitFor({ state: "detached" });
 
   // Another language: its own copy, Polish for what is empty.
@@ -1408,6 +1747,9 @@ async function group6() {
   const ov = await R.page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
   check(6, "390 px (DE): starter preview open → no horizontal page scroll", ov.sw <= ov.cw, ov);
   await shot(R, "6-starter-preview-390-light-de", { fullPage: true });
+  // The preview speaks the language of the tab being edited (PL by default),
+  // as a customer in that language would see it: the DE tab for German words.
+  await H.lang("de").click();
   await H.previewTut.click();
   await H.dialog.waitFor();
   await sleep(400);
@@ -1417,9 +1759,9 @@ async function group6() {
   }, DLG);
   check(6, "390 px: tutorial preview sheet fits the viewport, no sideways scroll", dr.left >= 0 && dr.right <= dr.vw + 0.5 && dr.sw <= dr.cw, dr);
   const d390 = await dialogState(R);
-  check(6, "saved custom copy (3 steps) → '1 z 3'-style counter and the saved step titles; step 1 shows D, step 2 shows B",
+  check(6, "saved custom copy (3 steps), DE tab → German counter, the saved step titles (DE where written, else PL); step 1 shows D, step 2 shows B",
     d390?.counter === TG("de", "counter", { n: 1, total: 3 }) && d390?.steps?.[0]?.img === LIB.D.url && d390?.steps?.[1]?.img === LIB.B.url
-    && d390?.steps?.[0]?.title === "Własny krok 1", d390);
+    && d390?.steps?.[0]?.title === "Własny krok 1" && d390?.steps?.[2]?.title === "Eigener Schritt 3", d390);
   await shot(R, "6-tutorial-preview-390-light-de");
   await close(R);
 
@@ -1440,6 +1782,7 @@ async function group6() {
   }, DLG);
   for (const [w, sr] of [[375, true], [390, false]]) {
     const T = await openEditor({ tool: "retouch", row: "none", vp: { width: w, height: 812, touch: true }, locale: "de" });
+    await L(T).lang("de").click();
     await L(T).previewTut.click();
     await L(T).dialog.waitFor();
     await sleep(400);
@@ -1461,7 +1804,7 @@ async function group7() {
   const E = L(P);
   const l = P.locale;
   await E.tutTitle.fill("Zapis 1 (probe)");
-  await pick(P, E.stepPick(2), "A");
+  await pickStep(P, 2, "A");
   let r = await save(P);
   check(7, "payload has exactly {tool, tutorialEnabled, starterEnabled, content, images:{steps, starter}, base, imageBases, showAgain}",
     JSON.stringify(Object.keys(r.call ?? {}).sort()) === JSON.stringify(["base", "content", "imageBases", "images", "showAgain", "starterEnabled", "tool", "tutorialEnabled"])
@@ -1486,19 +1829,10 @@ async function group7() {
     JSON.stringify(r.call?.imageBases) === JSON.stringify(firstBases) && typeof firstBases?.[`guide.${tool}.tutorial.2`] === "string",
     { sent: r.call?.imageBases, answered: firstBases });
 
-  // Show again.
-  await E.again.check();
-  check(7, "ticking 'show again' alone makes the form dirty", await isDirty(P));
-  const hintBefore = A(l, "showAgainHint", { n: 1, next: 2 });
-  check(7, "show-again hint names version 1 → 2", (await E.card.textContent()).includes(hintBefore));
-  r = await save(P);
-  check(7, "payload showAgain = true once; answer version 2", r.call?.showAgain === true && r.answer?.data?.version === 2, { call: r.call?.showAgain, answer: r.answer });
-  check(7, "after success: checkbox unticked, badge 'version 2', hint 2 → 3, not dirty",
-    !(await E.again.isChecked()) && (await E.card.textContent()).includes(A(l, "version", { n: 2 }))
-    && (await E.card.textContent()).includes(A(l, "showAgainHint", { n: 2, next: 3 })) && !(await isDirty(P)));
-  await E.tutBody.fill("Kolejna zmiana (probe)");
-  r = await save(P);
-  check(7, "next save sends showAgain = false; version stays 2", r.call?.showAgain === false && r.answer?.data?.version === 2, { call: r.call?.showAgain, answer: r.answer });
+  // A save never raises the version any more ("show again" is its own action, group A).
+  check(7, "saves send showAgain = false and leave the version at 1", r.call?.showAgain === false && r.answer?.data?.version === 1 && (await versionShown(P)) === 1,
+    { showAgain: r.call?.showAgain, answer: r.answer });
+  check(7, "the form has no 'show again' checkbox any more", (await P.page.locator(`${ED} input[type="checkbox"]`).count()) === 0);
 
   // Conflict: another admin saved in between.
   await api(P.sid, { bump: tool });
@@ -1524,9 +1858,8 @@ async function group7() {
 
   // images_failed: the media_slots_write RPC failed — with the current
   // action (pictures first, row second) NOTHING was written.
-  await L(P).again.check();
   await L(P).tutBody.fill("Zdjęcia nie zapisane (probe)");
-  await pick(P, L(P).stepPick(1), "B");
+  await pickStep(P, 1, "B");
   await api(P.sid, { force: "images_failed" });
   const rowBefore = (await api(P.sid)).rows[tool];
   const rscBefore = P.rec.rsc.length;
@@ -1539,11 +1872,11 @@ async function group7() {
     { answer: r.answer, shown: await L(P).error.textContent().catch(() => null) });
   check(7, "…form stays dirty and saveable", (await isDirty(P)) && !(await L(P).save.isDisabled()));
   check(7, "…nothing written (row and version unchanged)", r.row.updated_at === rowBefore.updated_at && r.row.tutorial_version === rowBefore.tutorial_version, { before: rowBefore.updated_at, after: r.row.updated_at });
-  check(7, "…'show again' stays ticked: the failed save bumped nothing, so the retry must still bump once", await L(P).again.isChecked());
+  check(7, "…'show again' is disabled while the failed changes are unsaved (dirty)", await L(P).again.isDisabled());
   r = await save(P);
   check(7, "retry after images_failed: same base as the failed attempt → ok", r.call?.base === rowBefore.updated_at && r.answer?.ok === true, { base: r.call?.base, answer: r.answer });
-  check(7, "retry bumps the version exactly once (showAgain true → v3), then the box is unticked",
-    r.call?.showAgain === true && r.answer?.data?.version === 3 && !(await L(P).again.isChecked()), { showAgain: r.call?.showAgain, answer: r.answer });
+  check(7, "retry leaves the version where it was (a save never bumps it)",
+    r.call?.showAgain === false && r.answer?.data?.version === rowBefore.tutorial_version, { showAgain: r.call?.showAgain, answer: r.answer, before: rowBefore.tutorial_version });
   check(7, "retry carries the picture (B on step 1)", r.call?.images?.steps?.[0] === LIB.B.id, names(r.call?.images?.steps));
 
   // conflict_images: a picture changed behind the form (Media → "Zamień wszędzie").
@@ -1561,7 +1894,7 @@ async function group7() {
     { answer: r.answer, shown: await L(P).error.textContent().catch(() => null) });
   await Promise.all([P.page.waitForEvent("load", { timeout: 60000 }), P.page.reload()]);
   await hydrated(P);
-  check(7, "after reload the form shows the replaced picture (C on step 1)", (await photoOf(L(P).step(1))) === LIB.C.url);
+  check(7, "after reload the form shows the replaced picture (C on step 1)", (await stepPhoto(P, 1)) === LIB.C.url);
 
   // A server-side validation answer.
   await L(P).tutBody.fill("Serwer odrzuca (probe)");
@@ -1609,7 +1942,7 @@ async function group7() {
     const H = L(R);
     check(7, "saved custom copy loads: badge 'custom', 3 steps, its PL title, version 3",
       (await H.card.textContent()).includes(A(l, "usingCustom")) && (await H.steps.count()) === 3
-      && (await H.tutTitle.inputValue()) === "Własny samouczek (probe)" && (await H.card.textContent()).includes(A(l, "version", { n: 3 })));
+      && (await H.tutTitle.inputValue()) === "Własny samouczek (probe)" && (await versionShown(R)) === 3);
     check(7, "'restore default copy' enabled on custom copy", !(await H.reset.isDisabled()));
     await H.reset.click();
     await H.confirm.waitFor();
@@ -1638,6 +1971,173 @@ async function group7() {
       q.call?.content === null && JSON.stringify(q.call?.images?.steps) === JSON.stringify([LIB.D.id, LIB.B.id, null, null]) && q.answer?.ok === true,
       { content: q.call?.content, steps: names(q.call?.images?.steps), answer: q.answer });
     await close(R);
+  }
+}
+
+/* ── A. SHOW AGAIN ─────────────────────────────────────────────────────── */
+
+/** "Pokaż ponownie wszystkim" → its confirm → `how` (confirm | cancel | escape | close).
+ *  Returns the action's call/answer when one was made. */
+async function showAgain(P, how = "confirm", { waitRefresh = true } = {}) {
+  const E = L(P);
+  const l = P.locale;
+  const before = (await api(P.sid)).calls.length;
+  await E.again.click();
+  await E.againConfirm.waitFor({ state: "visible", timeout: 10000 });
+  const dialog = await P.page.evaluate((lbl) => {
+    const d = document.querySelector(`[role="dialog"][aria-label="${lbl}"]`);
+    return { parentIsBody: d?.parentElement === document.body, modal: d?.getAttribute("aria-modal"), text: d?.textContent.replace(/\s+/g, " ") ?? "" };
+  }, A(l, "again.confirmTitle"));
+  if (how === "cancel") await E.againConfirm.getByRole("button", { name: COMMON(l, "cancel"), exact: true }).click();
+  else if (how === "escape") await P.page.keyboard.press("Escape");
+  else if (how === "close") await E.againConfirm.getByRole("button", { name: COMMON(l, "close"), exact: true }).click();
+  else await E.againConfirm.getByRole("button", { name: A(l, "again.confirm"), exact: true }).click();
+  if (how !== "confirm") {
+    await E.againConfirm.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    await sleep(600);
+    const st = await api(P.sid);
+    return { dialog, n: st.calls.length - before, closed: (await E.againConfirm.count()) === 0 };
+  }
+  await until(async () => (await api(P.sid)).answers.length > before, 30000);
+  const st = await api(P.sid);
+  await E.againConfirm.waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  if (waitRefresh && st.answers[before]?.ok) {
+    const want = st.rows[P.tool]?.updated_at ?? "";
+    await until(async () => (await E.serverBase.textContent()) === want, 15000);
+  }
+  await sleep(300);
+  return { dialog, call: st.calls[before], answer: st.answers[before], row: st.rows[P.tool], st, n: st.calls.length - before, closed: (await E.againConfirm.count()) === 0 };
+}
+
+async function groupA() {
+  console.log("\n[A] Pokaż ponownie wszystkim");
+  const tool = "retouch";
+  const P = await openEditor({ tool, row: "none" });
+  const E = L(P);
+  const l = P.locale;
+  const btn = await P.page.evaluate(() => {
+    const b = document.querySelector("[data-guide-show-again]");
+    const hint = document.getElementById(b?.getAttribute("aria-describedby") ?? "");
+    return b ? { text: b.textContent.trim(), tag: b.tagName, type: b.getAttribute("type"), haspopup: b.getAttribute("aria-haspopup"), hint: hint?.textContent.trim() ?? null, inStatus: Boolean(b.closest("[data-guide-status]")) } : null;
+  });
+  check("A", `a BUTTON "${A(l, "again.button")}" in the status block (aria-haspopup dialog), described by "${A(l, "again.hint", { n: 1, next: 2 })}"`,
+    btn?.tag === "BUTTON" && btn.text === A(l, "again.button") && btn.haspopup === "dialog" && btn.inStatus && btn.hint === A(l, "again.hint", { n: 1, next: 2 }), btn);
+  check("A", "clean form, tutorial on, version 1 → the button is enabled", !(await E.again.isDisabled()));
+  // Disabled while dirty: what opens again must be what is published.
+  const original = await E.tutTitle.inputValue();
+  await E.tutTitle.fill(`${original} (zmiana)`);
+  check("A", `a pending edit → disabled, hint "${A(l, "again.dirtyHint")}"`, (await E.again.isDisabled()) && (await againHint(P)) === A(l, "again.dirtyHint"),
+    { disabled: await E.again.isDisabled(), hint: await againHint(P) });
+  // Typing the old text back is still "own copy" (the editor's rule: any
+  // edit leaves the shipped copy) — logged; "Przywróć domyślne" is the way back.
+  await E.tutTitle.fill(original);
+  info("A", `text typed back to the shipped title → form ${await isDirty(P) ? "still dirty (own copy, by design)" : "clean"}; show-again ${await E.again.isDisabled() ? "disabled" : "enabled"}`);
+  await E.reset.click();
+  await E.confirm.waitFor();
+  await E.confirm.getByRole("button", { name: A(l, "resetConfirm"), exact: true }).click();
+  await E.confirm.waitFor({ state: "detached" });
+  check("A", "'restore default copy' → clean again → enabled, hint back to 1 → 2", !(await isDirty(P)) && !(await E.again.isDisabled()) && (await againHint(P)) === A(l, "again.hint", { n: 1, next: 2 }),
+    { status: await statusText(P), hint: await againHint(P) });
+  await E.tutSwitch.click();
+  check("A", "a switch change counts as dirty too (disabled, dirty hint)", (await E.again.isDisabled()) && (await againHint(P)) === A(l, "again.dirtyHint"));
+  await E.tutSwitch.click();
+  check("A", "switch back → clean → enabled again", !(await isDirty(P)) && !(await E.again.isDisabled()));
+  // The confirm: cancel, Escape and the X call nothing.
+  for (const how of ["cancel", "escape", "close"]) {
+    const x = await showAgain(P, how);
+    check("A", `confirm → ${how}: closed, NO action call`, x.closed && x.n === 0, x);
+    if (how === "cancel") {
+      check("A", `the confirm is portalled, aria-modal, titled "${A(l, "again.confirmTitle")}", body names version 1 → 2`,
+        x.dialog.parentIsBody && x.dialog.modal === "true" && x.dialog.text.includes(A(l, "again.confirmBody", { n: 1, next: 2 })) && x.dialog.text.includes(A(l, "again.confirm")), x.dialog);
+    }
+  }
+  check("A", "…and the version is still 1", (await versionShown(P)) === 1);
+  // Confirmed: one call to showToolGuideAgainAction, nothing else.
+  const rsc0 = P.rec.rsc.length;
+  let r = await showAgain(P, "confirm");
+  check("A", "confirm → exactly ONE call, to showToolGuideAgainAction, with {tool, base: null} (no row yet)",
+    r.n === 1 && r.call?.showAgainAction === true && r.call?.tool === tool && r.call?.base === null
+    && JSON.stringify(Object.keys(r.call ?? {}).sort()) === JSON.stringify(["base", "showAgainAction", "tool"]), r.call);
+  check("A", "answer ok, version 2; the stub row: v2, content null (shipped copy kept), tutorial on, starter on (retouch has one)",
+    r.answer?.ok === true && r.answer.data.version === 2 && r.row?.tutorial_version === 2 && r.row.content === null && r.row.tutorial_enabled === true && r.row.starter_enabled === true, { answer: r.answer, row: r.row });
+  const pub = ((await E.published.textContent()) ?? "").trim();
+  check("A", `after it: confirm closed, status shows version 2, "${A(l, "status.saved")}", the published line "${A(l, "status.shownAgainAt").replace("{n}", "2").replace("{when}", "…")}"`,
+    r.closed && (await versionShown(P)) === 2 && (await E.statusBlock.textContent()).includes(A(l, "status.saved"))
+    && pattern(A(l, "status.shownAgainAt").replace("{n}", "2")).test(pub), { pub, version: await versionShown(P) });
+  check("A", `success toast "${A(l, "again.done", { n: 2 })}"; page refreshed (RSC); form still clean, save still disabled`,
+    (await P.page.locator("[data-sonner-toast]").filter({ hasText: A(l, "again.done", { n: 2 }) }).count()) >= 1 && P.rec.rsc.length > rsc0
+    && !(await isDirty(P)) && (await E.save.isDisabled()), { rsc: P.rec.rsc.length - rsc0, status: await statusText(P) });
+  check("A", "the hint now names 2 → 3 and the button is enabled for another round", (await againHint(P)) === A(l, "again.hint", { n: 2, next: 3 }) && !(await E.again.isDisabled()));
+  const firstAt = r.answer.data.updatedAt;
+  r = await showAgain(P, "confirm");
+  check("A", "a second round: base = the first answer's updatedAt → version 3", r.call?.base === firstAt && r.answer?.ok === true && r.answer.data.version === 3 && (await versionShown(P)) === 3,
+    { base: r.call?.base, firstAt, answer: r.answer });
+  // A save after it: based on the bump, does not bump again.
+  const againAt = r.answer.data.updatedAt;
+  await E.tutTitle.fill("Po pokazaniu ponownie (probe)");
+  const s1 = await save(P);
+  check("A", "the next save: base = the show-again answer's updatedAt, showAgain false, version stays 3",
+    s1.call?.base === againAt && s1.call?.showAgain === false && s1.answer?.ok === true && s1.answer.data.version === 3 && (await versionShown(P)) === 3,
+    { base: s1.call?.base, againAt, answer: s1.answer });
+  check("A", `…and the published line switches to "${A(l, "status.publishedAt").replace("{when}", "…")}"`, pattern(A(l, "status.publishedAt")).test(((await E.published.textContent()) ?? "").trim()));
+  // Another admin saved in between: conflict, nothing bumped.
+  await api(P.sid, { bump: tool });
+  const vBefore = (await api(P.sid)).rows[tool].tutorial_version;
+  r = await showAgain(P, "confirm", { waitRefresh: false });
+  await sleep(300);
+  check("A", "someone else saved first → answer 'conflict'; the conflict panel + toast; the row's version unchanged",
+    r.answer?.ok === false && r.answer.error === "conflict" && (await E.conflict.count()) === 1
+    && (await P.page.locator("[data-sonner-toast]").filter({ hasText: A(l, "error.conflict") }).count()) >= 1 && r.row.tutorial_version === vBefore, { answer: r.answer });
+  check("A", "…the button is disabled while the conflict stands", await E.again.isDisabled());
+  await shot(P, "A-conflict-1440-light-pl");
+  await close(P);
+
+  // A forced failure (not_admin) shows its sentence, writes nothing.
+  {
+    const Q = await openEditor({ tool, row: "custom" });
+    const F = L(Q);
+    await api(Q.sid, { force: "not_admin" });
+    const row0 = (await api(Q.sid)).rows[tool];
+    const x = await showAgain(Q, "confirm", { waitRefresh: false });
+    check("A", "forced not_admin → its sentence under the form, row untouched, confirm closed, version shown still 3",
+      x.answer?.error === "not_admin" && (await F.error.textContent()) === A(Q.locale, "error.not_admin") && x.row.updated_at === row0.updated_at && x.closed && (await versionShown(Q)) === 3,
+      { answer: x.answer, shown: await F.error.textContent().catch(() => null) });
+    await close(Q);
+  }
+  // Switched off: nothing to show again.
+  {
+    const Q = await openEditor({ tool: "compress", row: "off" });
+    const F = L(Q);
+    check("A", `tutorial switched off (saved) → disabled, hint "${A(Q.locale, "again.offHint")}"`, (await F.again.isDisabled()) && (await againHint(Q)) === A(Q.locale, "again.offHint"));
+    await F.tutSwitch.click();
+    check("A", "…switching it on (unsaved) → still disabled, now with the dirty hint", (await F.again.isDisabled()) && (await againHint(Q)) === A(Q.locale, "again.dirtyHint"));
+    await save(Q);
+    check("A", "…saved on → enabled, hint 2 → 3", !(await F.again.isDisabled()) && (await againHint(Q)) === A(Q.locale, "again.hint", { n: 2, next: 3 }));
+    await close(Q);
+  }
+  // At the database's bound.
+  {
+    const Q = await openEditor({ tool, row: "max" });
+    const F = L(Q);
+    check("A", `version ${MAX_VERSION} → disabled, hint "${A(Q.locale, "again.maxHint")}"`, (await F.again.isDisabled()) && (await againHint(Q)) === A(Q.locale, "again.maxHint") && (await versionShown(Q)) === MAX_VERSION);
+    await close(Q);
+  }
+  // A tool without a starter: the row it creates keeps the starter off.
+  {
+    const Q = await openEditor({ tool: "tool_watermark", row: "none" });
+    const x = await showAgain(Q, "confirm");
+    check("A", "tool_watermark (no row): show again → v2 row with tutorial on, starter OFF (guideHasStarter false), content null",
+      x.answer?.ok === true && x.row?.tutorial_version === 2 && x.row.tutorial_enabled === true && x.row.starter_enabled === false && x.row.content === null, x.row);
+    await close(Q);
+  }
+  // The German UI's words.
+  {
+    const Q = await openEditor({ tool, row: "custom", locale: "de" });
+    const x = await showAgain(Q, "cancel");
+    check("A", "DE: button, hint and confirm in German", (await L(Q).again.textContent())?.trim() === A("de", "again.button")
+      && (await againHint(Q)) === A("de", "again.hint", { n: 3, next: 4 }) && x.dialog.text.includes(A("de", "again.confirmBody", { n: 3, next: 4 })) && x.n === 0, x.dialog);
+    await shot(Q, "A-status-1440-light-de");
+    await close(Q);
   }
 }
 
@@ -1706,10 +2206,58 @@ async function group8() {
         check(8, `${w}/${theme}/${l}: no ellipsis-truncated label (file names excepted)`, m.truncated.length === 0, m.truncated.slice(0, 6));
         if (m.truncatedFile.length) info(8, `${w}/${theme}/${l}: long file names truncated with an ellipsis (intended): ${m.truncatedFile.length}`);
         await shot(P, `8-${w}-${theme}-${l}`, { fullPage: true });
+        // The illustration chooser (a step with a photo: its longest state).
+        await E.changeIll(1).click();
+        await E.chooser.waitFor();
+        await sleep(350);
+        const ch = await chooserGeom(P);
+        check(8, `${w}/${theme}/${l}: the illustration chooser fits the viewport, nothing in it clipped or sideways`,
+          ch && ch.fits && ch.overflowX === false && ch.clipped.length === 0 && ch.pageOverflow <= 0, ch);
+        await shot(P, `8-${w}-${theme}-${l}-chooser`);
+        await P.page.keyboard.press("Escape");
+        await E.chooser.waitFor({ state: "detached" });
         await close(P);
+        // A screen without a starter gallery: the same card, one switch, no starter form.
+        const Q = await openEditor({ tool: "tool_watermark", row: "none", vp: VP[w], theme, locale: l });
+        const F = L(Q);
+        await F.add.click();
+        await F.stepTitle(6).fill(l === "de" ? "Ein ziemlich langer deutscher Schrittitel zum Testen der Umbrüche" : "Krok (probe)");
+        await sleep(250);
+        const n = await measure(Q);
+        check(8, `${w}/${theme}/${l} tool_watermark: no page overflow, nothing clipped, nothing outside the card, no truncated label`,
+          n.pageOverflow <= 0 && n.clipped.length === 0 && n.outside.length === 0 && n.truncated.length === 0,
+          { pageOverflow: n.pageOverflow, clipped: n.clipped.slice(0, 4), outside: n.outside.slice(0, 4), truncated: n.truncated.slice(0, 4) });
+        await shot(Q, `8-tool_watermark-${w}-${theme}-${l}`, { fullPage: true });
+        await close(Q);
       }
     }
   }
+}
+
+/** The open "Zmień ilustrację" dialog: inside the viewport, no sideways scroll, no clipped label. */
+async function chooserGeom(P) {
+  return P.page.evaluate(() => {
+    const d = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].find((x) => x.querySelector("[data-guide-illustration-chooser]"));
+    if (!d) return null;
+    const box = d.querySelector(".overlay") ?? d.firstElementChild?.nextElementSibling;
+    const r = box.getBoundingClientRect();
+    const clipped = [];
+    for (const el of box.querySelectorAll("button, p, h2, span")) {
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden" || el.closest(".sr-only")) continue;
+      const er = el.getBoundingClientRect();
+      if (er.width === 0) continue;
+      if (er.right > r.right + 1 || er.left < r.left - 1) clipped.push(`${el.tagName} "${el.textContent.trim().slice(0, 30)}" outside`);
+      else if (el.tagName === "BUTTON" && el.scrollWidth > el.clientWidth + 1) clipped.push(`${el.tagName} "${el.textContent.trim().slice(0, 30)}" clipped`);
+    }
+    return {
+      rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], vw: innerWidth, vh: innerHeight,
+      fits: r.left >= -0.5 && r.top >= -0.5 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5,
+      overflowX: box.scrollWidth > box.clientWidth + 1, scrollsY: box.scrollHeight > box.clientHeight + 1,
+      arts: box.querySelectorAll("[data-guide-art]").length, clipped: clipped.slice(0, 6),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
 }
 
 /* ── 9. KEYBOARD / A11Y ────────────────────────────────────────────────── */
@@ -1802,39 +2350,74 @@ async function group9() {
     const back = await P.page.evaluate(() => document.activeElement?.hasAttribute("data-guide-preview-tutorial") ?? false);
     check(9, "Escape closes the preview and focus returns to the preview button", back);
 
-    // The picker (shared Modal): focus in on open, back to the opener on close.
-    const opener = L(P).stepPick(3);
-    await opener.focus();
-    await P.page.keyboard.press("Enter");
-    await L(P).picker.waitFor();
-    await sleep(200);
-    const inPicker = async () => P.page.evaluate(() => {
-      const d = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].find((x) => x.querySelector("[data-picker-search]"));
+    // "Zmień ilustrację" and the picker it leads to (the shared Modal): focus
+    // in on open, back to the opener on close.
+    const inDlg = (sel) => P.page.evaluate((x) => {
+      const d = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].find((y) => y.querySelector(x));
       return Boolean(d && d.contains(document.activeElement));
-    });
-    const onOpen = await inPicker();
-    await P.page.keyboard.press("Tab");
-    const afterTab = await inPicker();
-    const where = await P.page.evaluate(() => {
+    }, sel);
+    const where = () => P.page.evaluate(() => {
       const el = document.activeElement;
       return `${el?.tagName} "${(el?.getAttribute("aria-label") || el?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40)}" in step ${el?.closest("[data-guide-step-form]")?.getAttribute("data-guide-step-form") ?? "-"}`;
     });
-    check(9, "keyboard-opened library picker: focus is in the dialog (on open, or at the latest after one Tab)", onOpen || afterTab, { onOpen, afterTab, focusAfterTab: where });
-    await P.page.keyboard.press("Escape");
-    await L(P).picker.waitFor({ state: "detached" });
-    // Restore: open from the keyboard, work inside the dialog, close.
+    const onOpener = () => P.page.evaluate(() => document.activeElement?.getAttribute("data-guide-change-illustration") === "3");
+    const opener = L(P).changeIll(3);
     await opener.focus();
     await P.page.keyboard.press("Enter");
+    await L(P).chooser.waitFor();
+    await sleep(200);
+    let onOpen = await inDlg("[data-guide-illustration-chooser]");
+    await P.page.keyboard.press("Tab");
+    let afterTab = await inDlg("[data-guide-illustration-chooser]");
+    check(9, "keyboard-opened 'Zmień ilustrację' chooser: focus is in the dialog (on open, or at the latest after one Tab)", onOpen || afterTab, { onOpen, afterTab, focusAfterTab: await where() });
+    await P.page.keyboard.press("Escape");
+    await L(P).chooser.waitFor({ state: "detached" });
+    await opener.focus();
+    await P.page.keyboard.press("Enter");
+    await L(P).chooser.waitFor();
+    await L(P).chooserArt("upload").focus();
+    await P.page.keyboard.press("Escape");
+    await L(P).chooser.waitFor({ state: "detached" });
+    await sleep(100);
+    check(9, "closing the chooser (Escape, focus inside it) returns focus to step 3's 'Zmień ilustrację'", await onOpener(), await where());
+    // Chooser → picker, from the keyboard.
+    await opener.focus();
+    await P.page.keyboard.press("Enter");
+    await L(P).chooser.waitFor();
+    await L(P).chooserPick.focus();
+    await P.page.keyboard.press("Enter");
     await L(P).picker.waitFor();
+    await sleep(200);
+    onOpen = await inDlg("[data-picker-search]");
+    await P.page.keyboard.press("Tab");
+    afterTab = await inDlg("[data-picker-search]");
+    check(9, "keyboard: chooser → library picker: focus is in the picker (on open, or at the latest after one Tab)", onOpen || afterTab, { onOpen, afterTab, focusAfterTab: await where() });
     await L(P).picker.locator("[data-picker-search]").focus();
     await P.page.keyboard.press("Escape");
     await L(P).picker.waitFor({ state: "detached" });
     await sleep(100);
-    const restored = await P.page.evaluate(() => {
-      const el = document.activeElement;
-      return { onOpener: Boolean(el?.closest('[data-guide-step-form="3"]') && el.tagName === "BUTTON"), active: el?.tagName ?? null };
-    });
-    check(9, "closing the picker returns focus to the button that opened it", restored.onOpener, restored);
+    check(9, "closing that picker returns focus to step 3's 'Zmień ilustrację' (its chooser is gone)", await onOpener(), await where());
+    // The delete confirm.
+    await L(P).remove(2).focus();
+    await P.page.keyboard.press("Enter");
+    await L(P).removeConfirm(2).waitFor();
+    await sleep(150);
+    const dIn = await P.page.evaluate((lbl) => document.querySelector(`[role="dialog"][aria-label="${lbl}"]`)?.contains(document.activeElement) ?? false, A(l, "step.removeConfirmTitle", { n: 2 }));
+    check(9, "keyboard-opened delete confirm: focus moves into the dialog", dIn, { active: await where() });
+    await P.page.keyboard.press("Escape");
+    await L(P).removeConfirm(2).waitFor({ state: "detached" });
+    await sleep(100);
+    check(9, "…Escape keeps the step and returns focus to its delete button",
+      (await L(P).steps.count()) === 3 && (await P.page.evaluate((lbl) => document.activeElement?.getAttribute("aria-label") === lbl, A(l, "step.remove", { n: 2 }))), await where());
+    // The show-again confirm.
+    await L(P).again.focus();
+    await P.page.keyboard.press("Enter");
+    await L(P).againConfirm.waitFor();
+    await sleep(150);
+    const aIn = await P.page.evaluate((lbl) => document.querySelector(`[role="dialog"][aria-label="${lbl}"]`)?.contains(document.activeElement) ?? false, A(l, "again.confirmTitle"));
+    check(9, "keyboard-opened show-again confirm: focus moves into the dialog", aIn, { active: await where() });
+    await P.page.keyboard.press("Escape");
+    await L(P).againConfirm.waitFor({ state: "detached" });
     // The reset confirm uses the same Modal.
     await L(P).reset.focus();
     await P.page.keyboard.press("Enter");
@@ -1872,7 +2455,7 @@ async function group9() {
   console.log(`dev server warm (${Math.round((Date.now() - t0) / 1000)} s)`);
 }
 
-const RUN = [["1", group1], ["2", group2], ["3", group3], ["4", group4], ["5", group5], ["6", group6], ["7", group7], ["8", group8], ["9", group9]];
+const RUN = [["1", group1], ["Z", groupZ], ["S", groupS], ["2", group2], ["3", group3], ["4", group4], ["5", group5], ["6", group6], ["7", group7], ["A", groupA], ["8", group8], ["9", group9]];
 for (const [id, fn] of RUN) {
   if (!shouldRun(id)) continue;
   try { await fn(); }

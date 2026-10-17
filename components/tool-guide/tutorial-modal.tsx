@@ -31,7 +31,8 @@ export function TutorialModal({ open, onClose, tutorial, initialStep = 0 }: {
   initialStep?: number;
 }) {
   const { t } = useI18n();
-  const [step, setStep] = useState(0);
+  // The first paint already shows the step asked for (no frame of another).
+  const [step, setStep] = useState(() => startOf(initialStep, tutorial.steps.length));
   const titleId = useId();
   const bodyId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -44,7 +45,7 @@ export function TutorialModal({ open, onClose, tutorial, initialStep = 0 }: {
   // without making the opening re-run when it changes.
   const startAt = useRef(0);
   useEffect(() => {
-    startAt.current = Number.isInteger(initialStep) ? Math.min(Math.max(0, initialStep), Math.max(0, total - 1)) : 0;
+    startAt.current = startOf(initialStep, total);
   });
 
   // Every opening starts at the first step (or the one asked for) and
@@ -232,4 +233,9 @@ export function TutorialModal({ open, onClose, tutorial, initialStep = 0 }: {
     </div>,
     document.body,
   );
+}
+
+/** An opening's first step: the one asked for, within the tutorial. */
+function startOf(initialStep: number, total: number): number {
+  return Number.isInteger(initialStep) ? Math.min(Math.max(0, initialStep), Math.max(0, total - 1)) : 0;
 }

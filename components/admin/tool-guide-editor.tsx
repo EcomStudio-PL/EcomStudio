@@ -829,8 +829,11 @@ export function ToolGuideEditor({ tool, defaults, initial, status, library, cata
         kind="image" portal
         title={pickerItem ? `${t("aicc.guide.pickTitle")} · ${t("aicc.guide.step.label", { n: form.steps.indexOf(pickerItem) + 1 })}` : t("aicc.guide.pickTitle")} />
       <I18nScope dict={previewWords}>
-        <TutorialModal open={tutorialOpen !== null} onClose={() => setTutorialOpen(null)} tutorial={previewTutorial}
-          initialStep={tutorialOpen ?? 0} />
+        {/* Mounted per opening, so a per-step preview starts on its step. */}
+        {tutorialOpen !== null && (
+          <TutorialModal key={tutorialOpen} open onClose={() => setTutorialOpen(null)} tutorial={previewTutorial}
+            initialStep={tutorialOpen} />
+        )}
       </I18nScope>
 
       {/* "Zmień ilustrację": a photo from the library, or one of the drawings. */}

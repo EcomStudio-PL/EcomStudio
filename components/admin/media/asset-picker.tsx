@@ -57,7 +57,11 @@ export function AssetPicker({
 
   // Anything uploaded in this session sits at the front until the page is
   // refreshed — an upload that vanishes until reload feels broken.
-  const all = useMemo(() => [...fresh, ...library], [fresh, library]);
+  // Once the refreshed page lists the upload too, it is shown once.
+  const all = useMemo(() => {
+    const seen = new Set(fresh.map((a) => a.id));
+    return [...fresh, ...library.filter((a) => !seen.has(a.id))];
+  }, [fresh, library]);
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase();

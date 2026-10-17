@@ -141,9 +141,10 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
    *  sheet. On phones `sheet === "history"` still does the work. */
   const [historyOpen, setHistoryOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
-  // The editor's tutorial: its first-visit dialog and, at the end of the
-  // timeline strip, its button (an icon on a phone, so the strip never wraps).
-  const guide = useToolGuide("editor", { iconOnPhone: true });
+  // The editor's tutorial: its first-visit dialog and its button — at the end
+  // of the timeline strip on a desktop, at the end of the phone dock's
+  // scrolling section row below lg (the strip has no room left there).
+  const guide = useToolGuide("editor");
 
   // Mirrors for the async paths: a fetch that resolves two seconds later must
   // read the state as it is NOW, not as it was when the closure was made.
@@ -212,6 +213,9 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      // Not behind the open tutorial: an undo there would change an edit the
+      // seller cannot see.
+      if (guide.open) return;
       // Typing a size or a HEX code keeps the browser's own undo — but ONLY
       // where the browser actually has one. A slider has no native undo, and
       // it still holds focus the instant after it was dragged, which is
@@ -231,7 +235,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+  }, [undo, redo, guide.open]);
 
   /* ── the working image ───────────────────────────────────────────────── */
 
@@ -288,8 +292,9 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
   const dragging = useImageDrop({
     limits: EDITOR_LIMITS,
     room: 1,
-    // A drop mid-export would overwrite the image being written out.
-    enabled: !loading && busy === null,
+    // A drop mid-export would overwrite the image being written out; one
+    // behind the open tutorial would replace a photo the seller cannot see.
+    enabled: !loading && busy === null && !guide.open,
     onIntake: ({ accepted, badType, tooLarge }) => {
       if (accepted[0]) { pick(accepted); return; }
       if (badType + tooLarge > 0) toast.error(t("tools.rejected", { n: badType + tooLarge }));
@@ -603,7 +608,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
               if (window.matchMedia("(min-width: 1024px)").matches) setHistoryOpen((open) => !open);
               else setSheet((current) => (current === "history" ? null : "history"));
             }} />
-          {guide.button && <span className="ml-auto">{guide.button}</span>}
+          {guide.button && <span className="ml-auto hidden lg:block">{guide.button}</span>}
         </div>
 
         {/* The history list opens IN PLACE on desktop and as a sheet on a
@@ -703,6 +708,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
                 <span className="truncate text-[12px] font-semibold">{t(`editor.s.${section}`)}</span>
               </button>
             ))}
+            {guide.button && <span className="flex shrink-0">{guide.button}</span>}
           </div>
           <div className="flex items-stretch gap-1.5">
             <button type="button" onClick={() => void download()} disabled={!ready || busy !== null}

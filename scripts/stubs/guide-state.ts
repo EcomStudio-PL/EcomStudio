@@ -13,6 +13,8 @@ export type GuideLiveState = {
   availabilityThrow: boolean;
   /** toolCatalogue() answer (lib/server/image-tools). */
   catalogue: { slug: string; available: boolean }[];
+  /** getUsableModels' answer (lib/ai/router), for the generator's gate. */
+  usableModels: { id: string; visible_custom?: boolean }[];
   /** The `admin` flag every toolCatalogue() call was given. */
   catalogueAdmin: boolean[];
   /** retouchModel() answer (lib/server/retouch). */
@@ -36,6 +38,7 @@ function fresh(): GuideLiveState {
     availability: {},
     availabilityThrow: false,
     catalogue: [],
+    usableModels: [{ id: "m-gen" }],
     catalogueAdmin: [],
     retouchModel: null,
     retouchConfigured: false,

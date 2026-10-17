@@ -130,7 +130,8 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
    * for drags that genuinely carry files, so reordering a thumbnail or
    * dragging a slider never raises the overlay.
    */
-  const dragging = useFileDrop({ onFiles: (files) => { if (files) addFiles(files); } });
+  // Not behind the open tutorial: files dropped there would land unseen.
+  const dragging = useFileDrop({ onFiles: (files) => { if (files) addFiles(files); }, enabled: !guide.open });
 
   async function runOne(item: Item): Promise<Partial<Item>> {
     const form = new FormData();

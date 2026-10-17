@@ -4,7 +4,8 @@ import { guideState } from "./guide-state";
  * Test-only stand-in (tool-guide suite) for the five modules toolIsLive asks
  * "can this tool run?": lib/server/image-tools, lib/server/retouch,
  * lib/server/engine/tool-run, lib/server/thumbnail/settings and
- * lib/server/fashion — one file behind five aliases. Each answer comes from
+ * lib/server/fashion, plus lib/ai/router's usable-model listing — one file
+ * behind six aliases. Each answer comes from
  * guideState and each call is recorded, so a test can prove which check a
  * tool's liveness really depends on. Nothing here reaches a provider, a price
  * or the network.
@@ -40,4 +41,14 @@ export async function fashionModel(_supabase: unknown): Promise<{ id: string } |
 export async function fashionToolAvailable(_supabase: unknown, tool: string): Promise<boolean> {
   guideState.liveCalls.push(`fashionToolAvailable:${tool}`);
   return guideState.fashionAvailable[tool] ?? false;
+}
+
+/** lib/ai/router stand-in: the usable models the generator page lists. */
+export async function getUsableModels(_supabase: unknown): Promise<{ id: string; visible_custom?: boolean }[]> {
+  guideState.liveCalls.push("getUsableModels");
+  return guideState.usableModels;
+}
+
+export function customModels<T extends { visible_custom?: boolean }>(models: T[]): T[] {
+  return models.filter((m) => m.visible_custom !== false);
 }

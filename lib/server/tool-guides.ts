@@ -12,6 +12,7 @@ import { retouchModel } from "@/lib/server/retouch";
 import { engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { readThumbnailState } from "@/lib/server/thumbnail/settings";
 import { fashionModel, fashionToolAvailable } from "@/lib/server/fashion";
+import { customModels, getUsableModels } from "@/lib/ai/router";
 import { publishedGuide, type PublishedGuide } from "@/lib/server/tool-guides-published";
 
 export { TOOL_GUIDES_TAG } from "@/lib/server/tool-guides-published";
@@ -172,8 +173,9 @@ export async function toolIsLive(supabase: Client, tool: GuideToolKey, opts: { a
         return (planners ?? []).some((p) => keyed.has(p.id));
       }
       case "generator":
-        // The gallery is only mounted when a usable model exists.
-        return true;
+        // The page mounts its gallery (and so the guide) only with a usable
+        // model for a customer's own prompt — the same check, made the same way.
+        return customModels(await getUsableModels(supabase)).length > 0;
       case "retouch": {
         const [model, configured] = await Promise.all([retouchModel(supabase), engineToolConfigured(supabase, "retouch", false)]);
         return Boolean(model) && configured;

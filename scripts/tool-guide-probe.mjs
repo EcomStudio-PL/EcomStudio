@@ -631,7 +631,13 @@ const starterGeom = (P) => P.page.evaluate(() => {
 });
 async function starterReady(P) {
   const loc = P.page.locator("[data-starter-gallery]");
+  // The starter is a lazy chunk (components/tool-guide/lazy.tsx): under a
+  // loaded `next dev` it can land a moment after the guide answer. Give it
+  // 5 s and say how long it took when that was more than a blink.
+  const t0 = Date.now();
+  await loc.first().waitFor({ state: "attached", timeout: 5000 }).catch(() => {});
   if ((await loc.count()) === 0) return false;
+  if (Date.now() - t0 > 300) info("·", `[${P.label}] starter attached ${Date.now() - t0} ms after the guide answer settled`);
   await loc.scrollIntoViewIfNeeded().catch(() => {});
   await P.page.waitForFunction(() => {
     const img = document.querySelector("[data-starter-gallery] figure img");
@@ -1957,8 +1963,10 @@ if (run("E")) {
     if (t.outside.length) reg.push(`outside the strip: ${t.outside.join(", ")}`);
     if (t.truncated.length > b.truncated.length) reg.push(`truncated labels: ${t.truncated.join(", ")}`);
     if (t.docOverflow && !b.docOverflow) reg.push("page scrolls sideways");
-    if (g && !g.sameRowAsUndo) reg.push("button not on Cofnij's row");
-    check("E", `[${combo}] strip vs no-guide baseline: same rows and height (±1px), no overlap/overflow/truncation, button on Cofnij's row`, reg.length === 0,
+    // Where the baseline already wraps, the button riding on the second row
+    // is the strip's own wrap, not this feature's.
+    if (g && !g.sameRowAsUndo && b.rows === 1) reg.push("button not on Cofnij's row");
+    check("E", `[${combo}] strip vs no-guide baseline: same rows and height (±1px), no overlap/overflow/truncation${b.rows === 1 ? ", button on Cofnij's row" : ""}`, reg.length === 0,
       { reg, with: { rows: t.rows, h: t.h, n: t.count }, baseline: { rows: b.rows, h: b.h, n: b.count } });
     if (b.rows === 1) check("E", `[${combo}] strip is ONE row with the button (baseline: 1 row, ${b.h}px)`, t.rows === 1, { rows: t.rows, h: t.h });
     else { pre.push(`${combo}: baseline already ${b.rows} rows`); info("E", `[${combo}] baseline strip already wraps (${b.rows} rows, ${b.h}px) — PRE-EXISTING; with the guide ${t.rows} rows, ${t.h}px`); }
@@ -2066,9 +2074,17 @@ if (run("S")) {
     await press(P, b);
     if (!check("S", `[${combo}] tutorial opens from the button`, await waitDialog(P))) { await closeP(P); continue; }
     const N = ARTS[tool].length;
+    // The sheet's entrance animation scales it (getBoundingClientRect sees
+    // ~0.98 × its height until it ends): measure once it has finished.
+    const settle = () => P.page.evaluate(() => Promise.race([
+      Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => undefined))),
+      new Promise((r) => setTimeout(r, 3000)),
+    ])).catch(() => undefined);
+    await settle();
     const hs = [await dlgHeight(P)];
     await press(P, P.page.locator("[data-guide-next]"));
     await sleep(450);
+    await settle();
     const g = await dialogGeom(P);
     hs.push(g.rect.height);
     const fails = [];
