@@ -1,5 +1,5 @@
 import "server-only";
-import sharp from "sharp";
+import sharp, { type Metadata, type OverlayOptions } from "sharp";
 import { crc32 } from "zlib";
 import type { TrialWatermarkConfig } from "@/lib/trial-watermark/config";
 import { TRIAL_WATERMARK_ASSET_HEIGHT, TRIAL_WATERMARK_ASSET_WIDTH, watermarkMask } from "./asset";
@@ -187,7 +187,7 @@ export function withPngDescription(png: Buffer, text: string): Buffer {
 export async function applyTrialWatermark(
   input: Buffer, params: TrialWatermarkParams,
 ): Promise<{ bytes: Buffer; mime: string; info: TrialWatermarkInfo }> {
-  let meta: sharp.Metadata;
+  let meta: Metadata;
   try {
     meta = await sharp(input, { failOn: "none" }).metadata();
   } catch {
@@ -224,7 +224,7 @@ export async function applyTrialWatermark(
   const pad = params.glowOpacity > 0 && sigma >= 0.3 ? Math.max(0, Math.min(Math.ceil(3 * sigma), room)) : 0;
 
   const L = await layers(g.markWidth, g.markHeight, pad, sigma, params, variant);
-  const overlays: sharp.OverlayOptions[] = [];
+  const overlays: OverlayOptions[] = [];
   if (L.glow) {
     overlays.push({ input: L.glow, raw: { width: L.w + 2 * L.pad, height: L.h + 2 * L.pad, channels: 4 }, left: g.left - L.pad, top: g.top - L.pad });
   }

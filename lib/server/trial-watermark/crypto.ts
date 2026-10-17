@@ -14,9 +14,13 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
  * Destroying the key — at expiry, on delete, after an unlock — makes the
  * original unrecoverable at once, whenever the blob itself is purged.
  *
- * Blob: "GBWM1" | iv (12) | tag (16) | ciphertext. The original's id is the
- * additional authenticated data, so a blob cannot be passed off as another
- * original's: it would fail authentication.
+ * Blob: "GBWM1" | iv (12) | tag (16) | ciphertext. The additional
+ * authenticated data binds the blob to its workspace AND its original's id,
+ * so a blob cannot be passed off as another original's, or another tenant's:
+ * it would fail authentication.
+ *
+ * The per-original key is itself stored WRAPPED (keys.ts), under a key the
+ * database never sees — a database dump alone opens nothing.
  */
 
 const MAGIC = Buffer.from("GBWM1", "latin1");
@@ -34,16 +38,20 @@ export function newOriginalKey(): Buffer {
   return randomBytes(32);
 }
 
-export function sealOriginal(clean: Buffer, key: Buffer, originalId: string): Buffer {
+function aad(workspaceId: string, originalId: string): Buffer {
+  return Buffer.from(`GBWM1|${workspaceId}|${originalId}`, "utf8");
+}
+
+export function sealOriginal(clean: Buffer, key: Buffer, workspaceId: string, originalId: string): Buffer {
   if (key.length !== 32) throw new TrialOriginalCryptoError("bad_key");
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(Buffer.from(originalId, "utf8"));
+  cipher.setAAD(aad(workspaceId, originalId));
   const body = Buffer.concat([cipher.update(clean), cipher.final()]);
   return Buffer.concat([MAGIC, iv, cipher.getAuthTag(), body]);
 }
 
-export function openOriginal(blob: Buffer, key: Buffer, originalId: string): Buffer {
+export function openOriginal(blob: Buffer, key: Buffer, workspaceId: string, originalId: string): Buffer {
   if (key.length !== 32) throw new TrialOriginalCryptoError("bad_key");
   if (blob.length < MAGIC.length + IV_BYTES + TAG_BYTES || !blob.subarray(0, MAGIC.length).equals(MAGIC)) {
     throw new TrialOriginalCryptoError("bad_blob");
@@ -53,7 +61,7 @@ export function openOriginal(blob: Buffer, key: Buffer, originalId: string): Buf
   const body = blob.subarray(MAGIC.length + IV_BYTES + TAG_BYTES);
   try {
     const decipher = createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAAD(Buffer.from(originalId, "utf8"));
+    decipher.setAAD(aad(workspaceId, originalId));
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(body), decipher.final()]);
   } catch {
