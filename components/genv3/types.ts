@@ -5,6 +5,7 @@
  * endpoints and hidden prompts are backend infrastructure and never take
  * this shape.
  */
+import type { GalleryTrial } from "@/lib/trial-watermark/types";
 
 export type GenMode = "managed" | "custom";
 
@@ -118,6 +119,12 @@ export type GalleryItem = {
   createdAt: string;
   /** Client-side: generated in this browser session (drives "NOWE"). */
   fresh?: boolean;
+  /** The lightbox derivative and whether `thumbUrl` is a real derivative —
+   *  the server sends both; an unlock replaces them with the clean file's. */
+  previewUrl?: string;
+  hasThumb?: boolean;
+  /** Trial watermark state of this image; null/absent = an ordinary image. */
+  trial?: GalleryTrial | null;
 };
 
 /** Badge tone → Badge component tone. Admin can override per model; the

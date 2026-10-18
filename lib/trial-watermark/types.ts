@@ -70,6 +70,13 @@ export type TrialStatusResult = {
   downloadUrl: string | null;
 };
 
+/**
+ * Everything GET /api/trial-originals/status answers with HTTP 200: the
+ * state, or `{state:"error", error:"trial_check_failed"}` when the asset's
+ * state or the entitlement could not be read (the dialog asks again).
+ */
+export type TrialStatusReply = TrialStatusResult | { state: "error"; error: string };
+
 /** One batch of POST /api/trial-originals/unlock-all. */
 export type TrialBulkResult =
   | {

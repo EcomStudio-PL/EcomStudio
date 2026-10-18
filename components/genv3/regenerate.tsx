@@ -14,6 +14,8 @@ import {
   type DrawTool, type Shape,
 } from "@/components/genv3/draw";
 import { snapQuality, unitPrice, type GalleryItem, type GenModel } from "@/components/genv3/types";
+import { TrialMarkedHint } from "@/components/trial-watermark/lock";
+import { isMarked } from "@/components/trial-watermark/model";
 
 /**
  * REGENERUJ OBRAZ — corrections in the customer's words AND on the pixels.
@@ -32,14 +34,21 @@ const COLORS = ["#a855f7", "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6"
  *  enough to read the final size, short enough that it is never "on". */
 const SIZE_ECHO_MS = 500;
 
-export function RegenerateModal({ item, models, balance, onClose, onDone }: {
+export function RegenerateModal({ item, models, balance, onClose, onDone, onUnlock }: {
   item: GalleryItem;
   models: GenModel[];
   balance: number;
   onClose: () => void;
   onDone: (credits: number) => void | Promise<void>;
+  /** "Usuń znak wodny" for a locked trial image (opens the unlock dialog). */
+  onUnlock?: (item: GalleryItem) => void;
 }) {
   const { t, locale } = useI18n();
+  // MARKS ARE DRAWN ON THE PIXELS, AND THESE PIXELS CARRY THE WATERMARK (R5).
+  // The marked copy is a guidance image the model is shown, so a watermarked
+  // one would teach it the mark. The canvas is not mounted and the pen is
+  // off; a retake from the words alone — product references only — stays.
+  const marked = isMarked(item.trial);
   const [instruction, setInstruction] = useState("");
   const [modelId, setModelId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -163,7 +172,7 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
       // Flatten + upload the marked copy FIRST — if the marks cannot travel,
       // nothing is generated (no silent mark-less regeneration).
       let markedImagePath: string | undefined;
-      if (shapes.length > 0) {
+      if (shapes.length > 0 && !marked) {
         const sig = shapeSignature(item.assetId, shapes);
         if (uploaded.current?.sig === sig) {
           markedImagePath = uploaded.current.path;
@@ -260,16 +269,18 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={item.url} alt={item.product ?? ""} draggable={false} data-regen-image
               className="block max-h-[38dvh] w-auto max-w-full select-none lg:max-h-[calc(100dvh-5rem)]" />
-            <AnnotationCanvas
-              className="absolute inset-0"
-              url={item.url}
-              shapes={shapes}
-              tool={tool}
-              color={color}
-              sizePx={sizePx}
-              onGestureStart={gestureStart}
-              onChange={setShapes}
-            />
+            {!marked && (
+              <AnnotationCanvas
+                className="absolute inset-0"
+                url={item.url}
+                shapes={shapes}
+                tool={tool}
+                color={color}
+                sizePx={sizePx}
+                onGestureStart={gestureStart}
+                onChange={setShapes}
+              />
+            )}
             {/* THE SIZE PREVIEW — a DOM ring over the picture, drawn at the
                 real nib diameter.
 
@@ -285,7 +296,7 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
 
                 Two rings and the pen's own colour between them: legible on a
                 white sofa and on a black shadow, without glowing. */}
-            {showNib && (
+            {showNib && !marked && (
               <span aria-hidden data-brush-preview data-nib={nib}
                 className="pointer-events-none absolute left-1/2 top-1/2 rounded-full"
                 style={{
@@ -324,27 +335,35 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
             </span>
           </div>
 
+          {marked && (
+            <div data-regen-marked className="rounded-xl border border-line bg-sunken/40 px-3 py-2.5">
+              <TrialMarkedHint trial={item.trial} onUnlock={onUnlock ? () => onUnlock(item) : undefined}
+                lockedKey="genv3.wm.regenLocked" goneKey="genv3.wm.regenGone" />
+            </div>
+          )}
+
           {/* Undo and clear, side by side and equal — they are one pair. */}
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={undo} disabled={undoStack.length === 0} data-regen-undo
+            <button type="button" onClick={undo} disabled={marked || undoStack.length === 0} data-regen-undo
               className="plate flex h-10 items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised disabled:opacity-40">
               <Undo2 size={14} aria-hidden className="text-muted" />{t("genv3.regenUndo")}
             </button>
-            <button type="button" onClick={reset} disabled={shapes.length === 0} data-regen-reset
+            <button type="button" onClick={reset} disabled={marked || shapes.length === 0} data-regen-reset
               className="plate flex h-10 items-center justify-center gap-1.5 rounded-xl text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised disabled:opacity-40">
               <RotateCcw size={14} aria-hidden className="text-muted" />{t("genv3.regenReset")}
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-1.5" data-regen-tools>
+          <div className={cn("grid grid-cols-4 gap-1.5", marked && "opacity-45")} data-regen-tools>
             {tools.map((tl) => {
               const on = tool === tl.key;
               return (
                 <button key={tl.key} type="button" aria-pressed={on} onClick={() => setTool(tl.key)}
-                  data-regen-tool={tl.key}
+                  data-regen-tool={tl.key} disabled={marked}
                   className={cn(
                     "flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-xl border px-1 py-1.5 transition-colors duration-150",
                     on ? "is-selected" : "border-line text-muted hover:bg-raised",
+                    marked && "cursor-not-allowed",
                   )}>
                   <tl.icon size={17} aria-hidden className={on ? "text-accent" : "text-faint"} />
                   <span className="text-[10.5px] font-semibold leading-none">{tl.label}</span>
@@ -354,11 +373,12 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
           </div>
 
           {/* Colour and size on one line: both describe the same pen. */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-xl border border-line bg-sunken/40 px-3 py-2.5">
+          <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-xl border border-line bg-sunken/40 px-3 py-2.5", marked && "pointer-events-none opacity-45")}
+            aria-disabled={marked || undefined}>
             <span className="flex items-center gap-1.5" role="radiogroup" aria-label={t("genv3.toolColorAria")}>
               {COLORS.map((c) => (
                 <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c}
-                  onClick={() => setColor(c)}
+                  onClick={() => setColor(c)} disabled={marked}
                   className={cn(
                     "h-[22px] w-[22px] rounded-full border border-black/20 transition-transform",
                     color === c && "scale-110 ring-2 ring-accent ring-offset-2 ring-offset-[rgb(var(--surface))]",
@@ -372,13 +392,13 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
                 style={{ background: "conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)" }}
                 title={t("genv3.toolCustomColor")}>
                 <input type="color" value={color} aria-label={t("genv3.toolCustomColor")}
-                  onChange={(e) => setColor(e.target.value)}
+                  onChange={(e) => setColor(e.target.value)} disabled={marked}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
               </label>
             </span>
             <label className="flex min-w-[130px] flex-1 items-center gap-2.5 text-[11.5px] font-semibold text-muted">
               <span className="shrink-0">{t("genv3.toolSize")}</span>
-              <input type="range" min={2} max={40} step={1} value={sizePx}
+              <input type="range" min={2} max={40} step={1} value={sizePx} disabled={marked}
                 // `onChange` on a range is the browser's `input` event, so it
                 // covers the arrow keys, Home/End and Page Up/Down as well as
                 // a drag — the preview answers the keyboard too.

@@ -199,6 +199,11 @@ async function main() {
       // Miniaturka's admin diagnostics of ONE run: each stage's real input and
       // output image (at most 16 photos), compared side by side at full size.
       "lib/server/thumbnail/diagnostics.ts",
+      // Trial-watermark unlock: signs the ONE asset (or bulk batch of ≤4) it
+      // just made clean, exactly as the gallery does — metadata.thumb first,
+      // falling back to the original — plus the dialog's short download link
+      // to the original. Not a grid; the Library grid above repaints from it.
+      "lib/server/trial-watermark/unlock.ts",
     ]);
     const listed = new Set(SURFACES.map((s) => s.file));
 

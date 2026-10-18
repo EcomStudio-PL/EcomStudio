@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { trialReturnAssetId } from "@/lib/server/trial-watermark/unlock";
 import { StatusView } from "@/components/checkout/status-view";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +19,13 @@ export const dynamic = "force-dynamic";
  * URL is a string a customer can type, and this page grants nothing on the
  * strength of it. It is used solely to know which payment to ask the server
  * about — and the server asks Stripe and the ledger.
+ *
+ * A PLAN BOUGHT FROM THE TRIAL-WATERMARK PAYWALL brings the customer back to
+ * their picture (R17): the server reads the caller's own latest
+ * `watermark_plan_selected` event (under 24 h, a name only the server's
+ * writer can record) and checks its asset is still a locked trial original
+ * of this workspace. Only then does the screen offer "Wróć do zdjęcia" —
+ * built from that database id, never from anything in this URL.
  */
 export default async function CheckoutStatusPage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -36,9 +45,14 @@ export default async function CheckoutStatusPage({ searchParams }: {
   const reference = one("ref") ?? one("payment_intent") ?? null;
   const safe = reference && /^(pi|sub)_[A-Za-z0-9_]+$/.test(reference) ? reference : null;
 
+  const workspace = await getCurrentWorkspace(supabase, user.id);
+  const unlockAssetId = workspace
+    ? await trialReturnAssetId(supabase, { userId: user.id, workspaceId: workspace.id })
+    : null;
+
   return (
     <div className="mx-auto w-full max-w-2xl py-6 sm:py-10">
-      <StatusView reference={safe} />
+      <StatusView reference={safe} unlockAssetId={unlockAssetId} />
     </div>
   );
 }

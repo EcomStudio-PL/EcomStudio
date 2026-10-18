@@ -141,6 +141,9 @@ function fakeSupabase(db: Db) {
       }
       if (name === "ai_background_presets_read") return { data: PRESETS, error: null };
       if (name === "ai_provider_call_record") return { data: (args.p_calls as unknown[]).length, error: null };
+      // Trial watermark (0143): a paying world — the catch-all `true` below
+      // would be a malformed decision, which refuses the run before the charge.
+      if (name === "trial_watermark_decide") return { data: { mode: "off", reason: "disabled", config: { enabled: false } }, error: null };
       return { data: true, error: null };
     },
   };

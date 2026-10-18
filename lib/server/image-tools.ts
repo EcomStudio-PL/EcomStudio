@@ -22,6 +22,7 @@ import {
 import { clampEditorState } from "@/lib/images/editor-state";
 import { claimFreeRun, freeToolRules, planQualifies, releaseFreeRun, windowStart } from "@/lib/server/free-tools";
 import { recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
+import { decideTrialWatermark } from "@/lib/server/trial-watermark/pipeline";
 
 /**
  * IMAGE TOOLS SERVICE — the single place a tool run happens.
@@ -742,6 +743,16 @@ async function runPaid(
       : expander ? expander.provider.estimateUsd()
         : editor!.provider.estimateUsd(operation!);
   const priced: PriceQuote = quote(costUsd, floorCredits, billing);
+
+  // ── TRIAL WORKSPACES ────────────────────────────────────────────────────
+  // A paid tool hands its result straight back as a clean file, and a trial
+  // workspace's results are only ever delivered marked — so a trial
+  // workspace is refused here, before its free run is claimed or a credit
+  // moves (0 calls, 0 credits). The panels turn this into the plans CTA. A
+  // decision that cannot be had refuses too; it never means "run clean".
+  const trial = await decideTrialWatermark(supabase, { workspaceId, credits: sandbox ? 0 : priced.credits });
+  if ("error" in trial) return { ok: false, error: trial.error };
+  if (trial.mode === "trial") return { ok: false, error: "trial_tool_unavailable" };
 
   // ── FREE ALLOWANCE ──────────────────────────────────────────────────────
   // Taken here, between the quote and the wallet, so everything downstream —

@@ -19,6 +19,8 @@ import { usePathname } from "next/navigation";
 import { guideToolForOperation, guideToolForPath, starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 import { StarterGallery } from "@/components/tool-guide/lazy";
+import { useTrialUnlock } from "@/components/trial-watermark/unlock-dialog";
+import { TrialLockButton, TrialLockChip, useTrialDays } from "@/components/trial-watermark/lock";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
 
@@ -398,6 +400,22 @@ export function GenerationGallery({
     onFresh(map);
   }
 
+  /** The same, for ONE image. `mutate` is keyed by generation because a
+   *  favourite or a note belongs to the job; an unlock belongs to the file,
+   *  and its job's other images keep their own marks and links. */
+  function mutateAsset(assetId: string, patch: Partial<GalleryItem>) {
+    const map = (arr: GalleryItem[]) => arr.map((i) => i.assetId === assetId ? { ...i, ...patch } : i);
+    setItems(map);
+    onFresh(map);
+    // The retake editor holds its own copy of the item it was opened with.
+    setRegenItem((r) => r && r.assetId === assetId ? { ...r, ...patch } : r);
+  }
+
+  // "USUŃ ZNAK WODNY" — the card chip, the list row's lock, the lightbox
+  // plate and the retake editor all open the same dialog; after an unlock the
+  // card is repointed at the clean file in place, without a refetch.
+  const trialUnlock = useTrialUnlock({ onUnlocked: (assetId, patch) => mutateAsset(assetId, patch) });
+
   async function remove(item: GalleryItem) {
     if (!window.confirm(t("genv3.deleteConfirm"))) return;
     const res = await fetch("/api/generations/delete", {
@@ -705,6 +723,7 @@ export function GenerationGallery({
               onDownload={() => void download(item)}
               onFavorite={() => toggleFavorite(item)}
               onDelete={() => remove(item)}
+              onUnlock={() => trialUnlock.start(item, "gallery")}
             />
           ))}
         </div>
@@ -738,12 +757,14 @@ export function GenerationGallery({
                   <span className="mt-0.5 block truncate text-[11px] text-faint">
                     {[item.model, item.ratio, item.sessionType ? t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife") : null]
                       .filter(Boolean).join(" · ")}
+                    <RowTrialDays item={item} />
                   </span>
                 </span>
                 <span className="hidden shrink-0 text-[11px] tabular-nums text-faint sm:block">
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
               </button>
+              <TrialLockButton trial={item.trial} onUnlock={() => trialUnlock.start(item, "gallery")} className="h-9 w-9" />
               <button type="button" data-row-favorite
                 onClick={() => toggleFavorite(item)}
                 aria-pressed={item.favorite}
@@ -778,6 +799,7 @@ export function GenerationGallery({
           onFavorite={toggleFavorite}
           onDelete={remove}
           onNote={(item, note) => mutate(item.generationId, { note })}
+          onUnlock={(item) => trialUnlock.start(item, "lightbox")}
         />
         ) : null;
       })()}
@@ -788,6 +810,7 @@ export function GenerationGallery({
           models={models}
           balance={balance}
           onClose={() => setRegenItem(null)}
+          onUnlock={(item) => trialUnlock.start(item, "gallery")}
           onDone={async (credits) => {
             onBalance((b) => Math.max(0, b - credits));
             setRegenItem(null);
@@ -797,14 +820,21 @@ export function GenerationGallery({
       )}
 
       {guide.dialog}
+      {trialUnlock.dialog}
     </div>
   );
+}
+
+/** " · 3 dni" after a locked image's meta line; nothing for any other image. */
+function RowTrialDays({ item }: { item: GalleryItem }) {
+  const days = useTrialDays(item.trial);
+  return days ? <span className="text-accent"> · {days}</span> : null;
 }
 
 /* ── One image card ───────────────────────────────────────────────────── */
 
 function GalleryCard({
-  item, compact, canRegenerate, selecting, picked, style, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete,
+  item, compact, canRegenerate, selecting, picked, style, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete, onUnlock,
 }: {
   item: GalleryItem;
   /** The grid's row span and gutter for this card. */
@@ -823,6 +853,8 @@ function GalleryCard({
   onDownload: () => void;
   onFavorite: () => void;
   onDelete: () => void;
+  /** "Usuń znak wodny" — the chip shows only on a locked trial image. */
+  onUnlock: () => void;
 }) {
   const { t } = useI18n();
   // THE CARD IS THE FILE'S OWN SHAPE. The wrapper carries the grid span (a
@@ -873,6 +905,10 @@ function GalleryCard({
       {item.favorite && !item.fresh && (
         <span aria-hidden className="absolute bottom-2 left-2 text-accent"><Heart size={14} fill="currentColor" /></span>
       )}
+      {/* The lock sits in the one corner nothing else uses — not a fifth rail
+          button, which would overflow the card at the default density. Out
+          of the way while picking, like the rail. */}
+      {!selecting && <TrialLockChip trial={item.trial} onUnlock={onUnlock} />}
       {/* THE ACTION RAIL — a vertical glass column at the top-right instead
           of a kebab that hid every action behind a second click. `card-rail`
           (globals.css) reveals it on hover where hover exists and keeps it

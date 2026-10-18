@@ -37,9 +37,18 @@ export type TrialWatermarkConfig = {
   signedUrlTtlSeconds: number;
   /** Staff (profiles.role = admin) generate clean images. false lets an admin test the trial path. */
   exemptStaff: boolean;
+  /**
+   * Accounts that lose the staff exemption (D5): one designated test account
+   * is watermarked on PROD while exempt_staff stays on for everyone else. It
+   * never overrides paid — a paying workspace stays clean whoever acts in it.
+   */
+  forceTrialUserIds: string[];
 };
 
 export const TRIAL_WATERMARK_SETTING_KEY = "trial_watermark";
+
+/** At most this many forced accounts: it is a test switch, not an audience. */
+export const TRIAL_WATERMARK_FORCE_MAX = 10;
 
 export const TRIAL_WATERMARK_DEFAULTS: TrialWatermarkConfig = {
   enabled: false,
@@ -52,6 +61,7 @@ export const TRIAL_WATERMARK_DEFAULTS: TrialWatermarkConfig = {
   originalRetentionDays: 30,
   signedUrlTtlSeconds: 60,
   exemptStaff: true,
+  forceTrialUserIds: [],
 };
 
 export const TRIAL_WATERMARK_RANGES = {
@@ -65,6 +75,19 @@ export const TRIAL_WATERMARK_RANGES = {
 } as const;
 
 const HEX = /^#[0-9a-f]{6}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A stored list → its valid uuids, lower-cased, first occurrence kept (as SQL keeps them). */
+function forcedIds(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const id of v) {
+    if (typeof id !== "string" || !UUID.test(id)) continue;
+    const lower = id.toLowerCase();
+    if (!out.includes(lower)) out.push(lower);
+  }
+  return out;
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const numIn = (v: unknown, r: { min: number; max: number }, fallback: number): number =>
@@ -92,6 +115,7 @@ export function parseTrialWatermarkConfig(raw: unknown): TrialWatermarkConfig {
     originalRetentionDays: intIn(r.original_retention_days, R.originalRetentionDays, d.originalRetentionDays),
     signedUrlTtlSeconds: intIn(r.signed_url_ttl_seconds, R.signedUrlTtlSeconds, d.signedUrlTtlSeconds),
     exemptStaff: r.exempt_staff !== false,
+    forceTrialUserIds: forcedIds(r.force_trial_user_ids),
   };
 }
 
@@ -109,12 +133,14 @@ export function serializeTrialWatermarkConfig(c: TrialWatermarkConfig): Record<s
     original_retention_days: c.originalRetentionDays,
     signed_url_ttl_seconds: c.signedUrlTtlSeconds,
     exempt_staff: c.exemptStaff,
+    force_trial_user_ids: c.forceTrialUserIds.map((id) => id.toLowerCase()),
   };
 }
 
 export type TrialWatermarkInvalid =
   | "enabled" | "widthRatio" | "opacity" | "luminanceThreshold" | "darkColor"
-  | "glowRadiusRatio" | "glowOpacity" | "originalRetentionDays" | "signedUrlTtlSeconds" | "exemptStaff";
+  | "glowRadiusRatio" | "glowOpacity" | "originalRetentionDays" | "signedUrlTtlSeconds" | "exemptStaff"
+  | "forceTrialUserIds";
 
 /**
  * STRICT validation of an admin edit: unlike the reader, nothing is silently
@@ -139,6 +165,14 @@ export function validateTrialWatermarkInput(
   if (!num("originalRetentionDays", true)) return { ok: false, field: "originalRetentionDays" };
   if (!num("signedUrlTtlSeconds", true)) return { ok: false, field: "signedUrlTtlSeconds" };
   if (typeof input.exemptStaff !== "boolean") return { ok: false, field: "exemptStaff" };
+  // Every entry a uuid, none twice, at most TRIAL_WATERMARK_FORCE_MAX — a
+  // typo is refused rather than dropped, so the list saved is the list typed.
+  const force: unknown[] | null = Array.isArray(input.forceTrialUserIds) ? input.forceTrialUserIds : null;
+  if (!force || force.length > TRIAL_WATERMARK_FORCE_MAX
+    || !force.every((id): id is string => typeof id === "string" && UUID.test(id))
+    || new Set(force.map((id) => id.toLowerCase())).size !== force.length) {
+    return { ok: false, field: "forceTrialUserIds" };
+  }
   return {
     ok: true,
     config: {
@@ -152,6 +186,20 @@ export function validateTrialWatermarkInput(
       originalRetentionDays: input.originalRetentionDays as number,
       signedUrlTtlSeconds: input.signedUrlTtlSeconds as number,
       exemptStaff: input.exemptStaff,
+      forceTrialUserIds: force.map((id) => id.toLowerCase()),
     },
   };
 }
+
+/**
+ * The admin preview (app/actions/trial-watermark-admin.ts): what it accepts
+ * and what it hands back. The 10 MB cap is the action's; an UPLOAD is also
+ * bound by the server-action body limit (next.config.mjs, 4.5 MB — Vercel's
+ * own request ceiling), so a larger photo is previewed from the media library,
+ * which the server reads itself.
+ */
+export const TRIAL_WATERMARK_PREVIEW = {
+  maxBytes: 10 * 1024 * 1024,
+  uploadMaxBytes: Math.floor(4.5 * 1024 * 1024) - 64 * 1024,
+  maxSide: 1600,
+} as const;

@@ -74,6 +74,12 @@ export async function rpcConfigRead(supabase: AnyClient): Promise<RpcResult<Reco
 // ── Originals: reserve / attach / release ───────────────────────────────────
 
 export type ReserveArgs = {
+  /**
+   * The original's id, chosen by the SERVER (a fresh UUID) before the row
+   * exists: the key wrap (keys.ts) and the blob's own authentication
+   * (crypto.ts) are both bound to it, and the row stores the wrapped key.
+   */
+  id: string;
   workspaceId: string;
   jobId: string | null;
   /** Producer label for analytics (generator, image_retouch, ecommerce_thumbnail, fashion_*…). */
@@ -91,10 +97,18 @@ export type ReserveArgs = {
   watermark: Record<string, unknown>;
 };
 
-/** TOKEN · trial_original_reserve(...) → {id, object_path}; the row is `pending`. */
-export async function rpcReserve(supabase: AnyClient, a: ReserveArgs): Promise<RpcResult<{ id: string; objectPath: string }>> {
+/**
+ * TOKEN · trial_original_reserve(p_token, p_id, p_workspace_id, p_job_id,
+ * p_operation, p_marked_path, p_wrapped_key, p_kek_fp, p_clean_sha256,
+ * p_clean_mime, p_clean_bytes, p_width, p_height, p_watermark)
+ * → {id, object_path, retention_days}; the row is `pending`. Every field is
+ * checked in SQL; a refusal raises (an RPC error here).
+ */
+export async function rpcReserve(
+  supabase: AnyClient, a: ReserveArgs,
+): Promise<RpcResult<{ id: string; objectPath: string; retentionDays: number | null }>> {
   const r = await call(supabase, "trial_original_reserve", {
-    p_token: token(), p_workspace_id: a.workspaceId, p_job_id: a.jobId, p_operation: a.operation,
+    p_token: token(), p_id: a.id, p_workspace_id: a.workspaceId, p_job_id: a.jobId, p_operation: a.operation,
     p_marked_path: a.markedPath, p_wrapped_key: a.wrappedKey, p_kek_fp: a.kekFingerprint,
     p_clean_sha256: a.cleanSha256, p_clean_mime: a.cleanMime, p_clean_bytes: a.cleanBytes,
     p_width: a.width, p_height: a.height, p_watermark: a.watermark,
@@ -102,7 +116,10 @@ export async function rpcReserve(supabase: AnyClient, a: ReserveArgs): Promise<R
   if (!r.ok) return r;
   const d = r.data;
   return isObj(d) && typeof d.id === "string" && typeof d.object_path === "string"
-    ? { ok: true, data: { id: d.id, objectPath: d.object_path } }
+    ? {
+        ok: true,
+        data: { id: d.id, objectPath: d.object_path, retentionDays: typeof d.retention_days === "number" ? d.retention_days : null },
+      }
     : { ok: false, error: "malformed_reserve" };
 }
 
@@ -120,12 +137,25 @@ export async function rpcAttach(
     : { ok: false, error: isObj(d) && typeof d.error === "string" ? d.error : "attach_refused" };
 }
 
-/** TOKEN · trial_original_release(p_token, p_original_id) → {object_path} (pending → orphaned, key destroyed). */
-export async function rpcRelease(supabase: AnyClient, originalId: string): Promise<RpcResult<{ objectPath: string | null }>> {
+/**
+ * TOKEN · trial_original_release(p_token, p_original_id) → {object_path, state}
+ * (pending → orphaned, key destroyed). `object_path` only for a pending or
+ * orphaned row; any other state keeps its blob (null). `state` is the row's
+ * state after the call, or "not_found".
+ */
+export async function rpcRelease(
+  supabase: AnyClient, originalId: string,
+): Promise<RpcResult<{ objectPath: string | null; state: string | null }>> {
   const r = await call(supabase, "trial_original_release", { p_token: token(), p_original_id: originalId });
   if (!r.ok) return r;
   const d = r.data;
-  return { ok: true, data: { objectPath: isObj(d) && typeof d.object_path === "string" ? d.object_path : null } };
+  return {
+    ok: true,
+    data: {
+      objectPath: isObj(d) && typeof d.object_path === "string" ? d.object_path : null,
+      state: isObj(d) && typeof d.state === "string" ? d.state : null,
+    },
+  };
 }
 
 // ── Reading states ─────────────────────────────────────────────────────────
@@ -266,12 +296,27 @@ export async function rpcUnlockFinish(
   return { ok: false, error: "malformed_finish" };
 }
 
-/** TOKEN · trial_original_unlock_abort(p_token, p_asset_id) — unlocking → locked (the target was not committed). */
-export async function rpcUnlockAbort(supabase: AnyClient, assetId: string): Promise<RpcResult<{ targetPath: string | null }>> {
+/**
+ * TOKEN · trial_original_unlock_abort(p_token, p_asset_id) → {target_path, state}
+ * — unlocking → locked (the target was not committed). `target_path` is what
+ * the caller may remove: set for ANY row that is not unlocked (a stale
+ * lease's leftover too), null for an unlocked row (that path is the
+ * customer's file now). `state` is the row's state after the call
+ * ("locked", "unlocked", "expired"…), or "not_found".
+ */
+export async function rpcUnlockAbort(
+  supabase: AnyClient, assetId: string,
+): Promise<RpcResult<{ targetPath: string | null; state: string | null }>> {
   const r = await call(supabase, "trial_original_unlock_abort", { p_token: token(), p_asset_id: assetId });
   if (!r.ok) return r;
   const d = r.data;
-  return { ok: true, data: { targetPath: isObj(d) && typeof d.target_path === "string" ? d.target_path : null } };
+  return {
+    ok: true,
+    data: {
+      targetPath: isObj(d) && typeof d.target_path === "string" ? d.target_path : null,
+      state: isObj(d) && typeof d.state === "string" ? d.state : null,
+    },
+  };
 }
 
 /** TOKEN · trial_original_next_batch(p_token, p_workspace_id, p_limit, p_skip) → {asset_ids, remaining}. */

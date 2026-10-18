@@ -947,6 +947,181 @@
       "tokens": "Koszt bazowy = oficjalna cena obrazu wyjściowego. Rzeczywisty koszt joba dolicza tokeny wejścia (${in} / 1M) i thinking (${out} / 1M) tylko wtedy, gdy Google zwróci usage — widać go w Historii.",
       "noTokens": "Koszt bazowy = oficjalna cena obrazu wyjściowego. Brak cennika tokenów — tokeny z usage nie są doliczane.",
       "fx": "Przychód = kredyty × {credit}. Kurs USD/PLN {fx} służy wyłącznie do analizy kosztu."
+    },
+    "trialWm": {
+      "title": "Znak wodny na generacjach próbnych",
+      "sub": "Obrazy z workspace'ów, które korzystają wyłącznie z darmowych kredytów, dostają znak wodny GrovBase. Czysty oryginał jest przechowywany zaszyfrowany i odblokowuje się po wykupieniu planu.",
+      "stateOn": "Włączony",
+      "stateOff": "Wyłączony (uśpiony)",
+      "assetOk": "Plik znaku zgodny",
+      "assetBad": "Problem z plikiem znaku",
+      "saved": "Ustawienia znaku wodnego zapisane.",
+      "enabledToast": "Znak wodny włączony dla nowych generacji próbnych.",
+      "unsaved": "Niezapisane zmiany znaku wodnego",
+      "invalidField": "Popraw pole: {field}",
+      "fixFirst": "Najpierw popraw zaznaczone pole.",
+      "offPending": "Po zapisaniu nowe generacje próbne przestaną dostawać znak wodny. Istniejące obrazy się nie zmienią.",
+      "lookTitle": "Wygląd znaku",
+      "keepTitle": "Oryginały i linki",
+      "staffTitle": "Personel i konto testowe",
+      "range": "Zakres {min}–{max}",
+      "confirmTitle": "Włączyć znak wodny?",
+      "confirmBody": "Od teraz każda nowa generacja w workspace'ach bez płatności dostanie znak wodny GrovBase, a jej czysty oryginał będzie przechowywany zaszyfrowany przez {days} dni. Płatne narzędzia AI i Workflow ON będą dla nich zablokowane. Formularz zostanie zapisany od razu. Wcześniejsze obrazy się nie zmienią.",
+      "confirmCta": "Włącz i zapisz",
+      "f": {
+        "enabled": "Znak wodny na nowych generacjach próbnych",
+        "widthRatio": "Szerokość znaku",
+        "opacity": "Krycie znaku",
+        "luminanceThreshold": "Próg jasności",
+        "darkColor": "Kolor ciemnego wariantu",
+        "glowRadiusRatio": "Promień poświaty",
+        "glowOpacity": "Krycie poświaty",
+        "originalRetentionDays": "Przechowywanie oryginału (dni)",
+        "signedUrlTtlSeconds": "Ważność linku „Pobierz” po odblokowaniu (s)",
+        "exemptStaff": "Zwolnij personel",
+        "forceTrialUserIds": "Wymuś tryb próbny dla kont"
+      },
+      "h": {
+        "enabled": "Wyłączony to stan uśpienia (domyślny). Włączenie wymaga potwierdzenia i od razu zapisuje formularz.",
+        "widthRatio": "Część krótszego boku obrazu (0,5 = połowa). Znak nigdy nie jest powiększany ponad swój plik źródłowy.",
+        "opacity": "Mnożnik krycia samego znaku (1 = pełne krycie).",
+        "luminanceThreshold": "Gdy obszar pod znakiem jest jaśniejszy niż próg, znak ma kolor ciemny; w przeciwnym razie jest biały.",
+        "darkColor": "Format #rrggbb. Jasny wariant to biel samego pliku znaku.",
+        "glowRadiusRatio": "Część szerokości znaku; 0 = bez poświaty.",
+        "glowOpacity": "Poświata ma kolor przeciwny do znaku, żeby był czytelny na każdym tle; 0 = bez poświaty.",
+        "originalRetentionDays": "Obowiązuje oryginały tworzone od zapisu; istniejące zachowują swój termin.",
+        "signedUrlTtlSeconds": "Tylko link „Pobierz” w oknie odblokowania. Odblokowane pliki w bibliotece mają zwykłe czasy linków.",
+        "exemptStaff": "Obraz jest czysty, gdy osoba generująca i właściciel workspace'u mają rolę admin. Wyłącz, aby sprawdzić tryb próbny na koncie administratora.",
+        "forceTrialUserIds": "UUID kont (Admin → Użytkownicy), które dostają tryb próbny także przy wyłączonej funkcji i mimo zwolnienia personelu — np. jedno konto testowe do sprawdzenia całości na PROD. Lista nigdy nie nadpisuje płatności."
+      },
+      "inv": {
+        "range": "Podaj liczbę od {min} do {max}.",
+        "rangeInt": "Podaj liczbę całkowitą od {min} do {max}.",
+        "darkColor": "Podaj kolor w formacie #rrggbb.",
+        "boolean": "Ta wartość musi być włączona albo wyłączona.",
+        "forceTrialUserIds": "Każdy wpis musi być UUID konta, bez powtórzeń; najwyżej {n} kont."
+      },
+      "force": {
+        "add": "Dodaj",
+        "count": "{n} z {max}",
+        "none": "Brak kont z wymuszonym trybem próbnym.",
+        "notUuid": "To nie jest UUID konta.",
+        "duplicate": "To konto jest już na liście.",
+        "full": "Lista ma już {n} kont.",
+        "remove": "Usuń {id} z listy"
+      },
+      "err": {
+        "forbidden": "Brak uprawnień administratora.",
+        "invalid": "Jedno z pól ma niepoprawną wartość — nic nie zostało zapisane.",
+        "migration_pending": "Migracja 0143 nie jest jeszcze zastosowana w tej bazie — ustawień znaku wodnego nie można zapisać.",
+        "confirm_required": "Włączenie znaku wodnego trzeba potwierdzić.",
+        "asset_unavailable": "Plik znaku wodnego nie przechodzi kontroli — włączenie odrzuciłoby każdą generację próbną.",
+        "server_key_missing": "Brak klucza serwera (GROVBASE_SERVER_KEY) — oryginałów nie da się zaszyfrować, więc włączenie odrzuciłoby każdą generację próbną."
+      },
+      "policy": {
+        "title": "Zasady",
+        "who": "Znak wodny dostają nowe obrazy z generacji, które pobierają kredyty, w workspace'ach korzystających wyłącznie z darmowych kredytów (bonus powitalny, bonusy, korekty, zwroty). Uruchomienia za 0 kredytów nigdy go nie dostają. Płatne narzędzia AI i Workflow ON są dla takich workspace'ów zablokowane przed pobraniem kredytów.",
+        "paid": "Bez znaku generuje workspace, który: ma teraz aktywną płatną subskrypcję; albo zapłacił przez Stripe kwotę większą od zera, za którą przyznano kredyty (także później zwróconą — płatność sporna się nie liczy); albo dostał doładowanie zaksięgowane przez administratora. Decyduje baza przy każdym uruchomieniu, przed pobraniem kredytów.",
+        "staff": "Personel: przy włączonym „Zwolnij personel” obraz jest czysty, gdy zarówno osoba generująca, jak i właściciel workspace'u mają rolę admin. Konto z listy „Wymuś tryb próbny” dostaje tryb próbny także wtedy, gdy funkcja jest wyłączona, i traci zwolnienie personelu — służy do testu na PROD na jednym koncie i nigdy nie nadpisuje płatności.",
+        "keep": "Czysty oryginał jest przechowywany zaszyfrowany przez {days} dni od utworzenia (termin zapisany przy każdym oryginale). Potem klucz jest niszczony, a plik usuwany przez codzienne czyszczenie. Obraz ze znakiem wodnym zostaje w bibliotece.",
+        "unlock": "Odblokowanie wymaga aktywnej płatnej subskrypcji, sprawdzanej także na bieżąco w Stripe. Odblokowany obraz staje się zwykłym plikiem biblioteki, bez znaku, na stałe.",
+        "enabled": "„Włączony” dotyczy wyłącznie nowych generacji klientów (konta z listy „Wymuś tryb próbny” działają w trybie próbnym niezależnie od przełącznika). Wyłączenie niczego nie odsłania, nie przedłuża ani nie usuwa — istniejące obrazy zachowują swój stan i termin."
+      },
+      "asset": {
+        "title": "Kontrola znaku",
+        "file": "Plik znaku",
+        "ok": "Zgodny z zatwierdzonym",
+        "size": "Wymiary",
+        "serverKey": "Klucz serwera",
+        "serverKeyOk": "Dostępny",
+        "serverKeyMissing": "Brak",
+        "asset_missing": "Brak pliku znaku na serwerze",
+        "asset_mismatch": "Plik różni się od zatwierdzonego (SHA-256 lub wymiary)",
+        "asset_unreadable": "Nie można odczytać pliku znaku",
+        "sha": "SHA-256"
+      },
+      "stats": {
+        "now": "Oryginały teraz",
+        "title": "Ostatnie {days} dni",
+        "unavailable": "Statystyki są niedostępne (funkcja trial_watermark_stats nie odpowiedziała).",
+        "liveLine": "Do odblokowania: {live} · wygasa w ciągu 24 h: {soon}"
+      },
+      "status": {
+        "locked": "Zablokowane",
+        "unlocked": "Odblokowane",
+        "expired": "Wygasłe",
+        "deleted": "Usunięte",
+        "orphaned": "Porzucone",
+        "pending": "W toku"
+      },
+      "funnel": {
+        "clicked": "Kliknięte „Usuń znak wodny”",
+        "paywall": "Otwarty paywall",
+        "planSelected": "Wybrany plan",
+        "confirmed": "Potwierdzona subskrypcja",
+        "note": "Liczby workspace'ów; otwarć paywalla: {paywalls}."
+      },
+      "items": {
+        "created": "Nowe oryginały",
+        "unlocked": "Odblokowane",
+        "bulk": "Odblokowania zbiorcze",
+        "expired": "Wygasłe",
+        "converted": "Konwersje"
+      },
+      "jobs": {
+        "title": "Retencja",
+        "sweep": "Przegląd (pg_cron, co 15 min)",
+        "sweepAbsent": "pg_cron niedostępny — przegląd uruchamia dzienny cron.",
+        "sweepUnreadable": "Nie można odczytać historii zadania.",
+        "sweepLast": "Ostatnio: {at} ({status}) · ostatnie udane: {ok}",
+        "never": "Jeszcze się nie uruchomiło.",
+        "purge": "Usuwanie plików (dzienny cron)",
+        "purgeLast": "{at} · na liście {listed}, usunięto {removed}, oznaczono {marked}",
+        "purgeError": "Błąd: {code}",
+        "backlog": "Pliki do usunięcia"
+      },
+      "pv": {
+        "title": "Podgląd na prawdziwym zdjęciu",
+        "sub": "Ten sam silnik co generacje, z wartościami wpisanymi w formularzu (także niezapisanymi). Nic nie jest zapisywane i nie jest używane AI.",
+        "upload": "Wybierz plik",
+        "library": "Z biblioteki mediów",
+        "libraryEmpty": "W bibliotece mediów nie ma zdjęć PNG, JPEG ani WebP.",
+        "libraryTooLarge": "Większe niż 10 MB",
+        "run": "Pokaż podgląd",
+        "noSource": "Nie wybrano zdjęcia.",
+        "stale": "Parametry zmieniły się od tego podglądu — pokaż go ponownie.",
+        "alt": "Podgląd zdjęcia ze znakiem wodnym",
+        "variant": "Wariant",
+        "variantDark": "Ciemny",
+        "variantLight": "Jasny",
+        "luminance": "Jasność obszaru",
+        "luminanceValue": "{value} (próg {threshold})",
+        "mark": "Znak",
+        "position": "Pozycja (lewo, góra)",
+        "glow": "Poświata",
+        "image": "Obraz",
+        "bytes": "Plik",
+        "shown": "Podgląd",
+        "err": {
+          "invalid": "Popraw parametry wyglądu znaku.",
+          "no_image": "Wybierz zdjęcie.",
+          "bad_source": "Wybierz jedno zdjęcie: plik albo pozycję z biblioteki mediów.",
+          "too_large": "Zdjęcie jest za duże (limit 10 MB lub 50 mln pikseli).",
+          "uploadTooLarge": "Plik ma {size} MB — przesłać można do {max} MB. Większe zdjęcie (do 10 MB) wybierz z biblioteki mediów.",
+          "not_found": "Nie znaleziono tego pliku w bibliotece mediów.",
+          "unsupported_format": "Obsługiwane są tylko PNG, JPEG i WebP.",
+          "unreadable": "Nie można odczytać tego zdjęcia.",
+          "too_small": "Zdjęcie jest za małe (krótszy bok poniżej 16 px)."
+        },
+        "fileLabel": "{name} · {size} MB",
+        "markValue": "{w} × {h} px · skala {scale}",
+        "positionValue": "{left}, {top} px",
+        "glowValue": "{px} px · krycie {opacity}",
+        "imageValue": "{w} × {h} px · {format}",
+        "bytesValue": "{from} MB → {to} MB",
+        "shownValue": "{w} × {h} px JPEG · {ms} ms"
+      },
+      "dims": "{w} × {h} px"
     }
   },
   "support": {
@@ -2013,7 +2188,10 @@
       "workflow_unavailable": "To narzędzie jest chwilowo niedostępne — kredyty zostały zwrócone.",
       "run_create_failed": "Nie udało się uruchomić — kredyty zostały zwrócone.",
       "network_error": "Utracono połączenie. Wynik pojawi się w galerii, gdy będzie gotowy.",
-      "price_changed": "Cena się zmieniła — odśwież stronę, aby zobaczyć aktualną. Kredyty nie zostały pobrane."
+      "price_changed": "Cena się zmieniła — odśwież stronę, aby zobaczyć aktualną. Kredyty nie zostały pobrane.",
+      "trial_check_failed": "Nie udało się teraz sprawdzić Twojego planu. Nic nie zostało pobrane — spróbuj ponownie za chwilę.",
+      "trial_workflow_unavailable": "Ten tryb narzędzia jest dostępny w płatnym planie. Nic nie zostało pobrane.",
+      "trial_tool_unavailable": "To narzędzie jest dostępne w płatnym planie. Nic nie zostało pobrane."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -2436,7 +2614,9 @@
       "provider_unreachable": "Brak połączenia z dostawcą.",
       "network_error": "Błąd połączenia.",
       "tool_unavailable": "Narzędzie chwilowo wyłączone.",
-      "processing_failed": "Nie udało się przetworzyć."
+      "processing_failed": "Nie udało się przetworzyć.",
+      "trial_check_failed": "Nie udało się teraz sprawdzić Twojego planu. Nic nie zostało pobrane — spróbuj ponownie za chwilę.",
+      "trial_tool_unavailable": "To narzędzie jest dostępne w płatnym planie. Nic nie zostało pobrane."
     },
     "upscale": {
       "name": "Upscale",
@@ -3825,7 +4005,63 @@
     "feedback.reason.too_artificial": "Zbyt sztuczne",
     "feedback.reason.other": "Inne",
     "moveEarlier": "Przesuń zdjęcie {n} wcześniej",
-    "moveLater": "Przesuń zdjęcie {n} później"
+    "moveLater": "Przesuń zdjęcie {n} później",
+    "wm": {
+      "unlock": "Usuń znak wodny",
+      "dialogLabel": "Usuń znak wodny",
+      "daysShortOne": "1 dzień",
+      "daysShort": "{n} dni",
+      "availableOne": "Wersja bez znaku wodnego dostępna jeszcze 1 dzień",
+      "available": "Wersja bez znaku wodnego dostępna jeszcze {n} dni",
+      "availablePlain": "Wersja bez znaku wodnego jest jeszcze dostępna",
+      "expired": "Wersja bez znaku wodnego nie jest już dostępna",
+      "unavailable": "Wersja bez znaku wodnego nie jest dostępna dla tego zdjęcia",
+      "lastDay": "Zostało mniej niż 24 godziny — potem wersja bez znaku wodnego zostanie usunięta.",
+      "editLocked": "Najpierw usuń znak wodny — narzędzia edycji działają na zdjęciu bez znaku.",
+      "editGone": "Edycja jest niedostępna: to zdjęcie ma znak wodny, a wersja bez niego nie jest już dostępna.",
+      "regenLocked": "Zaznaczanie na zdjęciu będzie dostępne po usunięciu znaku wodnego. Poprawki możesz opisać słowami.",
+      "regenGone": "Zaznaczanie na zdjęciu jest niedostępne dla zdjęcia ze znakiem wodnym. Poprawki możesz opisać słowami.",
+      "toolsNeedPlan": "Narzędzia edycji AI są dostępne w płatnym planie.",
+      "seePlans": "Zobacz plany",
+      "checking": "Sprawdzamy…",
+      "paywallTitle": "Odblokuj zdjęcie bez znaku wodnego",
+      "paywallBody": "Pobierz to zdjęcie bez znaku wodnego z dowolnym planem",
+      "choosePlan": "Wybierz plan",
+      "perMonth": "/ mies.",
+      "creditsMonthly": "{n} kredytów miesięcznie",
+      "creditsMonthlyFew": "{n} kredyty miesięcznie",
+      "pendingTitle": "Płatność jest przetwarzana",
+      "pendingBody": "Plan aktywuje się, gdy płatność zostanie potwierdzona — zwykle w ciągu kilku chwil. Nie kupuj go ponownie.",
+      "checkAgain": "Sprawdź ponownie",
+      "inactiveBody": "Twoja subskrypcja nie jest teraz aktywna. Wznów ją lub ureguluj płatność w ustawieniach, aby usunąć znak wodny.",
+      "manage": "Zarządzaj subskrypcją",
+      "confirming": "Potwierdzamy płatność…",
+      "confirmingBody": "To zwykle trwa kilka sekund. Zdjęcie odblokujemy, gdy tylko plan będzie aktywny.",
+      "processingTitle": "Płatność jest jeszcze przetwarzana",
+      "processingBody": "Plan nie jest jeszcze aktywny. Sprawdź ponownie za chwilę — zdjęcie czeka w bibliotece.",
+      "unlocking": "Usuwamy znak wodny…",
+      "successTitle": "Gotowe — zdjęcie bez znaku wodnego",
+      "successBody": "W bibliotece jest teraz wersja bez znaku wodnego.",
+      "errorTitle": "Nie udało się usunąć znaku wodnego",
+      "err": {
+        "busy": "To zdjęcie jest właśnie odblokowywane. Spróbuj ponownie za chwilę.",
+        "stripeUnavailable": "Nie udało się teraz potwierdzić subskrypcji. Nic się nie zmieniło — spróbuj ponownie za chwilę.",
+        "rateLimited": "Zbyt wiele prób naraz. Spróbuj ponownie za chwilę.",
+        "checkFailed": "Nie udało się teraz sprawdzić Twojego planu. Nic się nie zmieniło — spróbuj ponownie za chwilę.",
+        "signFailed": "Znak wodny został już usunięty, ale nie udało się przygotować podglądu. Spróbuj ponownie albo odśwież stronę.",
+        "generic": "Coś poszło nie tak. Spróbuj ponownie."
+      },
+      "bulkCta": "Usuń znak wodny ze wszystkich ({n})",
+      "bulkTitle": "Usuń znak wodny ze wszystkich",
+      "bulkProgress": "Odblokowano {x} z {y}",
+      "bulkFailed": "Nie udało się odblokować: {n}",
+      "bulkRetry": "Ponów nieudane",
+      "bulkStop": "Zatrzymaj",
+      "bulkStopped": "Zatrzymano. Odblokowane już zdjęcia zostają bez znaku wodnego.",
+      "bulkResume": "Kontynuuj",
+      "bulkNoProgress": "Pozostałych zdjęć nie udało się teraz odblokować. Spróbuj ponownie za chwilę.",
+      "bulkNeedsPlan": "Aby usunąć znak wodny, wybierz plan."
+    }
   },
   "retouch": {
     "title": "Retusz zdjęć",
@@ -6920,7 +7156,8 @@
     "grovnewsAlreadyActive": "Masz już aktywną subskrypcję GrovNews.",
     "grovnewsInProgress": "Twoja płatność za GrovNews jest właśnie przygotowywana. Odśwież stronę za chwilę.",
     "statusGrovNewsActive": "GrovNews Premium jest aktywny. Miłej lektury!",
-    "statusGoGrovNews": "Przejdź do GrovNews"
+    "statusGoGrovNews": "Przejdź do GrovNews",
+    "wmReturnCta": "Wróć do zdjęcia"
   },
   "grovnews": {
     "title": "GrovNews",
@@ -8821,7 +9058,10 @@
       "tool_unavailable": "Miniaturka jest chwilowo niedostępna.",
       "feature_unavailable": "Miniaturka jest chwilowo niedostępna.",
       "job_create_failed": "Nie udało się rozpocząć — spróbuj ponownie.",
-      "invalid_input": "Nieprawidłowe dane — dodaj zdjęcia ponownie."
+      "invalid_input": "Nieprawidłowe dane — dodaj zdjęcia ponownie.",
+      "trial_check_failed": "Nie udało się teraz sprawdzić Twojego planu. Za kompozycję nic nie zostało pobrane — spróbuj ponownie.",
+      "source_locked": "Jedno z poprawionych zdjęć ma jeszcze znak wodny. Usuń znak wodny w bibliotece i spróbuj ponownie — za kompozycję nic nie zostało pobrane.",
+      "watermark_failed": "Nie udało się przygotować miniaturki. Koszt kompozycji wrócił na konto."
     }
   },
   "ice": {

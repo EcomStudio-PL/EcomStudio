@@ -23,6 +23,10 @@ import { readTokenPrices, readUnitPrices, recordProviderCalls, type ProviderCall
 import { imageCallCost, sumKnownCosts } from "@/lib/ai/usage-cost";
 import { deliverRetouch, isRetouchDeliverySize, type RetouchDelivered } from "@/lib/server/retouch-delivery";
 import {
+  attachTrialOriginal, decideTrialWatermark, releaseTrialOriginal, sealTrialOutput, stashTrialOriginal, trialStamp,
+  type TrialMarked,
+} from "@/lib/server/trial-watermark/pipeline";
+import {
   GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, PROVIDER_CALL_BUDGET_MS,
   fitsInBudget, getProviderHealth, providerBlocked,
   recordProviderFailure, recordProviderSuccess, retryDelayMs, sleep, withProviderLimit,
@@ -140,6 +144,12 @@ const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 
 /** Time that must remain to START an attempt (see the provider loop). */
 const ATTEMPT_GATE_MS = 95_000;
+
+/** TRIAL images are marked and sealed one at a time after the provider
+ *  answered; one is only begun this long into the 300 s route, leaving room
+ *  for its own work (a 4K mark, two uploads) and the run's closing books.
+ *  An image not begun is not delivered and is refunded with the shortfall. */
+const TRIAL_IMAGE_START_MS = 265_000;
 
 /** Product photos a job may carry — the same ceiling the panel enforces
  *  ("Dodaj zdjęcia (max. 10)"). Providers still trim to their own limit. */
@@ -299,6 +309,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   if (!wallet) return { ok: false, error: "no_wallet" };
   if (wallet.balance < cost) return { ok: false, error: "insufficient_credits", missingCredits: cost - wallet.balance };
 
+  // TRIAL WATERMARK — decided once, here, before anything is inserted or
+  // charged: are this run's images delivered marked (the clean original kept
+  // for an unlock) or clean? The database decides from the workspace's paid
+  // history; a decision that cannot be had refuses the run — it never
+  // defaults to clean. Nothing about the provider request depends on it.
+  const trial = await decideTrialWatermark(supabase, { workspaceId, credits: cost });
+  if ("error" in trial) return { ok: false, error: trial.error };
+
   // Product: use existing or create ad-hoc from studio context
   let productId = input.productId ?? null;
   let productContext = "";
@@ -430,6 +448,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     metadata: {
       quantity, model: model.model_identifier, quality: quality ?? null,
       prompt_origin: input.promptOrigin ?? null, operation: input.operation ?? null,
+      // The trial decision this charge was taken under (server-built).
+      ...trialStamp(trial),
     },
     creditsCharged: cost,
   });
@@ -981,10 +1001,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
    *  re-encode; previews/thumbnails are separate derived files), which this
    *  record proves per job rather than asserts — except Retusz, whose file
    *  is the DELIVERED 2K/4K + format version (retouch-delivery.ts), recorded
-   *  next to the provider's own dimensions and hash. */
+   *  next to the provider's own dimensions and hash — and a trial image,
+   *  whose file carries the GrovBase mark (`trial_watermark: true`). */
   const providerOutput: Record<string, unknown>[] = [];
   let idx = 0;
   for (const img of result.images) {
+    // One slot per image returned, taken before anything can skip it: a
+    // skipped image never hands its file name to the next one (a trial
+    // original is reserved under the path its marked file will get).
+    const slot = idx++;
     let bytes: Buffer | null = null;
     let mime = img.mime || "image/png";
     if (img.base64) bytes = Buffer.from(img.base64, "base64");
@@ -1009,10 +1034,32 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       bytes = delivered.bytes;
       mime = delivered.mime;
     }
+    // TRIAL WATERMARK — the last thing done to the pixels, after the Retusz
+    // delivery: the library stores the MARKED file; the clean bytes (exactly
+    // what would otherwise have been stored) are sealed into trial-originals.
+    // An image that cannot be marked or whose original cannot be kept is not
+    // delivered at all (the shortfall is refunded below) — never clean.
+    let marked: TrialMarked | null = null;
+    const clean = bytes;
+    if (trial.mode === "trial") {
+      if (Date.now() > invocationStartedAt + TRIAL_IMAGE_START_MS) continue;
+      marked = await sealTrialOutput(clean, trial.config);
+      if (!marked) continue;
+      bytes = marked.bytes;
+      mime = marked.mime;
+    }
     const ext = mime.includes("webp") ? "webp" : mime.includes("jpeg") ? "jpg" : "png";
-    const path = `${workspaceId}/${job.id}/${idx}.${ext}`;
+    const path = `${workspaceId}/${job.id}/${slot}.${ext}`;
+    const original = marked
+      ? await stashTrialOriginal(supabase, {
+        workspaceId, jobId: job.id, operation: input.operation ?? generationToolKey(input), markedPath: path, clean, marked,
+      })
+      : null;
+    if (marked && !original) continue;
     const { error: upErr } = await supabase.storage.from("generation-assets")
       .upload(path, bytes, { contentType: mime, upsert: true });
+    // Not in the library: the original it would unlock is given up at once.
+    if (original && (upErr || !generation)) await releaseTrialOriginal(supabase, original.originalId, original.objectPath);
     if (!upErr && generation) {
       // Real dimensions off the header — a few microseconds, and the gallery
       // reserves the right box before the picture arrives.
@@ -1023,7 +1070,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
       } catch { /* the model's own figures stand */ }
       const providerSha = createHash("sha256").update(providerBytes).digest("hex");
-      const storedDims = delivered ? { width: delivered.width, height: delivered.height } : dims;
+      // The mark keeps the size (upright, as the file is shown).
+      const storedDims = marked ? { width: marked.info.width, height: marked.info.height }
+        : delivered ? { width: delivered.width, height: delivered.height } : dims;
       // READ BACK what storage holds — the object "Pobierz" serves — so the
       // record proves provider bytes === downloadable original, per job.
       const { data: back } = await supabase.storage.from("generation-assets").download(path);
@@ -1045,7 +1094,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         stored_width: storedDims.width ?? null, stored_height: storedDims.height ?? null,
         stored_bytes: storedBytes?.length ?? null, stored_sha256: storedSha,
         stored_equals_provider: storedSha === null ? null : storedSha === providerSha,
-        stored_path: path, transformed_after_provider: delivered !== null,
+        stored_path: path, transformed_after_provider: delivered !== null || marked !== null,
         // Retusz delivery: provider output vs the file the customer gets.
         ...(delivered ? {
           provider_requested_size: "DEFAULT",
@@ -1053,12 +1102,23 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           delivered_width: delivered.width, delivered_height: delivered.height,
           delivered_mime: delivered.mime, postprocess: delivered.postprocess,
         } : {}),
+        // A trial image: the stored file carries the mark. A flag only — the
+        // mark's parameters live with the original, not on this
+        // member-readable row. Retusz keeps its own postprocess label.
+        ...(marked ? { ...(delivered ? {} : { postprocess: "trial_watermark" }), trial_watermark: true } : {}),
       });
       const { data: assetRow } = await supabase.from("generation_assets").insert({
         generation_id: generation.id, asset_type: "image", storage_path: path,
         width: storedDims.width ?? null, height: storedDims.height ?? null,
         metadata: { provider: served.providerSlug, model: model2.model_identifier },
       }).select("id").single();
+      // The original is bound to the asset that shows its marked file
+      // (locked). Not bound now → the database's sweep heals it from the path.
+      if (assetRow && original && marked) {
+        await attachTrialOriginal(supabase, {
+          originalId: original.originalId, assetId: assetRow.id, markedPath: path, markedSha256: marked.sha256,
+        });
+      }
 
       /**
        * THE DERIVATIVE IS MADE AFTER THE ANSWER IS SENT.
@@ -1126,7 +1186,6 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       }
       stored.push({ url: "", path });
     }
-    idx++;
   }
   if (providerOutput.length > 0) {
     await supabase.from("generation_jobs").update({

@@ -11,6 +11,7 @@ import { startWorkflowRun } from "@/lib/server/engine/workflow";
 import { loadWorkflow } from "@/lib/server/engine/workflow-store";
 import { finalStepIndex, maxOutputsOf } from "@/lib/ai/workflow-def";
 import { textMeter, type TextMeter } from "@/lib/server/ai-usage";
+import { decideTrialWatermark } from "@/lib/server/trial-watermark/pipeline";
 
 /**
  * ONE ENTRY FOR THE PROMPT-DRIVEN IMAGE TOOLS (Retusz, Moda).
@@ -97,6 +98,13 @@ async function runEngineImageToolMetered(
     // is going changes nothing for it (the run is pinned to this version).
     const workflow = await loadWorkflow(supabase, input.toolKey, null);
     if (workflow && workflow.status === "published") {
+      // TRIAL WATERMARK: a workflow stores its own intermediates and finals,
+      // none of them marked — so a trial workspace is refused here, before
+      // the run is started or anything charged. A decision that cannot be had
+      // refuses too (never "run clean").
+      const trial = await decideTrialWatermark(supabase, { workspaceId, credits: input.expectedCost });
+      if ("error" in trial) return { ok: false, error: trial.error };
+      if (trial.mode === "trial") return { ok: false, error: "trial_workflow_unavailable" };
       const started = await startWorkflowRun(supabase, userId, workspaceId, {
         toolKey: input.toolKey, workflow, hint: input.hint, referencePaths: input.referencePaths,
         aspectRatio: input.generation.aspectRatio, resolution: input.generation.resolution ?? null,

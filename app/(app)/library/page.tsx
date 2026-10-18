@@ -7,6 +7,8 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listJobs } from "@/lib/services/generator";
 import { listGalleryItems } from "@/lib/server/gallery";
+import { rpcSummary } from "@/lib/server/trial-watermark/rpc";
+import { isTrialUuid } from "@/lib/server/trial-watermark/unlock";
 import { assetAspect, aspectCss } from "@/lib/asset-ratio";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -41,11 +43,16 @@ const JOB_TONE = { queued: "neutral", processing: "info", completed: "success", 
  *
  * `?tab=tools` and `?tab=history` are unchanged — different data, different
  * shape, and both still reachable from the library's own filter sheet.
+ *
+ * `?unlock=<uuid>` is where the checkout comes back to after a plan bought
+ * from the trial-watermark paywall (R17): the grid opens the unlock dialog
+ * for that asset. Only the FORMAT is checked here; the dialog's own calls
+ * judge whose asset it is and what state it is in.
  */
 export default async function LibraryPage({ searchParams }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; unlock?: string | string[] }>;
 }) {
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, unlock: unlockParam } = await searchParams;
   const tab = tabParam === "history" ? "history" : tabParam === "tools" ? "tools" : "assets";
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
@@ -137,7 +144,15 @@ export default async function LibraryPage({ searchParams }: {
   // verbatim as its default "Zdjęcia" shelf, so the server has to hand back
   // exactly what that shelf asks for — otherwise videos land on the photo
   // shelf on first paint and nothing ever corrects them.
-  const first = await listGalleryItems(supabase, workspace.id, { limit: FIRST_PAGE, assetType: "image" });
+  // The bulk button's count rides along: a failed read is 0 (no button),
+  // never a guess.
+  const [first, trial] = await Promise.all([
+    listGalleryItems(supabase, workspace.id, { limit: FIRST_PAGE, assetType: "image" }),
+    rpcSummary(supabase, workspace.id),
+  ]);
+  const trialLocked = trial.ok ? trial.data.locked : 0;
+  const unlockRaw = Array.isArray(unlockParam) ? unlockParam[0] : unlockParam;
+  const unlockAssetId = isTrialUuid(unlockRaw) ? unlockRaw.toLowerCase() : null;
 
   return (
     <div>
@@ -157,7 +172,7 @@ export default async function LibraryPage({ searchParams }: {
         header — they have no toolbar, so it is the only thing naming them.
       */}
       <h1 className="sr-only">{t("library.title")}</h1>
-      <LibraryBrowser first={first} locale={locale} />
+      <LibraryBrowser first={first} locale={locale} trialLocked={trialLocked} unlockAssetId={unlockAssetId} />
     </div>
   );
 }

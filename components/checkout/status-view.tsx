@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Clock, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, Loader2, Image as ImageIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { checkoutStatusAction } from "@/app/actions/checkout";
 import type { StatusResult } from "@/lib/server/checkout";
@@ -39,8 +39,20 @@ import type { StatusResult } from "@/lib/server/checkout";
 /** Backs off so a slow webhook does not become a tight loop on the server. */
 const SCHEDULE = [1200, 1800, 2500, 3500, 5000, 7000, 9000, 12000];
 
-export function StatusView({ reference }: { reference: string | null }) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `unlockAssetId` — set by the server only when this purchase started on the
+ * trial-watermark paywall and that picture is still waiting (R17). It adds
+ * "Wróć do zdjęcia" beside whatever the screen says in every state but a
+ * failed one: the library's unlock dialog waits for the plan itself, so the
+ * way back is useful before the webhook lands too. It grants nothing.
+ */
+export function StatusView({ reference, unlockAssetId = null }: { reference: string | null; unlockAssetId?: string | null }) {
   const { t, locale } = useI18n();
+  const back = unlockAssetId && UUID.test(unlockAssetId)
+    ? { href: `/library?unlock=${unlockAssetId}`, label: t("checkout.wmReturnCta") }
+    : undefined;
   const [status, setStatus] = useState<StatusResult | null>(null);
   const [tries, setTries] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,7 +89,7 @@ export function StatusView({ reference }: { reference: string | null }) {
   if (state === "credited" && status?.kind === "grovnews") {
     return (
       <Shell tone="ok" title={t("checkout.statusDoneTitle")} body={t("checkout.statusGrovNewsActive")}
-        cta={{ href: "/grovnews", label: t("checkout.statusGoGrovNews") }} />
+        cta={{ href: "/grovnews", label: t("checkout.statusGoGrovNews") }} secondary={back} />
     );
   }
 
@@ -95,6 +107,7 @@ export function StatusView({ reference }: { reference: string | null }) {
               : t("checkout.statusPaid")
         }
         cta={{ href: status?.kind === "subscription" ? "/plan" : "/credits", label: t("checkout.statusGo") }}
+        secondary={back}
       />
     );
   }
@@ -115,6 +128,7 @@ export function StatusView({ reference }: { reference: string | null }) {
         title={t("checkout.statusPaidTitle")}
         body={exhausted ? t("checkout.statusSlowBody") : t("checkout.statusPaidBody")}
         cta={exhausted ? { href: "/credits", label: t("checkout.statusGo") } : undefined}
+        secondary={back}
       />
     );
   }
@@ -125,14 +139,17 @@ export function StatusView({ reference }: { reference: string | null }) {
       title={t("checkout.statusPendingTitle")}
       body={exhausted ? t("checkout.statusSlowBody") : t("checkout.statusPendingBody")}
       cta={exhausted ? { href: "/credits", label: t("checkout.statusGo") } : undefined}
+      secondary={back}
     />
   );
 }
 
-function Shell({ tone, title, body, cta }: {
+function Shell({ tone, title, body, cta, secondary }: {
   tone: "ok" | "wait" | "fail";
   title: string; body: string;
   cta?: { href: string; label: string };
+  /** A quieter second way on — the trial-watermark return. */
+  secondary?: { href: string; label: string };
 }) {
   const Icon = tone === "ok" ? CheckCircle2 : tone === "fail" ? XCircle : Clock;
   const ring =
@@ -156,6 +173,18 @@ function Shell({ tone, title, body, cta }: {
         >
           {cta.label}
         </Link>
+      )}
+      {secondary && (
+        <div className={cta ? "mt-3" : "mt-5"}>
+          <Link
+            href={secondary.href}
+            data-wm-return
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-line px-6 text-sm font-semibold text-ink transition-colors hover:bg-sunken"
+          >
+            <ImageIcon size={16} aria-hidden />
+            {secondary.label}
+          </Link>
+        </div>
       )}
     </div>
   );

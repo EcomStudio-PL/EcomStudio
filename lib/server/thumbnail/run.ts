@@ -19,6 +19,10 @@ import { finishThumbnail, FinishError, type FinishResult } from "@/lib/server/th
 import { openaiCredential, readPublishedPrompt, readRetouchOffer, readThumbnailConfig, readThumbnailState } from "@/lib/server/thumbnail/settings";
 import { sunburstCost, type SunburstCost } from "@/lib/thumbnail/cost";
 import {
+  attachTrialOriginal, decideTrialWatermark, openTrialSource, releaseTrialOriginal, sealTrialOutput, stashTrialOriginal,
+  trialStamp, type TrialDecision, type TrialMarked, type TrialSource, type TrialStash,
+} from "@/lib/server/trial-watermark/pipeline";
+import {
   OPENAI_EDIT_MAX_IMAGE_BYTES, OPENAI_EDIT_MAX_IMAGES, RANGES, STEP, THUMBNAIL_OPERATION, THUMBNAIL_SERVICE, THUMBNAIL_TOOL_KEY,
   quoteTotal, sizeEdge,
   type FinishConfig, type ThumbnailModel, type ThumbnailQuality, type ThumbnailQuote, type ThumbnailSize,
@@ -568,7 +572,8 @@ type PreparedInput = {
   retouch: { jobId: string; storedSha256: string | null; verified: boolean | null } | null;
 };
 type Source = { bucket: "product-images" | "generation-assets"; path: string; retouchJobId: string | null };
-type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string };
+/** The photos ready to send, with the trial decision they were read under. */
+type Prepared = { images: PreparedInput[]; paths: string[]; trial: TrialDecision } | { error: string };
 
 /**
  * THE COMPOSITION, in three phases:
@@ -582,7 +587,12 @@ type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string }
  *      file behind.
  */
 async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcome> {
-  const prep = await preparePhotos(ctx, steps);
+  // TRIAL WATERMARK — decided in the free phase, before a photo is read or
+  // the job inserted: a trial composition is delivered marked, and only a
+  // trial composition may read the clean originals behind marked Retusz
+  // passes. No decision → refused before the charge, never "clean".
+  const trial = await decideTrialWatermark(ctx.supabase, { workspaceId: ctx.workspaceId, credits: ctx.input.quote.thumbnailCredits });
+  const prep: Prepared = "error" in trial ? { error: trial.error } : await preparePhotos(ctx, steps, trial);
   // A photo that cannot be used is refused without queueing for the lane.
   const sent = "error" in prep ? await chargeAndCall(ctx, prep) : await inLane(ctx, prep);
   if (sent.kind === "recover") return recoverCompose(ctx, sent.attempts);
@@ -634,7 +644,7 @@ async function inLane(ctx: Ctx, prep: Prepared): Promise<Sent> {
  * The inputs, in the customer's order: the Retusz result of each photo when
  * Retusz ran, otherwise the photo as uploaded. Read a few at a time.
  */
-async function preparePhotos(ctx: Ctx, steps: StepRunRow[]): Promise<Prepared> {
+async function preparePhotos(ctx: Ctx, steps: StepRunRow[], trial: TrialDecision): Promise<Prepared> {
   const { input } = ctx;
   const sources: (Source | null)[] = input.photos.map((photo, i) => {
     if (!input.retouch) return { bucket: "product-images", path: photo, retouchJobId: null };
@@ -652,31 +662,44 @@ async function preparePhotos(ctx: Ctx, steps: StepRunRow[]): Promise<Prepared> {
     while (state.error === null) {
       const i = state.next++;
       if (i >= sources.length) return;
-      const r = await prepareOne(ctx, sources[i]!, i);
+      const r = await prepareOne(ctx, sources[i]!, i, trial.mode === "trial");
       if (typeof r === "string") { state.error ??= r; return; }
       images[i] = r;
     }
   };
   await Promise.all(Array.from({ length: Math.min(PREP_CONCURRENCY, sources.length) }, worker));
   if (state.error !== null) return { error: state.error };
-  return { images, paths: sources.map((x) => x!.path) };
+  return { images, paths: sources.map((x) => x!.path), trial };
 }
 
-async function prepareOne(ctx: Ctx, src: Source, i: number): Promise<PreparedInput | string> {
+async function prepareOne(ctx: Ctx, src: Source, i: number, trialRun: boolean): Promise<PreparedInput | string> {
   try {
     // Retusz ON: the job that produced this file must be the pass of THIS
     // photo, and its file must be the one it recorded (read before the bytes).
     const record = src.retouchJobId ? await retouchRecord(ctx, src.retouchJobId) : null;
     if (record === "unknown") return "source_unavailable";
-    if (src.retouchJobId && (!record || record.reference !== ctx.input.photos[i]
-      || (record.storedPath !== null && record.storedPath !== src.path))) {
+    if (src.retouchJobId && (!record || record.reference !== ctx.input.photos[i])) return "retouch_output_mismatch";
+    // TRIAL: a Retusz pass made for a trial workspace is stored MARKED, and a
+    // mark is never sent to the model. Its clean original is read instead —
+    // only by a composition that is itself a trial one (whose own result is
+    // marked); any other run stops here, before the charge. The database's
+    // clean hash then stands in for the pass's record, which names the
+    // marked file. A pass that never was a trial image goes the usual way.
+    const trial: TrialSource = record ? await retouchTrialSource(ctx, src, record, trialRun) : { kind: "none" };
+    if (trial.kind === "locked") return "source_locked";
+    if (trial.kind === "unavailable") return trial.reason === "mismatch" ? "retouch_output_mismatch" : "source_unavailable";
+    if (trial.kind === "none" && record && record.storedPath !== null && record.storedPath !== src.path) {
       return "retouch_output_mismatch";
     }
-    const { data: blob } = await ctx.supabase.storage.from(src.bucket).download(src.path);
-    if (!blob) return "source_unavailable";
-    const raw = Buffer.from(await blob.arrayBuffer());
+    let raw: Buffer;
+    if (trial.kind === "clean") raw = trial.bytes;
+    else {
+      const { data: blob } = await ctx.supabase.storage.from(src.bucket).download(src.path);
+      if (!blob) return "source_unavailable";
+      raw = Buffer.from(await blob.arrayBuffer());
+    }
     const rawSha = sha256(raw);
-    if (record?.storedSha256 && record.storedSha256 !== rawSha) return "retouch_output_mismatch";
+    if (trial.kind === "none" && record?.storedSha256 && record.storedSha256 !== rawSha) return "retouch_output_mismatch";
     // The stored bytes as-is for PNG/JPEG/WebP — except a photo carrying an
     // EXIF orientation flag, which is turned upright the way the customer saw
     // it in the uploader; anything else (AVIF) becomes a PNG. Both recorded
@@ -688,13 +711,31 @@ async function prepareOne(ctx: Ctx, src: Source, i: number): Promise<PreparedInp
     if (bytes.length > OPENAI_EDIT_MAX_IMAGE_BYTES) return "source_too_large";
     return {
       bytes, mime, filename: editFilename(i, mime), source: src.path, transform: prepared.transform, sourceSha: rawSha,
+      // A trial pass records the CLEAN hash it was verified against, never the marked one.
       retouch: src.retouchJobId && record
-        ? { jobId: src.retouchJobId, storedSha256: record.storedSha256, verified: record.storedSha256 ? true : null }
+        ? trial.kind === "clean"
+          ? { jobId: src.retouchJobId, storedSha256: trial.sha256, verified: true }
+          : { jobId: src.retouchJobId, storedSha256: record.storedSha256, verified: record.storedSha256 ? true : null }
         : null,
     };
   } catch {
     return "source_unsupported";
   }
+}
+
+/**
+ * The trial original behind a Retusz pass's file, if that file was a trial
+ * image: looked up by the file the step names — and, when the pass's own
+ * record names another one, by that file too (an unlock repoints the step to
+ * the clean file it promoted). Only an unlock explains the two differing; any
+ * other answer for the recorded file is a mismatch.
+ */
+async function retouchTrialSource(ctx: Ctx, src: Source, record: { storedPath: string | null }, trialRun: boolean): Promise<TrialSource> {
+  const named = await openTrialSource(ctx.supabase, { workspaceId: ctx.workspaceId, markedPath: src.path, allowLocked: trialRun });
+  if (named.kind !== "none" || record.storedPath === null || record.storedPath === src.path) return named;
+  const recorded = await openTrialSource(ctx.supabase, { workspaceId: ctx.workspaceId, markedPath: record.storedPath, allowLocked: trialRun });
+  if (recorded.kind === "none" || (recorded.kind === "clean" && recorded.status === "unlocked")) return recorded;
+  return { kind: "unavailable", reason: "mismatch" };
 }
 
 /**
@@ -723,7 +764,7 @@ async function retouchRecord(ctx: Ctx, jobId: string):
 
 type Called = {
   kind: "called"; t0: number; jobId: string; eventId: string; wallet: string;
-  promptSha256: string; images: PreparedInput[]; outcome: SunburstOutcome;
+  promptSha256: string; images: PreparedInput[]; outcome: SunburstOutcome; trial: TrialDecision;
 };
 type Sent = Called | { kind: "late" | "busy" | "failed" | "lost" | "again" | "retry" } | { kind: "recover"; attempts: number };
 
@@ -812,6 +853,7 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
     metadata: {
       operation: THUMBNAIL_OPERATION, quantity: 1, run_id: runId, photos: input.photos.length,
       retouched: input.retouch, quality: input.config.quality, size: input.config.size,
+      ...trialStamp(prep.trial),
     },
     creditsCharged: input.quote.thumbnailCredits,
   });
@@ -834,7 +876,7 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
   });
   return {
     kind: "called", t0, jobId: job.id, eventId: usage.eventId, wallet,
-    promptSha256: prompt.sha256, images: prep.images, outcome,
+    promptSha256: prompt.sha256, images: prep.images, outcome, trial: prep.trial,
   };
 }
 
@@ -923,7 +965,7 @@ async function recordAndDeliver(ctx: Ctx, c: Called): Promise<ComposeOutcome> {
   await progress(ctx, { stage: "finish" });
   return deliver(ctx, {
     jobId: c.jobId, eventId: c.eventId, wallet: c.wallet, image: outcome.image, mime: outcome.mime,
-    costMicros: costMicros ?? null, requestId: outcome.requestId, jobRequest, response,
+    costMicros: costMicros ?? null, requestId: outcome.requestId, jobRequest, response, trial: c.trial,
   });
 }
 
@@ -1009,6 +1051,7 @@ const interruptedCode = (ctx: Ctx) => (ctx.run.error === "cancel_requested" ? "c
 type Delivery = {
   jobId: string; eventId: string; wallet: string; image: Buffer; mime: EditMime;
   costMicros: number | null; requestId: string | null; jobRequest: Record<string, Json>; response: Record<string, unknown>;
+  trial: TrialDecision;
 };
 
 /**
@@ -1027,6 +1070,8 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   if (b.state === "busy") b = await beginStep(supabase, runId, owner, STEP.finish, -1, "finish", "tool", 120);
   const begun = b.state === "run";
   const attempts = b.state === "run" ? b.attempts : 0;
+  /** A trial composition's clean original, once kept (released on failure). */
+  let original: TrialStash | null = null;
   const fail = async (code: string): Promise<ComposeOutcome> => {
     // Nothing refunded stays in the library or readable: its library rows go
     // first (a row left behind would later count as a delivery), then its
@@ -1034,6 +1079,8 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
     // releases all of it.
     if (!(await removeLibraryRows(ctx, d.jobId))) return "busy";
     if (!(await removeJobFiles(ctx, d.jobId))) return "busy";
+    // …and a kept clean original with them: not delivered, not kept.
+    if (original) await releaseTrialOriginal(supabase, original.originalId, original.objectPath);
     await failUsage(supabase, {
       serverToken: dispatchToken(), eventId: d.eventId, walletId: d.wallet, error: code, apiCostUsdMicros: d.costMicros ?? undefined,
     });
@@ -1061,6 +1108,23 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   } catch (e) {
     return fail(e instanceof FinishError ? e.code : "finish_failed");
   }
+  // TRIAL WATERMARK — after the finish and its verification (which judge the
+  // clean file), the last thing done to the pixels: the library gets the
+  // MARKED file, the clean one is sealed into trial-originals. Either not
+  // possible → refunded like any other failed finish, never delivered clean.
+  let marked: TrialMarked | null = null;
+  if (d.trial.mode === "trial") {
+    marked = await sealTrialOutput(fin.bytes, d.trial.config);
+    if (!marked) return fail("watermark_failed");
+    original = await stashTrialOriginal(supabase, {
+      workspaceId: ctx.workspaceId, jobId: d.jobId, operation: THUMBNAIL_OPERATION, markedPath: null, clean: fin.bytes, marked,
+    });
+    if (!original) return fail("storage_failed");
+  }
+  // What the library stores: the marked file of a trial run, else the finish.
+  const out = marked
+    ? { bytes: marked.bytes, mime: marked.mime, sha256: marked.sha256, postprocess: [...fin.postprocess, "trial_watermark"] }
+    : { bytes: fin.bytes, mime: fin.mime, sha256: fin.sha256, postprocess: fin.postprocess };
   // The job is COMPLETED first — before any file or library row exists: a
   // job whose file is in the library is always one the library shows (also
   // when the ledger's reconciler closes its charge), and a job that cannot
@@ -1072,12 +1136,14 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
     provider_output: [{
       provider_returned_width: d.response.width ?? null, provider_returned_height: d.response.height ?? null,
       provider_mime: d.mime, provider_bytes: d.image.length, provider_sha256: d.response.sha256 ?? null,
-      stored_width: fin.width, stored_height: fin.height, stored_sha256: fin.sha256,
-      transformed_after_provider: true, postprocess: fin.postprocess,
+      stored_width: fin.width, stored_height: fin.height, stored_sha256: out.sha256,
+      transformed_after_provider: true, postprocess: out.postprocess,
+      // A flag only: the mark's parameters stay with the original.
+      ...(marked ? { trial_watermark: true } : {}),
     }] as unknown as Json,
   });
   if (!completed) return fail("library_failed");
-  const path = await storeNew(ctx, d.jobId, fin.ext, fin.bytes, fin.mime);
+  const path = await storeNew(ctx, d.jobId, fin.ext, out.bytes, out.mime);
   if (!path) return fail("storage_failed");
 
   const { data: gen, error: genErr } = await supabase.from("generations").insert({
@@ -1086,9 +1152,14 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   if (genErr || !gen) return fail("library_failed");
   const { data: asset, error: assetErr } = await supabase.from("generation_assets").insert({
     generation_id: gen.id, asset_type: "image", storage_path: path, width: fin.width, height: fin.height,
-    metadata: { tool: THUMBNAIL_TOOL_KEY, postprocess: fin.postprocess } as Json,
+    metadata: { tool: THUMBNAIL_TOOL_KEY, postprocess: out.postprocess } as Json,
   }).select("id").single();
   if (assetErr || !asset) return fail("library_failed");
+  // The original is bound to the asset showing its marked file (locked); not
+  // bound now → the database's sweep heals it from the job's single asset.
+  if (original && marked) {
+    await attachTrialOriginal(supabase, { originalId: original.originalId, assetId: asset.id, markedPath: path, markedSha256: marked.sha256 });
+  }
 
   // DELIVERED — recorded where only the server writes (the run), before the
   // charge closes: library rows a member can delete never decide a refund.
@@ -1098,7 +1169,7 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
     providerRequestId: d.requestId,
     executor: { providerSlug: "openai", modelSlug: input.config.model },
   });
-  await derivatives(supabase, asset.id, path, fin.bytes);
+  await derivatives(supabase, asset.id, path, out.bytes);
   // The provider's own bytes are NOT kept in the customer's folder: their
   // hash, size and dimensions are in the admin record (step output).
   await supabase.from("notifications").insert({
@@ -1118,10 +1189,11 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   if (!(await chargeClosed(ctx, d.jobId))) return "busy";
   const delivered = {
     path, job_id: d.jobId, generation_id: gen.id, asset_id: asset.id,
-    width: fin.width, height: fin.height, mime: fin.mime, bytes: fin.bytes.length, sha256: fin.sha256,
+    width: fin.width, height: fin.height, mime: out.mime, bytes: out.bytes.length, sha256: out.sha256,
     source: fin.source, inner: fin.inner, margin_px: fin.marginPx, checks: fin.checks,
     finish: { target: fin.config.target, margin_percent: fin.config.marginPercent, brightness_percent: fin.config.brightnessPercent, kernel: fin.config.kernel, format: fin.config.format },
-    postprocess: fin.postprocess,
+    postprocess: out.postprocess,
+    ...(marked ? { trial_watermark: true } : {}),
   };
   await finishStep(supabase, runId, owner, STEP.finish, -1, {
     status: "succeeded", attempts: attempts + 1, cost: { basis: "estimated", usdMicros: 0 },

@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
+import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { syncNowAction } from "@/app/actions/mail";
 import { runBudgetCheckAction } from "@/app/actions/ai-budgets";
 import { expireAccountBlocks } from "@/lib/server/account-blocks";
 import { reconcileStaleUsage } from "@/lib/services/usage";
 import { dispatchToken } from "@/lib/server/integrations";
 import { createClient } from "@/lib/supabase/server";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import {
   popularityIsStale, readToolPopularity, refreshToolPopularity,
 } from "@/lib/server/tool-popularity";
+import { purgeTrialOriginals } from "@/lib/server/trial-watermark/unlock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,6 +129,18 @@ export async function GET() {
   */
   const reconciled = await reconcileStale().catch(() => null);
 
+  /*
+    …and so is the retention of the trial watermark's clean originals (R6).
+
+    pg_cron expires them every 15 minutes and destroys their keys at once —
+    that is the guarantee. What SQL cannot do is delete a Storage object, so
+    the ciphertext itself is removed here, once a day, as ANON: a client with
+    no session, allowed by policy to touch only a blob that is key-destroyed
+    and armed by the purge list a moment earlier. Its own catch and its own
+    time budget, so neither the mailbox nor this can fail the other.
+  */
+  const trialPurge = await purgeTrialOriginalsNow().catch(() => ({ error: "error" }));
+
   if (!result.ok) {
     // A disabled or unconfigured integration is a state, not a server fault:
     // answering 500 would turn a normal "not set up yet" into a paging alert.
@@ -133,6 +148,7 @@ export async function GET() {
       ok: false, reason: result.error, popularity,
       blocksLifted: blocks.ok ? blocks.lifted : null,
       reconciled,
+      trialPurge,
     }, { status: 200 });
   }
   /*
@@ -162,7 +178,22 @@ export async function GET() {
     blocksLifted: blocks.ok ? blocks.lifted : null,
     reconciled,
     popularity,
+    trialPurge,
   });
+}
+
+/**
+ * THE TRIAL-ORIGINALS PURGE, with a client of its own that has NO SESSION:
+ * an admin pressing "sync now" must not purge as themselves, and the
+ * scheduler has no session to begin with. ~15 s of the minute; whatever is
+ * left is purged tomorrow. Counts only in the answer — never a path.
+ */
+async function purgeTrialOriginalsNow() {
+  const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const report = await purgeTrialOriginals(anon, { budgetMs: 15_000 });
+  return { listed: report.listed, removed: report.removed, marked: report.marked, error: report.error };
 }
 
 /**

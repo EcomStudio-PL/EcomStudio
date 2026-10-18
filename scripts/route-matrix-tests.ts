@@ -129,6 +129,23 @@ check(
     : "",
 );
 
+/*
+  THE TRIAL-WATERMARK ROUTES, registered by name. Each hands out (or makes)
+  a CLEAN original, so each must be a signed-in customer's route, refuse a
+  paused account, validate its ids, and never be cached (R36).
+*/
+const TRIAL_ORIGINALS: readonly string[] = [
+  "/api/trial-originals/status", "/api/trial-originals/unlock", "/api/trial-originals/unlock-all",
+];
+for (const route of TRIAL_ORIGINALS) {
+  const src = routes.find((r) => r.route === route)?.src ?? "";
+  check(`${route} exists and is AUTHENTICATED`, authedRoutes.includes(route), "missing, or not classified as a customer route");
+  check(`${route} refuses a paused account, validates ids, rate-limits and is no-store`,
+    /accountBlockedResponse\(supabase, user\.id\)/.test(src) && /isTrialUuid\(/.test(src)
+    && /rateLimit\(/.test(src) && /"Cache-Control":\s*"no-store"/.test(src)
+    && /export const runtime = "nodejs"/.test(src) && /export const maxDuration = \d+/.test(src));
+}
+
 console.log("\nB. EVERY /api/admin ROUTE RE-CHECKS THE ROLE ITSELF");
 // The admin LAYOUT cannot protect a route: no layout runs for an API call.
 // Without an in-route check, any signed-in customer could call these.

@@ -133,6 +133,15 @@ const nextConfig = {
   // dynamic requires the bundler cannot follow, so they stay external too —
   // bundled, they fail at runtime on the first IMAP connection.
   serverExternalPackages: ['sharp', 'imapflow', 'mailparser'],
+  // THE TRIAL WATERMARK IS READ FROM DISK, NOT SERVED. Its PNG sits next to
+  // the module that loads it (lib/server/trial-watermark/asset.ts), outside
+  // public/, and is read with fs at a path built at runtime — which the file
+  // tracer cannot follow. Without this line no serverless function would carry
+  // it, every trial image would fail its asset check and be refused (never
+  // delivered clean). '/**' because every producer route can reach it.
+  outputFileTracingIncludes: {
+    '/**': ['./lib/server/trial-watermark/assets/*.png'],
+  },
   experimental: {
     // Replying with an attachment posts the file through a server action, and
     // the 1MB default rejects anything past a screenshot. 4.5mb is where Vercel

@@ -92,6 +92,7 @@ function item(i: number): GalleryItem {
     favorite: i % 5 === 0,
     note: null,
     createdAt: new Date(Date.UTC(2026, 0, 1 + (i % 28))).toISOString(),
+    trial: null,
   };
 }
 

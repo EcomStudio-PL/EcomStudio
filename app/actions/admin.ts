@@ -7,6 +7,7 @@ import { keepStructuredFields } from "@/lib/services/admin";
 import { writableCapabilities, type PlanCapabilities } from "@/lib/plans/capabilities";
 import { syncPrice } from "@/lib/server/stripe-pricing";
 import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
+import { TRIAL_WATERMARK_SETTING_KEY } from "@/lib/trial-watermark/config";
 
 type Result = { ok: boolean; error?: string };
 
@@ -397,6 +398,9 @@ export async function saveSettingAction(key: string, value: Record<string, unkno
     // The catalogue layout is written only through its own validated actions
     // (app/actions/tool-layout.ts), never as a raw settings blob.
     if (key === TOOLS_LAYOUT_KEY) return { ok: false, error: "generic" };
+    // Likewise the trial watermark: only saveTrialWatermarkAction writes it
+    // (strict validation, audit, a confirmed switch-on).
+    if (key === TRIAL_WATERMARK_SETTING_KEY) return { ok: false, error: "generic" };
     const { supabase } = await requireAdmin();
     const { data: existing } = await supabase.from("app_settings")
       .select("value").eq("key", key).maybeSingle();

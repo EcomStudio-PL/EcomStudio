@@ -2,6 +2,8 @@ import "server-only";
 import { QUALITIES } from "@/lib/ai/types";
 import { GALLERY_PAGE_MAX, GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import type { Client } from "@/lib/services/workspace";
+import { rpcStates } from "@/lib/server/trial-watermark/rpc";
+import type { GalleryTrial } from "@/lib/trial-watermark/types";
 
 /**
  * GENERATION GALLERY — the one server-side projection every gallery surface
@@ -81,6 +83,13 @@ export type GalleryItem = {
   favorite: boolean;
   note: string | null;
   createdAt: string;
+  /**
+   * The trial watermark state of this file (locked / unlocked / expired /
+   * unavailable), or null for an ordinary image — and null when the state
+   * could not be read, so a failed read shows a plain tile. It only decides
+   * what the tile OFFERS; the unlock route judges everything again.
+   */
+  trial: GalleryTrial | null;
 };
 
 export type GalleryPage = { items: GalleryItem[]; nextCursor: string | null };
@@ -307,7 +316,20 @@ export async function listGalleryItems(
         favorite: r.favorite,
         note: r.user_note,
         createdAt: r.created_at,
+        trial: null,
       });
+    }
+  }
+
+  // TRIAL WATERMARK — ONE state read for the whole page, after projection
+  // (never one per tile). Only the assets of the caller's own workspaces
+  // come back; anything else, or a failed read, stays `null`.
+  const states = await rpcStates(supabase, items.map((i) => i.assetId));
+  if (states.ok && states.data.length > 0) {
+    const byAsset = new Map(states.data.map((s) => [s.assetId, s]));
+    for (const item of items) {
+      const s = byAsset.get(item.assetId);
+      if (s) item.trial = { state: s.state, expiresAt: s.expiresAt, daysLeft: s.daysLeft };
     }
   }
 

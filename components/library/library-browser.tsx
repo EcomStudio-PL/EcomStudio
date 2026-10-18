@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDownAZ, Check, ChevronDown, Download, Film, Heart, Image as ImageIcon,
-  LayoutGrid, List, Loader2, Maximize2, Play, SlidersHorizontal, Trash2, Wrench, X,
+  LayoutGrid, List, Loader2, Lock, Maximize2, Play, SlidersHorizontal, Trash2, Wrench, X,
 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
@@ -15,6 +15,10 @@ import { assetAspect, aspectCss } from "@/lib/asset-ratio";
 import { useRatioGrid } from "@/components/gallery/ratio-grid";
 import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { cn } from "@/lib/utils";
+import { useTrialUnlock } from "@/components/trial-watermark/unlock-dialog";
+import { useTrialBulkUnlock } from "@/components/trial-watermark/bulk-dialog";
+import { TrialLockButton, TrialLockChip, useTrialDays } from "@/components/trial-watermark/lock";
+import { patchAsset, type TrialAssetPatch } from "@/components/trial-watermark/model";
 
 /**
  * BIBLIOTEKA — the asset manager.
@@ -74,7 +78,14 @@ const PAGE = 24;
 /** The one shelf the server renders into the HTML: photos, newest first. */
 const SERVER_KEY = libraryKey({ type: "image", fav: false, order: "desc" });
 
-export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: string }) {
+export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId = null }: {
+  first: GalleryPage;
+  locale: string;
+  /** Locked trial originals of the workspace (the page's summary); 0 when none or unknown. */
+  trialLocked?: number;
+  /** `?unlock=<uuid>` — back from the checkout for this image: open its unlock dialog. */
+  unlockAssetId?: string | null;
+}) {
   const { t } = useI18n();
 
   const [shelf, setShelf] = useState<Shelf>("image");
@@ -390,6 +401,54 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
     finally { setBusy(false); }
   }
 
+  /* ── the trial watermark ───────────────────────────────────────────────── */
+
+  // How many locked images the workspace still has. The page counts them on
+  // the server; every unlock here counts down, so the bulk button never
+  // offers what is already done.
+  const [lockedLeft, setLockedLeft] = useState(trialLocked);
+  useEffect(() => { setLockedLeft(trialLocked); }, [trialLocked]);
+
+  /** One image now points at its clean file — here, and (via the hooks) in
+   *  every cached shelf. Per ASSET: the job's other images are untouched. */
+  const applyUnlock = useCallback((assetId: string, patch: TrialAssetPatch) => {
+    setItems((list) => patchAsset(list, assetId, patch));
+  }, []);
+  const trialUnlock = useTrialUnlock({
+    onUnlocked: (assetId, patch, { wasLocked }) => {
+      applyUnlock(assetId, patch);
+      if (wasLocked) setLockedLeft((n) => Math.max(0, n - 1));
+    },
+  });
+  const trialBulk = useTrialBulkUnlock({ onUnlocked: applyUnlock, onSettled: setLockedLeft });
+
+  function unlockAll() {
+    // The paywall, if there is one, is shown once — for a locked image the
+    // customer can see. With none on screen the server is asked directly.
+    trialBulk.start(items.find((i) => i.trial?.state === "locked") ?? null, lockedLeft);
+  }
+
+  /**
+   * BACK FROM THE CHECKOUT. `?unlock=<uuid>` opens that image's dialog in its
+   * waiting state (the plan activates when the webhook lands). The parameter
+   * is dropped from the address at once, so a reload or a shared link does
+   * not reopen it; the page's own server render is not repeated for that.
+   */
+  const unlockOpened = useRef(false);
+  useEffect(() => {
+    if (!unlockAssetId || unlockOpened.current) return;
+    unlockOpened.current = true;
+    const known = items.find((i) => i.assetId === unlockAssetId);
+    trialUnlock.start(known ?? { assetId: unlockAssetId }, "checkout_return", { confirming: true });
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("unlock");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    } catch { /* the address keeps the parameter; nothing else depends on it */ }
+    // Once per arrival — `items` is read for a preview, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlockAssetId]);
+
   /* ── the toolbar ───────────────────────────────────────────────────────── */
 
   const tile = DENSITY[density];
@@ -452,6 +511,17 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
         )}
 
         <span className="flex-1" />
+
+        {/* "Usuń znak wodny ze wszystkich" — every locked image of the
+            workspace, not just the loaded page or the selection. On a phone
+            it takes its own last line of the bar instead of squeezing it. */}
+        {shelf === "image" && lockedLeft > 0 && (
+          <button type="button" onClick={unlockAll} disabled={trialBulk.open} data-trial-unlock-all
+            className="order-last inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[rgb(var(--accent)/0.45)] bg-[rgb(var(--accent)/0.12)] px-3.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-[rgb(var(--accent)/0.18)] sm:order-none sm:w-auto">
+            <Lock size={14} aria-hidden className="text-accent" />
+            {t("genv3.wm.bulkCta", { n: lockedLeft })}
+          </button>
+        )}
 
         {/* The count only exists once there is something to count — on every
             width, not just on a phone. */}
@@ -544,6 +614,7 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
               onOpen={() => setPreview(item)}
               onFavorite={() => toggleFavorite(item)}
               onDownload={() => void downloadOne(item)}
+              onUnlock={() => trialUnlock.start(item, "library")}
               t={t}
             />
           ))}
@@ -567,6 +638,7 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
               onPick={() => togglePick(item.assetId)}
               onOpen={() => setPreview(item)}
               onFavorite={() => toggleFavorite(item)}
+              onUnlock={() => trialUnlock.start(item, "library")}
               when={fmt.format(new Date(item.createdAt))}
               t={t}
             />
@@ -632,9 +704,13 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
               patchLibrary(apply);
               setPreview((p) => (p ? { ...p, note } : p));
             }}
+            onUnlock={(g) => { const full = items.find((i) => i.assetId === g.assetId); trialUnlock.start(full ?? g, "lightbox"); }}
           />
         );
       })()}
+
+      {trialUnlock.dialog}
+      {trialBulk.dialog}
     </div>
   );
 }
@@ -687,7 +763,7 @@ function Segmented({ options, value, onChange, compact = false }: {
  * appears on hover. Nothing is written across the picture: a library of
  * captions is a file listing, and this is meant to be looked at.
  */
-function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, t }: {
+function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, onUnlock, t }: {
   item: GalleryItem;
   picked: boolean;
   /** The grid's row span and gutter for this tile. */
@@ -696,6 +772,8 @@ function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, t }
   onOpen: () => void;
   onFavorite: () => void;
   onDownload: () => void;
+  /** "Usuń znak wodny" — the chip shows only on a locked trial image. */
+  onUnlock: () => void;
   t: T;
 }) {
   // THE BOX IS THE FILE'S OWN SHAPE. `aspect-ratio` rather than a computed
@@ -773,6 +851,10 @@ function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, t }
         </span>
       )}
 
+      {/* The lock, bottom-right — the corner the tile leaves empty. Visible
+          on touch too, unlike the hover rail. */}
+      <TrialLockChip trial={item.trial} onUnlock={onUnlock} />
+
       {/* HOVER RAIL — pointer devices only. On touch the tile opens and the
           preview carries the same actions, which is one place instead of a
           rail that needs a long press to reach. */}
@@ -805,10 +887,11 @@ function RailButton({ children, label, onClick, href }: {
 
 /** The list view: the same items, one line each, for when the picture matters
  *  less than the date. */
-function Row({ item, picked, onPick, onOpen, onFavorite, when, t }: {
+function Row({ item, picked, onPick, onOpen, onFavorite, onUnlock, when, t }: {
   item: GalleryItem; picked: boolean; onPick: () => void; onOpen: () => void;
-  onFavorite: () => void; when: string; t: T;
+  onFavorite: () => void; onUnlock: () => void; when: string; t: T;
 }) {
+  const days = useTrialDays(item.trial);
   return (
     <li className={cn("flex items-center gap-3 px-2.5 py-2 transition-colors", picked ? "bg-[rgb(var(--accent)/0.08)]" : "hover:bg-raised/60")}>
       <button type="button" onClick={onPick} role="checkbox" aria-checked={picked}
@@ -823,7 +906,9 @@ function Row({ item, picked, onPick, onOpen, onFavorite, when, t }: {
           className="h-11 w-11 shrink-0 rounded-lg bg-raised object-contain" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold text-ink">{item.product ?? item.model ?? "—"}</span>
-          <span className="block truncate text-[11.5px] text-faint">{when}</span>
+          <span className="block truncate text-[11.5px] text-faint">
+            {when}{days && <span className="text-accent"> · {days}</span>}
+          </span>
         </span>
       </button>
       {item.assetType === "video" && (
@@ -831,6 +916,7 @@ function Row({ item, picked, onPick, onOpen, onFavorite, when, t }: {
           {formatDuration(item.durationSec)}
         </span>
       )}
+      <TrialLockButton trial={item.trial} onUnlock={onUnlock} className="h-8 w-8" />
       <button type="button" onClick={onFavorite} aria-pressed={item.favorite}
         aria-label={item.favorite ? t("library.unfavorite") : t("library.favorite")}
         className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",

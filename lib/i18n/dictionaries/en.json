@@ -947,6 +947,181 @@
       "tokens": "Base cost = the official output-image price. A job's real cost adds input tokens (${in} / 1M) and thinking (${out} / 1M) only when Google returns usage — see History.",
       "noTokens": "Base cost = the official output-image price. No token price set — reported tokens are not added.",
       "fx": "Revenue = credits × {credit}. The USD/PLN rate {fx} is for cost analysis only."
+    },
+    "trialWm": {
+      "title": "Watermark on trial generations",
+      "sub": "Images from workspaces that only use free credits get the GrovBase watermark. The clean original is kept encrypted and unlocks once a plan is purchased.",
+      "stateOn": "On",
+      "stateOff": "Off (dormant)",
+      "assetOk": "Mark file verified",
+      "assetBad": "Mark file problem",
+      "saved": "Watermark settings saved.",
+      "enabledToast": "Watermark switched on for new trial generations.",
+      "unsaved": "Unsaved watermark changes",
+      "invalidField": "Fix the field: {field}",
+      "fixFirst": "Fix the highlighted field first.",
+      "offPending": "Once saved, new trial generations stop getting the watermark. Existing images do not change.",
+      "lookTitle": "Mark appearance",
+      "keepTitle": "Originals and links",
+      "staffTitle": "Staff and the test account",
+      "range": "Range {min}–{max}",
+      "confirmTitle": "Switch the watermark on?",
+      "confirmBody": "From now on every new generation in workspaces without a payment gets the GrovBase watermark, and its clean original is kept encrypted for {days} days. Paid AI tools and Workflow ON will be blocked for them. The form is saved right away. Earlier images do not change.",
+      "confirmCta": "Switch on and save",
+      "f": {
+        "enabled": "Watermark on new trial generations",
+        "widthRatio": "Mark width",
+        "opacity": "Mark opacity",
+        "luminanceThreshold": "Brightness threshold",
+        "darkColor": "Dark variant colour",
+        "glowRadiusRatio": "Glow radius",
+        "glowOpacity": "Glow opacity",
+        "originalRetentionDays": "Original retention (days)",
+        "signedUrlTtlSeconds": "“Download” link lifetime after unlock (s)",
+        "exemptStaff": "Exempt staff",
+        "forceTrialUserIds": "Force trial mode for accounts"
+      },
+      "h": {
+        "enabled": "Off means dormant (the default). Switching on needs a confirmation and saves the form immediately.",
+        "widthRatio": "Share of the image's shorter side (0.5 = half). The mark is never enlarged beyond its source file.",
+        "opacity": "Opacity multiplier of the mark itself (1 = fully opaque).",
+        "luminanceThreshold": "When the area under the mark is brighter than the threshold, the mark is dark; otherwise it is white.",
+        "darkColor": "Format #rrggbb. The light variant is the mark file's own white.",
+        "glowRadiusRatio": "Share of the mark's width; 0 = no glow.",
+        "glowOpacity": "The glow uses the opposite colour of the mark so it reads on any background; 0 = no glow.",
+        "originalRetentionDays": "Applies to originals created after saving; existing ones keep their date.",
+        "signedUrlTtlSeconds": "Only the “Download” link in the unlock dialog. Unlocked library files use the usual link lifetimes.",
+        "exemptStaff": "The image is clean when both the person generating and the workspace owner are admins. Switch off to test trial mode on an admin account.",
+        "forceTrialUserIds": "Account UUIDs (Admin → Users) that get the trial mode even while the feature is off and despite the staff exemption — e.g. one test account to check everything on PROD. The list never overrides a payment."
+      },
+      "inv": {
+        "range": "Enter a number from {min} to {max}.",
+        "rangeInt": "Enter a whole number from {min} to {max}.",
+        "darkColor": "Enter a colour as #rrggbb.",
+        "boolean": "This value must be on or off.",
+        "forceTrialUserIds": "Each entry must be an account UUID, with no repeats; at most {n} accounts."
+      },
+      "force": {
+        "add": "Add",
+        "count": "{n} of {max}",
+        "none": "No accounts are forced into trial mode.",
+        "notUuid": "This is not an account UUID.",
+        "duplicate": "This account is already on the list.",
+        "full": "The list already has {n} accounts.",
+        "remove": "Remove {id} from the list"
+      },
+      "err": {
+        "forbidden": "Administrator permission required.",
+        "invalid": "One of the fields has an invalid value — nothing was saved.",
+        "migration_pending": "Migration 0143 has not been applied to this database yet — the watermark settings cannot be saved.",
+        "confirm_required": "Switching the watermark on has to be confirmed.",
+        "asset_unavailable": "The watermark file fails its check — switching on would refuse every trial generation.",
+        "server_key_missing": "The server key (GROVBASE_SERVER_KEY) is missing — originals cannot be encrypted, so switching on would refuse every trial generation."
+      },
+      "policy": {
+        "title": "Policy",
+        "who": "The watermark goes on new images from generations that charge credits, in workspaces that only ever used free credits (welcome bonus, bonuses, adjustments, refunds). Runs that cost 0 credits never get it. Paid AI tools and Workflow ON are blocked for such workspaces before any credits are taken.",
+        "paid": "A workspace generates without the mark if it: has an active paid subscription now; or paid more than zero through Stripe for credits that were granted (even if refunded later — a disputed payment does not count); or received a top-up recorded by an administrator. The database decides on every run, before credits are taken.",
+        "staff": "Staff: with “Exempt staff” on, the image is clean when both the person generating and the workspace owner have the admin role. An account on the “Force trial mode” list gets the trial mode even while the feature is off and loses the staff exemption — it is for a test on PROD with one account and never overrides a payment.",
+        "keep": "The clean original is kept encrypted for {days} days from creation (the date is stored with each original). Then its key is destroyed and the file is removed by the daily clean-up. The watermarked image stays in the library.",
+        "unlock": "Unlocking requires an active paid subscription, also checked live with Stripe. An unlocked image becomes an ordinary library file, without the mark, for good.",
+        "enabled": "“On” applies only to new customer generations (accounts on the “Force trial mode” list run in trial mode whatever the switch says). Switching off exposes, extends or deletes nothing — existing images keep their state and date."
+      },
+      "asset": {
+        "title": "Mark check",
+        "file": "Mark file",
+        "ok": "Matches the approved file",
+        "size": "Dimensions",
+        "serverKey": "Server key",
+        "serverKeyOk": "Available",
+        "serverKeyMissing": "Missing",
+        "asset_missing": "The mark file is missing on the server",
+        "asset_mismatch": "The file differs from the approved one (SHA-256 or dimensions)",
+        "asset_unreadable": "The mark file cannot be read",
+        "sha": "SHA-256"
+      },
+      "stats": {
+        "now": "Originals now",
+        "title": "Last {days} days",
+        "unavailable": "Statistics are unavailable (trial_watermark_stats did not answer).",
+        "liveLine": "Unlockable: {live} · expiring within 24 h: {soon}"
+      },
+      "status": {
+        "locked": "Locked",
+        "unlocked": "Unlocked",
+        "expired": "Expired",
+        "deleted": "Deleted",
+        "orphaned": "Orphaned",
+        "pending": "In progress"
+      },
+      "funnel": {
+        "clicked": "Clicked “Remove watermark”",
+        "paywall": "Paywall opened",
+        "planSelected": "Plan selected",
+        "confirmed": "Subscription confirmed",
+        "note": "Counts of workspaces; paywall opens: {paywalls}."
+      },
+      "items": {
+        "created": "New originals",
+        "unlocked": "Unlocked",
+        "bulk": "Bulk unlocks",
+        "expired": "Expired",
+        "converted": "Conversions"
+      },
+      "jobs": {
+        "title": "Retention",
+        "sweep": "Sweep (pg_cron, every 15 min)",
+        "sweepAbsent": "pg_cron is unavailable — the daily cron runs the sweep.",
+        "sweepUnreadable": "The job history cannot be read.",
+        "sweepLast": "Last: {at} ({status}) · last successful: {ok}",
+        "never": "Has not run yet.",
+        "purge": "File removal (daily cron)",
+        "purgeLast": "{at} · listed {listed}, removed {removed}, marked {marked}",
+        "purgeError": "Error: {code}",
+        "backlog": "Files awaiting removal"
+      },
+      "pv": {
+        "title": "Preview on a real photo",
+        "sub": "The same engine as generations, with the values typed in the form (unsaved ones too). Nothing is stored and no AI is used.",
+        "upload": "Choose file",
+        "library": "From the media library",
+        "libraryEmpty": "The media library has no PNG, JPEG or WebP photos.",
+        "libraryTooLarge": "Larger than 10 MB",
+        "run": "Show preview",
+        "noSource": "No photo selected.",
+        "stale": "The values changed since this preview — show it again.",
+        "alt": "Preview of the photo with the watermark",
+        "variant": "Variant",
+        "variantDark": "Dark",
+        "variantLight": "Light",
+        "luminance": "Area brightness",
+        "luminanceValue": "{value} (threshold {threshold})",
+        "mark": "Mark",
+        "position": "Position (left, top)",
+        "glow": "Glow",
+        "image": "Image",
+        "bytes": "File",
+        "shown": "Preview",
+        "err": {
+          "invalid": "Fix the mark appearance values.",
+          "no_image": "Choose a photo.",
+          "bad_source": "Choose one photo: a file or an item from the media library.",
+          "too_large": "The photo is too large (limit 10 MB or 50 million pixels).",
+          "uploadTooLarge": "The file is {size} MB — uploads are limited to {max} MB. Pick a larger photo (up to 10 MB) from the media library.",
+          "not_found": "This file was not found in the media library.",
+          "unsupported_format": "Only PNG, JPEG and WebP are supported.",
+          "unreadable": "This photo cannot be read.",
+          "too_small": "The photo is too small (shorter side under 16 px)."
+        },
+        "fileLabel": "{name} · {size} MB",
+        "markValue": "{w} × {h} px · scale {scale}",
+        "positionValue": "{left}, {top} px",
+        "glowValue": "{px} px · opacity {opacity}",
+        "imageValue": "{w} × {h} px · {format}",
+        "bytesValue": "{from} MB → {to} MB",
+        "shownValue": "{w} × {h} px JPEG · {ms} ms"
+      },
+      "dims": "{w} × {h} px"
     }
   },
   "support": {
@@ -2013,7 +2188,10 @@
       "workflow_unavailable": "This tool is temporarily unavailable — your credits were returned.",
       "run_create_failed": "Could not start — your credits were returned.",
       "network_error": "Connection lost. The result will appear in the gallery when it is ready.",
-      "price_changed": "The price has changed — refresh the page to see the current one. No credits were taken."
+      "price_changed": "The price has changed — refresh the page to see the current one. No credits were taken.",
+      "trial_check_failed": "Your plan could not be checked just now. Nothing was charged — please try again in a moment.",
+      "trial_workflow_unavailable": "This tool mode is available on a paid plan. Nothing was charged.",
+      "trial_tool_unavailable": "This tool is available on a paid plan. Nothing was charged."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -2436,7 +2614,9 @@
       "provider_unreachable": "Cannot reach the provider.",
       "network_error": "Connection error.",
       "tool_unavailable": "Tool temporarily off.",
-      "processing_failed": "Processing failed."
+      "processing_failed": "Processing failed.",
+      "trial_check_failed": "Your plan could not be checked just now. Nothing was charged — please try again in a moment.",
+      "trial_tool_unavailable": "This tool is available on a paid plan. Nothing was charged."
     },
     "upscale": {
       "name": "Upscale",
@@ -3825,7 +4005,63 @@
     "feedback.reason.too_artificial": "Too artificial",
     "feedback.reason.other": "Other",
     "moveEarlier": "Move photo {n} earlier",
-    "moveLater": "Move photo {n} later"
+    "moveLater": "Move photo {n} later",
+    "wm": {
+      "unlock": "Remove watermark",
+      "dialogLabel": "Remove watermark",
+      "daysShortOne": "1 day",
+      "daysShort": "{n} days",
+      "availableOne": "Watermark-free version available for 1 more day",
+      "available": "Watermark-free version available for {n} more days",
+      "availablePlain": "The watermark-free version is still available",
+      "expired": "The watermark-free version is no longer available",
+      "unavailable": "No watermark-free version is available for this image",
+      "lastDay": "Less than 24 hours left — after that the watermark-free version is deleted.",
+      "editLocked": "Remove the watermark first — the editing tools work on the image without it.",
+      "editGone": "Editing is unavailable: this image has a watermark and the version without it is no longer available.",
+      "regenLocked": "Marking on the image is available once the watermark is removed. You can describe the changes in words.",
+      "regenGone": "Marking is unavailable on an image with a watermark. You can describe the changes in words.",
+      "toolsNeedPlan": "AI editing tools are available on a paid plan.",
+      "seePlans": "See plans",
+      "checking": "Checking…",
+      "paywallTitle": "Unlock the image without the watermark",
+      "paywallBody": "Download this image without the watermark with any plan",
+      "choosePlan": "Choose plan",
+      "perMonth": "/ mo.",
+      "creditsMonthly": "{n} credits every month",
+      "creditsMonthlyFew": "{n} credits every month",
+      "pendingTitle": "Payment is processing",
+      "pendingBody": "Your plan activates once the payment is confirmed — usually within moments. Please don't buy it again.",
+      "checkAgain": "Check again",
+      "inactiveBody": "Your subscription isn't active right now. Resume it or settle the payment in settings to remove the watermark.",
+      "manage": "Manage subscription",
+      "confirming": "Confirming your payment…",
+      "confirmingBody": "This usually takes a few seconds. We'll unlock the image as soon as your plan is active.",
+      "processingTitle": "Payment is still processing",
+      "processingBody": "Your plan isn't active yet. Check again in a moment — the image is waiting in your library.",
+      "unlocking": "Removing the watermark…",
+      "successTitle": "Done — the image without the watermark",
+      "successBody": "Your library now holds the version without the watermark.",
+      "errorTitle": "Couldn't remove the watermark",
+      "err": {
+        "busy": "This image is being unlocked right now. Try again in a moment.",
+        "stripeUnavailable": "We couldn't confirm your subscription just now. Nothing changed — try again in a moment.",
+        "rateLimited": "Too many attempts at once. Try again in a moment.",
+        "checkFailed": "We couldn't check your plan just now. Nothing changed — try again in a moment.",
+        "signFailed": "The watermark has already been removed, but the preview could not be prepared. Try again or refresh the page.",
+        "generic": "Something went wrong. Please try again."
+      },
+      "bulkCta": "Remove watermark from all ({n})",
+      "bulkTitle": "Remove watermark from all",
+      "bulkProgress": "Unlocked {x} of {y}",
+      "bulkFailed": "Couldn't unlock: {n}",
+      "bulkRetry": "Retry failed",
+      "bulkStop": "Stop",
+      "bulkStopped": "Stopped. Images already unlocked stay watermark-free.",
+      "bulkResume": "Continue",
+      "bulkNoProgress": "The remaining images couldn't be unlocked right now. Try again in a moment.",
+      "bulkNeedsPlan": "Choose a plan to remove the watermark."
+    }
   },
   "retouch": {
     "title": "Photo retouch",
@@ -6920,7 +7156,8 @@
     "grovnewsAlreadyActive": "You already have an active GrovNews subscription.",
     "grovnewsInProgress": "Your GrovNews payment is being prepared. Refresh the page in a moment.",
     "statusGrovNewsActive": "GrovNews Premium is active. Enjoy reading!",
-    "statusGoGrovNews": "Go to GrovNews"
+    "statusGoGrovNews": "Go to GrovNews",
+    "wmReturnCta": "Back to your photo"
   },
   "grovnews": {
     "title": "GrovNews",
@@ -8821,7 +9058,10 @@
       "tool_unavailable": "Thumbnail is temporarily unavailable.",
       "feature_unavailable": "Thumbnail is temporarily unavailable.",
       "job_create_failed": "Could not start — please try again.",
-      "invalid_input": "Invalid input — please add the photos again."
+      "invalid_input": "Invalid input — please add the photos again.",
+      "trial_check_failed": "Your plan could not be checked just now. Nothing was charged for the composition — please try again.",
+      "source_locked": "One of the retouched photos still has a watermark. Remove the watermark in the library and try again — nothing was charged for the composition.",
+      "watermark_failed": "The thumbnail could not be prepared. The composition cost was returned."
     }
   },
   "ice": {

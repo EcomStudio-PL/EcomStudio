@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "@/lib/notify";
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Crop, Download,
@@ -15,6 +16,8 @@ import { ratioName } from "@/components/genv3/ratio-options";
 import { fileNameFor, saveBlob } from "@/lib/save-image";
 import { ZoomPan, ZOOM_MAX, ZOOM_MIN, stepZoom } from "@/components/genv3/zoom-pan";
 import { ResultFeedback } from "@/components/genv3/result-feedback";
+import { TrialMarkedHint, TrialNotice } from "@/components/trial-watermark/lock";
+import { isMarked } from "@/components/trial-watermark/model";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -31,7 +34,7 @@ import { ResultFeedback } from "@/components/genv3/result-feedback";
  * custom generations, the concept's seller-facing description for managed
  * ones. The hidden GrovBase prompt never reaches this component.
  */
-export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = true, onRegenerate, onFavorite, onDelete, onNote }: {
+export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = true, onRegenerate, onFavorite, onDelete, onNote, onUnlock }: {
   items: GalleryItem[];
   index: number;
   onIndex: (i: number) => void;
@@ -42,9 +45,20 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
   onFavorite: (item: GalleryItem) => void;
   onDelete: (item: GalleryItem) => void;
   onNote: (item: GalleryItem, note: string) => void;
+  /** "Usuń znak wodny" for a locked trial image. Absent = the plate shows no CTA. */
+  onUnlock?: (item: GalleryItem) => void;
 }) {
   const { t, locale } = useI18n();
   const item = items[index];
+  // A WATERMARKED FILE IS NEVER HANDED TO A MODEL (R5). Upscaling, cutting
+  // out or extending it would bake the mark into a new file — and charge for
+  // it. The tiles stay where they are, switched off, with the reason and,
+  // while the clean original exists, the way to get it.
+  const marked = isMarked(item.trial);
+  const unlock = onUnlock ? () => onUnlock(item) : undefined;
+  /** The workspace may not run paid tools at all (a trial account): say so
+   *  under the tiles and point at the plans, instead of a bare failure. */
+  const [toolsNeedPlan, setToolsNeedPlan] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [fullscreen, setFullscreen] = useState(false);
   const [note, setNote] = useState(item.note ?? "");
@@ -173,7 +187,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
 
   /** Run one real tool on this image and save the result to the library. */
   async function runTool(slug: "remove_bg" | "upscale" | "expand", settings: Record<string, unknown>) {
-    if (toolBusy) return;
+    if (toolBusy || marked) return;
     setToolBusy(slug);
     try {
       const blob = await fetchBlob();
@@ -185,7 +199,12 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       const res = await fetch("/api/tools/run", { method: "POST", body: fd });
       if (!res.ok) {
         const json = await res.json().catch(() => null) as { error?: string } | null;
-        toast.error(json?.error === "insufficient_credits" ? t("studio.err.insufficient_credits") : t("genv3.toolFailed"));
+        const code = json?.error;
+        if (code === "trial_tool_unavailable") setToolsNeedPlan(true);
+        toast.error(code === "insufficient_credits" ? t("studio.err.insufficient_credits")
+          : code === "trial_tool_unavailable" ? t("studio.err.trial_tool_unavailable")
+            : code === "trial_check_failed" ? t("studio.err.trial_check_failed")
+              : t("genv3.toolFailed"));
         return;
       }
       const out = await res.blob();
@@ -399,15 +418,15 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               button that pretends to work. */}
           <div>
             <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
-              <EditTile icon={Expand} busy={toolBusy === "expand"} title={t("genv3.editFormat")} sub={t("genv3.editFormatSub")}
+              <EditTile icon={Expand} busy={toolBusy === "expand"} disabled={marked} title={t("genv3.editFormat")} sub={t("genv3.editFormatSub")}
                 onClick={() => setExpandPick(!expandPick)} />
-              <EditTile icon={Scaling} busy={toolBusy === "upscale"} title={t("genv3.editUpscale")} sub={t("genv3.editUpscaleSub")}
+              <EditTile icon={Scaling} busy={toolBusy === "upscale"} disabled={marked} title={t("genv3.editUpscale")} sub={t("genv3.editUpscaleSub")}
                 onClick={() => runTool("upscale", { factor: 2 })} />
-              <EditTile icon={Eraser} busy={toolBusy === "remove_bg"} title={t("genv3.editRemoveBg")} sub={t("genv3.editRemoveBgSub")}
+              <EditTile icon={Eraser} busy={toolBusy === "remove_bg"} disabled={marked} title={t("genv3.editRemoveBg")} sub={t("genv3.editRemoveBgSub")}
                 onClick={() => runTool("remove_bg", { format: "png" })} />
               <EditTile icon={Wand2} disabled title={t("genv3.editElements")} sub={t("genv3.editElementsSub")} soonLabel={t("genv3.soon")} />
             </div>
-            {expandPick && (
+            {expandPick && !marked && (
               <div className="animate-fade mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-sunken/40 p-2">
                 <span className="text-[11px] font-semibold text-faint">{t("genv3.editFormatPick")}</span>
                 {["1:1", "4:5", "9:16", "16:9"].map((r) => (
@@ -421,7 +440,18 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 ))}
               </div>
             )}
-            <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{t("genv3.editNote")}</p>
+            {marked ? (
+              <div className="mt-1.5">
+                <TrialMarkedHint trial={item.trial} onUnlock={unlock} lockedKey="genv3.wm.editLocked" goneKey="genv3.wm.editGone" />
+              </div>
+            ) : toolsNeedPlan ? (
+              <p data-tools-need-plan className="mt-1.5 text-[10.5px] leading-relaxed text-faint">
+                {t("genv3.wm.toolsNeedPlan")}{" "}
+                <Link href="/plan#plany" className="font-semibold text-accent transition-colors hover:text-accent-hover">{t("genv3.wm.seePlans")}</Link>
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{t("genv3.editNote")}</p>
+            )}
           </div>
 
           {/* NOTATKA — one line, no heading. The placeholder says what it is.
@@ -450,6 +480,11 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 : noteDirty ? <Save size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
             </button>
           </div>
+
+          {/* THE TRIAL PLATE — above AKCJE, full width, never a fourth plate
+              in that row and never an edit tile. Nothing for an ordinary or
+              unlocked image. */}
+          <TrialNotice trial={item.trial} onUnlock={unlock} />
 
           {/* AKCJE — three of equal weight, no heading. */}
           <div className="grid grid-cols-3 gap-2 [&>*]:min-w-0">

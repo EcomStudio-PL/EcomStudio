@@ -666,7 +666,10 @@ const ENGINE: readonly [string, string][] = [
   // Re-pinned by the photo-tools task (four Photoroom panels: pinned provider,
   // sandbox gating, deliver + alreadyDelivered hooks, presets). Retusz never
   // imports this file.
-  ["lib/server/image-tools.ts", "8574865baaf4d1c9e17189d4599b04ce6e28319d876db797e24e618f38211a32"],
+  // Re-pinned by the trial-watermark task: one guard in runPaid, before the
+  // free allowance and the charge — a trial workspace is refused a paid tool
+  // (0 calls, 0 credits). No provider request byte changes.
+  ["lib/server/image-tools.ts", "ac473b62ebbc13138de61e38293b970fab2127d5a395a9f56d1dbeaf9618a8a2"],
   ["lib/server/fashion.ts", "dcde79b33cd35e9789caa3bbc9cc4ddbf406f570d9f02ee3fe7232ad069ab139"],
   ["app/api/prompts/generate/route.ts", "37db9bd3798b9bd5c4c4fc3bdf1056d57dec296f12754fd52bd9f5f97e204b5e"],
   ["app/api/concepts/generate/route.ts", "59ac0b7670179062229aae68505186bd2513953bd1ecad1e555bedf45f588e21"],
@@ -680,7 +683,10 @@ const ENGINE: readonly [string, string][] = [
   ["components/genv3/uploader.tsx", "38e173c9aaa9e6d18656bf56f550a66f46219d4b0f9b302a2aceacf498754053"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],
-  ["lib/server/gallery.ts", "7ecaa2ce9b145c9c5d21eb39952b5746746ba33d8f06fd3f9959bca4f8cb1d37"],
+  // Re-pinned by the trial-watermark task: each item carries its trial state
+  // (one state read per page, after the projection). URLs, paths and the
+  // projection itself are unchanged.
+  ["lib/server/gallery.ts", "0a4c1513cd00ac6c86e1e92cfcc2cd93af2715a22267fdfd37c261c39373dfa2"],
   ["lib/services/credits.ts", "1a25606a89ca4ebc6f2640542f59b9185da4595ebad973b69be9f82932cb74fb"],
 ];
 for (const [file, digest] of ENGINE) check(`${file} unchanged`, sha(readFileSync(file)) === digest);

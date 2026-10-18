@@ -55,6 +55,8 @@ const TOOL_ERRORS = new Set([
   "insufficient_credits", "no_provider", "image_too_large", "unsupported_format", "unreadable_image",
   "provider_auth_failed", "provider_out_of_credit", "provider_rate_limited", "provider_timeout",
   "provider_unreachable", "tool_unavailable", "processing_failed",
+  // runPaid's trial refusals (0 calls, 0 credits).
+  "trial_tool_unavailable", "trial_check_failed",
 ]);
 
 type JobState = {

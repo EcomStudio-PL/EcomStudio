@@ -6,6 +6,7 @@ import { makeT } from "@/lib/i18n/t";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { REGISTRATION_SETTINGS_KEY } from "@/lib/server/registration-config";
 import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
+import { TRIAL_WATERMARK_SETTING_KEY } from "@/lib/trial-watermark/config";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +36,11 @@ export default async function AdminSystem() {
     // into a value the forms would silently ignore.
     // The catalogue layout likewise has its own editor (Narzędzia i silniki →
     // Układ dla klientów); as raw fields it would be one unreadable blob.
+    // The trial watermark is edited only in its own section (Rejestracja i
+    // bonus → Znak wodny): validated, audited, switched on behind a confirm.
+    // Here it would be bare number fields and an unaudited `enabled` box.
     .filter((s) => s.key !== REGISTRATION_SETTINGS_KEY && s.key !== TOOLS_LAYOUT_KEY)
+    .filter((s) => s.key !== TRIAL_WATERMARK_SETTING_KEY)
     .sort((a, b) => SECTION_ORDER.indexOf(a.key) - SECTION_ORDER.indexOf(b.key))
     .map((s) => ({ key: s.key, value: (s.value ?? {}) as Record<string, unknown> }));
   const isDev = SUPABASE_URL.includes("ezyhwkcrrysanbcbkzsq");

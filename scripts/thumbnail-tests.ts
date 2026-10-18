@@ -177,6 +177,11 @@ const client = {
         .sort((a, b) => (Number(a.position) - Number(b.position)) || (Number(a.item_index) - Number(b.item_index)));
       return { data: JSON.parse(JSON.stringify(rows)), error: null };
     }
+    // Trial watermark (0143): answered explicitly — the catch-all `true`
+    // below is a malformed decision, which refuses the run before the charge.
+    // These suites run the dormant world: off, and no photo was a trial image.
+    if (name === "trial_watermark_decide") return { data: { mode: "off", reason: "disabled", config: { enabled: false } }, error: null };
+    if (name === "trial_original_source") return { data: null, error: null };
     return { data: true, error: null };
   },
   storage: {

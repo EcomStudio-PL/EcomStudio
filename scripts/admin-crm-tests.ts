@@ -243,6 +243,8 @@ console.log("G. a temporary block is a pause, enforced where it counts");
     "app/api/prompts/regenerate/route.ts", "app/api/prompts/card/route.ts",
     "app/api/generations/regenerate/route.ts", "app/api/generations/delete/route.ts",
     "app/api/library/zip/route.ts",
+    // Trial watermark: an unlock rewrites the customer's library file.
+    "app/api/trial-originals/unlock/route.ts", "app/api/trial-originals/unlock-all/route.ts",
   ];
   check("every money- or data-writing route asks",
     guarded.every((f) => read(f).includes("accountBlockedResponse(supabase, user.id)")),

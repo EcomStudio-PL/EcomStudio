@@ -6948,6 +6948,84 @@ export type Database = {
       thumbnail_run_status: { Args: { p_run_id: string }; Returns: Json }
       thumbnail_runs_recent: { Args: { p_workspace_id: string; p_limit: number }; Returns: Json }
       thumbnail_run_cancel: { Args: { p_run_id: string }; Returns: Json }
+      /* Trial watermark (migration 0143). The binding contract — argument
+         names and reply keys — is lib/server/trial-watermark/rpc.ts, which
+         parses every reply; the p_token ones are gated by server_call_ok. */
+      trial_watermark_decide: {
+        Args: { p_token: string | null; p_workspace_id: string; p_credits: number | null }
+        Returns: Json
+      }
+      trial_watermark_config_read: { Args: { p_token: string | null }; Returns: Json }
+      trial_watermark_entitlement: { Args: { p_token: string | null; p_workspace_id: string }; Returns: Json }
+      trial_original_reserve: {
+        Args: {
+          p_token: string | null
+          p_id: string
+          p_workspace_id: string
+          p_job_id: string | null
+          p_operation: string
+          p_marked_path: string | null
+          p_wrapped_key: string
+          p_kek_fp: string
+          p_clean_sha256: string
+          p_clean_mime: string
+          p_clean_bytes: number
+          p_width: number | null
+          p_height: number | null
+          p_watermark: Json | null
+        }
+        Returns: Json
+      }
+      trial_original_attach: {
+        Args: { p_token: string | null; p_original_id: string; p_asset_id: string; p_marked_path: string; p_marked_sha256: string }
+        Returns: Json
+      }
+      trial_original_release: { Args: { p_token: string | null; p_original_id: string }; Returns: Json }
+      trial_original_states: { Args: { p_asset_ids: string[] }; Returns: Json }
+      trial_original_summary: { Args: { p_workspace_id: string }; Returns: Json }
+      trial_original_unlock_begin: {
+        Args: { p_token: string | null; p_asset_id: string; p_live_ok: boolean }
+        Returns: Json
+      }
+      trial_original_unlock_finish: {
+        Args: {
+          p_token: string | null
+          p_asset_id: string
+          p_thumb_path: string | null
+          p_preview_path: string | null
+          p_via: string
+          p_bulk_id: string | null
+        }
+        Returns: Json
+      }
+      trial_original_unlock_abort: { Args: { p_token: string | null; p_asset_id: string }; Returns: Json }
+      trial_original_next_batch: {
+        Args: { p_token: string | null; p_workspace_id: string; p_limit: number; p_skip: string[] }
+        Returns: Json
+      }
+      trial_original_source: {
+        Args: { p_token: string | null; p_workspace_id: string; p_marked_path: string }
+        Returns: Json
+      }
+      trial_watermark_log: {
+        Args: {
+          p_token: string | null
+          p_workspace_id: string
+          p_action: string
+          p_entity_id: string | null
+          p_metadata: Json | null
+          p_dedupe: string | null
+        }
+        Returns: boolean
+      }
+      trial_originals_sweep_now: { Args: { p_token: string | null }; Returns: Json }
+      trial_originals_purge_list: { Args: { p_token: string | null; p_limit: number }; Returns: Json }
+      trial_originals_mark_purged: { Args: { p_token: string | null; p_paths: string[] }; Returns: number }
+      trial_originals_purge_heartbeat: { Args: { p_token: string | null; p_report: Json }; Returns: boolean }
+      trial_watermark_stats: { Args: { p_days: number }; Returns: Json }
+      trial_original_uploadable: { Args: { p_name: string }; Returns: boolean }
+      trial_original_purgeable_member: { Args: { p_name: string }; Returns: boolean }
+      trial_original_purgeable: { Args: { p_name: string }; Returns: boolean }
       ai_token_prices_read: {
         Args: { p_token: string | null }
         Returns: {

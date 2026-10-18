@@ -96,6 +96,8 @@ const KNOWN_ERRORS = new Set([
   "unsupported_format", "unreadable_image", "background_unavailable",
   "provider_auth_failed", "provider_out_of_credit", "provider_rate_limited",
   "provider_timeout", "provider_unreachable", "network_error", "tool_unavailable",
+  // The cutout is a paid tool: runPaid's trial refusals (0 calls, 0 credits).
+  "trial_tool_unavailable", "trial_check_failed",
 ]);
 const errorKey = (error?: string) => (error && KNOWN_ERRORS.has(error) ? error : "processing_failed");
 

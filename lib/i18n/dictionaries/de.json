@@ -947,6 +947,181 @@
       "tokens": "Basiskosten = offizieller Preis des Ausgabebilds. Die realen Job-Kosten addieren Eingabe-Tokens (${in} / 1M) und Thinking (${out} / 1M) nur, wenn Google Usage liefert — siehe Verlauf.",
       "noTokens": "Basiskosten = offizieller Preis des Ausgabebilds. Kein Tokenpreis gesetzt — gemeldete Tokens werden nicht addiert.",
       "fx": "Umsatz = Credits × {credit}. Der USD/PLN-Kurs {fx} dient nur der Kostenanalyse."
+    },
+    "trialWm": {
+      "title": "Wasserzeichen auf Testgenerierungen",
+      "sub": "Bilder aus Workspaces, die nur kostenlose Credits nutzen, erhalten das GrovBase-Wasserzeichen. Das saubere Original wird verschlüsselt aufbewahrt und nach dem Kauf eines Plans freigeschaltet.",
+      "stateOn": "Ein",
+      "stateOff": "Aus (ruhend)",
+      "assetOk": "Wasserzeichendatei geprüft",
+      "assetBad": "Problem mit der Wasserzeichendatei",
+      "saved": "Wasserzeichen-Einstellungen gespeichert.",
+      "enabledToast": "Wasserzeichen für neue Testgenerierungen eingeschaltet.",
+      "unsaved": "Ungespeicherte Wasserzeichen-Änderungen",
+      "invalidField": "Feld korrigieren: {field}",
+      "fixFirst": "Korrigiere zuerst das markierte Feld.",
+      "offPending": "Nach dem Speichern erhalten neue Testgenerierungen kein Wasserzeichen mehr. Bestehende Bilder ändern sich nicht.",
+      "lookTitle": "Aussehen des Zeichens",
+      "keepTitle": "Originale und Links",
+      "staffTitle": "Team und Testkonto",
+      "range": "Bereich {min}–{max}",
+      "confirmTitle": "Wasserzeichen einschalten?",
+      "confirmBody": "Ab jetzt erhält jede neue Generierung in Workspaces ohne Zahlung das GrovBase-Wasserzeichen, und ihr sauberes Original wird {days} Tage verschlüsselt aufbewahrt. Kostenpflichtige KI-Tools und Workflow ON werden für sie gesperrt. Das Formular wird sofort gespeichert. Frühere Bilder ändern sich nicht.",
+      "confirmCta": "Einschalten und speichern",
+      "f": {
+        "enabled": "Wasserzeichen auf neuen Testgenerierungen",
+        "widthRatio": "Breite des Zeichens",
+        "opacity": "Deckkraft des Zeichens",
+        "luminanceThreshold": "Helligkeitsschwelle",
+        "darkColor": "Farbe der dunklen Variante",
+        "glowRadiusRatio": "Radius des Schimmers",
+        "glowOpacity": "Deckkraft des Schimmers",
+        "originalRetentionDays": "Aufbewahrung des Originals (Tage)",
+        "signedUrlTtlSeconds": "Gültigkeit des „Herunterladen“-Links nach dem Freischalten (s)",
+        "exemptStaff": "Team ausnehmen",
+        "forceTrialUserIds": "Testmodus für Konten erzwingen"
+      },
+      "h": {
+        "enabled": "Aus bedeutet ruhend (Standard). Das Einschalten muss bestätigt werden und speichert das Formular sofort.",
+        "widthRatio": "Anteil der kürzeren Bildseite (0,5 = Hälfte). Das Zeichen wird nie über seine Quelldatei hinaus vergrößert.",
+        "opacity": "Deckkraft-Faktor des Zeichens selbst (1 = voll deckend).",
+        "luminanceThreshold": "Ist der Bereich unter dem Zeichen heller als die Schwelle, ist das Zeichen dunkel, sonst weiß.",
+        "darkColor": "Format #rrggbb. Die helle Variante ist das Weiß der Wasserzeichendatei selbst.",
+        "glowRadiusRatio": "Anteil der Zeichenbreite; 0 = kein Schimmer.",
+        "glowOpacity": "Der Schimmer hat die Gegenfarbe des Zeichens, damit es auf jedem Hintergrund lesbar ist; 0 = kein Schimmer.",
+        "originalRetentionDays": "Gilt für Originale, die nach dem Speichern entstehen; bestehende behalten ihr Datum.",
+        "signedUrlTtlSeconds": "Nur der „Herunterladen“-Link im Freischalt-Dialog. Freigeschaltete Dateien in der Bibliothek haben die üblichen Link-Laufzeiten.",
+        "exemptStaff": "Das Bild ist sauber, wenn die generierende Person und der Workspace-Inhaber Admins sind. Ausschalten, um den Testmodus mit einem Admin-Konto zu prüfen.",
+        "forceTrialUserIds": "Konto-UUIDs (Admin → Nutzer), die den Testmodus auch bei ausgeschalteter Funktion und trotz Mitarbeiter-Ausnahme erhalten — z. B. ein Testkonto, um alles auf PROD zu prüfen. Die Liste setzt eine Zahlung nie außer Kraft."
+      },
+      "inv": {
+        "range": "Gib eine Zahl von {min} bis {max} ein.",
+        "rangeInt": "Gib eine ganze Zahl von {min} bis {max} ein.",
+        "darkColor": "Gib eine Farbe im Format #rrggbb ein.",
+        "boolean": "Dieser Wert muss ein- oder ausgeschaltet sein.",
+        "forceTrialUserIds": "Jeder Eintrag muss eine Konto-UUID sein, ohne Wiederholungen; höchstens {n} Konten."
+      },
+      "force": {
+        "add": "Hinzufügen",
+        "count": "{n} von {max}",
+        "none": "Für kein Konto ist der Testmodus erzwungen.",
+        "notUuid": "Das ist keine Konto-UUID.",
+        "duplicate": "Dieses Konto steht bereits auf der Liste.",
+        "full": "Die Liste hat bereits {n} Konten.",
+        "remove": "{id} von der Liste entfernen"
+      },
+      "err": {
+        "forbidden": "Administratorrechte erforderlich.",
+        "invalid": "Eines der Felder hat einen ungültigen Wert — nichts wurde gespeichert.",
+        "migration_pending": "Migration 0143 ist in dieser Datenbank noch nicht angewendet — die Wasserzeichen-Einstellungen können nicht gespeichert werden.",
+        "confirm_required": "Das Einschalten des Wasserzeichens muss bestätigt werden.",
+        "asset_unavailable": "Die Wasserzeichendatei besteht die Prüfung nicht — das Einschalten würde jede Testgenerierung ablehnen.",
+        "server_key_missing": "Der Serverschlüssel (GROVBASE_SERVER_KEY) fehlt — Originale können nicht verschlüsselt werden, das Einschalten würde also jede Testgenerierung ablehnen."
+      },
+      "policy": {
+        "title": "Regeln",
+        "who": "Das Wasserzeichen erhalten neue Bilder aus Generierungen, die Credits kosten, in Workspaces, die nur kostenlose Credits genutzt haben (Willkommensbonus, Boni, Korrekturen, Erstattungen). Läufe für 0 Credits erhalten es nie. Kostenpflichtige KI-Tools und Workflow ON sind für solche Workspaces gesperrt, bevor Credits abgezogen werden.",
+        "paid": "Ohne Zeichen generiert ein Workspace, der: jetzt ein aktives kostenpflichtiges Abo hat; oder über Stripe einen Betrag über null für gewährte Credits bezahlt hat (auch wenn später erstattet — eine strittige Zahlung zählt nicht); oder eine von einem Administrator verbuchte Aufladung erhalten hat. Die Datenbank entscheidet bei jedem Lauf, bevor Credits abgezogen werden.",
+        "staff": "Mitarbeiter: Mit aktivem „Mitarbeiter ausnehmen“ ist das Bild sauber, wenn sowohl die erzeugende Person als auch der Workspace-Inhaber die Admin-Rolle haben. Ein Konto auf der Liste „Testmodus erzwingen“ erhält den Testmodus auch bei ausgeschalteter Funktion und verliert die Mitarbeiter-Ausnahme — für einen Test auf PROD mit einem Konto; es setzt eine Zahlung nie außer Kraft.",
+        "keep": "Das saubere Original wird ab der Erstellung {days} Tage verschlüsselt aufbewahrt (das Datum wird bei jedem Original gespeichert). Danach wird sein Schlüssel vernichtet und die Datei bei der täglichen Bereinigung entfernt. Das Bild mit Wasserzeichen bleibt in der Bibliothek.",
+        "unlock": "Das Freischalten erfordert ein aktives kostenpflichtiges Abo, das auch live bei Stripe geprüft wird. Ein freigeschaltetes Bild wird zu einer gewöhnlichen Bibliotheksdatei, ohne Zeichen, dauerhaft.",
+        "enabled": "„Ein“ gilt nur für neue Generierungen von Kunden (Konten auf der Liste „Testmodus erzwingen“ laufen unabhängig vom Schalter im Testmodus). Ausschalten legt nichts offen, verlängert nichts und löscht nichts — bestehende Bilder behalten Status und Frist."
+      },
+      "asset": {
+        "title": "Prüfung des Zeichens",
+        "file": "Wasserzeichendatei",
+        "ok": "Entspricht der freigegebenen Datei",
+        "size": "Abmessungen",
+        "serverKey": "Serverschlüssel",
+        "serverKeyOk": "Vorhanden",
+        "serverKeyMissing": "Fehlt",
+        "asset_missing": "Die Wasserzeichendatei fehlt auf dem Server",
+        "asset_mismatch": "Die Datei weicht von der freigegebenen ab (SHA-256 oder Abmessungen)",
+        "asset_unreadable": "Die Wasserzeichendatei kann nicht gelesen werden",
+        "sha": "SHA-256"
+      },
+      "stats": {
+        "now": "Originale jetzt",
+        "title": "Letzte {days} Tage",
+        "unavailable": "Statistiken sind nicht verfügbar (trial_watermark_stats hat nicht geantwortet).",
+        "liveLine": "Freischaltbar: {live} · läuft innerhalb von 24 h ab: {soon}"
+      },
+      "status": {
+        "locked": "Gesperrt",
+        "unlocked": "Freigeschaltet",
+        "expired": "Abgelaufen",
+        "deleted": "Gelöscht",
+        "orphaned": "Verwaist",
+        "pending": "In Bearbeitung"
+      },
+      "funnel": {
+        "clicked": "„Wasserzeichen entfernen“ geklickt",
+        "paywall": "Paywall geöffnet",
+        "planSelected": "Plan gewählt",
+        "confirmed": "Abo bestätigt",
+        "note": "Anzahl der Workspaces; Paywall-Aufrufe: {paywalls}."
+      },
+      "items": {
+        "created": "Neue Originale",
+        "unlocked": "Freigeschaltet",
+        "bulk": "Sammel-Freischaltungen",
+        "expired": "Abgelaufen",
+        "converted": "Konversionen"
+      },
+      "jobs": {
+        "title": "Aufbewahrung",
+        "sweep": "Durchlauf (pg_cron, alle 15 Min.)",
+        "sweepAbsent": "pg_cron ist nicht verfügbar — der tägliche Cron führt den Durchlauf aus.",
+        "sweepUnreadable": "Der Verlauf des Jobs kann nicht gelesen werden.",
+        "sweepLast": "Zuletzt: {at} ({status}) · zuletzt erfolgreich: {ok}",
+        "never": "Noch nicht gelaufen.",
+        "purge": "Entfernen der Dateien (täglicher Cron)",
+        "purgeLast": "{at} · gelistet {listed}, entfernt {removed}, markiert {marked}",
+        "purgeError": "Fehler: {code}",
+        "backlog": "Dateien zum Entfernen"
+      },
+      "pv": {
+        "title": "Vorschau auf einem echten Foto",
+        "sub": "Dieselbe Engine wie bei Generierungen, mit den im Formular eingegebenen Werten (auch ungespeicherten). Es wird nichts gespeichert und keine KI verwendet.",
+        "upload": "Datei wählen",
+        "library": "Aus der Medienbibliothek",
+        "libraryEmpty": "Die Medienbibliothek enthält keine PNG-, JPEG- oder WebP-Fotos.",
+        "libraryTooLarge": "Größer als 10 MB",
+        "run": "Vorschau anzeigen",
+        "noSource": "Kein Foto ausgewählt.",
+        "stale": "Die Werte haben sich seit dieser Vorschau geändert — zeige sie erneut an.",
+        "alt": "Vorschau des Fotos mit Wasserzeichen",
+        "variant": "Variante",
+        "variantDark": "Dunkel",
+        "variantLight": "Hell",
+        "luminance": "Helligkeit des Bereichs",
+        "luminanceValue": "{value} (Schwelle {threshold})",
+        "mark": "Zeichen",
+        "position": "Position (links, oben)",
+        "glow": "Schimmer",
+        "image": "Bild",
+        "bytes": "Datei",
+        "shown": "Vorschau",
+        "err": {
+          "invalid": "Korrigiere die Werte für das Aussehen des Zeichens.",
+          "no_image": "Wähle ein Foto.",
+          "bad_source": "Wähle ein Foto: eine Datei oder einen Eintrag aus der Medienbibliothek.",
+          "too_large": "Das Foto ist zu groß (Grenze 10 MB oder 50 Mio. Pixel).",
+          "uploadTooLarge": "Die Datei hat {size} MB — hochladen lassen sich bis zu {max} MB. Wähle ein größeres Foto (bis 10 MB) aus der Medienbibliothek.",
+          "not_found": "Diese Datei wurde in der Medienbibliothek nicht gefunden.",
+          "unsupported_format": "Unterstützt werden nur PNG, JPEG und WebP.",
+          "unreadable": "Dieses Foto kann nicht gelesen werden.",
+          "too_small": "Das Foto ist zu klein (kürzere Seite unter 16 px)."
+        },
+        "fileLabel": "{name} · {size} MB",
+        "markValue": "{w} × {h} px · Maßstab {scale}",
+        "positionValue": "{left}, {top} px",
+        "glowValue": "{px} px · Deckkraft {opacity}",
+        "imageValue": "{w} × {h} px · {format}",
+        "bytesValue": "{from} MB → {to} MB",
+        "shownValue": "{w} × {h} px JPEG · {ms} ms"
+      },
+      "dims": "{w} × {h} px"
     }
   },
   "support": {
@@ -2013,7 +2188,10 @@
       "workflow_unavailable": "Dieses Werkzeug ist vorübergehend nicht verfügbar — Credits erstattet.",
       "run_create_failed": "Start fehlgeschlagen — deine Credits wurden erstattet.",
       "network_error": "Verbindung verloren. Das Ergebnis erscheint in der Galerie, sobald es fertig ist.",
-      "price_changed": "Der Preis hat sich geändert — lade die Seite neu. Es wurden keine Credits abgebucht."
+      "price_changed": "Der Preis hat sich geändert — lade die Seite neu. Es wurden keine Credits abgebucht.",
+      "trial_check_failed": "Dein Tarif konnte gerade nicht geprüft werden. Es wurde nichts berechnet — versuche es gleich noch einmal.",
+      "trial_workflow_unavailable": "Dieser Werkzeugmodus ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
+      "trial_tool_unavailable": "Dieses Werkzeug ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -2436,7 +2614,9 @@
       "provider_unreachable": "Anbieter nicht erreichbar.",
       "network_error": "Verbindungsfehler.",
       "tool_unavailable": "Werkzeug vorübergehend aus.",
-      "processing_failed": "Verarbeitung fehlgeschlagen."
+      "processing_failed": "Verarbeitung fehlgeschlagen.",
+      "trial_check_failed": "Dein Tarif konnte gerade nicht geprüft werden. Es wurde nichts berechnet — versuche es gleich noch einmal.",
+      "trial_tool_unavailable": "Dieses Werkzeug ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet."
     },
     "upscale": {
       "name": "Upscale",
@@ -3825,7 +4005,63 @@
     "feedback.reason.too_artificial": "Zu künstlich",
     "feedback.reason.other": "Andere",
     "moveEarlier": "Foto {n} nach vorne verschieben",
-    "moveLater": "Foto {n} nach hinten verschieben"
+    "moveLater": "Foto {n} nach hinten verschieben",
+    "wm": {
+      "unlock": "Wasserzeichen entfernen",
+      "dialogLabel": "Wasserzeichen entfernen",
+      "daysShortOne": "1 Tag",
+      "daysShort": "{n} Tage",
+      "availableOne": "Version ohne Wasserzeichen noch 1 Tag verfügbar",
+      "available": "Version ohne Wasserzeichen noch {n} Tage verfügbar",
+      "availablePlain": "Die Version ohne Wasserzeichen ist noch verfügbar",
+      "expired": "Die Version ohne Wasserzeichen ist nicht mehr verfügbar",
+      "unavailable": "Für dieses Bild ist keine Version ohne Wasserzeichen verfügbar",
+      "lastDay": "Weniger als 24 Stunden übrig — danach wird die Version ohne Wasserzeichen gelöscht.",
+      "editLocked": "Entferne zuerst das Wasserzeichen — die Bearbeitungswerkzeuge arbeiten mit dem Bild ohne Wasserzeichen.",
+      "editGone": "Bearbeitung nicht verfügbar: Dieses Bild hat ein Wasserzeichen, und die Version ohne ist nicht mehr verfügbar.",
+      "regenLocked": "Markieren im Bild ist verfügbar, sobald das Wasserzeichen entfernt ist. Änderungen kannst du in Worten beschreiben.",
+      "regenGone": "Markieren ist bei einem Bild mit Wasserzeichen nicht verfügbar. Änderungen kannst du in Worten beschreiben.",
+      "toolsNeedPlan": "KI-Bearbeitungswerkzeuge sind in einem kostenpflichtigen Plan verfügbar.",
+      "seePlans": "Pläne ansehen",
+      "checking": "Wird geprüft…",
+      "paywallTitle": "Bild ohne Wasserzeichen freischalten",
+      "paywallBody": "Lade dieses Bild mit jedem Plan ohne Wasserzeichen herunter",
+      "choosePlan": "Plan wählen",
+      "perMonth": "/ Mon.",
+      "creditsMonthly": "{n} Credits jeden Monat",
+      "creditsMonthlyFew": "{n} Credits jeden Monat",
+      "pendingTitle": "Zahlung wird verarbeitet",
+      "pendingBody": "Dein Plan wird aktiv, sobald die Zahlung bestätigt ist — meist innerhalb weniger Augenblicke. Bitte nicht erneut kaufen.",
+      "checkAgain": "Erneut prüfen",
+      "inactiveBody": "Dein Abo ist gerade nicht aktiv. Setze es fort oder begleiche die Zahlung in den Einstellungen, um das Wasserzeichen zu entfernen.",
+      "manage": "Abo verwalten",
+      "confirming": "Zahlung wird bestätigt…",
+      "confirmingBody": "Das dauert meist nur ein paar Sekunden. Wir schalten das Bild frei, sobald dein Plan aktiv ist.",
+      "processingTitle": "Zahlung wird noch verarbeitet",
+      "processingBody": "Dein Plan ist noch nicht aktiv. Prüfe gleich noch einmal — das Bild wartet in deiner Bibliothek.",
+      "unlocking": "Wasserzeichen wird entfernt…",
+      "successTitle": "Fertig — das Bild ohne Wasserzeichen",
+      "successBody": "In deiner Bibliothek liegt jetzt die Version ohne Wasserzeichen.",
+      "errorTitle": "Wasserzeichen konnte nicht entfernt werden",
+      "err": {
+        "busy": "Dieses Bild wird gerade freigeschaltet. Versuche es gleich noch einmal.",
+        "stripeUnavailable": "Dein Abo konnte gerade nicht bestätigt werden. Nichts wurde geändert — versuche es gleich noch einmal.",
+        "rateLimited": "Zu viele Versuche auf einmal. Versuche es gleich noch einmal.",
+        "checkFailed": "Dein Plan konnte gerade nicht geprüft werden. Nichts wurde geändert — versuche es gleich noch einmal.",
+        "signFailed": "Das Wasserzeichen wurde bereits entfernt, aber die Vorschau konnte nicht vorbereitet werden. Versuche es erneut oder lade die Seite neu.",
+        "generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+      },
+      "bulkCta": "Wasserzeichen bei allen entfernen ({n})",
+      "bulkTitle": "Wasserzeichen bei allen entfernen",
+      "bulkProgress": "{x} von {y} freigeschaltet",
+      "bulkFailed": "Nicht freigeschaltet: {n}",
+      "bulkRetry": "Fehlgeschlagene wiederholen",
+      "bulkStop": "Anhalten",
+      "bulkStopped": "Angehalten. Bereits freigeschaltete Bilder bleiben ohne Wasserzeichen.",
+      "bulkResume": "Fortsetzen",
+      "bulkNoProgress": "Die übrigen Bilder konnten gerade nicht freigeschaltet werden. Versuche es gleich noch einmal.",
+      "bulkNeedsPlan": "Wähle einen Plan, um das Wasserzeichen zu entfernen."
+    }
   },
   "retouch": {
     "title": "Foto-Retusche",
@@ -6920,7 +7156,8 @@
     "grovnewsAlreadyActive": "Du hast bereits ein aktives GrovNews-Abo.",
     "grovnewsInProgress": "Deine GrovNews-Zahlung wird gerade vorbereitet. Lade die Seite gleich neu.",
     "statusGrovNewsActive": "GrovNews Premium ist aktiv. Viel Spaß beim Lesen!",
-    "statusGoGrovNews": "Zu GrovNews"
+    "statusGoGrovNews": "Zu GrovNews",
+    "wmReturnCta": "Zurück zum Foto"
   },
   "grovnews": {
     "title": "GrovNews",
@@ -8821,7 +9058,10 @@
       "tool_unavailable": "Das Vorschaubild ist vorübergehend nicht verfügbar.",
       "feature_unavailable": "Das Vorschaubild ist vorübergehend nicht verfügbar.",
       "job_create_failed": "Start nicht möglich — bitte versuche es erneut.",
-      "invalid_input": "Ungültige Eingabe — bitte füge die Fotos erneut hinzu."
+      "invalid_input": "Ungültige Eingabe — bitte füge die Fotos erneut hinzu.",
+      "trial_check_failed": "Dein Tarif konnte gerade nicht geprüft werden. Für die Komposition wurde nichts berechnet — versuche es erneut.",
+      "source_locked": "Eines der retuschierten Fotos hat noch ein Wasserzeichen. Entferne das Wasserzeichen in der Bibliothek und versuche es erneut — für die Komposition wurde nichts berechnet.",
+      "watermark_failed": "Das Thumbnail konnte nicht vorbereitet werden. Die Kosten der Komposition wurden erstattet."
     }
   },
   "ice": {
