@@ -87,7 +87,8 @@ export type TrialBulkResult =
       remaining: number;
       done: boolean;
     }
-  | { state: "not_entitled"; pending: boolean; hasLiveSubscription: boolean }
+  /** `assetId`: one locked image of the workspace, for the paywall when none was on screen. */
+  | { state: "not_entitled"; pending: boolean; hasLiveSubscription: boolean; assetId?: string | null }
   | { state: "error"; error: string };
 
 /** Plan cards for the paywall — real catalogue data, never hard-coded. */

@@ -34,6 +34,7 @@ import {
   availableLine, bulkAdvance, bulkContinues, bulkSkip, bulkStart, daysLeftOf, daysShort, errorKey, goneLine,
   highlightedPlanIds, isLocked, isMarked, linkExpiresAt, needsFreshLink, nextConfirmDelay, orderPlans, parseBulk,
   parseStatus, parseUnlock, patchAsset, safeHref, underADay, unlockedPatch,
+  BULK_FINAL_REASONS, bulkLockedLeft, bulkResolved,
 } from "@/components/trial-watermark/model";
 import { TrialLockButton, TrialLockChip, TrialMarkedHint, TrialNotice } from "@/components/trial-watermark/lock";
 import { TrialPaywall } from "@/components/trial-watermark/paywall";
@@ -52,7 +53,7 @@ const plan = (slug: string, o: Partial<TrialPaywallPlan> = {}): TrialPaywallPlan
   featured: false, payable: true, checkoutHref: `/checkout?kind=subscription&plan=${slug}&period=monthly`, capabilities: [], ...o,
 });
 const PLANS = [plan("agency"), plan("pro"), plan("starter")];
-const jwt = (exp: number) => `h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
+const jwt = (exp: number, iat?: number) => `h.${Buffer.from(JSON.stringify(iat === undefined ? { exp } : { exp, iat })).toString("base64url")}.s`;
 
 async function main() {
 
@@ -162,13 +163,17 @@ check("A10 safeHref keeps in-app paths only — never //host or an absolute URL"
     && CONFIRM_DELAYS_MS.every((d, i) => i === 0 || d >= CONFIRM_DELAYS_MS[i - 1]), `total=${total} steps=${n}`);
 }
 {
-  const exp = Math.floor((NOW + 60_000) / 1000);
-  const url = `https://x.supabase.co/storage/v1/object/sign/generation-assets/a.png?token=${jwt(exp)}`;
-  check("A12 linkExpiresAt reads the signed token's exp; without one it assumes the shortest TTL (10 s)",
-    linkExpiresAt(url, NOW) === exp * 1000 && linkExpiresAt("https://x/a.png", NOW) === NOW + 10_000
-    && linkExpiresAt("https://x/a.png?token=garbage", NOW) === NOW + 10_000);
-  check("A13 needsFreshLink: refresh from TTL − 5 s, never hand over a dead or missing link",
-    !needsFreshLink(url, NOW, exp * 1000 - LINK_MARGIN_MS - 1) && needsFreshLink(url, NOW, exp * 1000 - LINK_MARGIN_MS)
+  // The server's clock runs 2 minutes AHEAD of this device: exp − iat is the
+  // lifetime (60 s), counted from when the link arrived here.
+  const iat = Math.floor((NOW + 120_000) / 1000);
+  const exp = iat + 60;
+  const url = `https://x.supabase.co/storage/v1/object/sign/generation-assets/a.png?token=${jwt(exp, iat)}`;
+  check("A12 linkExpiresAt = arrival + the token's own lifetime (exp − iat), whatever the two clocks say; else the shortest TTL (10 s)",
+    linkExpiresAt(url, NOW) === NOW + 60_000 && linkExpiresAt("https://x/a.png", NOW) === NOW + 10_000
+    && linkExpiresAt("https://x/a.png?token=garbage", NOW) === NOW + 10_000
+    && linkExpiresAt(`https://x/a.png?token=${jwt(exp)}`, NOW) === NOW + 10_000);
+  check("A13 needsFreshLink: refresh from lifetime − 5 s, never hand over a dead or missing link (a device behind the server too)",
+    !needsFreshLink(url, NOW, NOW + 60_000 - LINK_MARGIN_MS - 1) && needsFreshLink(url, NOW, NOW + 60_000 - LINK_MARGIN_MS)
     && needsFreshLink(null, NOW, NOW));
 }
 {
@@ -217,6 +222,22 @@ check("A18 errorKey: busy / stripe / rate limit / check failed / sign failed hav
     p.stalled && !bulkContinues(p)
     && !bulkContinues(bulkAdvance(bulkStart(1), ok(["z"], [], 0, true)))
     && !bulkContinues({ ...bulkStart(9), batches: BULK_MAX_BATCHES }));
+  {
+    const q = bulkAdvance(bulkStart(5), ok(["a"], [{ assetId: "s", reason: "sign_failed" }, { assetId: "e", reason: "expired" }, { assetId: "b", reason: "busy" }].map((f) => f.assetId), 1));
+    const failed = { ...q, failed: [{ assetId: "s", reason: "sign_failed" }, { assetId: "e", reason: "expired" }, { assetId: "b", reason: "busy" }] };
+    const fixed = bulkResolved(failed, "s");
+    check("A21b bulk: a committed-but-unsigned image (fresh links fetched) moves from failed to unlocked; Y unchanged",
+      fixed.unlocked === failed.unlocked + 1 && fixed.failed.length === 2 && !fixed.failed.some((f) => f.assetId === "s")
+      && bulkResolved(fixed, "nobody") === fixed, JSON.stringify(fixed));
+    check("A21c bulk: what is left locked = the server's remainder + failures a retry can fix (expired / unavailable / not_found never)",
+      bulkLockedLeft(fixed, 5) === 1 + 1 && BULK_FINAL_REASONS.has("expired") && BULK_FINAL_REASONS.has("unavailable")
+      && BULK_FINAL_REASONS.has("not_found") && !BULK_FINAL_REASONS.has("busy") && bulkLockedLeft(bulkStart(4), 4) === 4);
+    const ne = parseBulk({ state: "not_entitled", pending: false, hasLiveSubscription: false, assetId: "11111111-1111-4111-8111-111111111111" }, 200);
+    const bad = parseBulk({ state: "not_entitled", pending: false, hasLiveSubscription: false, assetId: "../x" }, 200);
+    check("A21d bulk not_entitled carries one locked asset id for the paywall (a uuid only)",
+      ne.state === "not_entitled" && ne.assetId === "11111111-1111-4111-8111-111111111111"
+      && bad.state === "not_entitled" && bad.assetId === null);
+  }
   const many = bulkAdvance(bulkStart(0), ok([], Array.from({ length: 250 }, (_, i) => `f${i}`), 0));
   check("A21 bulk: the skip list never exceeds the route's cap", bulkSkip(many).length === BULK_SKIP_MAX && BULK_SKIP_MAX === 200);
 }
@@ -231,11 +252,13 @@ const noop = () => {};
 {
   const chip = render(TrialLockChip, { trial: locked(3), onUnlock: noop });
   check("B1 chip: a button bottom-right of the card, glass like the rail, a lock, label + days for the name",
-    /data-trial-chip/.test(chip) && /absolute inset-x-2 bottom-2/.test(chip) && /justify-end/.test(chip)
+    /data-trial-chip/.test(chip) && /absolute bottom-2 left-2 right-\[3\.25rem\]/.test(chip) && /justify-end/.test(chip)
     && /bg-black\/45/.test(chip) && /backdrop-blur-md/.test(chip) && /border-white\/15/.test(chip) && /lucide-lock/.test(chip)
     && chip.includes(`aria-label="${pl("genv3.wm.unlock")} · ${pl("genv3.wm.daysShort", { n: 3 })}"`), chip);
   check("B2 chip: the strip ignores the pointer (the picture still opens), the button takes it",
-    /pointer-events-none absolute inset-x-2/.test(chip) && /pointer-events-auto/.test(chip));
+    /pointer-events-none absolute bottom-2/.test(chip) && /pointer-events-auto/.test(chip));
+  check("B2b chip: its strip ends LEFT of the rail column (right-2 + 38 px rail + a gap = 3.25rem), so a short card's rail never covers it",
+    /right-\[3\.25rem\]/.test(chip) && !/inset-x-2/.test(chip));
   check("B3 chip: label and days collapse by CARD width (size container), never by viewport",
     /\[container-type:inline-size\]/.test(chip) && /\[@container\(min-width:13rem\)\]:inline/.test(chip)
     && /\[@container\(min-width:5\.5rem\)\]:inline/.test(chip));
@@ -299,6 +322,12 @@ const noop = () => {};
   const featured = render(TrialPaywall, { ...base, plans: [plan("starter", { featured: true }), plan("pro"), plan("agency")] });
   check("B19 paywall: a plan the catalogue features is the highlighted one", /data-trial-plan="starter" data-highlighted="true"/.test(featured)
     && count(featured, "data-highlighted") === 1);
+  const feats = render(TrialPaywall, { ...base, plans: [plan("starter", { capabilities: ["noExpiry", "allTools", "unknownKey"] }), plan("pro", { capabilities: ["noExpiry", "topups", "allTools"] }), plan("agency")] });
+  check("B20 paywall: each card lists what the plan includes today, in /plany's own labels (an unknown key is skipped)",
+    count(feats, "data-trial-plan-features") === 2 && feats.includes(pl("pricing.feat.noExpiry")) && feats.includes(pl("pricing.feat.allTools"))
+    && feats.includes(pl("pricing.feat.topups")) && !feats.includes("unknownKey"));
+  check("B21 paywall: every \"Wybierz plan\" names its plan for a screen reader",
+    count(feats, `aria-label="${pl("genv3.wm.choosePlan")} — `) === 3 && feats.includes(`aria-label="${pl("genv3.wm.choosePlan")} — ${pl("plans.tier.business")}"`));
 }
 
 /* ═════════════════════════════════════════════════════════════════════════ */
@@ -429,6 +458,33 @@ check("D9 bulk: loops unlock-all with the bulk id and the skip list, stops on do
 check("D10 paywall: \"Wybierz plan\" → trialPlanSelectedAction → the returned in-app href; not payable → /plan#plany",
   /trialPlanSelectedAction\(\{ paywallId, assetId, planId: plan\.id \}\)/.test(paywall) && /safeHref\(res\.href\)/.test(paywall)
   && /router\.push\("\/plan#plany"\)/.test(paywall) && /const buttons = !pending && !hasLiveSubscription;/.test(paywall));
+check("D3b shell: on close the page is given back only while the lock is still OURS — a navigation that unmounted the lightbox first (it restored the page) leaves it scrollable",
+  /if \(document\.body\.style\.overflow === "hidden"\) document\.body\.style\.overflow = previous;/.test(shell));
+check("D3c shell: when the control that opened it is gone (an unlock removed the chip), focus goes back into the view it sat in",
+  /opener\?\.closest<HTMLElement>\('\[role="dialog"\]'\) \?\? opener\?\.parentElement/.test(shell) && /if \(!home\?\.isConnected \|\| opener\?\.isConnected\) return;/.test(shell));
+check("D9b bulk: an image committed but unsigned gets fresh links from the single unlock; one that can never be unlocked shows so on its card",
+  /f\.reason === "sign_failed"/.test(bulk) && /postTrialUnlock\(f\.assetId, "library_bulk"\)/.test(bulk) && /bulkResolved\(p, f\.assetId\)/.test(bulk)
+  && /BULK_FINAL_REASONS\.has\(f\.reason\)/.test(bulk) && /report\.current\.onUnlocked\(f\.assetId, \{ trial \}\)/.test(bulk));
+check("D9c bulk: \"Ponów nieudane\" counts from what can still be unlocked; \"Sprawdź ponownie\" reads the status, never reopens a paywall",
+  /run\(null, retriable\)/.test(bulk) && /const recheck = useCallback/.test(bulk) && /onCheckAgain=\{\(\) => void recheck\(\)\}/.test(bulk)
+  && !/onCheckAgain=\{\(\) => void check/.test(bulk));
+check("D9d bulk: with no locked image on screen the paywall is shown for one the server names",
+  /!target && r\.assetId/.test(bulk) && /checkRef\.current\(tg\)/.test(bulk));
+check("D6b dialog: after the wait, with no plan payment pending, the offer itself — never a false \"still processing\"",
+  /if \(pending === false\) \{ await checkRef\.current\(\); return; \}/.test(dialog));
+{
+  const one = (l: string) => (live as Record<string, Record<string, unknown>>)[l];
+  const tw = (l: string) => ((one(l).admin as Record<string, unknown>).trialWm as Record<string, unknown>);
+  const ok1 = LOCALES.every((l) => {
+    const t = tw(l);
+    return typeof t.confirmBodyOne === "string" && typeof (t.policy as Record<string, unknown>).keepOne === "string"
+      && typeof (t.stats as Record<string, unknown>).titleOne === "string" && !/\{days\}/.test(t.confirmBodyOne as string);
+  });
+  check("D12 admin: a 1-day retention reads \"1 dzień / 1 day / 1 Tag\" (own keys in PL, EN, DE)",
+    ok1 && (tw("pl").confirmBodyOne as string).includes("1 dzień") && (tw("en").confirmBodyOne as string).includes("1 day")
+    && (tw("de").confirmBodyOne as string).includes("1 Tag")
+    && /days === 1 \? "admin\.trialWm\.confirmBodyOne"/.test(read("components/admin/trial-watermark-settings.tsx")));
+}
 check("D11 paywall: no hard-coded prices — money and counts only through the cennik formatters",
   /formatMoney\(plan\.priceCents, plan\.currency\)/.test(paywall) && !/\d\s*zł/.test(paywall) && !/PLN/.test(paywall));
 {
@@ -666,7 +722,7 @@ async function browserFlows(check: Check, dict: Record<string, unknown>, pl: (k:
       await setReplies(page, [{ kind: "entitled" }]);
       let release: () => void = () => {};
       const hold = new Promise<void>((r) => { release = r; });
-      queues.unlock.push({ body: unlockedReply(`${ORIGIN}/dl/a.png?token=${jwt(farExp)}`), hold });
+      queues.unlock.push({ body: unlockedReply(`${ORIGIN}/dl/a.png?token=${jwt(farExp, Math.floor(Date.now() / 1000))}`), hold });
       await start(page, target, "lightbox");
       await page.locator('[data-trial-waiting="unlocking"]').waitFor({ timeout: 8000 });
       await page.keyboard.press("Escape");
@@ -689,7 +745,8 @@ async function browserFlows(check: Check, dict: Record<string, unknown>, pl: (k:
     {
       const page = await fresh();
       await setReplies(page, [{ kind: "entitled" }]);
-      queues.unlock.push({ body: unlockedReply(`${ORIGIN}/dl/old.png?token=${jwt(Math.floor(Date.now() / 1000) + 3)}`) });
+      // A link whose own lifetime is 3 s (exp − iat): inside the 5 s margin from the moment it arrives.
+      queues.unlock.push({ body: unlockedReply(`${ORIGIN}/dl/old.png?token=${jwt(Math.floor(Date.now() / 1000) + 3, Math.floor(Date.now() / 1000))}`) });
       queues.status.push({ body: { state: "unlocked", daysLeft: null, entitled: true, pending: false, planSlug: "pro", thumbUrl: null, downloadUrl: `${ORIGIN}/dl/new.png` } });
       await start(page, target, "gallery");
       await page.locator("[data-trial-download]").click({ timeout: 8000 });

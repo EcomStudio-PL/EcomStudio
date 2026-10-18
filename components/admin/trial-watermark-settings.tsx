@@ -330,7 +330,7 @@ export function TrialWatermarkSettings({ panel }: { panel: TrialWatermarkPanel }
         onClose={() => { if (!busy) setConfirmOpen(false); }}
         onConfirm={() => void persist({ ...input, enabled: true }, true)}
         title={t("admin.trialWm.confirmTitle")}
-        body={t("admin.trialWm.confirmBody", { days })}
+        body={t(days === 1 ? "admin.trialWm.confirmBodyOne" : "admin.trialWm.confirmBody", { days })}
         confirmLabel={t("admin.trialWm.confirmCta")}
         pending={busy}
         portal
@@ -435,7 +435,7 @@ function PolicyCard({ days }: { days: number }) {
     "admin.trialWm.policy.who",
     "admin.trialWm.policy.paid",
     "admin.trialWm.policy.staff",
-    "admin.trialWm.policy.keep",
+    days === 1 ? "admin.trialWm.policy.keepOne" : "admin.trialWm.policy.keep",
     "admin.trialWm.policy.unlock",
     "admin.trialWm.policy.enabled",
   ];
@@ -533,7 +533,7 @@ function StatsCard({ stats }: { stats: TrialWatermarkStats | null }) {
         {t("admin.trialWm.stats.liveLine", { live: stats.items.lockedLive, soon: stats.items.expiring24h })}
       </p>
 
-      <p className="overline mb-2 mt-4">{t("admin.trialWm.stats.title", { days: stats.days })}</p>
+      <p className="overline mb-2 mt-4">{t(stats.days === 1 ? "admin.trialWm.stats.titleOne" : "admin.trialWm.stats.title", { days: stats.days })}</p>
       <ol className="space-y-1" data-trial-wm-funnel>
         {funnel.map(([key, n], i) => (
           <li key={key} className="flex items-center justify-between gap-3 rounded-lg bg-raised px-3 py-1.5 text-[12.5px]">

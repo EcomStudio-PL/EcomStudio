@@ -132,6 +132,11 @@ export type GenerateInput = {
    */
   callTimeoutMs?: number;
   maxAttempts?: number;
+  /** When the serving route began (its own Date.now()), for routes that do
+   *  slow work first (the hybrid engine's analysis, a tool's variables): the
+   *  trial-image gate counts from it. Absent (or later than this call): this
+   *  function's own start. */
+  routeStartedAt?: number;
 };
 
 export type GenerateOutput =
@@ -1042,7 +1047,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     let marked: TrialMarked | null = null;
     const clean = bytes;
     if (trial.mode === "trial") {
-      if (Date.now() > invocationStartedAt + TRIAL_IMAGE_START_MS) continue;
+      if (Date.now() > Math.min(input.routeStartedAt ?? invocationStartedAt, invocationStartedAt) + TRIAL_IMAGE_START_MS) continue;
       marked = await sealTrialOutput(clean, trial.config);
       if (!marked) continue;
       bytes = marked.bytes;

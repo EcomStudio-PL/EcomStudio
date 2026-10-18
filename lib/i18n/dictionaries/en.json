@@ -967,6 +967,7 @@
       "range": "Range {min}–{max}",
       "confirmTitle": "Switch the watermark on?",
       "confirmBody": "From now on every new generation in workspaces without a payment gets the GrovBase watermark, and its clean original is kept encrypted for {days} days. Paid AI tools and Workflow ON will be blocked for them. The form is saved right away. Earlier images do not change.",
+      "confirmBodyOne": "From now on every new generation in workspaces without a payment gets the GrovBase watermark, and its clean original is kept encrypted for 1 day. Paid AI tools and Workflow ON will be blocked for them. The form is saved right away. Earlier images do not change.",
       "confirmCta": "Switch on and save",
       "f": {
         "enabled": "Watermark on new trial generations",
@@ -1024,6 +1025,7 @@
         "paid": "A workspace generates without the mark if it: has an active paid subscription now; or paid more than zero through Stripe for credits that were granted (even if refunded later — a disputed payment does not count); or received a top-up recorded by an administrator. The database decides on every run, before credits are taken.",
         "staff": "Staff: with “Exempt staff” on, the image is clean when both the person generating and the workspace owner have the admin role. An account on the “Force trial mode” list gets the trial mode even while the feature is off and loses the staff exemption — it is for a test on PROD with one account and never overrides a payment.",
         "keep": "The clean original is kept encrypted for {days} days from creation (the date is stored with each original). Then its key is destroyed and the file is removed by the daily clean-up. The watermarked image stays in the library.",
+        "keepOne": "The clean original is kept encrypted for 1 day from creation (the date is stored with each original). Then its key is destroyed and the file is removed by the daily clean-up. The watermarked image stays in the library.",
         "unlock": "Unlocking requires an active paid subscription, also checked live with Stripe. An unlocked image becomes an ordinary library file, without the mark, for good.",
         "enabled": "“On” applies only to new customer generations (accounts on the “Force trial mode” list run in trial mode whatever the switch says). Switching off exposes, extends or deletes nothing — existing images keep their state and date."
       },
@@ -1043,6 +1045,7 @@
       "stats": {
         "now": "Originals now",
         "title": "Last {days} days",
+        "titleOne": "Last day",
         "unavailable": "Statistics are unavailable (trial_watermark_stats did not answer).",
         "liveLine": "Unlockable: {live} · expiring within 24 h: {soon}"
       },

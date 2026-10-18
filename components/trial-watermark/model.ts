@@ -159,8 +159,14 @@ export function linkExpiresAt(url: string, receivedAt: number): number {
     const part = token?.split(".")[1];
     if (part) {
       const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
-      const json = JSON.parse(atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "="))) as { exp?: unknown };
-      if (typeof json.exp === "number" && Number.isFinite(json.exp)) return json.exp * 1000;
+      const json = JSON.parse(atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "="))) as { exp?: unknown; iat?: unknown };
+      // The token's own LIFETIME (exp − iat), counted from when this device
+      // received it: the two clocks never meet, so a device running behind
+      // the server is never handed a dead link as "fresh".
+      if (typeof json.exp === "number" && typeof json.iat === "number" && Number.isFinite(json.exp) && Number.isFinite(json.iat)
+          && json.exp > json.iat) {
+        return receivedAt + (json.exp - json.iat) * 1000;
+      }
     }
   } catch { /* not a token we can read — fall through to the floor */ }
   return receivedAt + TRIAL_WATERMARK_RANGES.signedUrlTtlSeconds.min * 1000;
@@ -173,6 +179,7 @@ export function needsFreshLink(url: string | null, receivedAt: number, now: numb
 /* ── reading the API's answers ───────────────────────────────────────────── */
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (v: unknown): v is string => typeof v === "string";
 const TRIAL_STATES = ["locked", "unlocked", "expired", "unavailable"] as const;
 
@@ -227,7 +234,10 @@ export function parseBulk(json: unknown, httpStatus: number): TrialBulkResult {
     return { state: "ok", bulkId: json.bulkId, unlocked, failed, remaining: Math.max(0, json.remaining), done: json.done === true };
   }
   if (json.state === "not_entitled") {
-    return { state: "not_entitled", pending: json.pending === true, hasLiveSubscription: json.hasLiveSubscription === true };
+    return {
+      state: "not_entitled", pending: json.pending === true, hasLiveSubscription: json.hasLiveSubscription === true,
+      assetId: str(json.assetId) && UUID_RE.test(json.assetId) ? json.assetId : null,
+    };
   }
   return { state: "error", error: str(json.error) ? json.error : `http_${httpStatus}` };
 }
@@ -291,6 +301,21 @@ export function bulkAdvance(p: BulkProgress, r: Extract<TrialBulkResult, { state
     done: r.done, stalled: !r.done && !moved, batches: p.batches + 1,
   };
 }
+
+/** Failure reasons no retry can change: the image can never be unlocked any more. */
+export const BULK_FINAL_REASONS: ReadonlySet<string> = new Set(["expired", "unavailable", "not_found"]);
+
+/** An image counted as failed that turned out unlocked after all (a commit whose links were lost). */
+export function bulkResolved(p: BulkProgress, assetId: string): BulkProgress {
+  if (!p.failed.some((f) => f.assetId === assetId)) return p;
+  return { ...p, failed: p.failed.filter((f) => f.assetId !== assetId), unlocked: p.unlocked + 1 };
+}
+
+/** What a run leaves locked: the server's remainder and the failures a retry can still fix. */
+export const bulkLockedLeft = (p: BulkProgress, expected: number): number =>
+  p.remaining !== null
+    ? p.remaining + p.failed.filter((f) => !BULK_FINAL_REASONS.has(f.reason)).length
+    : Math.max(0, expected - p.unlocked);
 
 export const bulkContinues = (p: BulkProgress): boolean => !p.done && !p.stalled && p.batches < BULK_MAX_BATCHES;
 

@@ -192,6 +192,10 @@ function trialRpc(name: string, a: Row): Reply | undefined {
     case "trial_original_attach": {
       if (T.attachError) return { data: null, error: T.attachError };
       const r = T.rows.get(String(a.p_original_id));
+      // 0143: the same binding again answers ok (already).
+      if (r?.status === "locked" && r.asset_id === a.p_asset_id && r.marked_path === a.p_marked_path) {
+        return { data: { ok: true, expires_at: "2026-11-13T12:00:00Z", already: true }, error: null };
+      }
       if (!r || r.status !== "pending") return { data: { ok: false, error: "not_pending" }, error: null };
       Object.assign(r, { status: "locked", asset_id: a.p_asset_id, marked_path: a.p_marked_path, marked_sha256: a.p_marked_sha256 });
       return { data: { ok: true, expires_at: "2026-11-13T12:00:00Z" }, error: null };
@@ -261,10 +265,14 @@ function from(name: string) {
   let cols = "*";
   const exec = () => {
     if (db().faults.has(`${name}:${op}`)) return { data: null, error: { message: "fault" } };
+    // The invocation dies here (once): the next call finds what it left.
+    if (db().faults.delete(`${name}:${op}:crash`)) throw new Error("invocation died");
     const rows = tableRows(name);
     if (op === "insert") {
       const list = (Array.isArray(payload) ? payload : [payload!]).map((p) => ({ id: id(name.slice(0, 4)), created_at: iso(db().now), ...p }));
       rows.push(...list);
+      // …or dies right AFTER the row is written (once).
+      if (db().faults.delete(`${name}:${op}:crash-after`)) throw new Error("invocation died");
       return { data: one ? list[0] : list, error: null };
     }
     let hit = rows.filter((r) => filters.every((f) => f(r)));
@@ -930,6 +938,29 @@ async function sectionG() {
   }
   check("G28 past the trial budget (265 s into the route) no image is begun: nothing stored, the charge refunded",
     !r.ok && r.error === "storage_failed" && db().events[0]?.status === "refunded" && trialCalls("trial_original_reserve").length === 0, r);
+
+  // The gate counts from the ROUTE's start when the route says when it began
+  // (slow work before runGeneration — the hybrid analysis — spends the same
+  // 300 s): 240 s of route work + 30 s here = past the gate.
+  fresh(); await seedPhoto();
+  T.decide = decideOf("trial", "trial");
+  providerImages = [{ bytes: img0, mime: "image/png" }, { bytes: img1, mime: "image/jpeg" }];
+  onGenerate = () => { const shift = 30_000; Date.now = () => realNow() + shift; };
+  try {
+    r = await generate({ routeStartedAt: realNow() - 240_000 });
+  } finally {
+    Date.now = realNow;
+    onGenerate = null;
+  }
+  check("G29 the trial gate counts from routeStartedAt: 240 s of route work + 30 s here → no image begun, the charge refunded",
+    !r.ok && r.error === "storage_failed" && db().events[0]?.status === "refunded" && trialCalls("trial_original_reserve").length === 0, r);
+
+  fresh(); await seedPhoto();
+  T.decide = decideOf("trial", "trial");
+  providerImages = [{ bytes: img0, mime: "image/png" }, { bytes: img1, mime: "image/jpeg" }];
+  r = await generate({ routeStartedAt: realNow() + 3_600_000 });
+  check("G30 a routeStartedAt LATER than the call itself is ignored (never extends the budget): both images delivered marked",
+    r.ok && r.images.length === 2 && trialCalls("trial_original_reserve").length === 2, r);
 }
 
 /* ══ M · Miniaturka ══════════════════════════════════════════════════════*/
@@ -1018,7 +1049,8 @@ function trialRetouch(rec: Recorder, state: PassState, clean: Buffer) {
     db().storage.set(`generation-assets:${markedPath}`, file);
     tableRows("generation_jobs").push({ id: jobId, workspace_id: ws, user_id: userId, status: "completed", credits_charged: 7,
       created_at: iso(db().now), settings: { operation: "image_retouch", reference_paths: [input.sourcePath],
-        provider_output: [{ stored_path: markedPath, stored_sha256: sha(file) }] } });
+        // runGeneration flags a pass it stored marked (generation.ts).
+        provider_output: [{ stored_path: markedPath, stored_sha256: sha(file), ...(state !== "none" ? { trial_watermark: true } : {}) }] } });
     const genId = id("gen");
     tableRows("generations").push({ id: genId, job_id: jobId, workspace_id: ws });
     tableRows("generation_assets").push({ id: id("asset"), generation_id: genId, storage_path: resultPath });
@@ -1172,6 +1204,57 @@ async function sectionM() {
   run = await driveToEnd(runId, depsFor(rec, trialRetouch(rec, "locked", clean)));
   check("M17 the source lookup failing → source_unavailable (never 'not a trial image'), nothing charged",
     run.status === "failed" && run.error === "source_unavailable" && composeStarts().length === 0 && rec.sunburst.length === 0, run.error);
+
+  // M20 — dormant (off) with Retusz ON and an ordinary pass: not one lookup.
+  fresh();
+  T.decide = decideOf("off", "disabled");
+  rec = { retouch: [], sunburst: [] };
+  runId = await startRun(await seedPhotos(2), true);
+  run = await driveToEnd(runId, depsFor(rec, trialRetouch(rec, "none", clean)));
+  check("M20 feature off, Retusz ON, ordinary passes → delivered with NO trial_original_source lookup (no new RPC, no new refusal)",
+    run.status === "ok" && rec.sunburst.length === 1 && trialCalls("trial_original_source").length === 0, { status: run.status, error: run.error, lookups: trialCalls("trial_original_source").length });
+
+  // M18/M19 — the invocation DIES after the stash. The next calls find what
+  // it left: the original is released with the refunded composition, or
+  // bound to the library item that did get written.
+  const crashThenDrive = async (id: string, deps: Partial<ThumbnailDeps>) => {
+    let died = false;
+    try {
+      await advanceThumbnailRun(SUPA, USER, WS, id, { deadlineAt: db().now + 270_000, deps });
+    } catch { died = true; }
+    for (let i = 0; i < 80; i++) {
+      const r = db().runs.get(id)!;
+      if (r.status !== "queued" && r.status !== "running") break;
+      db().now += 11_000;
+      await advanceThumbnailRun(SUPA, USER, WS, id, { deadlineAt: db().now + 270_000, deps });
+    }
+    return { died, run: db().runs.get(id)! };
+  };
+  fresh();
+  T.decide = decideOf("trial", "trial");
+  db().faults.add("generations:insert:crash");
+  rec = { retouch: [], sunburst: [] };
+  runId = await startRun(await seedPhotos(1), false);
+  let c = await crashThenDrive(runId, depsFor(rec, noRetouch));
+  let kept = [...T.rows.values()][0];
+  check("M18 died after the stash, before the library row → resumed as interrupted: refunded, the original RELEASED (orphaned, key destroyed, blob removed)",
+    c.died && c.run.status === "failed" && db().events[0]?.status === "refunded" && tableRows("generation_assets").length === 0
+    && kept?.status === "orphaned" && !T.keys.has(kept.id) && !bucketObjects(TRIAL_ORIGINALS_BUCKET).some((o) => o.path === kept?.object_path),
+    { died: c.died, status: c.run.status, error: c.run.error, original: kept?.status });
+
+  fresh();
+  T.decide = decideOf("trial", "trial");
+  db().faults.add("generation_assets:insert:crash-after");
+  rec = { retouch: [], sunburst: [] };
+  runId = await startRun(await seedPhotos(1), false);
+  c = await crashThenDrive(runId, depsFor(rec, noRetouch));
+  kept = [...T.rows.values()][0];
+  const libAsset = tableRows("generation_assets")[0];
+  check("M19 died after the library row, before the attach → resumed as delivered: the original BOUND to that item (locked), charged once, ONE Sunburst request",
+    c.died && c.run.status === "ok" && kept?.status === "locked" && kept.asset_id === libAsset?.id && kept.marked_path === libAsset?.storage_path
+    && T.keys.has(kept.id) && rec.sunburst.length === 1 && db().events[0]?.status === "succeeded"
+    && trialCalls("trial_original_attach").length === 1,
+    { died: c.died, status: c.run.status, error: c.run.error, original: kept?.status, event: db().events[0]?.status });
 }
 
 /* ══ W · Workflow ON ═════════════════════════════════════════════════════*/

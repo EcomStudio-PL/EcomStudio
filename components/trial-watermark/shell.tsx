@@ -21,7 +21,9 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabi
  *     the paywall would throw the customer out of their image as well. The
  *     arrows are held back for the same reason — they page the lightbox;
  *   · the page's previous `overflow` is restored on close, not reset to "":
- *     the lightbox underneath locked it first and still needs it locked.
+ *     the lightbox underneath locked it first and still needs it locked —
+ *     and only while it is still OUR lock: when a navigation unmounts the
+ *     lightbox first (it restores the page), the page is left as it now is.
  * Focus moves in on open, stays inside on Tab, and returns to the button that
  * opened it (useDialogFocus).
  */
@@ -40,6 +42,20 @@ export function TrialDialogShell({ label, onClose, locked = false, focusKey, wid
   const panel = useRef<HTMLDivElement>(null);
   useDialogFocus(true, panel);
 
+  // After an unlock the control that opened this dialog is gone (the chip,
+  // the plate's button, the retake hint): focus then goes back into the view
+  // it sat in — the lightbox, the editor, the card — never to <body>.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const home = opener?.closest<HTMLElement>('[role="dialog"]') ?? opener?.parentElement ?? null;
+    return () => {
+      window.requestAnimationFrame(() => {
+        if (!home?.isConnected || opener?.isConnected) return;
+        home.querySelector<HTMLElement>(FOCUSABLE)?.focus({ preventScroll: true });
+      });
+    };
+  }, []);
+
   // The newest state of the two props the key handler needs, without
   // re-binding the listener on every render.
   const live = useRef({ onClose, locked });
@@ -56,7 +72,7 @@ export function TrialDialogShell({ label, onClose, locked = false, focusKey, wid
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey, true);
-      document.body.style.overflow = previous;
+      if (document.body.style.overflow === "hidden") document.body.style.overflow = previous;
     };
   }, []);
 

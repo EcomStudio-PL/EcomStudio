@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 /** Real generation endpoint. Auth + workspace membership via Supabase RLS;
  *  the server recomputes cost and owns the whole charge/refund lifecycle. */
 export async function POST(request: Request) {
+  const routeStartedAt = Date.now();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
   if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
 
   const result = await runGeneration(supabase, user.id, workspace.id, {
+    routeStartedAt,
     modelId: String(body.modelId ?? ""),
     prompt: String(body.prompt ?? ""),
     enginePrompt: engine.enginePrompt ?? undefined,

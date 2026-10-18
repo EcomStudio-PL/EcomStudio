@@ -411,7 +411,7 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
 
   /** One image now points at its clean file — here, and (via the hooks) in
    *  every cached shelf. Per ASSET: the job's other images are untouched. */
-  const applyUnlock = useCallback((assetId: string, patch: TrialAssetPatch) => {
+  const applyUnlock = useCallback((assetId: string, patch: Partial<TrialAssetPatch>) => {
     setItems((list) => patchAsset(list, assetId, patch));
   }, []);
   const trialUnlock = useTrialUnlock({

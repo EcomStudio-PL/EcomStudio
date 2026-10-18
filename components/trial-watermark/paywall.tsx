@@ -2,13 +2,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Clock, Loader2, Lock, Settings } from "lucide-react";
+import { AlertTriangle, Check, Clock, Loader2, Lock, Settings } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { trialPlanSelectedAction } from "@/app/actions/trial-watermark";
 import type { TrialPaywallPlan } from "@/lib/trial-watermark/types";
-import { planPresentation } from "@/components/plan/pricing-config";
+import { planPresentation, type FeatureKey } from "@/components/plan/pricing-config";
+import { featureLabelKey } from "@/components/plan/plan-cards";
 import { formatCount, formatMoney, isFewForm } from "@/components/plan/pricing-model";
 import { availableLine, highlightedPlanIds, orderPlans, safeHref, underADay } from "./model";
 
@@ -132,8 +133,24 @@ export function TrialPaywall({ preview, paywallId, assetId, daysLeft, expiresAt,
                 <span className="mt-1 text-[12px] text-muted">
                   {t(isFewForm(credits) ? "genv3.wm.creditsMonthlyFew" : "genv3.wm.creditsMonthly", { n: formatCount(credits) })}
                 </span>
+                {/* What the plan includes today, in /plany's own words (its card highlights). */}
+                {plan.capabilities.length > 0 && (
+                  <ul className="mt-2 space-y-1" data-trial-plan-features>
+                    {plan.capabilities.map((k) => {
+                      const label = featureLabelKey(k as FeatureKey);
+                      return label ? (
+                        <li key={k} className="flex items-start gap-1.5 text-[11.5px] leading-snug text-muted">
+                          <Check size={12} aria-hidden className="mt-0.5 shrink-0 text-accent" />
+                          {t(label)}
+                        </li>
+                      ) : null;
+                    })}
+                  </ul>
+                )}
+                <span aria-hidden className="flex-1" />
                 {buttons && (
                   <button type="button" onClick={() => void choose(plan)} disabled={!!choosing} data-trial-choose={plan.slug}
+                    aria-label={`${t("genv3.wm.choosePlan")} — ${name}`}
                     className={cn("mt-3 inline-flex h-10 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold transition-colors",
                       lit ? "cta [--accent:var(--accent-strong)]" : "border border-line-strong text-ink hover:bg-raised",
                       choosing && choosing !== plan.id && "opacity-50")}>

@@ -222,15 +222,16 @@ export async function rpcEntitlement(supabase: AnyClient, workspaceId: string): 
 }
 
 export type BeginReply =
-  | { state: "ready"; originalId: string; workspaceId: string; jobId: string | null; objectPath: string; wrappedKey: string; kekFingerprint: string; cleanSha256: string; cleanMime: string; targetPath: string }
+  | { state: "ready"; originalId: string; workspaceId: string; jobId: string | null; objectPath: string; wrappedKey: string; kekFingerprint: string; cleanSha256: string; cleanMime: string; targetPath: string; leaseId: string }
   | { state: "unlocked"; storagePath: string }
   | { state: "not_entitled" | "expired" | "unavailable" | "not_found" | "busy" };
 
 /**
  * TOKEN · trial_original_unlock_begin(p_token, p_asset_id, p_live_ok) — judges
  * membership, entitlement (DB AND the caller's live Stripe verdict) and expiry
- * once, under a row lock; moves locked → unlocking with a lease and the
- * DB-derived target path. A second begin inside the lease resumes the same target.
+ * once, under a row lock; moves locked → unlocking with a 3-minute lease, its
+ * id (finish and abort must name it) and the DB-derived target path. While
+ * another request holds a live lease: `busy` — never a shared target.
  */
 export async function rpcUnlockBegin(supabase: AnyClient, assetId: string, liveOk: boolean): Promise<RpcResult<BeginReply>> {
   const r = await call(supabase, "trial_original_unlock_begin", { p_token: token(), p_asset_id: assetId, p_live_ok: liveOk });
@@ -238,7 +239,7 @@ export async function rpcUnlockBegin(supabase: AnyClient, assetId: string, liveO
   const d = r.data;
   if (!isObj(d) || typeof d.state !== "string") return { ok: false, error: "malformed_begin" };
   if (d.state === "ready") {
-    const need = ["original_id", "workspace_id", "object_path", "wrapped_key", "kek_fp", "clean_sha256", "clean_mime", "target_path"];
+    const need = ["original_id", "workspace_id", "object_path", "wrapped_key", "kek_fp", "clean_sha256", "clean_mime", "target_path", "lease_id"];
     if (!need.every((k) => typeof d[k] === "string")) return { ok: false, error: "malformed_begin" };
     return {
       ok: true,
@@ -247,6 +248,7 @@ export async function rpcUnlockBegin(supabase: AnyClient, assetId: string, liveO
         jobId: typeof d.job_id === "string" ? d.job_id : null, objectPath: d.object_path as string,
         wrappedKey: d.wrapped_key as string, kekFingerprint: d.kek_fp as string,
         cleanSha256: d.clean_sha256 as string, cleanMime: d.clean_mime as string, targetPath: d.target_path as string,
+        leaseId: d.lease_id as string,
       },
     };
   }
@@ -266,18 +268,19 @@ export type FinishReply =
   | { state: "lease_lost" | "not_found" | "deleted" };
 
 /**
- * TOKEN · trial_original_unlock_finish(p_token, p_asset_id, p_thumb_path,
- * p_preview_path, p_via, p_bulk_id) — commits an `unlocking` row inside its
- * lease: repoints the asset to the target, records derivatives (null = none,
+ * TOKEN · trial_original_unlock_finish(p_token, p_asset_id, p_lease_id,
+ * p_thumb_path, p_preview_path, p_via, p_bulk_id) — commits an `unlocking`
+ * row inside ITS OWN lease (the id begin handed out; anything else is
+ * `lease_lost`): repoints the asset to the target, records derivatives (null = none,
  * the library rebuilds them), rewrites Miniaturka run outputs that named the
  * marked file, destroys the key, writes `watermark_unlocked`.
  */
 export async function rpcUnlockFinish(
-  supabase: AnyClient, assetId: string, thumbPath: string | null, previewPath: string | null,
+  supabase: AnyClient, assetId: string, leaseId: string, thumbPath: string | null, previewPath: string | null,
   via: "single" | "bulk", bulkId: string | null,
 ): Promise<RpcResult<FinishReply>> {
   const r = await call(supabase, "trial_original_unlock_finish", {
-    p_token: token(), p_asset_id: assetId, p_thumb_path: thumbPath, p_preview_path: previewPath, p_via: via, p_bulk_id: bulkId,
+    p_token: token(), p_asset_id: assetId, p_lease_id: leaseId, p_thumb_path: thumbPath, p_preview_path: previewPath, p_via: via, p_bulk_id: bulkId,
   });
   if (!r.ok) return r;
   const d = r.data;
@@ -297,17 +300,21 @@ export async function rpcUnlockFinish(
 }
 
 /**
- * TOKEN · trial_original_unlock_abort(p_token, p_asset_id) → {target_path, state}
- * — unlocking → locked (the target was not committed). `target_path` is what
- * the caller may remove: set for ANY row that is not unlocked (a stale
- * lease's leftover too), null for an unlocked row (that path is the
- * customer's file now). `state` is the row's state after the call
- * ("locked", "unlocked", "expired"…), or "not_found".
+ * TOKEN · trial_original_unlock_abort(p_token, p_asset_id, p_lease_id) →
+ * {target_path, state}.
+ *   · With the caller's OWN lease id: unlocking → locked, nothing committed.
+ *     The caller removed its target BEFORE this call (while its lease kept
+ *     everyone else out); `target_path` is null.
+ *   · With null: the cleanup of a row that can never be unlocked again
+ *     (expired, deleted, orphaned) — `target_path` is what an interrupted
+ *     request may have left there, for the caller to remove.
+ * Someone else's lease is never touched (`busy`). `state` is the row's state
+ * after the call ("locked", "unlocked", "expired"…), or "not_found".
  */
 export async function rpcUnlockAbort(
-  supabase: AnyClient, assetId: string,
+  supabase: AnyClient, assetId: string, leaseId: string | null,
 ): Promise<RpcResult<{ targetPath: string | null; state: string | null }>> {
-  const r = await call(supabase, "trial_original_unlock_abort", { p_token: token(), p_asset_id: assetId });
+  const r = await call(supabase, "trial_original_unlock_abort", { p_token: token(), p_asset_id: assetId, p_lease_id: leaseId });
   if (!r.ok) return r;
   const d = r.data;
   return {
@@ -393,7 +400,7 @@ export async function rpcSweepNow(supabase: AnyClient): Promise<RpcResult<Record
   return { ok: true, data: isObj(r.data) ? r.data : {} };
 }
 
-/** TOKEN (anon allowed) · trial_originals_purge_list(p_token, p_limit) → object paths, armed for purge for 10 min. */
+/** TOKEN (anon allowed) · trial_originals_purge_list(p_token, p_limit) → object paths, armed for purge for 1 min. */
 export async function rpcPurgeList(supabase: AnyClient, limit: number): Promise<RpcResult<string[]>> {
   const r = await call(supabase, "trial_originals_purge_list", { p_token: token(), p_limit: limit });
   if (!r.ok) return r;

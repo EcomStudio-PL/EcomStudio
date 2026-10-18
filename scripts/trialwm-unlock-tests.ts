@@ -57,7 +57,7 @@ type Row = Record<string, unknown>;
 type Orig = {
   id: string; workspace_id: string; job_id: string | null; asset_id: string | null; operation: string;
   marked_path: string; object_path: string; status: string; clean_sha256: string; clean_mime: string;
-  created_at: number; expires_at: number; lease_until: number | null; target_path: string | null;
+  created_at: number; expires_at: number; lease_until: number | null; lease_id: string | null; target_path: string | null;
   unlocked_path: string | null;
 };
 type World = {
@@ -76,6 +76,8 @@ type World = {
   entitlement: Row;
   config: Row;
   beforeFinish: (() => void) | null;
+  /** Per abort call: was the row's target still in storage when it came? */
+  targetAtAbort: boolean[];
   order: string[];
 };
 
@@ -95,6 +97,7 @@ function freshWorld(): World {
     entitlement: { entitled: true, pending: false, has_live_subscription: true, plan_slug: "pro", status: "active", provider: "manual", provider_subscription_id: null },
     config: { signed_url_ttl_seconds: 45 },
     beforeFinish: null,
+    targetAtAbort: [],
     order: [],
   };
 }
@@ -216,19 +219,20 @@ function rpcImpl(w: World, fn: string, a: Row): unknown {
       if (["deleted", "orphaned", "pending"].includes(o.status) || !path) return { state: "unavailable" };
       if (o.status === "expired") return { state: "expired" };
       if (path !== o.marked_path) return { state: "unavailable" };
-      const leaseLive = o.status === "unlocking" && (o.lease_until ?? 0) > now;
-      if (!leaseLive && o.expires_at <= now) return { state: "expired" };
+      // 0143: one request at a time — a live lease answers busy, never a shared target.
+      if (o.status === "unlocking" && (o.lease_until ?? 0) > now) return { state: "busy" };
+      if (o.expires_at <= now) return { state: "expired" };
       if (a.p_live_ok !== true || w.entitlement.entitled !== true) return { state: "not_entitled" };
       const k = w.keys.get(o.id);
       if (!k) return { state: "unavailable" };
-      if (!leaseLive) {
-        o.status = "unlocking";
-        o.lease_until = now + 10 * MIN;
-        o.target_path = `${o.workspace_id}/${o.job_id ?? o.id}/u-${o.id}.${extOf(o.clean_mime)}`;
-      }
+      o.status = "unlocking";
+      o.lease_until = now + 3 * MIN;
+      o.lease_id = randomUUID();
+      o.target_path = `${o.workspace_id}/${o.job_id ?? o.id}/u-${o.id}.${extOf(o.clean_mime)}`;
       return {
         state: "ready", original_id: o.id, workspace_id: o.workspace_id, job_id: o.job_id, object_path: o.object_path,
         wrapped_key: k.wrapped, kek_fp: k.fp, clean_sha256: o.clean_sha256, clean_mime: o.clean_mime, target_path: o.target_path,
+        lease_id: o.lease_id,
       };
     }
     case "trial_original_unlock_finish": {
@@ -243,7 +247,7 @@ function rpcImpl(w: World, fn: string, a: Row): unknown {
       if (o.status === "unlocked") return { state: "unlocked", already: true, storage_path: path ?? o.unlocked_path, old_paths: old, object_path: o.object_path };
       if (o.status === "deleted" || !path) return { state: "deleted" };
       if (o.status === "pending") return { state: "not_found" };
-      if (o.status !== "unlocking" || (o.lease_until ?? 0) <= Date.now() || path !== o.marked_path) return { state: "lease_lost" };
+      if (o.status !== "unlocking" || o.lease_id !== a.p_lease_id || (o.lease_until ?? 0) <= Date.now() || path !== o.marked_path) return { state: "lease_lost" };
       const target = o.target_path!;
       if (a.p_thumb_path !== null && a.p_thumb_path !== derivPath(target, "_t.webp")) throw new Error("invalid_thumb_path");
       if (a.p_preview_path !== null && a.p_preview_path !== derivPath(target, "_p.webp")) throw new Error("invalid_preview_path");
@@ -253,7 +257,7 @@ function rpcImpl(w: World, fn: string, a: Row): unknown {
       if (a.p_preview_path) meta.preview = a.p_preview_path;
       asset!.storage_path = target;
       asset!.metadata = meta;
-      o.status = "unlocked"; o.unlocked_path = target; o.lease_until = null;
+      o.status = "unlocked"; o.unlocked_path = target; o.lease_until = null; o.lease_id = null;
       w.keys.delete(o.id);
       emit(w, o.workspace_id, "watermark_unlocked", a.p_asset_id as string,
         { asset_id: a.p_asset_id, original_id: o.id, via: a.p_via, bulk_id: a.p_bulk_id, tool: o.operation, age_days: 0 }, `unlocked:${o.id}`);
@@ -263,9 +267,18 @@ function rpcImpl(w: World, fn: string, a: Row): unknown {
       if (!tokenOk) forbid();
       const o = w.originals.find((x) => x.asset_id === a.p_asset_id);
       if (!o || !w.members.has(o.workspace_id)) return { target_path: null, state: "not_found" };
-      if (o.status === "unlocked") return { target_path: null, state: "unlocked" };
-      if (o.status === "unlocking") { o.status = "locked"; o.lease_until = null; return { target_path: o.target_path, state: "locked" }; }
-      return { target_path: o.target_path, state: o.status };
+      // What was in storage when the abort came: the holder removes first (0143).
+      w.targetAtAbort.push(o.target_path ? w.storage["generation-assets"]!.has(o.target_path) : false);
+      if (o.status === "unlocking" && a.p_lease_id && a.p_lease_id === o.lease_id) {
+        o.status = "locked"; o.lease_until = null; o.lease_id = null;
+        return { target_path: null, state: "locked" };
+      }
+      // Dead: never unlockable again — no request can write or commit the target.
+      const dead = ["expired", "deleted", "orphaned"].includes(o.status)
+        || (["locked", "unlocking"].includes(o.status) && o.expires_at <= now && !(o.status === "unlocking" && (o.lease_until ?? 0) > now));
+      if (!a.p_lease_id && dead) return { target_path: o.target_path, state: o.status };
+      if (o.status === "unlocking") return { target_path: null, state: "busy" };
+      return { target_path: null, state: o.status };
     }
     case "trial_original_next_batch": {
       if (!tokenOk || !w.members.has(a.p_workspace_id as string)) forbid();
@@ -296,7 +309,10 @@ function rpcImpl(w: World, fn: string, a: Row): unknown {
     case "trial_originals_purge_list":
       if (!tokenOk) forbid();
       w.order.push("purge_list");
-      return [...w.storage["trial-originals"]!.keys(), "ws-gone/never-written.bin"];
+      // 0143: a row whose blob is already gone is marked purged by the list
+      // itself (named once here, never again); at most p_limit paths.
+      return [...w.storage["trial-originals"]!.keys(), ...(w.order.filter((x) => x === "purge_list").length === 1 ? ["ws-gone/never-written.bin"] : [])]
+        .slice(0, Number(a.p_limit ?? 200));
     case "trial_originals_purge_heartbeat":
       if (!tokenOk) forbid();
       w.order.push("heartbeat");
@@ -314,6 +330,11 @@ function fakeClient(w: World) {
       return {
         async upload(path: string, bytes: Buffer, opts?: { upsert?: boolean }) {
           w.uploads.push({ bucket, path, upsert: opts?.upsert === true });
+          // The clean target is stored, but its answer is lost (a 500 after the write).
+          if (w.tableFaults.has(`${bucket}:upload-stored-then-500`) && /\/u-[^/]+\.(png|jpg|webp)$/.test(path)) {
+            store.set(path, Buffer.from(bytes));
+            return { data: null, error: { message: "gateway timeout", statusCode: "500" } };
+          }
           if (w.tableFaults.has(`${bucket}:upload`)) return { data: null, error: { message: "upload failed", statusCode: "500" } };
           if (store.has(path) && opts?.upsert !== true) return { data: null, error: { message: "The resource already exists", statusCode: "409" } };
           store.set(path, Buffer.from(bytes));
@@ -403,7 +424,7 @@ function addTrialAsset(w: World, ws: string, opts: { createdAgo?: number; expire
   const o: Orig = {
     id: originalId, workspace_id: ws, job_id: jobId, asset_id: assetId, operation: "generator", marked_path: markedPath,
     object_path: objectPath, status: opts.status ?? "locked", clean_sha256: sha(clean), clean_mime: "image/png",
-    created_at: created, expires_at: Date.now() + (opts.expiresIn ?? 29 * 86_400_000), lease_until: null, target_path: null, unlocked_path: null,
+    created_at: created, expires_at: Date.now() + (opts.expiresIn ?? 29 * 86_400_000), lease_until: null, lease_id: null, target_path: null, unlocked_path: null,
   };
   w.originals.push(o);
   w.tables.generation_assets.push({
@@ -500,8 +521,10 @@ async function main() {
     check("…naming the same clean file", (a as { path?: string }).path === t.target && (b as { path?: string }).path === t.target);
     check("…which holds the original's bytes", w.storage["generation-assets"]!.get(t.target)?.equals(CLEAN) === true);
     check("…with one event and one commit", events(w, "watermark_unlocked").length === 1 && t.o.status === "unlocked");
-    check("…the second write found the first one's file and accepted it by hash",
-      w.uploads.filter((u) => u.path === t.target).length === 2 && calls(w, "trial_original_unlock_finish").length === 2);
+    check("…ONE request worked on it: the other was told busy, asked again, and found it unlocked (one write, one finish)",
+      w.uploads.filter((u) => u.path === t.target).length === 1 && calls(w, "trial_original_unlock_finish").length === 1
+      && calls(w, "trial_original_unlock_begin").length >= 3,
+      `${w.uploads.filter((u) => u.path === t.target).length} writes, ${calls(w, "trial_original_unlock_finish").length} finishes, ${calls(w, "trial_original_unlock_begin").length} begins`);
     const left = [...w.storage["generation-assets"]!.keys()].filter((p) => p.startsWith(`${ws}/`));
     check("…and nothing left behind but the clean file and its derivatives",
       left.sort().join() === [t.target, thumbPathFor(t.target), previewPathFor(t.target)].sort().join(), left.join(", "));
@@ -602,13 +625,15 @@ async function main() {
     w.beforeFinish = () => { t.o.lease_until = Date.now() - 1; };
     const r = await unlockTrialAsset(db, { workspaceId: ws, assetId: t.assetId });
     check("lease lost → unlock_failed", r.state === "error" && (r as { error: string }).error === "unlock_failed", JSON.stringify(r));
-    check("…the target and its derivatives are removed", ![t.target, thumbPathFor(t.target), previewPathFor(t.target)].some((p) => w.storage["generation-assets"]!.has(p)));
-    check("…abort ran, the row is locked and the asset still the marked file",
-      calls(w, "trial_original_unlock_abort").length === 1 && t.o.status === "locked" && assetRow(w, t.assetId)!.storage_path === t.markedPath);
+    check("…NOTHING of the target is touched (another request may own it now) and no abort is sent with the lost lease",
+      w.storage["generation-assets"]!.has(t.target) && calls(w, "trial_original_unlock_abort").length === 0
+      && !w.removes.some((x) => x.paths.includes(t.target)));
+    check("…the asset is still the marked file", assetRow(w, t.assetId)!.storage_path === t.markedPath);
     check("…the blob and key survive", w.storage["trial-originals"]!.has(t.objectPath) && w.keys.has(t.originalId));
     w.beforeFinish = null;
     const retry = await unlockTrialAsset(db, { workspaceId: ws, assetId: t.assetId });
-    check("…and a retry then succeeds", retry.state === "unlocked");
+    check("…and a retry (a NEW lease) then succeeds, reusing the identical target file", retry.state === "unlocked"
+      && w.storage["generation-assets"]!.get(t.target)?.equals(CLEAN) === true && events(w, "watermark_unlocked").length === 1);
   }
   {
     const w = freshWorld();
@@ -618,7 +643,13 @@ async function main() {
     w.rpcFaults.add("trial_original_unlock_finish");
     const r = await unlockTrialAsset(db, { workspaceId: ws, assetId: t.assetId });
     check("finish failing → unlock_failed", r.state === "error");
-    check("…target removed and abort called", !w.storage["generation-assets"]!.has(t.target) && calls(w, "trial_original_unlock_abort").length === 1 && t.o.status === "locked");
+    check("…abort with OUR lease: back to locked; the target is kept (it may have committed — never removed blind)",
+      calls(w, "trial_original_unlock_abort").length === 1 && calls(w, "trial_original_unlock_abort")[0]?.args.p_lease_id === calls(w, "trial_original_unlock_finish")[0]?.args.p_lease_id
+      && t.o.status === "locked" && w.storage["generation-assets"]!.has(t.target));
+    w.rpcFaults.delete("trial_original_unlock_finish");
+    const again = await unlockTrialAsset(db, { workspaceId: ws, assetId: t.assetId });
+    check("…a retry commits that same identical file", again.state === "unlocked" && (again as { path?: string }).path === t.target
+      && w.storage["generation-assets"]!.get(t.target)?.equals(CLEAN) === true);
   }
   {
     const w = freshWorld();
@@ -638,6 +669,19 @@ async function main() {
     w.storage["trial-originals"]!.delete(t.objectPath);
     const r = await unlockTrialAsset(db, { workspaceId: ws, assetId: t.assetId });
     check("a missing blob → unlock_failed, row back to locked", r.state === "error" && t.o.status === "locked" && w.uploads.length === 0);
+    check("…given back with OUR lease id", typeof calls(w, "trial_original_unlock_abort")[0]?.args.p_lease_id === "string");
+  }
+  {
+    const w = freshWorld();
+    const db = install(w);
+    const ws = addWorkspace(w);
+    const t = addTrialAsset(w, ws);
+    w.tableFaults.add("generation-assets:upload-stored-then-500");
+    const r = await unlockTrialAsset(db, { workspaceId: ws, assetId: t.assetId });
+    check("the clean target stored but its answer lost → unlock_failed, row back to locked", r.state === "error" && t.o.status === "locked");
+    check("…the target was removed BEFORE the abort (while our lease kept everyone else out), not after",
+      w.targetAtAbort.length === 1 && w.targetAtAbort[0] === false && !w.storage["generation-assets"]!.has(t.target));
+    check("…and the abort named OUR lease", typeof calls(w, "trial_original_unlock_abort")[0]?.args.p_lease_id === "string");
   }
   {
     const w = freshWorld();
@@ -912,7 +956,9 @@ async function main() {
     check("StatusView: 'Wróć do zdjęcia' → /library?unlock=<uuid>, i18n, validated",
       view.includes("/library?unlock=${unlockAssetId}") && view.includes('t("checkout.wmReturnCta")') && /UUID\.test\(unlockAssetId\)/.test(view));
     const fails = view.slice(view.indexOf('if (state === "failed")'), view.indexOf('if (state === "paid")'));
-    check("…offered in every state but a failed one", (view.match(/secondary=\{back\}/g) ?? []).length === 4 && !fails.includes("secondary"));
+    check("…offered in every state but a failed one", (view.match(/secondary=\{planBack\}/g) ?? []).length === 4 && !fails.includes("secondary"));
+    check("…and only for a PLAN purchase (or while the kind is unknown): a credit pack or GrovNews unlocks nothing",
+      /const planBack = !status\?\.kind \|\| status\.kind === "subscription" \? back : undefined;/.test(view) && !/secondary=\{back\}/.test(view));
     check("…and still only asks (checkoutStatusAction, never beginCheckout)", /checkoutStatusAction/.test(view) && !/beginCheckout/.test(view));
   }
 
@@ -924,11 +970,25 @@ async function main() {
     w.storage["trial-originals"]!.set("ws-a/1.bin", Buffer.from("x"));
     w.storage["trial-originals"]!.set("ws-a/2.bin", Buffer.from("y"));
     const rep = await purgeTrialOriginals(anon, { budgetMs: 15_000 });
-    check("order: sweep → list → remove → mark → heartbeat", w.order.join(",") === "sweep_now,purge_list,remove,mark_purged,heartbeat", w.order.join(","));
+    check("order: sweep → list → remove → mark → list again (empty) → heartbeat", w.order.join(",") === "sweep_now,purge_list,remove,mark_purged,purge_list,heartbeat", w.order.join(","));
     const marked = calls(w, "trial_originals_mark_purged")[0]?.args.p_paths as string[];
     check("only what storage confirmed is marked", marked.sort().join() === "ws-a/1.bin,ws-a/2.bin" && !marked.includes("ws-gone/never-written.bin"));
-    check("the report counts it", rep.listed === 3 && rep.removed === 2 && rep.marked === 2 && rep.error === null);
+    check("the report counts it, drained", rep.listed === 3 && rep.removed === 2 && rep.marked === 2 && rep.drained && rep.error === null, JSON.stringify(rep));
     check("the heartbeat carries the report", ((w.tables.heartbeat?.[0]?.report) as Row | undefined)?.removed === 2);
+  }
+  {
+    // A day with more expiries than one list holds: round after round.
+    const w = freshWorld();
+    const anon = fakeClient(w) as unknown as SupabaseClient;
+    w.user = null;
+    for (let i = 0; i < 600; i++) w.storage["trial-originals"]!.set(`ws-c/${i}.bin`, Buffer.from("z"));
+    const rep = await purgeTrialOriginals(anon, { budgetMs: 15_000 });
+    check("a backlog bigger than one list (600) is drained in rounds of 500 inside the budget",
+      w.storage["trial-originals"]!.size === 0 && rep.removed === 600 && rep.drained
+      && calls(w, "trial_originals_purge_list").every((c) => c.args.p_limit === 500)
+      && w.order.filter((x) => x === "purge_list").length === 3, JSON.stringify(rep));
+    const beat = (w.tables.heartbeat?.[0]?.report ?? {}) as Row;
+    check("…and the heartbeat says so (drained: true)", beat.drained === true && beat.removed === 600);
   }
   {
     const w = freshWorld();
@@ -958,7 +1018,18 @@ async function main() {
   {
     const src = codeOnly(read("lib/server/trial-watermark/unlock.ts"));
     check("unlock.ts never overwrites (no upsert:true)", !/upsert:\s*true/.test(src) && /upsert:\s*false/.test(src));
-    check("every non-commit after ready aborts through unlock_abort", (src.match(/abortUnlock\(supabase/g) ?? []).length >= 4);
+    check("every non-commit after ready gives back OUR lease through unlock_abort (lease id passed)",
+      (src.match(/abortUnlock\(supabase, a\.workspaceId, a\.assetId, \{ \.\.\.lease/g) ?? []).length >= 3
+      && /rpcUnlockAbort\(supabase, assetId, lease\.id\)/.test(src));
+    const abortFn = src.slice(src.indexOf("async function abortUnlock("), src.indexOf("async function clearDeadTarget("));
+    check("…removing our own target BEFORE the abort, while our lease keeps everyone else out",
+      abortFn.indexOf("removeTarget(") > 0 && abortFn.indexOf("removeTarget(") < abortFn.indexOf("rpcUnlockAbort("));
+    const fin = src.slice(src.indexOf("const finish = await rpcUnlockFinish("), src.indexOf("const f = finish.data;"));
+    check("…and a lost lease touches nothing (no removal, no abort with the lost lease)",
+      /finish\.ok \? null : await abortUnlock\(supabase, a\.workspaceId, a\.assetId, \{ \.\.\.lease, removeOwn: false \}\)/.test(fin)
+      && !/removeOwn: true/.test(fin));
+    check("a dead row's leftover target is cleared only through the lease-less cleanup",
+      (src.match(/clearDeadTarget\(supabase/g) ?? []).length >= 3 && /rpcUnlockAbort\(supabase, assetId, null\)/.test(src));
     check("the removal path comes from abort's answer, not begin's", /r\.data\.targetPath/.test(src));
     check("the key is zeroed after use", /dek\.fill\(0\)/.test(src));
     check("no service role, no admin client", !/service_role|SERVICE_ROLE/.test(src));

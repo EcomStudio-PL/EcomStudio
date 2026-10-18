@@ -188,6 +188,8 @@ async function runEngineImageToolMetered(
       examplesCount: knowledge?.exampleIds.length ?? 0,
     },
     dedupePrompt: `engine:${input.toolKey}:p${engine?.promptVersion ?? 0}:${inputHash}`,
+    // The variables above were resolved inside the same route ceiling.
+    routeStartedAt: input.generation.routeStartedAt ?? started,
     // The panel's "Limit czasu" and "Próby na modelu głównym" are what the
     // image call really gets (clamped to the route budget) — not a label.
     ...(engine ? { callTimeoutMs: engine.timeoutMs, maxAttempts: engine.maxAttempts } : {}),

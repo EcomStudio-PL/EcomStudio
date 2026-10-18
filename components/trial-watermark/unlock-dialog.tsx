@@ -153,6 +153,7 @@ export function TrialUnlockDialog({ target, surface, confirming, onClose, onUnlo
   const confirm = useCallback(async () => {
     setStage({ kind: "confirming", timedOut: false });
     const started = Date.now();
+    let pending: boolean | null = null;
     for (let attempt = 0; ; attempt++) {
       const s = await fetchTrialStatus(assetId);
       if (!alive.current) return;
@@ -162,9 +163,16 @@ export function TrialUnlockDialog({ target, surface, confirming, onClose, onUnlo
         if (s.state === "unavailable" || s.state === "not_found") { setStage({ kind: "expired", reason: "unavailable" }); return; }
         if (s.state === "unlocked") { await unlock(false); return; }
         if (s.entitled) { await unlock(true); return; }
+        pending = s.pending;
       }
       const wait = nextConfirmDelay(attempt, Date.now() - started);
-      if (wait === null) { setStage({ kind: "confirming", timedOut: true }); return; }
+      if (wait === null) {
+        // Waited it out and nothing says a plan payment is on its way: no
+        // "still processing" claim — the offer itself, once.
+        if (pending === false) { await checkRef.current(); return; }
+        setStage({ kind: "confirming", timedOut: true });
+        return;
+      }
       if (!(await pause(wait, () => alive.current))) return;
     }
   }, [assetId, unlock]);

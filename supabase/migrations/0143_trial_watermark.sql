@@ -78,7 +78,10 @@
 --   select count(*) from storage.objects where bucket_id = 'trial-originals';
 --   rollback;
 --
--- ROLLBACK (manual, in this order; nothing else depends on these objects):
+-- ROLLBACK (manual, in this order). FIRST revert the application code that
+-- calls these functions: every image run asks trial_watermark_decide before
+-- charging and refuses (trial_check_failed) when the call fails — a missing
+-- function included — whatever the config says. Then:
 --   select cron.unschedule('grovbase-trial-originals-sweep');
 --   drop policy trial_originals_member_insert, trial_originals_member_select,
 --     trial_originals_member_delete, trial_originals_purge_select,
@@ -130,6 +133,8 @@ create table if not exists public.trial_originals (
   expires_at timestamptz,
   unlock_started_at timestamptz,
   lease_until timestamptz,
+  -- Which request holds the lease: finish and abort must name it (R3).
+  lease_id uuid,
   target_path text check (target_path is null or char_length(target_path) <= 512),
   unlocked_at timestamptz,
   unlocked_by uuid,
@@ -142,7 +147,7 @@ create table if not exists public.trial_originals (
     status not in ('locked', 'unlocking', 'unlocked')
     or (asset_id is not null and marked_path is not null and expires_at is not null)),
   constraint trial_originals_leased check (
-    status <> 'unlocking' or (lease_until is not null and target_path is not null)),
+    status <> 'unlocking' or (lease_until is not null and lease_id is not null and target_path is not null)),
   constraint trial_originals_unlocked_path check (status <> 'unlocked' or unlocked_path is not null)
 );
 create unique index if not exists trial_originals_asset_uq
@@ -313,9 +318,19 @@ begin
     v_meta := v_meta || jsonb_build_object('dedupe', p_dedupe);
     perform pg_advisory_xact_lock(hashtextextended(
       'trial_wm|' || coalesce(p_workspace_id::text, '-') || '|' || p_action || '|' || p_dedupe, 0));
-    if exists (select 1 from public.activity_logs l
-                where l.workspace_id is not distinct from p_workspace_id
-                  and l.action = p_action and l.metadata->>'dedupe' = p_dedupe) then
+    -- Written so the partial unique index answers it (its predicate spelled
+    -- out, `=` on the workspace): never a scan of the whole activity log.
+    if p_workspace_id is not null then
+      if exists (select 1 from public.activity_logs l
+                  where l.workspace_id = p_workspace_id and l.action = p_action
+                    and (l.metadata->>'dedupe') = p_dedupe
+                    and l.action like 'watermark\_%' and l.metadata ? 'dedupe') then
+        return false;
+      end if;
+    elsif exists (select 1 from public.activity_logs l
+                   where l.workspace_id is null and l.action = p_action
+                     and (l.metadata->>'dedupe') = p_dedupe
+                     and l.action like 'watermark\_%' and l.metadata ? 'dedupe') then
       return false;
     end if;
   end if;
@@ -357,6 +372,11 @@ begin
                         where l.workspace_id = s.workspace_id
                           and l.action = 'watermark_subscription_confirmed'
                           and l.metadata->>'dedupe' = 'sub:' || s.id::text)
+       -- Only subscriptions a paywall preceded are candidates at all, so the
+       -- many that never saw one cannot fill the limit forever.
+       and exists (select 1 from public.activity_logs l
+                    where l.workspace_id = s.workspace_id and l.action = 'watermark_paywall_opened'
+                      and l.created_at <= s.created_at and l.created_at >= s.created_at - interval '30 days')
      order by s.created_at
      limit 500
   loop
@@ -741,11 +761,13 @@ grant execute on function public.trial_original_summary(uuid) to authenticated;
   UNLOCK, PHASE 1 (R3). Judged ONCE, under the row lock: the caller's
   membership of the ORIGINAL's workspace, the database's entitlement for that
   workspace AND the caller's live Stripe verdict (p_live_ok), expiry. A
-  locked row becomes `unlocking` with a 10-minute lease and a target path the
-  database derives — `{ws}/{job or id}/u-{id}.{ext}` — which the server
-  uploads the clean file to. A second begin inside the lease resumes the SAME
-  target (re-checking entitlement, not expiry: the first begin judged it).
-  The key leaves the database only in a `ready` answer.
+  locked row becomes `unlocking` with a 3-minute lease (every unlock route
+  lives at most 60 s), a lease id only this answer carries, and a target
+  path the database derives — `{ws}/{job or id}/u-{id}.{ext}` — which the
+  server uploads the clean file to. A begin while ANOTHER request holds a
+  live lease answers `busy`: one request at a time works on an original, so
+  no request can commit, or remove, what another wrote. The key leaves the
+  database only in a `ready` answer.
 */
 create or replace function public.trial_original_unlock_begin(p_token text, p_asset_id uuid, p_live_ok boolean)
 returns jsonb
@@ -756,6 +778,7 @@ declare
   k public.trial_original_keys;
   v_asset_path text;
   v_target text;
+  v_lease uuid;
 begin
   if not public.server_call_ok(p_token) then raise exception 'forbidden'; end if;
   if v_uid is null or p_asset_id is null then return jsonb_build_object('state', 'not_found'); end if;
@@ -788,6 +811,13 @@ begin
   if o.status = 'unlocked' then
     return jsonb_build_object('state', 'unlocked', 'storage_path', coalesce(v_asset_path, o.unlocked_path));
   end if;
+  if v_asset_path is null and o.status in ('locked', 'unlocking')
+     and not exists (select 1 from public.generation_assets a where a.id = p_asset_id) then
+    -- The image is gone but its row was not told (the trigger never raises).
+    update public.trial_originals set status = 'deleted', deleted_at = now(), lease_until = null, lease_id = null where id = o.id;
+    delete from public.trial_original_keys where original_id = o.id;
+    return jsonb_build_object('state', 'unavailable');
+  end if;
   if o.status in ('deleted', 'orphaned', 'pending') or v_asset_path is null then
     return jsonb_build_object('state', 'unavailable');
   end if;
@@ -795,25 +825,21 @@ begin
 
   -- locked, or unlocking
   if v_asset_path is distinct from o.marked_path then return jsonb_build_object('state', 'unavailable'); end if;
-  if not (o.status = 'unlocking' and o.lease_until > now()) and o.expires_at <= now() then
-    return jsonb_build_object('state', 'expired');
-  end if;
+  if o.status = 'unlocking' and o.lease_until > now() then return jsonb_build_object('state', 'busy'); end if;
+  if o.expires_at <= now() then return jsonb_build_object('state', 'expired'); end if;
   if not coalesce(p_live_ok, false) or not public.trial_wm_subscribed(o.workspace_id) then
     return jsonb_build_object('state', 'not_entitled');
   end if;
   select * into k from public.trial_original_keys where original_id = o.id;
   if k.original_id is null then return jsonb_build_object('state', 'unavailable'); end if;
 
-  if o.status = 'unlocking' and o.lease_until > now() then
-    v_target := o.target_path;
-  else
-    v_target := o.workspace_id::text || '/' || coalesce(o.job_id, o.id)::text || '/u-' || o.id::text || '.'
-                || case o.clean_mime when 'image/png' then 'png' when 'image/jpeg' then 'jpg' else 'webp' end;
-    update public.trial_originals
-       set status = 'unlocking', unlock_started_at = now(),
-           lease_until = now() + interval '10 minutes', target_path = v_target
-     where id = o.id;
-  end if;
+  v_lease := gen_random_uuid();
+  v_target := o.workspace_id::text || '/' || coalesce(o.job_id, o.id)::text || '/u-' || o.id::text || '.'
+              || case o.clean_mime when 'image/png' then 'png' when 'image/jpeg' then 'jpg' else 'webp' end;
+  update public.trial_originals
+     set status = 'unlocking', unlock_started_at = now(), lease_id = v_lease,
+         lease_until = now() + interval '3 minutes', target_path = v_target
+   where id = o.id;
 
   -- The funnel's "confirmed" for this workspace now rather than at the next
   -- sweep. Never in the way of the unlock.
@@ -825,7 +851,7 @@ begin
   return jsonb_build_object(
     'state', 'ready', 'original_id', o.id, 'workspace_id', o.workspace_id, 'job_id', o.job_id,
     'object_path', o.object_path, 'wrapped_key', k.wrapped_key, 'kek_fp', k.kek_fp,
-    'clean_sha256', o.clean_sha256, 'clean_mime', o.clean_mime, 'target_path', v_target);
+    'clean_sha256', o.clean_sha256, 'clean_mime', o.clean_mime, 'target_path', v_target, 'lease_id', v_lease);
 end $$;
 
 /*
@@ -842,7 +868,7 @@ end $$;
   `already` with the same lists.
 */
 create or replace function public.trial_original_unlock_finish(
-  p_token text, p_asset_id uuid, p_thumb_path text, p_preview_path text, p_via text, p_bulk_id uuid
+  p_token text, p_asset_id uuid, p_lease_id uuid, p_thumb_path text, p_preview_path text, p_via text, p_bulk_id uuid
 ) returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
 declare
@@ -855,7 +881,11 @@ begin
   if not public.server_call_ok(p_token) then raise exception 'forbidden'; end if;
   if p_via is null or p_via not in ('single', 'bulk') then raise exception 'invalid_via'; end if;
   if v_uid is null or p_asset_id is null then return jsonb_build_object('state', 'not_found'); end if;
-  select * into o from public.trial_originals where asset_id = p_asset_id for update;
+  -- Scoped first without a lock; then locked in the asset-delete path's own
+  -- order — the asset row, then the original — so the two can never
+  -- deadlock (a deadlock would abort the delete trigger, which only warns,
+  -- and leave a live key behind a deleted image).
+  select * into o from public.trial_originals where asset_id = p_asset_id;
   if o.id is null or o.workspace_id is null or not public.is_workspace_member(o.workspace_id) then
     return jsonb_build_object('state', 'not_found');
   end if;
@@ -864,6 +894,15 @@ begin
     join public.generations g on g.id = a.generation_id
    where a.id = p_asset_id and g.workspace_id = o.workspace_id
      for update of a;
+  select * into o from public.trial_originals where id = o.id for update;
+  if v_asset_path is null and o.status in ('locked', 'unlocking')
+     and not exists (select 1 from public.generation_assets a where a.id = p_asset_id) then
+    -- The image is gone but its row was not told (the trigger never raises):
+    -- do the trigger's work here.
+    update public.trial_originals set status = 'deleted', deleted_at = now(), lease_until = null, lease_id = null where id = o.id;
+    delete from public.trial_original_keys where original_id = o.id;
+    return jsonb_build_object('state', 'deleted');
+  end if;
   v_old := jsonb_build_array(o.marked_path,
                              public.asset_derivative_path(o.marked_path, '_t.webp'),
                              public.asset_derivative_path(o.marked_path, '_p.webp'));
@@ -874,7 +913,7 @@ begin
   end if;
   if o.status = 'deleted' or v_asset_path is null then return jsonb_build_object('state', 'deleted'); end if;
   if o.status = 'pending' then return jsonb_build_object('state', 'not_found'); end if;
-  if o.status <> 'unlocking' or o.lease_until is null or o.lease_until <= now()
+  if o.status <> 'unlocking' or o.lease_id is distinct from p_lease_id or o.lease_until is null or o.lease_until <= now()
      or v_asset_path is distinct from o.marked_path then
     return jsonb_build_object('state', 'lease_lost');
   end if;
@@ -914,7 +953,8 @@ begin
      and r.progress->'delivered'->>'path' = o.marked_path;
 
   update public.trial_originals
-     set status = 'unlocked', unlocked_at = now(), unlocked_by = v_uid, unlocked_path = v_target, lease_until = null
+     set status = 'unlocked', unlocked_at = now(), unlocked_by = v_uid, unlocked_path = v_target,
+         lease_until = null, lease_id = null
    where id = o.id;
   delete from public.trial_original_keys where original_id = o.id;
 
@@ -928,13 +968,19 @@ begin
 end $$;
 
 /*
-  UNLOCK, ABORTED: unlocking → locked (the target was not committed). The
-  target path comes back for the caller to remove — for ANY row that is not
-  unlocked (a stale lease's leftover too). For an unlocked row it is null:
-  that path is the customer's file now, and a caller must take the path to
-  remove from THIS answer, never from its own begin.
+  UNLOCK, ABORTED — by the request holding the lease (p_lease_id): unlocking
+  → locked, nothing committed. That request removes its target BEFORE this
+  call, while its lease still keeps every other request out; nothing is
+  named here for it to remove afterwards, when another request could already
+  be writing the same target. Someone else's lease is never touched.
+  With no lease (p_lease_id null) it is the CLEANUP of a row that can never
+  be unlocked again (expired — by status or by date —, deleted, orphaned):
+  the target an interrupted
+  request may have left comes back for removal — no request can write or
+  commit it any more. Any other row (locked, pending, unlocked) names nothing:
+  a later unlock reuses its target, or that path is the customer's file now.
 */
-create or replace function public.trial_original_unlock_abort(p_token text, p_asset_id uuid)
+create or replace function public.trial_original_unlock_abort(p_token text, p_asset_id uuid, p_lease_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = public, extensions as $$
 declare
@@ -945,12 +991,20 @@ begin
   if o.id is null or o.workspace_id is null or not public.is_workspace_member(o.workspace_id) then
     return jsonb_build_object('target_path', null, 'state', 'not_found');
   end if;
-  if o.status = 'unlocked' then return jsonb_build_object('target_path', null, 'state', 'unlocked'); end if;
-  if o.status = 'unlocking' then
-    update public.trial_originals set status = 'locked', lease_until = null where id = o.id;
-    return jsonb_build_object('target_path', o.target_path, 'state', 'locked');
+  if o.status = 'unlocking' and p_lease_id is not null and o.lease_id = p_lease_id then
+    update public.trial_originals set status = 'locked', lease_until = null, lease_id = null where id = o.id;
+    return jsonb_build_object('target_path', null, 'state', 'locked');
   end if;
-  return jsonb_build_object('target_path', o.target_path, 'state', o.status);
+  -- Dead: expired/deleted/orphaned, or locked past its expiry (the sweep not
+  -- there yet), or a stale lease past it — begin answers expired for those.
+  if p_lease_id is null
+     and (o.status in ('expired', 'deleted', 'orphaned')
+          or (o.status in ('locked', 'unlocking') and o.expires_at <= now()
+              and not (o.status = 'unlocking' and o.lease_until > now()))) then
+    return jsonb_build_object('target_path', o.target_path, 'state', o.status);
+  end if;
+  if o.status = 'unlocking' then return jsonb_build_object('target_path', null, 'state', 'busy'); end if;
+  return jsonb_build_object('target_path', null, 'state', o.status);
 end $$;
 
 -- The bulk unlock's next batch: unlockable assets of the workspace (a stale
@@ -984,12 +1038,12 @@ begin
 end $$;
 
 revoke all on function public.trial_original_unlock_begin(text, uuid, boolean) from public, anon, authenticated;
-revoke all on function public.trial_original_unlock_finish(text, uuid, text, text, text, uuid) from public, anon, authenticated;
-revoke all on function public.trial_original_unlock_abort(text, uuid) from public, anon, authenticated;
+revoke all on function public.trial_original_unlock_finish(text, uuid, uuid, text, text, text, uuid) from public, anon, authenticated;
+revoke all on function public.trial_original_unlock_abort(text, uuid, uuid) from public, anon, authenticated;
 revoke all on function public.trial_original_next_batch(text, uuid, integer, uuid[]) from public, anon, authenticated;
 grant execute on function public.trial_original_unlock_begin(text, uuid, boolean) to authenticated;
-grant execute on function public.trial_original_unlock_finish(text, uuid, text, text, text, uuid) to authenticated;
-grant execute on function public.trial_original_unlock_abort(text, uuid) to authenticated;
+grant execute on function public.trial_original_unlock_finish(text, uuid, uuid, text, text, text, uuid) to authenticated;
+grant execute on function public.trial_original_unlock_abort(text, uuid, uuid) to authenticated;
 grant execute on function public.trial_original_next_batch(text, uuid, integer, uuid[]) to authenticated;
 
 -- 7 ─────────────────────────────────────────────────────────────────────────
@@ -1153,7 +1207,7 @@ begin
        for update skip locked
   loop
     begin
-      update public.trial_originals set status = 'locked', lease_until = null where id = r.id;
+      update public.trial_originals set status = 'locked', lease_until = null, lease_id = null where id = r.id;
       n_lease := n_lease + 1;
     exception when others then
       n_err := n_err + 1;
@@ -1240,8 +1294,11 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- ANON may read and delete a blob only while the purge has it armed (R1):
--- key destroyed AND listed by purge_list in the last 10 minutes. Nothing
--- else is visible to anon, so no workspace id can be listed.
+-- key destroyed AND listed by purge_list within the last minute (the purge
+-- removes them straight after, inside a 15 s budget). For that minute an
+-- anon LIST could see the armed names ({workspace}/{original}.bin — ids, and
+-- ciphertext whose key is already gone); nothing else in the bucket, and no
+-- object outside it, is visible to anon.
 create or replace function public.trial_original_purgeable(p_name text)
 returns boolean
 language sql stable security definer set search_path = public as $$
@@ -1257,7 +1314,7 @@ $$;
   THE PURGE LIST (R6). First every key-destroyed row whose blob is already
   gone (removed by the unlock or the release, or never written) is marked
   purged — so those rows can never jam the queue — then the oldest of the
-  rest are armed for 10 minutes and their paths returned. The caller removes
+  rest are armed for one minute and their paths returned. The caller removes
   them with the Storage API as anon and reports back what storage confirmed.
 */
 create or replace function public.trial_originals_purge_list(p_token text, p_limit integer)
@@ -1288,7 +1345,7 @@ begin
   ),
   armed as (
     update public.trial_originals o
-       set purge_armed_until = now() + interval '10 minutes'
+       set purge_armed_until = now() + interval '1 minute'
       from c
      where o.id = c.id
     returning o.object_path, o.created_at
@@ -1438,7 +1495,7 @@ begin
   begin
     with hit as (
       update public.trial_originals o
-         set status = 'deleted', deleted_at = now(), lease_until = null
+         set status = 'deleted', deleted_at = now(), lease_until = null, lease_id = null
        where o.status in ('pending', 'locked', 'unlocking')
          and (o.asset_id = old.id
               or (o.status = 'pending' and o.asset_id is null and o.marked_path = old.storage_path))

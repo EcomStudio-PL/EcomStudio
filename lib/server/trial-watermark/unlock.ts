@@ -64,6 +64,11 @@ const GALLERY_TTL = 3600;
 export const BULK_BATCH = 4;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A single unlock that finds another request holding the original asks again this often. */
+const BUSY_RETRIES = 4;
+const BUSY_WAIT_MS = 1_500;
+/** trial_originals.operation's CHECK, for a label read from member-editable settings. */
+const TOOL_KEY = /^[a-z0-9_.-]{1,64}$/;
 export const isTrialUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 
 const sha256 = (b: Buffer) => createHash("sha256").update(b).digest("hex");
@@ -101,6 +106,8 @@ async function readAsset(supabase: Client, assetId: string): Promise<AssetView |
   } | null;
   if (!gen?.workspace_id) return null;
   const meta = (data.metadata ?? null) as { thumb?: unknown; preview?: unknown } | null;
+  // A job's settings are member-editable: only a tool key in the column's own
+  // shape (0143 trial_originals.operation) reaches an event, else the default.
   const op = gen.generation_jobs?.settings?.operation;
   return {
     id: data.id,
@@ -108,7 +115,7 @@ async function readAsset(supabase: Client, assetId: string): Promise<AssetView |
     storagePath: data.storage_path,
     thumb: typeof meta?.thumb === "string" ? meta.thumb : null,
     preview: typeof meta?.preview === "string" ? meta.preview : null,
-    tool: typeof op === "string" && op ? op : "generator",
+    tool: typeof op === "string" && TOOL_KEY.test(op) ? op : "generator",
   };
 }
 
@@ -251,22 +258,39 @@ async function removeTarget(supabase: Client, workspaceId: string, target: strin
 }
 
 /**
- * Undo an uncommitted unlock: `unlock_abort` returns the row to `locked` and
- * names the target to remove — or names nothing, when the row is unlocked
- * (then that path is the customer's file, committed by another request).
- * Also used for a row that can no longer be unlocked (expired, deleted) to
- * clear a target an earlier, interrupted request left behind.
+ * Give back OUR lease (R3): `unlock_abort` with our lease id returns the row
+ * to `locked`. `removeOwn` — the target we wrote is removed FIRST, while our
+ * lease still keeps every other request out (one that began after the abort
+ * could be writing, or committing, that same path). Without it the target
+ * stays: identical bytes a later unlock reuses, and the cleanup below
+ * removes once the row can never be unlocked again.
  */
-async function abortUnlock(supabase: Client, workspaceId: string, assetId: string): Promise<string | null> {
-  const r = await rpcUnlockAbort(supabase, assetId);
+async function abortUnlock(
+  supabase: Client, workspaceId: string, assetId: string, lease: { id: string; target: string; removeOwn: boolean },
+): Promise<string | null> {
+  if (lease.removeOwn) await removeTarget(supabase, workspaceId, lease.target);
+  const r = await rpcUnlockAbort(supabase, assetId, lease.id);
   if (!r.ok) {
     console.error("[trial-watermark] unlock not aborted", r.code ?? r.error);
     return null;
   }
-  if (r.data.targetPath) await removeTarget(supabase, workspaceId, r.data.targetPath);
   // The row's state after the abort ("locked", "unlocked", …): null only when
   // the abort itself could not be had.
   return r.data.state;
+}
+
+/**
+ * A row that can never be unlocked again (expired, deleted, orphaned): the
+ * target an interrupted request left there goes now — nobody can write or
+ * commit it any more. Any other row names nothing to remove.
+ */
+async function clearDeadTarget(supabase: Client, workspaceId: string, assetId: string): Promise<void> {
+  const r = await rpcUnlockAbort(supabase, assetId, null);
+  if (!r.ok) {
+    console.error("[trial-watermark] target not cleared", r.code ?? r.error);
+    return;
+  }
+  if (r.data.targetPath) await removeTarget(supabase, workspaceId, r.data.targetPath);
 }
 
 /**
@@ -330,12 +354,10 @@ async function committedView(supabase: Client, workspaceId: string, assetId: str
 }
 
 /**
- * A failure after `ready` that is not the whole story: two clicks on one
- * asset both get `ready` for the same target, and when the first commits it
- * removes the blob the second was about to read. The abort has already run
- * (and, the row being unlocked, removed nothing); its answer — or, when the
- * abort itself failed, the asset's state — says whether this was in fact a
- * success by someone else.
+ * A failure after `ready` that is not the whole story: our lease ran out and
+ * another request committed this asset meanwhile, or our own finish
+ * committed and only its reply was lost. The abort's answer — or, when there
+ * was none, the asset's state — says whether this was in fact a success.
  */
 async function settleFailure(
   supabase: Client, workspaceId: string, assetId: string, abortState: string | null, fallback: One,
@@ -368,17 +390,19 @@ async function unlockOne(supabase: Client, a: {
   if (b.state === "busy") return { state: "error", error: "busy" };
   if (b.state === "expired" || b.state === "unavailable") {
     // Never unlockable again: a target an interrupted request left goes now.
-    await abortUnlock(supabase, a.workspaceId, a.assetId);
+    await clearDeadTarget(supabase, a.workspaceId, a.assetId);
     return { state: b.state };
   }
   if (b.state !== "ready") return { state: b.state };
+  const lease = { id: b.leaseId, target: b.targetPath };
 
   if (b.workspaceId !== a.workspaceId || !inside(a.workspaceId, b.objectPath) || !inside(a.workspaceId, b.targetPath)) {
-    await abortUnlock(supabase, a.workspaceId, a.assetId);
+    await abortUnlock(supabase, a.workspaceId, a.assetId, { ...lease, removeOwn: false });
     return { state: "error", error: "unlock_failed" };
   }
 
-  // PROMOTE. Any failure from here to the finish is undone by the abort.
+  // PROMOTE. Any failure from here to the finish is undone by the abort,
+  // under our own lease.
   const bucket = supabase.storage.from(ASSETS);
   let thumbPath: string | null = null;
   let previewPath: string | null = null;
@@ -405,16 +429,23 @@ async function unlockOne(supabase: Client, a: {
   } catch (e) {
     // Codes only — never a key, a path or a payload.
     console.error("[trial-watermark] unlock not promoted", e instanceof Error ? e.message : "error");
-    const aborted = await abortUnlock(supabase, a.workspaceId, a.assetId);
+    const aborted = await abortUnlock(supabase, a.workspaceId, a.assetId, { ...lease, removeOwn: true });
     return settleFailure(supabase, a.workspaceId, a.assetId, aborted, { state: "error", error: "unlock_failed" });
   }
 
-  const finish = await rpcUnlockFinish(supabase, a.assetId, thumbPath, previewPath, a.via, a.bulkId);
+  const finish = await rpcUnlockFinish(supabase, a.assetId, lease.id, thumbPath, previewPath, a.via, a.bulkId);
   if (!finish.ok || finish.data.state !== "unlocked") {
     console.error("[trial-watermark] unlock not committed", finish.ok ? finish.data.state : finish.code ?? finish.error);
-    // A lost reply may still have committed: abort then names nothing to remove.
-    const aborted = await abortUnlock(supabase, a.workspaceId, a.assetId);
-    if (finish.ok && (finish.data.state === "not_found" || finish.data.state === "deleted")) return { state: "not_found" };
+    if (finish.ok && finish.data.state === "deleted") {
+      // The image is gone: nothing can commit this target any more.
+      await clearDeadTarget(supabase, a.workspaceId, a.assetId);
+      return { state: "not_found" };
+    }
+    if (finish.ok && finish.data.state === "not_found") return { state: "not_found" };
+    // lease_lost: another request may own the target now — nothing of it is
+    // touched. No answer at all: our finish may have committed — the abort
+    // (our lease, nothing removed) says which.
+    const aborted = finish.ok ? null : await abortUnlock(supabase, a.workspaceId, a.assetId, { ...lease, removeOwn: false });
     return settleFailure(supabase, a.workspaceId, a.assetId, aborted, { state: "error", error: "unlock_failed" });
   }
   const f = finish.data;
@@ -472,7 +503,15 @@ export async function unlockTrialAsset(supabase: Client, a: { workspaceId: strin
 
   const gate = await unlockGate(supabase, a.workspaceId);
   if (!gate.ok) return { state: "error", error: gate.error };
-  const one = await unlockOne(supabase, { workspaceId: a.workspaceId, assetId: a.assetId, liveOk: gate.liveOk, via: "single", bulkId: null });
+  const args = { workspaceId: a.workspaceId, assetId: a.assetId, liveOk: gate.liveOk, via: "single" as const, bulkId: null };
+  let one = await unlockOne(supabase, args);
+  // Another request holds this original (a second click or tab, the bulk
+  // run): it commits or gives it back within seconds — ask again briefly
+  // rather than answer with an error.
+  for (let i = 0; i < BUSY_RETRIES && one.state === "error" && one.error === "busy"; i++) {
+    await new Promise((r) => setTimeout(r, BUSY_WAIT_MS));
+    one = await unlockOne(supabase, args);
+  }
   if (one.state === "not_entitled") {
     return { state: "not_entitled", pending: gate.entitlement.pending, hasLiveSubscription: gate.entitlement.hasLiveSubscription };
   }
@@ -505,7 +544,7 @@ export async function trialStatus(
 
   // An original that can never be unlocked again: clear whatever an
   // interrupted unlock may have left at its target (R3).
-  if (state.state === "expired" || state.state === "unavailable") await abortUnlock(supabase, a.workspaceId, a.assetId);
+  if (state.state === "expired" || state.state === "unavailable") await clearDeadTarget(supabase, a.workspaceId, a.assetId);
 
   const [signed] = await signCommitted(supabase, [{ path: asset.storagePath, thumb: asset.thumb, preview: asset.preview }]);
   const downloadUrl = state.state === "unlocked"
@@ -536,7 +575,12 @@ export async function unlockNextBatch(supabase: Client, a: {
   const gate = await unlockGate(supabase, a.workspaceId);
   if (!gate.ok) return { state: "error", error: gate.error };
   if (!gate.entitlement.entitled || !gate.liveOk) {
-    return { state: "not_entitled", pending: gate.entitlement.pending, hasLiveSubscription: gate.entitlement.hasLiveSubscription };
+    // One locked image to show the offer for, when the page had none on screen.
+    const one = await rpcNextBatch(supabase, a.workspaceId, 1, []);
+    return {
+      state: "not_entitled", pending: gate.entitlement.pending, hasLiveSubscription: gate.entitlement.hasLiveSubscription,
+      assetId: one.ok ? one.data.assetIds[0] ?? null : null,
+    };
   }
   const batch = await rpcNextBatch(supabase, a.workspaceId, BULK_BATCH, a.skip);
   if (!batch.ok) {
@@ -755,6 +799,8 @@ export type TrialPurgeReport = {
   listed: number;
   removed: number;
   marked: number;
+  /** The queue came back empty inside the budget (false: a backlog is left for tomorrow). */
+  drained: boolean;
   error: string | null;
 };
 
@@ -766,20 +812,27 @@ export type TrialPurgeReport = {
  * that runs from one that does not. Inside `budgetMs`; what is left waits
  * for the next day.
  */
+/** One purge round: the list's own ceiling (0143 allows up to 500). */
+const PURGE_ROUND = 500;
+
 export async function purgeTrialOriginals(client: SupabaseClient, opts: { budgetMs: number }): Promise<TrialPurgeReport> {
   const deadline = Date.now() + opts.budgetMs;
-  const report: TrialPurgeReport = { swept: null, listed: 0, removed: 0, marked: 0, error: null };
+  const report: TrialPurgeReport = { swept: null, listed: 0, removed: 0, marked: 0, drained: false, error: null };
   const fail = (code: string) => { report.error ??= code; };
   try {
     const swept = await rpcSweepNow(client);
     if (swept.ok) report.swept = swept.data;
     else fail("sweep_failed");
 
-    const list = Date.now() < deadline ? await rpcPurgeList(client, 200) : null;
-    if (!list) fail("budget");
-    else if (!list.ok) fail("list_failed");
-    else {
-      report.listed = list.data.length;
+    // Round after round until the queue is empty or the budget is spent: a
+    // day with more expiries than one list holds must not leave a backlog
+    // that only ever grows.
+    for (;;) {
+      if (Date.now() >= deadline) { fail("budget"); break; }
+      const list = await rpcPurgeList(client, PURGE_ROUND);
+      if (!list.ok) { fail("list_failed"); break; }
+      if (list.data.length === 0) { report.drained = true; break; }
+      report.listed += list.data.length;
       const removed: string[] = [];
       for (let i = 0; i < list.data.length; i += 100) {
         if (Date.now() >= deadline) { fail("budget"); break; }
@@ -790,11 +843,13 @@ export async function purgeTrialOriginals(client: SupabaseClient, opts: { budget
           if (typeof name === "string" && name.length > 0) removed.push(name);
         }
       }
-      report.removed = removed.length;
+      report.removed += removed.length;
       // Only what storage confirmed; SQL checks again that the object is gone.
       const marked = await rpcMarkPurged(client, removed);
-      if (marked.ok) report.marked = marked.data;
-      else fail("mark_failed");
+      if (marked.ok) report.marked += marked.data;
+      else { fail("mark_failed"); break; }
+      // A round that moved nothing would list the same rows again.
+      if (marked.data === 0) break;
     }
   } catch {
     fail("error");

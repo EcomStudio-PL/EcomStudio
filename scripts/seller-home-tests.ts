@@ -673,7 +673,10 @@ const ENGINE: readonly [string, string][] = [
   ["lib/server/fashion.ts", "dcde79b33cd35e9789caa3bbc9cc4ddbf406f570d9f02ee3fe7232ad069ab139"],
   ["app/api/prompts/generate/route.ts", "37db9bd3798b9bd5c4c4fc3bdf1056d57dec296f12754fd52bd9f5f97e204b5e"],
   ["app/api/concepts/generate/route.ts", "59ac0b7670179062229aae68505186bd2513953bd1ecad1e555bedf45f588e21"],
-  ["app/api/generate/route.ts", "fa333ad425813b1e998494a046e694c63962352eabefd60e21f8addf93c36a22"],
+  // Re-pinned by the trial-watermark task: the route passes its own start
+  // time (routeStartedAt) so the trial-image gate counts the hybrid engine's
+  // analysis too. Nothing else; no request byte changes.
+  ["app/api/generate/route.ts", "ad9f9d53cd6118cd02b9aff650bf5fbee7066339098052debbeb598b8b9f904e"],
   // Re-pinned by the photo-tools task: the white_bg / ai_* screens' own
   // switches also gate this endpoint.
   ["app/api/tools/run/route.ts", "8bf75acfde6ebcd36b3fbcb70318f3f081559b8c04b80ef434cb22fbe17114c6"],

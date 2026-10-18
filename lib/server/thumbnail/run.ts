@@ -684,8 +684,12 @@ async function prepareOne(ctx: Ctx, src: Source, i: number, trialRun: boolean): 
     // only by a composition that is itself a trial one (whose own result is
     // marked); any other run stops here, before the charge. The database's
     // clean hash then stands in for the pass's record, which names the
-    // marked file. A pass that never was a trial image goes the usual way.
-    const trial: TrialSource = record ? await retouchTrialSource(ctx, src, record, trialRun) : { kind: "none" };
+    // marked file. A pass that never was a trial image goes the usual way —
+    // and is not even looked up unless something says it could be one: the
+    // pass's own flag, a trial composition, or a file that moved (an unlock
+    // repoints the step). While the feature is off, no lookup at all.
+    const lookUp = !!record && (record.trialMarked || trialRun || (record.storedPath !== null && record.storedPath !== src.path));
+    const trial: TrialSource = record && lookUp ? await retouchTrialSource(ctx, src, record, trialRun) : { kind: "none" };
     if (trial.kind === "locked") return "source_locked";
     if (trial.kind === "unavailable") return trial.reason === "mismatch" ? "retouch_output_mismatch" : "source_unavailable";
     if (trial.kind === "none" && record && record.storedPath !== null && record.storedPath !== src.path) {
@@ -745,7 +749,7 @@ async function retouchTrialSource(ctx: Ctx, src: Source, record: { storedPath: s
  * could not be read.
  */
 async function retouchRecord(ctx: Ctx, jobId: string):
-  Promise<{ reference: string | null; storedPath: string | null; storedSha256: string | null } | null | "unknown"> {
+  Promise<{ reference: string | null; storedPath: string | null; storedSha256: string | null; trialMarked: boolean } | null | "unknown"> {
   const { data, error } = await ctx.supabase.from("generation_jobs")
     .select("id, workspace_id, settings").eq("id", jobId).maybeSingle();
   if (error) return "unknown";
@@ -753,12 +757,14 @@ async function retouchRecord(ctx: Ctx, jobId: string):
   const st = (data.settings ?? {}) as { operation?: unknown; reference_paths?: unknown; provider_output?: unknown };
   if (st.operation !== "image_retouch") return null;
   const refs = Array.isArray(st.reference_paths) ? st.reference_paths : [];
-  const out = (Array.isArray(st.provider_output) ? st.provider_output[0] : null) as { stored_path?: unknown; stored_sha256?: unknown } | null;
+  const out = (Array.isArray(st.provider_output) ? st.provider_output[0] : null) as { stored_path?: unknown; stored_sha256?: unknown; trial_watermark?: unknown } | null;
   return {
     reference: typeof refs[0] === "string" ? refs[0] : null,
     // Older Retusz records may not carry these: then the asset row decides.
     storedPath: typeof out?.stored_path === "string" ? out.stored_path : null,
     storedSha256: typeof out?.stored_sha256 === "string" ? out.stored_sha256 : null,
+    // runGeneration's flag on a pass it stored marked (trial).
+    trialMarked: out?.trial_watermark === true,
   };
 }
 
@@ -1034,6 +1040,9 @@ async function recoverCompose(ctx: Ctx, attempts: number,
 async function releaseCompose(ctx: Ctx, jobId: string | null, code: string): Promise<boolean> {
   if (!jobId) return true;
   if (!(await removeJobFiles(ctx, jobId))) return false;
+  // …and a trial composition's kept original with them (never delivered).
+  const kept = trialStashOf(ctx, jobId);
+  if (kept) await releaseTrialOriginal(ctx.supabase, kept.id, kept.objectPath);
   const event = await eventOfJob(ctx, jobId);
   if (event === "unknown") return false;
   if (event?.status === "pending") {
@@ -1120,6 +1129,11 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
       workspaceId: ctx.workspaceId, jobId: d.jobId, operation: THUMBNAIL_OPERATION, markedPath: null, clean: fin.bytes, marked,
     });
     if (!original) return fail("storage_failed");
+    // Recorded where only the server reads (the run): a later call that finds
+    // this finish interrupted binds the original or releases it (resumeFinish).
+    await progress(ctx, {
+      trial_original: { job_id: d.jobId, id: original.originalId, object_path: original.objectPath, marked_sha256: marked.sha256 },
+    });
   }
   // What the library stores: the marked file of a trial run, else the finish.
   const out = marked
@@ -1228,6 +1242,14 @@ async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<ComposeOutco
     // DELIVERED before the invocation died: the job is completed and the
     // charge closed (in that order), then the run. The server's own mark
     // counts even when a member has deleted the library item meanwhile.
+    // A trial composition's kept original is bound to its library item now
+    // (idempotent), or released when that item is already gone.
+    const kept = trialStashOf(ctx, jobId);
+    if (kept && asset?.id) {
+      await attachTrialOriginal(supabase, { originalId: kept.id, assetId: asset.id, markedPath: asset.path, markedSha256: kept.markedSha256 });
+    } else if (kept) {
+      await releaseTrialOriginal(supabase, kept.id, kept.objectPath);
+    }
     if (!(await markJobCompleted(ctx, jobId))) return "busy";
     const event = await eventOfJob(ctx, jobId);
     if (event === "unknown") return "busy";
@@ -1255,17 +1277,17 @@ async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<ComposeOutco
   return "failed";
 }
 
-type JobAsset = { path: string; width: number | null; height: number | null };
+type JobAsset = { id: string | null; path: string; width: number | null; height: number | null };
 
 /** The library file of a job in this workspace: null when there is none,
  *  "unknown" when it could not be read. */
 async function jobAsset(ctx: Ctx, jobId: string): Promise<JobAsset | null | "unknown"> {
   const { data: gens, error } = await ctx.supabase.from("generations")
-    .select("generation_assets(storage_path, width, height)").eq("job_id", jobId).limit(5);
+    .select("generation_assets(id, storage_path, width, height)").eq("job_id", jobId).limit(5);
   if (error || !gens) return "unknown";
-  for (const g of gens as { generation_assets?: { storage_path: string; width: number | null; height: number | null }[] }[]) {
+  for (const g of gens as { generation_assets?: { id?: string; storage_path: string; width: number | null; height: number | null }[] }[]) {
     const a = g.generation_assets?.find((x) => typeof x.storage_path === "string" && x.storage_path.startsWith(`${ctx.workspaceId}/`));
-    if (a) return { path: a.storage_path, width: a.width ?? null, height: a.height ?? null };
+    if (a) return { id: typeof a.id === "string" ? a.id : null, path: a.storage_path, width: a.width ?? null, height: a.height ?? null };
   }
   return null;
 }
@@ -1484,6 +1506,14 @@ async function readSteps(supabase: Client, runId: string): Promise<StepRunRow[] 
 }
 
 /** The server's own record that this job's file reached the library. */
+/** The clean original a TRIAL composition of this job kept (deliver). */
+function trialStashOf(ctx: Ctx, jobId: string): { id: string; objectPath: string; markedSha256: string } | null {
+  const m = progressOf(ctx.run).trial_original as { job_id?: unknown; id?: unknown; object_path?: unknown; marked_sha256?: unknown } | null | undefined;
+  return m && typeof m === "object" && m.job_id === jobId && typeof m.id === "string" && typeof m.object_path === "string"
+    && typeof m.marked_sha256 === "string"
+    ? { id: m.id, objectPath: m.object_path, markedSha256: m.marked_sha256 } : null;
+}
+
 function deliveredMark(ctx: Ctx, jobId: string): { path: string } | null {
   const m = progressOf(ctx.run).delivered as { job_id?: unknown; path?: unknown } | null | undefined;
   return m && typeof m === "object" && m.job_id === jobId && typeof m.path === "string" ? { path: m.path } : null;

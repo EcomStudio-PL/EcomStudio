@@ -6991,6 +6991,7 @@ export type Database = {
         Args: {
           p_token: string | null
           p_asset_id: string
+          p_lease_id: string
           p_thumb_path: string | null
           p_preview_path: string | null
           p_via: string
@@ -6998,7 +6999,10 @@ export type Database = {
         }
         Returns: Json
       }
-      trial_original_unlock_abort: { Args: { p_token: string | null; p_asset_id: string }; Returns: Json }
+      trial_original_unlock_abort: {
+        Args: { p_token: string | null; p_asset_id: string; p_lease_id: string | null }
+        Returns: Json
+      }
       trial_original_next_batch: {
         Args: { p_token: string | null; p_workspace_id: string; p_limit: number; p_skip: string[] }
         Returns: Json

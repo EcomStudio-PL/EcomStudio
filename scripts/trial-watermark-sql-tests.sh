@@ -618,8 +618,8 @@ insert into want values
   ('public.trial_original_states(uuid[])', 'authenticated'),
   ('public.trial_original_summary(uuid)', 'authenticated'),
   ('public.trial_original_unlock_begin(text,uuid,boolean)', 'authenticated'),
-  ('public.trial_original_unlock_finish(text,uuid,text,text,text,uuid)', 'authenticated'),
-  ('public.trial_original_unlock_abort(text,uuid)', 'authenticated'),
+  ('public.trial_original_unlock_finish(text,uuid,uuid,text,text,text,uuid)', 'authenticated'),
+  ('public.trial_original_unlock_abort(text,uuid,uuid)', 'authenticated'),
   ('public.trial_original_next_batch(text,uuid,integer,uuid[])', 'authenticated'),
   ('public.trial_original_source(text,uuid,text)', 'authenticated'),
   ('public.trial_watermark_log(text,uuid,text,uuid,jsonb,text)', 'authenticated'),
@@ -1042,6 +1042,9 @@ insert into public.ai_engine_step_runs (run_id, "position", item_index, output) 
 
 create function public.t_begin(p_asset text, p_live boolean default true) returns jsonb language sql as $$
   select public.trial_original_unlock_begin(public.t_tok(), public.t_var(p_asset)::uuid, p_live) $$;
+-- The lease a begin handed out, as the row holds it (null once committed or given back).
+create function public.t_lease(p_asset text) returns uuid language sql as $$
+  select (public.t_row(public.t_var(p_asset)::uuid)->>'lease_id')::uuid $$;
 create function public.t_ent() returns jsonb language sql as $$
   select public.trial_watermark_entitlement(public.t_tok(), public.t_ws('customer')) $$;
 
@@ -1082,34 +1085,45 @@ select public.t_true('U12 begin → ready: the key, the KEK fingerprint, the has
      and r->>'job_id' = public.t_var('ju') and r->>'clean_mime' = 'image/png'
      and r->>'object_path' = public.t_ws('customer')::text || '/' || (r->>'original_id') || '.bin'
      and r->>'target_path' = public.t_ws('customer')::text || '/' || public.t_var('ju') || '/u-' || (r->>'original_id') || '.png'
+     and r->>'lease_id' ~ '^[0-9a-f-]{36}$'
     from (select public.t_begin('u1') r) s $q$);
-select public.t_true('U13 (… the row is unlocking, with a 10-minute lease and the target recorded)', 'postgres', $q$
-  select r->>'status' = 'unlocking' and (r->>'lease_until')::timestamptz between now() + interval '9 minutes' and now() + interval '10 minutes'
-     and r->>'target_path' like '%/u-%.png'
+select public.t_true('U13 (… the row is unlocking, with a 3-minute lease, its lease id and the target recorded)', 'postgres', $q$
+  select r->>'status' = 'unlocking' and (r->>'lease_until')::timestamptz between now() + interval '170 seconds' and now() + interval '3 minutes'
+     and r->>'lease_id' is not null and r->>'target_path' like '%/u-%.png'
     from (select public.t_row(public.t_var('u1')::uuid) r) s $q$);
 select public.t_set('u1_lease', public.t_row(public.t_var('u1')::uuid)->>'lease_until');
 select public.t_set('u1_target', public.t_row(public.t_var('u1')::uuid)->>'target_path');
-select public.t_true('U14 begin again inside the lease → ready with the SAME target; the lease is not moved', 'authenticated', $q$
-  select r->>'state' = 'ready' and r->>'target_path' = public.t_var('u1_target')
+select public.t_set('u1_lid', public.t_lease('u1')::text);
+select public.t_true('U14 begin again while that lease is live → busy, and no key: one request at a time, never a shared target; the lease is not moved', 'authenticated', $q$
+  select r = '{"state":"busy"}'::jsonb
      and (public.t_row(public.t_var('u1')::uuid)->>'lease_until') = public.t_var('u1_lease')
+     and public.t_lease('u1')::text = public.t_var('u1_lid')
     from (select public.t_begin('u1') r) s $q$);
 select public.t_true('U15 the jpeg and webp originals get .jpg and .webp targets', 'authenticated', $q$
   select (public.t_begin('u2'))->>'target_path' like '%/u-%.jpg' and (public.t_begin('u3'))->>'target_path' like '%/u-%.webp' $q$);
 select public.t_eq('U16 states reports an unlocking asset as locked', 'authenticated', $q$ select split_part(public.t_state('u1'), ':', 1) $q$, 'locked');
 select public.t_raises('U17 finish with a thumb that is not the target''s derivative → invalid_thumb_path', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, public.t_var('u1_marked'), null, 'single', null) $q$, 'invalid_thumb_path');
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, public.t_lease('u1'), public.t_var('u1_marked'), null, 'single', null) $q$, 'invalid_thumb_path');
 select public.t_raises('U18 finish with a via outside single/bulk → invalid_via', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, null, null, 'api', null) $q$, 'invalid_via');
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, public.t_lease('u1'), null, null, 'api', null) $q$, 'invalid_via');
 select public.t_be('other');
 select public.t_eq('U19 finish by another tenant → not_found', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, null, null, 'single', null)->>'state' $q$, 'not_found');
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, public.t_lease('u1'), null, null, 'single', null)->>'state' $q$, 'not_found');
 select public.t_be('customer');
+select public.t_eq('U19b finish naming ANOTHER lease (a stale or concurrent request) → lease_lost, nothing committed', 'authenticated',
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, gen_random_uuid(), null, null, 'single', null)->>'state' $q$, 'lease_lost');
+select public.t_eq('U19c … and finish naming NO lease → lease_lost', 'authenticated',
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, null, null, null, 'single', null)->>'state' $q$, 'lease_lost');
+select public.t_true('U19d (… the row is still unlocking under its own lease, the asset still the marked file, the key kept)', 'postgres', $q$
+  select r->>'status' = 'unlocking' and r->>'lease_id' = public.t_var('u1_lid') and public.t_has_key((r->>'id')::uuid)
+     and (select storage_path = public.t_var('u1_marked') from public.generation_assets where id = public.t_var('u1')::uuid)
+    from (select public.t_row(public.t_var('u1')::uuid) r) s $q$);
 select public.t_true('U20 finish (thumb = the target''s _t, no preview) → unlocked, not already, storage_path = target, old_paths = marked + _t + _p, the blob path', 'authenticated', $q$
   select r->>'state' = 'unlocked' and r->>'already' = 'false' and r->>'storage_path' = public.t_var('u1_target')
      and r->'old_paths' = jsonb_build_array(public.t_var('u1_marked'), replace(public.t_var('u1_marked'), '0.png', '0_t.webp'),
                                             replace(public.t_var('u1_marked'), '0.png', '0_p.webp'))
      and r->>'object_path' like '%.bin'
-    from (select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid,
+    from (select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, public.t_var('u1_lid')::uuid,
             replace(public.t_var('u1_target'), '.png', '_t.webp'), null, 'single', null) r) s $q$);
 select public.t_true('U21 (… the asset now IS the clean file: path = target, thumb = target _t, the preview key REMOVED, other metadata kept)', 'postgres', $q$
   select storage_path = public.t_var('u1_target') and metadata->>'thumb' = replace(public.t_var('u1_target'), '.png', '_t.webp')
@@ -1117,7 +1131,7 @@ select public.t_true('U21 (… the asset now IS the clean file: path = target, t
     from public.generation_assets where id = public.t_var('u1')::uuid $q$);
 select public.t_true('U22 (… the row is unlocked by the customer at the target, lease cleared, KEY DESTROYED)', 'postgres', $q$
   select r->>'status' = 'unlocked' and r->>'unlocked_by' = public.t_uid('customer')::text and r->>'unlocked_path' = public.t_var('u1_target')
-     and r->'lease_until' = 'null'::jsonb and r->>'unlocked_at' is not null and not public.t_has_key((r->>'id')::uuid)
+     and r->'lease_until' = 'null'::jsonb and r->'lease_id' = 'null'::jsonb and r->>'unlocked_at' is not null and not public.t_has_key((r->>'id')::uuid)
     from (select public.t_row(public.t_var('u1')::uuid) r) s $q$);
 select public.t_true('U23 (… one watermark_unlocked event, written by the database: actor, via, tool, asset, dedupe)', 'postgres', $q$
   select count(*) = 1 and bool_and(actor_id = public.t_uid('customer') and entity_type = 'trial_watermark'
@@ -1139,7 +1153,7 @@ select public.t_true('U25 R13 stays inside the workspace: another tenant''s run 
 select public.t_true('U26 finish again → unlocked, already, same path, same old_paths — and no second event', 'authenticated', $q$
   select r->>'state' = 'unlocked' and r->>'already' = 'true' and r->>'storage_path' = public.t_var('u1_target')
      and jsonb_array_length(r->'old_paths') = 3
-    from (select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, null, null, 'single', null) r) s $q$);
+    from (select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u1')::uuid, public.t_var('u1_lid')::uuid, null, null, 'single', null) r) s $q$);
 select public.t_true('U27 (… still exactly one event)', 'postgres', $q$ select count(*) = 1 from public.activity_logs where action = 'watermark_unlocked' $q$);
 SQL
   q >/dev/null <<'SQL'
@@ -1147,9 +1161,10 @@ select public.t_be('customer');
 select public.t_true('U28 begin on the unlocked asset → {state: unlocked, storage_path: target}, no key', 'authenticated', $q$
   select public.t_begin('u1') = jsonb_build_object('state', 'unlocked', 'storage_path', public.t_var('u1_target')) $q$);
 -- lease lost (u2 is unlocking from U15)
+select public.t_set('u2_lid', public.t_lease('u2')::text);
 update public.trial_originals set lease_until = now() - interval '1 second' where asset_id = public.t_var('u2')::uuid;
-select public.t_eq('U29 finish after the lease ran out → lease_lost; the asset is untouched', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u2')::uuid, null, null, 'single', null)->>'state' $q$, 'lease_lost');
+select public.t_eq('U29 finish after its own lease ran out → lease_lost; the asset is untouched', 'authenticated',
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u2')::uuid, public.t_var('u2_lid')::uuid, null, null, 'single', null)->>'state' $q$, 'lease_lost');
 select public.t_true('U30 (… asset still the marked file, row still holds its key)', 'postgres', $q$
   select (select storage_path not like '%/u-%' from public.generation_assets where id = public.t_var('u2')::uuid)
      and public.t_has_key(public.t_oid(public.t_var('u2')::uuid)) $q$);
@@ -1157,16 +1172,24 @@ select public.t_set('u2_target', public.t_row(public.t_var('u2')::uuid)->>'targe
 select public.t_true('U31 begin after a stale lease → ready on the same derived target…', 'authenticated', $q$
   select r->>'state' = 'ready' and r->>'target_path' = public.t_var('u2_target')
     from (select public.t_begin('u2') r) s $q$);
-select public.t_true('U31b (… with a NEW 10-minute lease)', 'postgres', $q$
-  select (public.t_row(public.t_var('u2')::uuid)->>'lease_until')::timestamptz > now() + interval '9 minutes' $q$);
+select public.t_true('U31b (… with a NEW 3-minute lease under a NEW lease id)', 'postgres', $q$
+  select (public.t_row(public.t_var('u2')::uuid)->>'lease_until')::timestamptz > now() + interval '170 seconds'
+     and public.t_lease('u2')::text <> public.t_var('u2_lid') $q$);
+select public.t_eq('U31c the request whose lease ran out cannot commit into the new one (lease_lost)', 'authenticated',
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u2')::uuid, public.t_var('u2_lid')::uuid, null, null, 'single', null)->>'state' $q$, 'lease_lost');
+select public.t_true('U31d … nor give it back: abort with the old lease → busy, nothing named, the new lease untouched', 'authenticated', $q$
+  select r->>'state' = 'busy' and r->'target_path' = 'null'::jsonb
+     and public.t_row(public.t_var('u2')::uuid)->>'status' = 'unlocking'
+     and public.t_lease('u2')::text <> public.t_var('u2_lid')
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u2')::uuid, public.t_var('u2_lid')::uuid) r) s $q$);
 -- expiry inside the lease (u3 is unlocking): the commit still goes through
 update public.trial_originals set expires_at = now() - interval '1 minute' where asset_id = public.t_var('u3')::uuid;
 select public.t_eq('U32 states during a live lease past expiry → still locked to its owner (0 days)', 'authenticated',
   $q$ select public.t_state('u3') $q$, 'locked:0');
-select public.t_true('U33 begin inside the live lease past expiry → resumes (ready, same target)', 'authenticated', $q$
-  select (public.t_begin('u3'))->>'state' = 'ready' $q$);
+select public.t_eq('U33 begin while that live lease runs, past expiry → busy (its holder still commits)', 'authenticated',
+  $q$ select (public.t_begin('u3'))->>'state' $q$, 'busy');
 select public.t_eq('U34 finish inside the lease, past expiry → unlocked (expiry is judged once, at begin)', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u3')::uuid, null, null, 'bulk', 'b0000000-0000-0000-0000-000000000001')->>'state' $q$, 'unlocked');
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u3')::uuid, public.t_lease('u3'), null, null, 'bulk', 'b0000000-0000-0000-0000-000000000001')->>'state' $q$, 'unlocked');
 select public.t_true('U35 (… no derivatives passed: the asset has neither thumb nor preview — the library rebuilds them)', 'postgres', $q$
   select not metadata ? 'thumb' and not metadata ? 'preview' from public.generation_assets where id = public.t_var('u3')::uuid $q$);
 select public.t_true('U36 (… the bulk event carries via=bulk and the bulk id)', 'postgres', $q$
@@ -1179,18 +1202,33 @@ select public.t_eq('U37 begin on a locked original past expiry (no sweep yet) �
 update public.trial_originals set expires_at = now() + interval '5 days' where asset_id = public.t_var('u4')::uuid;
 -- abort
 select public.t_true('U38 begin u4 → ready', 'authenticated', $q$ select (public.t_begin('u4'))->>'state' = 'ready' $q$);
-select public.t_true('U39 abort → the target path back for cleanup…', 'authenticated', $q$
-  select r->>'target_path' like '%/u-%.png' and r->>'state' = 'locked'
-    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u4')::uuid) r) s $q$);
-select public.t_true('U39b (… the row is locked again, its lease cleared, the target kept for a later cleanup, the key kept)', 'postgres', $q$
-  select r->>'status' = 'locked' and r->'lease_until' = 'null'::jsonb and r->>'target_path' like '%/u-%.png'
-     and public.t_has_key((r->>'id')::uuid)
+select public.t_set('u4_lid', public.t_lease('u4')::text);
+select public.t_true('U38b abort naming another lease → busy: someone else''s lease is never given back, nothing named', 'authenticated', $q$
+  select r->>'state' = 'busy' and r->'target_path' = 'null'::jsonb and public.t_lease('u4')::text = public.t_var('u4_lid')
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u4')::uuid, gen_random_uuid()) r) s $q$);
+select public.t_true('U38c … and a lease-less cleanup of that live row names nothing either (a request is writing it)', 'authenticated', $q$
+  select r->>'state' = 'busy' and r->'target_path' = 'null'::jsonb
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u4')::uuid, null) r) s $q$);
+select public.t_true('U39 abort by the lease''s own holder → locked, and NO path named (it removed its target before, under its lease)', 'authenticated', $q$
+  select r->'target_path' = 'null'::jsonb and r->>'state' = 'locked'
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u4')::uuid, public.t_var('u4_lid')::uuid) r) s $q$);
+select public.t_true('U39b (… the row is locked again, lease and lease id cleared, the target recorded, the key kept)', 'postgres', $q$
+  select r->>'status' = 'locked' and r->'lease_until' = 'null'::jsonb and r->'lease_id' = 'null'::jsonb
+     and r->>'target_path' like '%/u-%.png' and public.t_has_key((r->>'id')::uuid)
     from (select public.t_row(public.t_var('u4')::uuid) r) s $q$);
+select public.t_true('U39c a lease-less cleanup of a LOCKED row names nothing (a later unlock reuses that target)', 'authenticated', $q$
+  select r->'target_path' = 'null'::jsonb and r->>'state' = 'locked'
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u4')::uuid, null) r) s $q$);
 select public.t_true('U40 abort on an UNLOCKED asset → no target (that file is the customer''s now)', 'authenticated', $q$
   select r->'target_path' = 'null'::jsonb and r->>'state' = 'unlocked'
-    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u1')::uuid) r) s $q$);
-select public.t_eq('U41 finish on a locked (aborted) row → lease_lost', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u4')::uuid, null, null, 'single', null)->>'state' $q$, 'lease_lost');
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u1')::uuid, null) r) s $q$);
+select public.t_eq('U41 finish on a locked (aborted) row, with the lease it had → lease_lost', 'authenticated',
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('u4')::uuid, public.t_var('u4_lid')::uuid, null, null, 'single', null)->>'state' $q$, 'lease_lost');
+update public.trial_originals set expires_at = now() - interval '1 second' where asset_id = public.t_var('u4')::uuid;
+select public.t_true('U41b a LOCKED row past its expiry (no sweep yet) is dead: the lease-less cleanup names its leftover target', 'authenticated', $q$
+  select r->>'target_path' like '%/u-%.png' and r->>'state' = 'locked'
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('u4')::uuid, null) r) s $q$);
+update public.trial_originals set expires_at = now() + interval '5 days' where asset_id = public.t_var('u4')::uuid;
 -- the subscription ends: unlocked stays unlocked
 update public.subscriptions set current_period_end = now() - interval '1 minute' where provider_subscription_id = 'sub_c_inc';
 select public.t_eq('U42 after the subscription ended: the unlocked asset is still unlocked (states)', 'authenticated',
@@ -1356,7 +1394,12 @@ select public.t_true('W5  orphan: pending for 25 h → orphaned, key destroyed; 
      and (select status = 'pending' and public.t_has_key(id) from public.trial_originals where id = public.t_var('w_fresh_id')::uuid) $q$);
 select public.t_true('W6  a stale lease is returned to locked (target kept for cleanup) — and, being past due, expired in the same run', 'postgres', $q$
   select r->>'status' = 'expired' and r->>'target_path' like '%/u-%' and r->'lease_until' = 'null'::jsonb
+     and r->'lease_id' = 'null'::jsonb
     from (select public.t_row(public.t_var('w_stale')::uuid) r) s $q$);
+select public.t_be('customer');
+select public.t_true('W6b a lease-less cleanup of that EXPIRED row names the target an interrupted unlock left (nobody can write it any more)', 'authenticated', $q$
+  select r->>'state' = 'expired' and r->>'target_path' = public.t_row(public.t_var('w_stale')::uuid)->>'target_path'
+    from (select public.trial_original_unlock_abort(public.t_tok(), public.t_var('w_stale')::uuid, null) r) s $q$);
 select public.t_true('W7  a row in a LIVE lease is never expired, even past its expiry (it keeps its key)', 'postgres', $q$
   select r->>'status' = 'unlocking' and public.t_has_key((r->>'id')::uuid)
     from (select public.t_row(public.t_var('w_live')::uuid) r) s $q$);
@@ -1453,8 +1496,8 @@ select public.t_true('P3  … the rows whose blob is already gone (u1 removed by
   select (select purged_at is not null from public.trial_originals where object_path = public.t_var('p_u1_obj'))
      and (select purged_at is not null from public.trial_originals where object_path = public.t_var('p_old_obj'))
      and not (public.t_var('p_list')::jsonb) ? public.t_var('p_u1_obj') $q$);
-select public.t_true('P4  … the listed rows are armed for 10 minutes', 'postgres', $q$
-  select purge_armed_until between now() + interval '9 minutes' and now() + interval '10 minutes'
+select public.t_true('P4  … the listed rows are armed for one minute', 'postgres', $q$
+  select purge_armed_until between now() + interval '50 seconds' and now() + interval '1 minute'
     from public.trial_originals where object_path = public.t_var('p_due_obj') $q$);
 select public.t_be('anon');
 select public.t_true('P5  anon SELECTs the armed, key-destroyed blob', 'anon', $q$
@@ -1558,6 +1601,7 @@ select public.t_set('t_locked', public.t_make('customer', public.t_ws('customer'
 select public.t_set('t_locked_oid', public.t_oid(public.t_var('t_locked')::uuid)::text);
 select public.t_set('t_unlocking', public.t_make('customer', public.t_ws('customer'), public.t_var('jt')::uuid, '1.png')::text);
 select public.trial_original_unlock_begin(public.t_tok(), public.t_var('t_unlocking')::uuid, true);
+select public.t_set('t_unlocking_lid', public.t_lease('t_unlocking')::text);
 select public.t_set('t_pend_path', public.t_ws('customer')::text || '/' || public.t_var('jt') || '/2.png');
 select public.t_set('t_pend_id', gen_random_uuid()::text);
 select public.t_reserve(public.t_var('t_pend_id')::uuid, public.t_ws('customer'), public.t_var('jt')::uuid, public.t_var('t_pend_path'));
@@ -1576,7 +1620,7 @@ select public.t_true('T3  an unlocked original''s asset deleted → the row stay
 delete from public.generation_assets where id = public.t_var('t_unlocking')::uuid;
 select public.t_be('customer');
 select public.t_eq('T4  an UNLOCKING original whose asset is deleted mid-unlock → finish answers deleted (the caller removes its target)', 'authenticated',
-  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('t_unlocking')::uuid, null, null, 'single', null)->>'state' $q$, 'deleted');
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('t_unlocking')::uuid, public.t_var('t_unlocking_lid')::uuid, null, null, 'single', null)->>'state' $q$, 'deleted');
 select public.t_true('T5  the trigger function is a definer that catches everything (a delete is never blocked)', 'postgres', $q$
   select prosecdef and prosrc like '%exception when others%' from pg_proc where oid = 'public.trial_originals_asset_deleted()'::regprocedure $q$);
 select public.t_set('t6_oid', public.t_oid(public.t_var('s_other')::uuid)::text);
@@ -1587,6 +1631,39 @@ select public.t_true('T6  a whole workspace deleted: its original keeps its row 
     from public.trial_originals where id = public.t_var('t6_oid')::uuid $q$);
 select public.t_true('T7  … so its blob is still listed for the purge', 'postgres', $q$
   select (public.trial_originals_purge_list(public.t_tok(), 500)) ? public.t_var('t6_obj') $q$);
+SQL
+  # The trigger never raises, so a swallowed error (a deadlock, say) leaves a
+  # row that was never told its image went. begin/finish do its work then.
+  q >/dev/null <<'SQL'
+select public.t_be('customer');
+select public.t_set('t8', public.t_make('customer', public.t_ws('customer'), public.t_var('jt')::uuid, '8.png')::text);
+select public.t_set('t8_oid', public.t_oid(public.t_var('t8')::uuid)::text);
+select public.t_set('t9', public.t_make('customer', public.t_ws('customer'), public.t_var('jt')::uuid, '9.png')::text);
+select public.t_set('t9_oid', public.t_oid(public.t_var('t9')::uuid)::text);
+select public.trial_original_unlock_begin(public.t_tok(), public.t_var('t9')::uuid, true);
+select public.t_set('t9_lid', public.t_lease('t9')::text);
+alter table public.generation_assets disable trigger trial_originals_asset_deleted;
+delete from public.generation_assets where id in (public.t_var('t8')::uuid, public.t_var('t9')::uuid);
+alter table public.generation_assets enable trigger trial_originals_asset_deleted;
+SQL
+  q >/dev/null <<'SQL'
+select public.t_be('customer');
+select public.t_eq('T8  a LOCKED row whose asset vanished untold → begin answers unavailable…', 'authenticated',
+  $q$ select public.trial_original_unlock_begin(public.t_tok(), public.t_var('t8')::uuid, true)->>'state' $q$, 'unavailable');
+select public.t_true('T8b … and does the trigger''s work: deleted, key destroyed', 'postgres', $q$
+  select status = 'deleted' and deleted_at is not null and not public.t_has_key(id)
+    from public.trial_originals where id = public.t_var('t8_oid')::uuid $q$);
+select public.t_be('customer');
+select public.t_eq('T9  an UNLOCKING row whose asset vanished untold → finish answers deleted…', 'authenticated',
+  $q$ select public.trial_original_unlock_finish(public.t_tok(), public.t_var('t9')::uuid, public.t_var('t9_lid')::uuid, null, null, 'single', null)->>'state' $q$, 'deleted');
+select public.t_true('T9b … and does the trigger''s work: deleted, lease cleared, key destroyed', 'postgres', $q$
+  select status = 'deleted' and lease_until is null and not public.t_has_key(id)
+    from public.trial_originals where id = public.t_var('t9_oid')::uuid $q$);
+select public.t_true('T10 unlock_finish locks the asset BEFORE the original (the delete path''s order: no deadlock)', 'postgres', $q$
+  select position('for update of a' in prosrc) > 0
+     and position('for update of a' in prosrc) < position('where id = o.id for update' in prosrc)
+     and prosrc not like '%where asset_id = p_asset_id for update%'
+    from pg_proc where oid = 'public.trial_original_unlock_finish(text,uuid,uuid,text,text,text,uuid)'::regprocedure $q$);
 SQL
 }
 
@@ -1643,6 +1720,25 @@ select public.t_raises('L15 the unique index backs the dedupe even for a writer 
      end $x$ $q$, 'activity_logs_watermark_dedupe_uq');
 select public.t_raises('L16 the owner without the marker is refused as well (the trigger binds every writer)', 'postgres',
   $q$ insert into public.activity_logs (workspace_id, action) values (public.t_ws('customer'), 'watermark_unlocked') $q$, 'watermark_event_forbidden');
+-- The dedupe probe as trial_wm_emit writes it, planned with sequential scans
+-- priced out: the partial unique index must be able to answer it.
+create or replace function public.t_explain(p_sql text) returns text language plpgsql as $f$
+declare r record; v text := '';
+begin
+  perform set_config('enable_seqscan', 'off', true);
+  for r in execute 'explain ' || p_sql loop v := v || r."QUERY PLAN" || E'\n'; end loop;
+  perform set_config('enable_seqscan', 'on', true);
+  return v;
+end $f$;
+select public.t_true('L17 the emit dedupe probe is answered by activity_logs_watermark_dedupe_uq (never a scan of the whole log)', 'postgres', $q$
+  select public.t_explain(format($p$select 1 from public.activity_logs l
+            where l.workspace_id = %L and l.action = 'watermark_unlocked' and (l.metadata->>'dedupe') = 'x'
+              and l.action like 'watermark\_%%' and l.metadata ? 'dedupe'$p$, public.t_ws('customer'))) like '%activity_logs_watermark_dedupe_uq%'
+     and (select prosrc not like '%is not distinct from p_workspace_id%'
+            from pg_proc where oid = 'public.trial_wm_emit(uuid,uuid,text,uuid,jsonb,text)'::regprocedure) $q$);
+select public.t_true('L18 subscription_confirmed candidates are only subscriptions a paywall preceded (the limit cannot fill with others)', 'postgres', $q$
+  select position('watermark_paywall_opened' in prosrc) < position('limit 500' in prosrc)
+    from pg_proc where oid = 'public.trial_wm_confirm_subscriptions(uuid)'::regprocedure $q$);
 SQL
 }
 

@@ -46,7 +46,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * trial-watermark paywall and that picture is still waiting (R17). It adds
  * "Wróć do zdjęcia" beside whatever the screen says in every state but a
  * failed one: the library's unlock dialog waits for the plan itself, so the
- * way back is useful before the webhook lands too. It grants nothing.
+ * way back is useful before the webhook lands too. Only for a PLAN purchase
+ * (or while what was bought is not known yet): a credit pack or GrovNews
+ * bought after the paywall unlocks nothing, so it offers no way back. It
+ * grants nothing.
  */
 export function StatusView({ reference, unlockAssetId = null }: { reference: string | null; unlockAssetId?: string | null }) {
   const { t, locale } = useI18n();
@@ -55,6 +58,7 @@ export function StatusView({ reference, unlockAssetId = null }: { reference: str
     : undefined;
   const [status, setStatus] = useState<StatusResult | null>(null);
   const [tries, setTries] = useState(0);
+  const planBack = !status?.kind || status.kind === "subscription" ? back : undefined;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -89,7 +93,7 @@ export function StatusView({ reference, unlockAssetId = null }: { reference: str
   if (state === "credited" && status?.kind === "grovnews") {
     return (
       <Shell tone="ok" title={t("checkout.statusDoneTitle")} body={t("checkout.statusGrovNewsActive")}
-        cta={{ href: "/grovnews", label: t("checkout.statusGoGrovNews") }} secondary={back} />
+        cta={{ href: "/grovnews", label: t("checkout.statusGoGrovNews") }} secondary={planBack} />
     );
   }
 
@@ -107,7 +111,7 @@ export function StatusView({ reference, unlockAssetId = null }: { reference: str
               : t("checkout.statusPaid")
         }
         cta={{ href: status?.kind === "subscription" ? "/plan" : "/credits", label: t("checkout.statusGo") }}
-        secondary={back}
+        secondary={planBack}
       />
     );
   }
@@ -128,7 +132,7 @@ export function StatusView({ reference, unlockAssetId = null }: { reference: str
         title={t("checkout.statusPaidTitle")}
         body={exhausted ? t("checkout.statusSlowBody") : t("checkout.statusPaidBody")}
         cta={exhausted ? { href: "/credits", label: t("checkout.statusGo") } : undefined}
-        secondary={back}
+        secondary={planBack}
       />
     );
   }
@@ -139,7 +143,7 @@ export function StatusView({ reference, unlockAssetId = null }: { reference: str
       title={t("checkout.statusPendingTitle")}
       body={exhausted ? t("checkout.statusSlowBody") : t("checkout.statusPendingBody")}
       cta={exhausted ? { href: "/credits", label: t("checkout.statusGo") } : undefined}
-      secondary={back}
+      secondary={planBack}
     />
   );
 }

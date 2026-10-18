@@ -6,11 +6,11 @@ import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { patchLibrary } from "@/lib/library-cache";
 import { trialPaywallAction } from "@/app/actions/trial-watermark";
-import type { TrialPaywallPlan } from "@/lib/trial-watermark/types";
-import { pause, postTrialUnlockAll } from "./api";
+import type { GalleryTrial, TrialPaywallPlan } from "@/lib/trial-watermark/types";
+import { fetchTrialStatus, pause, postTrialUnlock, postTrialUnlockAll } from "./api";
 import {
-  bulkAdvance, bulkContinues, bulkSkip, bulkStart, daysLeftOf, errorKey, patchAsset, unlockedPatch,
-  type BulkProgress, type TrialAssetPatch,
+  BULK_FINAL_REASONS, bulkAdvance, bulkContinues, bulkLockedLeft, bulkResolved, bulkSkip, bulkStart, daysLeftOf, errorKey,
+  patchAsset, unlockedPatch, type BulkProgress, type TrialAssetPatch,
 } from "./model";
 import { TrialPaywall } from "./paywall";
 import { TrialDialogShell } from "./shell";
@@ -35,9 +35,12 @@ const TRANSIENT_TRIES = 3;
  * after every batch.
  *
  * A workspace without an active plan sees ONE paywall (R31), for the first
- * locked image on screen — the checkout comes back to that image, and this
- * button is still there for the rest. An image that fails is skipped for the
- * rest of the run and offered again with "Ponów nieudane". The run stops when
+ * locked image on screen (or, with none on screen, one the server names) —
+ * the checkout comes back to that image, and this button is still there for
+ * the rest. An image that fails is skipped for the rest of the run and
+ * offered again with "Ponów nieudane"; one that committed but lost its links
+ * gets them from the single unlock, one that can never be unlocked any more
+ * shows so on its card. The run stops when
  * the server says done, when a batch moves nothing, or when the customer
  * stops it; a batch already sent finishes and its images are patched either
  * way, because on the server they are already unlocked.
@@ -48,12 +51,16 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
   /** The page's count of locked images — Y until the first batch answers. */
   expected: number;
   onClose: () => void;
-  onUnlocked: (assetId: string, patch: TrialAssetPatch) => void;
+  /** A card's new state: a full patch once unlocked, `{ trial }` alone once it can never be. */
+  onUnlocked: (assetId: string, patch: Partial<TrialAssetPatch>) => void;
   /** How many locked images are left once a run ends or stops. */
   onSettled: (lockedLeft: number) => void;
 }) {
   const { t } = useI18n();
   const [stage, setStage] = useState<Stage>({ kind: "checking" });
+  /** The image the paywall is about: the page's, or one the server named. */
+  const [target, setTarget] = useState<TrialUnlockTarget | null>(first);
+  const checkRef = useRef<(tg: TrialUnlockTarget | null) => Promise<void>>(async () => {});
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -64,11 +71,11 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
   report.current = { onUnlocked, onSettled };
 
   const settle = useCallback((p: BulkProgress) => {
-    report.current.onSettled(p.remaining !== null ? p.remaining + p.failed.length : Math.max(0, expected - p.unlocked));
+    report.current.onSettled(bulkLockedLeft(p, expected));
   }, [expected]);
 
-  const run = useCallback(async (resume: BulkProgress | null) => {
-    let p = resume ?? bulkStart(expected);
+  const run = useCallback(async (resume: BulkProgress | null, expectedNow: number = expected) => {
+    let p = resume ?? bulkStart(expectedNow);
     stop.current = false;
     setStage({ kind: "running", p, stopping: false });
     let tries = 0;
@@ -80,6 +87,20 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
         for (const u of r.unlocked) report.current.onUnlocked(u.assetId, unlockedPatch(u));
         p = bulkAdvance(p, r);
         tries = 0;
+        for (const f of r.failed) {
+          if (f.reason === "sign_failed") {
+            // Committed on the server, only its links were lost: the single
+            // unlock answers idempotently with fresh ones.
+            const one = await postTrialUnlock(f.assetId, "library_bulk");
+            if (one.state === "unlocked") {
+              report.current.onUnlocked(f.assetId, unlockedPatch(one));
+              p = bulkResolved(p, f.assetId);
+            }
+          } else if (BULK_FINAL_REASONS.has(f.reason)) {
+            const trial: GalleryTrial = { state: f.reason === "expired" ? "expired" : "unavailable", expiresAt: null, daysLeft: null };
+            report.current.onUnlocked(f.assetId, { trial });
+          }
+        }
         if (!alive.current) { settle(p); return; }
         if (!bulkContinues(p) || stop.current) break;
         setStage({ kind: "running", p, stopping: false });
@@ -88,6 +109,16 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
       if (!alive.current) { settle(p); return; }
       if (r.state === "not_entitled") {
         settle(p);
+        // No locked image was on screen to show the offer for: the server
+        // named one — the paywall, with its preview, for that one.
+        if (!target && r.assetId) {
+          const s = await fetchTrialStatus(r.assetId);
+          if (!alive.current) return;
+          const tg: TrialUnlockTarget = { assetId: r.assetId, thumbUrl: s?.thumbUrl ?? undefined, previewUrl: s?.thumbUrl ?? undefined };
+          setTarget(tg);
+          await checkRef.current(tg);
+          return;
+        }
         setStage({ kind: "not_entitled", pending: r.pending, hasLiveSubscription: r.hasLiveSubscription });
         return;
       }
@@ -102,13 +133,13 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
     }
     settle(p);
     setStage({ kind: "finished", p, stopped: !p.done && !p.stalled });
-  }, [expected, settle]);
+  }, [expected, settle, target]);
 
-  const check = useCallback(async () => {
-    if (!first) { await run(null); return; }
+  const check = useCallback(async (tg: TrialUnlockTarget | null) => {
+    if (!tg) { await run(null); return; }
     setStage({ kind: "checking" });
     let res: Awaited<ReturnType<typeof trialPaywallAction>>;
-    try { res = await trialPaywallAction({ assetId: first.assetId, surface: "library_bulk" }); } catch { res = { kind: "error" }; }
+    try { res = await trialPaywallAction({ assetId: tg.assetId, surface: "library_bulk" }); } catch { res = { kind: "error" }; }
     if (!alive.current) return;
     if (res.kind === "paywall") {
       setStage({ kind: "paywall", paywallId: res.paywallId, daysLeft: res.daysLeft, plans: res.plans, hasLiveSubscription: res.hasLiveSubscription, pending: res.pending });
@@ -118,14 +149,27 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
     // Entitled — or that one image is no longer locked, which says nothing
     // about the rest: the server judges each of them.
     await run(null);
-  }, [first, run]);
+  }, [run]);
+  checkRef.current = check;
+
+  /**
+   * "Sprawdź ponownie" on the bulk paywall: the database's word on the plan,
+   * read without opening a new paywall (no second set of funnel events).
+   */
+  const recheck = useCallback(async () => {
+    if (!target) return;
+    const s = await fetchTrialStatus(target.assetId);
+    if (!alive.current) return;
+    if (s?.entitled || s?.state === "unlocked") { await run(null); return; }
+    setStage((st) => (st.kind === "paywall" && s ? { ...st, pending: s.pending } : st));
+  }, [target, run]);
 
   const started = useRef(false);
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void check();
-  }, [check]);
+    void check(first);
+  }, [check, first]);
 
   function close() {
     stop.current = true;
@@ -135,14 +179,15 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
   const progress = stage.kind === "running" || stage.kind === "finished" ? stage.p
     : stage.kind === "error" ? stage.p : null;
   const pct = progress && progress.total > 0 ? Math.min(100, Math.round((progress.unlocked / progress.total) * 100)) : 0;
-  const preview = first ? first.previewUrl || first.thumbUrl || first.url || null : null;
+  const preview = target ? target.previewUrl || target.thumbUrl || target.url || null : null;
+  const retriable = progress ? progress.failed.filter((f) => !BULK_FINAL_REASONS.has(f.reason)).length : 0;
 
   return (
     <TrialDialogShell label={t("genv3.wm.bulkTitle")} onClose={close} focusKey={stage.kind} wide={stage.kind === "paywall"}>
-      {stage.kind === "paywall" && first ? (
-        <TrialPaywall preview={preview} paywallId={stage.paywallId} assetId={first.assetId}
-          daysLeft={stage.daysLeft ?? daysLeftOf(first.trial)} expiresAt={first.trial?.expiresAt ?? null} plans={stage.plans}
-          hasLiveSubscription={stage.hasLiveSubscription} pending={stage.pending} onCheckAgain={() => void check()} />
+      {stage.kind === "paywall" && target ? (
+        <TrialPaywall preview={preview} paywallId={stage.paywallId} assetId={target.assetId}
+          daysLeft={stage.daysLeft ?? daysLeftOf(target.trial)} expiresAt={target.trial?.expiresAt ?? null} plans={stage.plans}
+          hasLiveSubscription={stage.hasLiveSubscription} pending={stage.pending} onCheckAgain={() => void recheck()} />
       ) : (
         <div data-trial-bulk={stage.kind} className="space-y-4">
           <div className="pr-8">
@@ -190,14 +235,16 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
             <>
               {stage.p.stalled && <p className="text-[12.5px] leading-relaxed text-muted">{t("genv3.wm.bulkNoProgress")}</p>}
               {stage.stopped && <p className="text-[12.5px] leading-relaxed text-muted">{t("genv3.wm.bulkStopped")}</p>}
-              <div className={cn("grid gap-2", (stage.p.failed.length > 0 || stage.stopped) && "sm:grid-cols-2")}>
+              <div className={cn("grid gap-2", (retriable > 0 || stage.stopped) && "sm:grid-cols-2")}>
                 {stage.stopped ? (
                   <button type="button" onClick={() => void run(stage.p)} data-trial-bulk-resume
                     className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold [--accent:var(--accent-strong)]">
                     <RefreshCw size={14} aria-hidden />{t("genv3.wm.bulkResume")}
                   </button>
-                ) : stage.p.failed.length > 0 ? (
-                  <button type="button" onClick={() => void run(null)} data-trial-bulk-retry
+                ) : retriable > 0 ? (
+                  // A fresh run over what can still be unlocked: counted from
+                  // that number, not from the first run's total.
+                  <button type="button" onClick={() => void run(null, retriable)} data-trial-bulk-retry
                     className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold [--accent:var(--accent-strong)]">
                     <RefreshCw size={14} aria-hidden />{t("genv3.wm.bulkRetry")}
                   </button>
@@ -239,7 +286,7 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
             <>
               <p className="text-[12.5px] leading-relaxed text-muted">{t(errorKey(stage.code))}</p>
               <div className="grid gap-2 sm:grid-cols-2">
-                <button type="button" onClick={() => void (stage.p ? run(stage.p) : check())} data-trial-retry
+                <button type="button" onClick={() => void (stage.p ? run(stage.p) : check(target))} data-trial-retry
                   className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold [--accent:var(--accent-strong)]">
                   <RefreshCw size={14} aria-hidden />{t("common.retry")}
                 </button>
@@ -262,7 +309,7 @@ export function TrialBulkDialog({ first, expected, onClose, onUnlocked, onSettle
  * cache here and the page's own state through `onUnlocked`.
  */
 export function useTrialBulkUnlock({ onUnlocked, onSettled }: {
-  onUnlocked: (assetId: string, patch: TrialAssetPatch) => void;
+  onUnlocked: (assetId: string, patch: Partial<TrialAssetPatch>) => void;
   onSettled: (lockedLeft: number) => void;
 }) {
   const [session, setSession] = useState<{ first: TrialUnlockTarget | null; expected: number; key: number } | null>(null);
@@ -273,7 +320,7 @@ export function useTrialBulkUnlock({ onUnlocked, onSettled }: {
     setSession((prev) => prev ?? { first, expected, key: Date.now() });
   }, []);
   const close = useCallback(() => setSession(null), []);
-  const unlocked = useCallback((assetId: string, patch: TrialAssetPatch) => {
+  const unlocked = useCallback((assetId: string, patch: Partial<TrialAssetPatch>) => {
     patchLibrary((list) => patchAsset(list, assetId, patch));
     report.current.onUnlocked(assetId, patch);
   }, []);

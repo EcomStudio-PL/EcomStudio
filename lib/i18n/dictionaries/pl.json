@@ -967,6 +967,7 @@
       "range": "Zakres {min}–{max}",
       "confirmTitle": "Włączyć znak wodny?",
       "confirmBody": "Od teraz każda nowa generacja w workspace'ach bez płatności dostanie znak wodny GrovBase, a jej czysty oryginał będzie przechowywany zaszyfrowany przez {days} dni. Płatne narzędzia AI i Workflow ON będą dla nich zablokowane. Formularz zostanie zapisany od razu. Wcześniejsze obrazy się nie zmienią.",
+      "confirmBodyOne": "Od teraz każda nowa generacja w workspace'ach bez płatności dostanie znak wodny GrovBase, a jej czysty oryginał będzie przechowywany zaszyfrowany przez 1 dzień. Płatne narzędzia AI i Workflow ON będą dla nich zablokowane. Formularz zostanie zapisany od razu. Wcześniejsze obrazy się nie zmienią.",
       "confirmCta": "Włącz i zapisz",
       "f": {
         "enabled": "Znak wodny na nowych generacjach próbnych",
@@ -1024,6 +1025,7 @@
         "paid": "Bez znaku generuje workspace, który: ma teraz aktywną płatną subskrypcję; albo zapłacił przez Stripe kwotę większą od zera, za którą przyznano kredyty (także później zwróconą — płatność sporna się nie liczy); albo dostał doładowanie zaksięgowane przez administratora. Decyduje baza przy każdym uruchomieniu, przed pobraniem kredytów.",
         "staff": "Personel: przy włączonym „Zwolnij personel” obraz jest czysty, gdy zarówno osoba generująca, jak i właściciel workspace'u mają rolę admin. Konto z listy „Wymuś tryb próbny” dostaje tryb próbny także wtedy, gdy funkcja jest wyłączona, i traci zwolnienie personelu — służy do testu na PROD na jednym koncie i nigdy nie nadpisuje płatności.",
         "keep": "Czysty oryginał jest przechowywany zaszyfrowany przez {days} dni od utworzenia (termin zapisany przy każdym oryginale). Potem klucz jest niszczony, a plik usuwany przez codzienne czyszczenie. Obraz ze znakiem wodnym zostaje w bibliotece.",
+        "keepOne": "Czysty oryginał jest przechowywany zaszyfrowany przez 1 dzień od utworzenia (termin zapisany przy każdym oryginale). Potem klucz jest niszczony, a plik usuwany przez codzienne czyszczenie. Obraz ze znakiem wodnym zostaje w bibliotece.",
         "unlock": "Odblokowanie wymaga aktywnej płatnej subskrypcji, sprawdzanej także na bieżąco w Stripe. Odblokowany obraz staje się zwykłym plikiem biblioteki, bez znaku, na stałe.",
         "enabled": "„Włączony” dotyczy wyłącznie nowych generacji klientów (konta z listy „Wymuś tryb próbny” działają w trybie próbnym niezależnie od przełącznika). Wyłączenie niczego nie odsłania, nie przedłuża ani nie usuwa — istniejące obrazy zachowują swój stan i termin."
       },
@@ -1043,6 +1045,7 @@
       "stats": {
         "now": "Oryginały teraz",
         "title": "Ostatnie {days} dni",
+        "titleOne": "Ostatni dzień",
         "unavailable": "Statystyki są niedostępne (funkcja trial_watermark_stats nie odpowiedziała).",
         "liveLine": "Do odblokowania: {live} · wygasa w ciągu 24 h: {soon}"
       },

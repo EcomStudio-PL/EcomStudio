@@ -35,7 +35,10 @@ export function TrialLockChip({ trial, onUnlock }: { trial: GalleryTrial | null 
   const { label, days } = useLockLabel(trial);
   if (!isLocked(trial)) return null;
   return (
-    <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex justify-end [container-type:inline-size]">
+    // Bottom-right, but LEFT of the card's action rail column (right-2, 38 px
+    // wide at full size): on a short card — a 16:9 tile, a phone's two-column
+    // grid — the rail reaches the bottom, and neither may cover the other.
+    <div className="pointer-events-none absolute bottom-2 left-2 right-[3.25rem] z-10 flex justify-end [container-type:inline-size]">
       <button type="button" data-trial-chip title={label} aria-label={label}
         onClick={(e) => { e.stopPropagation(); onUnlock(); }}
         className="pointer-events-auto flex h-6 max-w-full items-center gap-1 rounded-lg border border-white/15 bg-black/45 px-1.5 text-[10.5px] font-semibold text-white/90 shadow-e2 backdrop-blur-md transition-colors hover:bg-black/65 hover:text-white">
