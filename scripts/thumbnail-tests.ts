@@ -1417,7 +1417,12 @@ function sectionF() {
 
 function sectionG() {
   console.log("\nG. FROZEN — Retusz, the shared adapters and the ledger are byte-identical to the rollback point");
-  const BASE = process.env.THUMBNAIL_BASE ?? "86e120d";
+  // Moved from 86e120d by the trial-watermark task (c60ca72): its only changes
+  // under FROZEN are the post-answer storage step in generation.ts (a trial
+  // image is stored marked, its clean original sealed) and the Workflow-ON
+  // refusal in engine/tool-run.ts. No provider request byte changed — the
+  // forensic, fidelity and parity suites prove the request itself.
+  const BASE = process.env.THUMBNAIL_BASE ?? "c60ca72";
   const FROZEN = [
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",
