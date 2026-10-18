@@ -468,7 +468,9 @@ async function main() {
       // Base moved from 45a2d69 by the trial-watermark task (c60ca72): only the
       // post-answer storage step in generation.ts and the Workflow-ON refusal
       // in engine/tool-run.ts changed there; the Retusz request is untouched.
-      diff = execSync(`git diff --name-only c60ca72 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
+      // Moved again to ae6da31 by its review fixes: routeStartedAt reaches only
+      // the trial-image gate (generation.ts, engine/tool-run.ts).
+      diff = execSync(`git diff --name-only ae6da31 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
     } catch (e) { diff = `git failed: ${String(e)}`; }
     check("no Retusz / provider / generation file differs from the release before this fix", diff === "", diff);
     check("no network request was made by this suite", fetches === 0, fetches);

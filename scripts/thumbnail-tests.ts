@@ -1422,7 +1422,10 @@ function sectionG() {
   // image is stored marked, its clean original sealed) and the Workflow-ON
   // refusal in engine/tool-run.ts. No provider request byte changed — the
   // forensic, fidelity and parity suites prove the request itself.
-  const BASE = process.env.THUMBNAIL_BASE ?? "c60ca72";
+  // Moved again to ae6da31 by its review fixes: GenerateInput.routeStartedAt
+  // (generation.ts) and the engine passing its own start (engine/tool-run.ts)
+  // feed ONLY the trial-image gate; the request is untouched.
+  const BASE = process.env.THUMBNAIL_BASE ?? "ae6da31";
   const FROZEN = [
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",
