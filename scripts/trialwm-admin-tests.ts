@@ -44,7 +44,17 @@ const read = (p: string) => readFileSync(p, "utf8");
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-const SCRATCH = "/tmp/claude-0/-home-user-EcomStudio/bfec86f8-7073-55e5-8738-75a4d2a4aeac/scratchpad/wm/i18n-admin.json";
+/** The admin.trialWm.* keys of the repo's own dictionaries, flattened ("admin.trialWm.x.y" → text). */
+function adminWmKeys(locale: "pl" | "en" | "de"): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (node: unknown, path: string) => {
+    if (typeof node === "string") { out[path] = node; return; }
+    if (node && typeof node === "object") for (const [k, v] of Object.entries(node as Record<string, unknown>)) walk(v, `${path}.${k}`);
+  };
+  const dict = JSON.parse(read(`lib/i18n/dictionaries/${locale}.json`)) as { admin?: { trialWm?: unknown } };
+  walk(dict.admin?.trialWm, "admin.trialWm");
+  return out;
+}
 const U1 = "c0000000-0000-4000-8000-000000000001";
 const U2 = "C0000000-0000-4000-8000-00000000000A";
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `d0000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
@@ -565,8 +575,8 @@ async function sectionX() {
 /* ── I ─────────────────────────────────────────────────────────────────── */
 
 function sectionI() {
-  console.log("\nI. i18n (scratch dictionary) and the policy text");
-  const scratch = JSON.parse(read(SCRATCH)) as Record<"pl" | "en" | "de", Record<string, string>>;
+  console.log("\nI. i18n (the repo's dictionaries) and the policy text");
+  const scratch = { pl: adminWmKeys("pl"), en: adminWmKeys("en"), de: adminWmKeys("de") };
   const files = ["components/admin/trial-watermark-settings.tsx", "app/admin/settings/onboarding/page.tsx"];
   const used = new Set(files.flatMap((f) => [...read(f).matchAll(/"(admin\.trialWm\.[A-Za-z0-9_.]+)"/g)].map((m) => m[1])));
   const missing = [...used].flatMap((k) => (["pl", "en", "de"] as const).filter((l) => typeof scratch[l]?.[k] !== "string").map((l) => `${l}:${k}`));
@@ -574,7 +584,7 @@ function sectionI() {
   const keys = (l: "pl" | "en" | "de") => Object.keys(scratch[l]).sort().join("|");
   check("I2 the three locales carry the same keys", keys("pl") === keys("en") && keys("en") === keys("de"));
   const dead = Object.keys(scratch.pl).filter((k) => !used.has(k));
-  check("I3 no dead keys in the scratch file", dead.length === 0, dead);
+  check("I3 no dead keys under admin.trialWm", dead.length === 0, dead);
   check("I4 only the admin scope's namespace", Object.keys(scratch.pl).every((k) => k.startsWith("admin.trialWm.")));
   const vars = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
   const drift = Object.keys(scratch.pl).filter((k) => vars(scratch.pl[k]) !== vars(scratch.en[k]) || vars(scratch.pl[k]) !== vars(scratch.de[k]));

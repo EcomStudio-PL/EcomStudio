@@ -730,7 +730,11 @@ async function main() {
     check("…no unlock began", calls(w, "trial_original_unlock_begin").length === 0);
     w.entitlement = { ...w.entitlement, entitled: false };
     const n = await unlockNextBatch(db, { workspaceId: ws, bulkId: randomUUID(), skip: [], deadline: Date.now() + 60_000 });
-    check("bulk for a non-entitled workspace → not_entitled, no batch read", n.state === "not_entitled" && calls(w, "trial_original_next_batch").length === 1);
+    const peek = calls(w, "trial_original_next_batch").slice(1);
+    check("bulk for a non-entitled workspace → not_entitled, nothing begun; ONE id read (limit 1) for the paywall",
+      n.state === "not_entitled" && peek.length === 1 && peek[0]?.args.p_limit === 1
+      && typeof (n as { assetId?: unknown }).assetId === "string" && calls(w, "trial_original_unlock_begin").length === 0,
+      JSON.stringify({ n, peek: peek.map((c) => c.args.p_limit) }));
   }
 
   console.log("\nR. THE ROUTES");
