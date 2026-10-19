@@ -4,6 +4,7 @@ import {
   type Audience, type AudienceBreakdown, type CampaignKind, type CampaignStatus,
   type MailBlock, type SegmentRules, type Utm,
 } from "@/lib/newsletter";
+import { rpcAdminContact, rpcAdminSummary } from "@/lib/server/prelaunch/rpc";
 
 /**
  * EVERY READ AND WRITE THE NEWSLETTER MAKES.
@@ -48,7 +49,31 @@ export type ContactRow = {
   lastOpenedAt: string | null;
   lastClickedAt: string | null;
   createdAt: string;
+  /** A "yes" that is not one: the legacy waitlist checkbox (see
+   *  isConsentWithoutDoi below). Derived, never stored. */
+  consentWithoutDoi: boolean;
 };
+
+/**
+ * THE CONSENTS THAT ARE NOT WHAT THEY SAY (pre-launch audit, D3).
+ *
+ * The first launch form had ONE checkbox — "Akceptuję politykę prywatności oraz
+ * regulamin" — and `waitlist_subscribe` stored its tick as MARKETING consent,
+ * `consent_source = 'waitlist'`, `consent_version = 'v1'`, with no e-mail ever
+ * confirming the address. Five production contacts carry it. Nobody rewrites
+ * them silently (that is an owner decision); the admin just must not read them
+ * as the evidence they look like, so the list and the contact screen label
+ * them "bez DOI". A double opt-in through the pre-launch list replaces exactly
+ * this pair (prelaunch_confirm, 0144), which is why the pair alone decides.
+ */
+export const LEGACY_WAITLIST_CONSENT = { source: "waitlist", version: "v1" } as const;
+
+export const isConsentWithoutDoi = (c: {
+  marketingConsent: boolean; consentSource: string | null; consentVersion: string | null;
+}): boolean =>
+  c.marketingConsent
+  && c.consentSource === LEGACY_WAITLIST_CONSENT.source
+  && c.consentVersion === LEGACY_WAITLIST_CONSENT.version;
 
 const CONTACT_SELECT = "id, email, first_name, last_name, locale, source_key, user_id, tags, marketing_consent, consent_at, consent_source, consent_version, unsubscribed_at, unsubscribe_token, last_activity_at, last_sent_at, last_opened_at, last_clicked_at, created_at";
 
@@ -81,6 +106,11 @@ const toContact = (r: RawContact): ContactRow => ({
   lastOpenedAt: r.last_opened_at,
   lastClickedAt: r.last_clicked_at,
   createdAt: r.created_at,
+  consentWithoutDoi: isConsentWithoutDoi({
+    marketingConsent: r.marketing_consent,
+    consentSource: r.consent_source,
+    consentVersion: r.consent_version,
+  }),
 });
 
 export type ContactFilter = {
@@ -95,6 +125,12 @@ export type ContactFilter = {
    *  reason the other four are honoured: the file has to be the list that was
    *  on screen when they asked for it. */
   locale?: string;
+  /** The pre-launch list: 'pending' (signed up, address not confirmed yet) or
+   *  'confirmed' (double opt-in done). Read from prelaunch_signups, so it
+   *  catches people whose FIRST source was an account or a form — the
+   *  `source=waitlist` filter cannot. Validated by prelaunchFilterOf; any other
+   *  value is ignored, exactly like an unknown `consent`. */
+  prelaunch?: string;
   /** Exactly these contacts, and nothing else — what the bulk bar's "export"
    *  means when an operator has ticked fourteen rows. It INTERSECTS with the
    *  other filters rather than replacing them, so a selection made under a
@@ -129,6 +165,13 @@ export async function listContacts(
       .eq("group_id", filter.groupId)
       .limit(5000);
     ids = (data ?? []).map((r) => r.contact_id);
+    if (ids.length === 0) return { rows: [], total: 0, page, pageSize };
+  }
+  // The pre-launch list narrows the same way the group does: one bounded read
+  // of ids, then an intersection — see prelaunchContactIds.
+  const prelaunch = prelaunchFilterOf(filter.prelaunch);
+  if (prelaunch) {
+    ids = narrowIds(ids, await prelaunchContactIds(supabase, prelaunch));
     if (ids.length === 0) return { rows: [], total: 0, page, pageSize };
   }
   if (filter.ids && filter.ids.length > 0) {
@@ -1088,6 +1131,13 @@ export async function contactsForExport(
     ids = (data ?? []).map((r) => r.contact_id as string);
     if (ids.length === 0) return [];
   }
+  // The same pre-launch narrowing as the screen, with the same ceiling, so the
+  // file can never hold more of the list than the list itself showed.
+  const prelaunch = prelaunchFilterOf(filter.prelaunch);
+  if (prelaunch) {
+    ids = narrowIds(ids, await prelaunchContactIds(supabase, prelaunch));
+    if (ids.length === 0) return [];
+  }
   // A selection narrows the filter, exactly as it does on screen: the file is
   // the ticked rows, not every row the filter would have matched.
   if (filter.ids && filter.ids.length > 0) {
@@ -1796,4 +1846,362 @@ export async function schedulerStatus(supabase: Client): Promise<SchedulerStatus
   status.ready = status.pgCron && status.pgNet && status.jobScheduled
     && status.urlConfigured && status.tokenConfigured;
   return status;
+}
+
+/* ── THE PRE-LAUNCH LIST (migration 0144) ────────────────────────────────────
+ *
+ * The launch page's double opt-in list lives in its own tables
+ * (prelaunch_signups, its tokens and its consent records) next to the contact
+ * they belong to. Newsletter stays the only contact writer; everything below
+ * is a READ, and every one of them answers is_admin() in the database.
+ *
+ * ONE SOURCE PER NUMBER.
+ *  - The KPIs come from ONE SQL function, prelaunch_admin_summary. It is the
+ *    single definition of "zapis", "potwierdzony" and "wygasły"; recounting
+ *    them here from rows would be a second definition, and the first time the
+ *    two disagreed the operator would trust neither.
+ *  - One contact's profile comes from prelaunch_admin_contact, for the same
+ *    reason: its consent records are evidence, and evidence is assembled once.
+ *  - The contact list's filter reads prelaunch_signups itself (admin SELECT
+ *    policy), in the same two-cheap-queries shape as the group filter.
+ *
+ * EVERYTHING IS PARSED AS IF IT COULD BE WRONG. The SQL ships separately (0144
+ * goes to production before this code), so a missing or odd field must render
+ * "—" — never a crash, and never a zero, which would be a measurement nobody
+ * took.
+ */
+
+export const PRELAUNCH_STATUSES = ["pending", "confirmed"] as const;
+export type PrelaunchStatus = (typeof PRELAUNCH_STATUSES)[number];
+
+/** The vocabularies the screens translate. Each is the CHECK list of its
+ *  column in 0144, so a label exists for every value the database can hold;
+ *  anything else is shown raw rather than guessed at. */
+export const PRELAUNCH_FORMS = ["hero", "final"] as const;
+export const SELLER_CHANNELS = ["allegro", "amazon", "own_store", "multi"] as const;
+export const REFERRAL_REJECTIONS = [
+  "self", "same_network", "cap", "duplicate", "existing_contact", "existing_account", "cluster",
+] as const;
+export const PRELAUNCH_CONSENT_KEYS = ["terms_privacy", "marketing_email"] as const;
+/** The first-touch attribution kept on the contact's 'waitlist' source row. */
+export const ATTRIBUTION_KEYS = [
+  "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "referrer_host", "landing_path",
+] as const;
+export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
+/** The legal documents a terms consent records the version of. */
+export const CONSENT_DOCS = ["regulamin", "polityka_prywatnosci"] as const;
+
+/** The URL's `prelaunch=` value, or nothing. Anything but the two statuses is
+ *  somebody editing the query string and is ignored, not passed to SQL. */
+export function prelaunchFilterOf(value: unknown): PrelaunchStatus | undefined {
+  return typeof value === "string" && (PRELAUNCH_STATUSES as readonly string[]).includes(value)
+    ? value as PrelaunchStatus
+    : undefined;
+}
+
+/**
+ * prelaunch_signups BY NAME. lib/database.types.ts learns the table with 0144
+ * (the migration's own update); until then the name is checked here, in one
+ * place, exactly as lib/server/prelaunch/rpc.ts does for the functions. Only
+ * the three builder methods this file calls are declared, so a typo in one of
+ * them is still a compile error.
+ */
+type IdRows = { data: unknown[] | null; error: unknown };
+interface IdQuery extends PromiseLike<IdRows> {
+  eq(column: string, value: string): IdQuery;
+  not(column: string, operator: string, value: null): IdQuery;
+  limit(count: number): IdQuery;
+}
+type UntypedFrom = (table: string) => { select(columns: string): IdQuery };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * THE CEILING, NAMED. The ids go back to PostgREST as an `in (…)` list on the
+ * contacts query — the group filter's shape — and 5 000 uuids is already a
+ * ~185 kB address, which is where that shape ends, not where the database
+ * does. The pre-launch list is expected to be orders of magnitude smaller; if
+ * it ever is not, the fix is a SQL-side filter (an RPC or an embedded join),
+ * not a bigger number here. The screen and the export share it, so the file
+ * can never be longer than the list it was exported from.
+ */
+export const PRELAUNCH_FILTER_CAP = 5_000;
+
+/** Contact ids on the pre-launch list in one status. A failed read is an
+ *  empty list — "nobody matches", never a crash of the whole contacts screen. */
+export async function prelaunchContactIds(
+  supabase: Client, status: PrelaunchStatus,
+): Promise<string[]> {
+  const signups = (supabase.from as unknown as UntypedFrom).call(supabase, "prelaunch_signups");
+  const { data } = await signups
+    .select("contact_id")
+    .eq("status", status)
+    // An erased signup keeps its row with contact_id null (prelaunch_forget_contact).
+    .not("contact_id", "is", null)
+    .limit(PRELAUNCH_FILTER_CAP);
+  const ids: string[] = [];
+  for (const row of data ?? []) {
+    const id = rec(row)?.contact_id;
+    if (typeof id === "string" && UUID_RE.test(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/** `current` narrowed to `allowed`; no current set means "everything", so the
+ *  allowed list becomes the set. */
+function narrowIds(current: string[] | null, allowed: string[]): string[] {
+  if (!current) return [...new Set(allowed)];
+  const keep = new Set(allowed);
+  return current.filter((id) => keep.has(id));
+}
+
+/* The defensive readers. Each answers null for "not a value", which every
+   screen renders as "—". */
+
+const rec = (v: unknown): Record<string, unknown> | null =>
+  v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
+
+/** A count: a non-negative whole number. A bigint can arrive as a digit
+ *  string; a float, a negative or anything else is not a count. */
+const countOf = (v: unknown): number | null => {
+  const n = typeof v === "string" && /^\d{1,15}$/.test(v) ? Number(v) : v;
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
+};
+
+/** A label from the database: control characters out, trimmed, bounded. */
+const textOf = (v: unknown, max: number): string | null => {
+  if (typeof v !== "string") return null;
+  // eslint-disable-next-line no-control-regex -- stripping them is the point
+  const s = v.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
+  return s ? s.slice(0, max) : null;
+};
+
+const instantOf = (v: unknown): string | null =>
+  typeof v === "string" && v.length <= 64 && Number.isFinite(Date.parse(v)) ? v : null;
+
+const uuidOf = (v: unknown): string | null => (typeof v === "string" && UUID_RE.test(v) ? v : null);
+
+const emailOf = (v: unknown): string | null => {
+  const s = textOf(v, 254);
+  return s && s.includes("@") ? s : null;
+};
+
+/** An array of objects, bounded BEFORE it is mapped; rows that are not
+ *  objects, or that `map` refuses, are dropped. */
+function rowsOf<T>(v: unknown, max: number, map: (row: Record<string, unknown>) => T | null): T[] {
+  if (!Array.isArray(v)) return [];
+  const out: T[] = [];
+  for (const item of v.slice(0, max)) {
+    const row = rec(item);
+    const mapped = row ? map(row) : null;
+    if (mapped !== null) out.push(mapped);
+  }
+  return out;
+}
+
+/** The contract sorts and caps every breakdown at 20 rows; the cap is applied
+ *  again here so a different answer cannot grow the screen. */
+export const PRELAUNCH_SUMMARY_ROWS = 20;
+
+export type PrelaunchCounts = { signups: number | null; confirmed: number | null };
+
+export type PrelaunchSummary = {
+  signups: number | null;
+  confirmed: number | null;
+  pending: number | null;
+  expired: number | null;
+  doisSent: number | null;
+  resends: number | null;
+  sendFailures: number | null;
+  byForm: (PrelaunchCounts & { form: string | null })[];
+  bySource: (PrelaunchCounts & {
+    utmSource: string | null; utmMedium: string | null; utmCampaign: string | null;
+  })[];
+  byReferrerHost: (PrelaunchCounts & { host: string | null })[];
+  byChannel: { channel: string | null; count: number | null }[];
+  referrals: {
+    counted: number | null;
+    rejected: { reason: string; count: number | null }[];
+    top: { signupId: string | null; contactId: string | null; email: string | null; counted: number | null }[];
+  };
+  rewards: {
+    signupClaims: number | null; signupCredits: number | null;
+    referralClaims: number | null; referralCredits: number | null;
+  };
+};
+
+/**
+ * prelaunch_admin_summary's answer, read defensively (shape: rpc.ts).
+ *
+ * `confirm_rate` is deliberately NOT read: the screen computes the rate from
+ * the two counts with rate(), the module's one rule for a percentage — a zero
+ * denominator is "—", and the rate can never disagree with the counts printed
+ * next to it.
+ *
+ * null means "no answer" (the read failed). An object with nothing usable in
+ * it is still an answer — every number in it renders "—".
+ */
+export function parsePrelaunchSummary(raw: unknown): PrelaunchSummary | null {
+  const r = rec(raw);
+  if (!r) return null;
+  const referrals = rec(r.referrals) ?? {};
+  const rewards = rec(r.rewards) ?? {};
+  const counts = (row: Record<string, unknown>): PrelaunchCounts => ({
+    signups: countOf(row.signups), confirmed: countOf(row.confirmed),
+  });
+  const N = PRELAUNCH_SUMMARY_ROWS;
+  return {
+    signups: countOf(r.signups),
+    confirmed: countOf(r.confirmed),
+    pending: countOf(r.pending),
+    expired: countOf(r.expired),
+    doisSent: countOf(r.dois_sent),
+    resends: countOf(r.resends),
+    sendFailures: countOf(r.send_failures),
+    byForm: rowsOf(r.by_form, N, (row) => ({ form: textOf(row.form, 16), ...counts(row) })),
+    bySource: rowsOf(r.by_source, N, (row) => ({
+      utmSource: textOf(row.utm_source, 120),
+      utmMedium: textOf(row.utm_medium, 120),
+      utmCampaign: textOf(row.utm_campaign, 120),
+      ...counts(row),
+    })),
+    byReferrerHost: rowsOf(r.by_referrer_host, N, (row) => ({ host: textOf(row.host, 255), ...counts(row) })),
+    byChannel: rowsOf(r.by_channel, N, (row) => ({ channel: textOf(row.channel, 16), count: countOf(row.count) })),
+    referrals: {
+      counted: countOf(referrals.counted),
+      rejected: rowsOf(referrals.rejected, N, (row) => {
+        const reason = textOf(row.reason, 40);
+        return reason ? { reason, count: countOf(row.count) } : null;
+      }),
+      top: rowsOf(referrals.top, N, (row) => ({
+        signupId: uuidOf(row.signup_id),
+        contactId: uuidOf(row.contact_id),
+        email: emailOf(row.email),
+        counted: countOf(row.counted),
+      })),
+    },
+    rewards: {
+      signupClaims: countOf(rewards.signup_claims),
+      signupCredits: countOf(rewards.signup_credits),
+      referralClaims: countOf(rewards.referral_claims),
+      referralCredits: countOf(rewards.referral_credits),
+    },
+  };
+}
+
+/** "Cały okres" has no start; the SQL range is [from, to), so the epoch is
+ *  the honest lower bound rather than an invented date. */
+const PRELAUNCH_EPOCH = "1970-01-01T00:00:00.000Z";
+
+/** Newsletter → Analityka: the pre-launch KPIs for signups created in the
+ *  window. ONE rpc, no table reads. null = the read failed. */
+export async function prelaunchSummary(
+  supabase: Client, sinceIso: string | null, untilIso: string,
+): Promise<PrelaunchSummary | null> {
+  return parsePrelaunchSummary(await rpcAdminSummary(supabase, sinceIso ?? PRELAUNCH_EPOCH, untilIso));
+}
+
+export type PrelaunchConsentRecord = {
+  key: string;
+  version: string | null;
+  /** The sentence exactly as it was recorded — evidence, so it is shown as
+   *  stored (bounded, never rewritten). */
+  text: string | null;
+  locale: string | null;
+  form: string | null;
+  acceptedAt: string | null;
+  confirmedAt: string | null;
+  /** Terms consent only: which publication of each document was in force. */
+  docVersions: { key: string; value: string | null }[];
+};
+
+export type PrelaunchContactView = {
+  status: PrelaunchStatus | null;
+  createdAt: string | null;
+  confirmedAt: string | null;
+  form: string | null;
+  channel: string | null;
+  referralCode: string | null;
+  referredByEmail: string | null;
+  referredByContactId: string | null;
+  referralsCounted: number | null;
+  referralRejected: string | null;
+  locale: string | null;
+  attribution: Record<AttributionKey, string | null>;
+  /** Newest first. */
+  consents: PrelaunchConsentRecord[];
+};
+
+/** A document version is recorded as its publication instant; an object
+ *  `{ published_at | version }` is accepted too, since the data review
+ *  suggested that shape. Keys are bounded identifiers; at most six are kept. */
+function docVersionsOf(v: unknown): { key: string; value: string | null }[] {
+  const r = rec(v);
+  if (!r) return [];
+  const out: { key: string; value: string | null }[] = [];
+  for (const [key, value] of Object.entries(r).slice(0, 6)) {
+    if (!/^[a-z][a-z0-9_]{0,39}$/.test(key)) continue;
+    const nested = rec(value);
+    out.push({ key, value: textOf(nested ? nested.published_at ?? nested.version : value, 64) });
+  }
+  return out;
+}
+
+export const PRELAUNCH_CONSENT_ROWS = 100;
+
+/**
+ * prelaunch_admin_contact's answer (shape: rpc.ts), or null when the contact
+ * has no pre-launch signup — or the read failed; the two are one answer at
+ * the rpc layer, so the screen words it as "no data", which is true of both.
+ */
+export function parsePrelaunchContact(raw: unknown): PrelaunchContactView | null {
+  const r = rec(raw);
+  const s = rec(r?.signup);
+  if (!r || !s) return null;
+  const attr = rec(s.attribution) ?? {};
+  const attribution = Object.fromEntries(ATTRIBUTION_KEYS.map((key) => [
+    key, textOf(attr[key], key === "referrer_host" || key === "landing_path" ? 255 : 120),
+  ])) as Record<AttributionKey, string | null>;
+
+  const consents = rowsOf(r.consents, PRELAUNCH_CONSENT_ROWS, (row): PrelaunchConsentRecord | null => {
+    const key = textOf(row.consent_key, 40);
+    if (!key) return null;
+    return {
+      key,
+      version: textOf(row.consent_version, 64),
+      text: typeof row.consent_text === "string" ? row.consent_text.slice(0, 2000) : null,
+      locale: textOf(row.locale, 8),
+      form: textOf(row.form_variant, 16),
+      acceptedAt: instantOf(row.accepted_at),
+      confirmedAt: instantOf(row.confirmed_at),
+      docVersions: docVersionsOf(row.doc_versions),
+    };
+  });
+  // Newest first; a record without a date sorts last rather than first.
+  const at = (c: PrelaunchConsentRecord) => (c.acceptedAt ? Date.parse(c.acceptedAt) : -Infinity);
+  consents.sort((a, b) => at(b) - at(a));
+
+  return {
+    status: prelaunchFilterOf(s.status) ?? null,
+    createdAt: instantOf(s.created_at),
+    confirmedAt: instantOf(s.confirmed_at),
+    form: textOf(s.form_variant, 16),
+    channel: textOf(s.seller_channel, 16),
+    referralCode: textOf(s.referral_code, 16),
+    referredByEmail: emailOf(s.referred_by_email),
+    referredByContactId: uuidOf(s.referred_by_contact_id),
+    referralsCounted: countOf(s.referrals_counted),
+    referralRejected: textOf(s.referral_rejected, 40),
+    locale: textOf(s.locale, 8),
+    attribution,
+    consents,
+  };
+}
+
+/** One contact's pre-launch profile for the contact screen. ONE rpc. */
+export async function prelaunchContact(
+  supabase: Client, contactId: string,
+): Promise<PrelaunchContactView | null> {
+  if (!UUID_RE.test(contactId)) return null;
+  return parsePrelaunchContact(await rpcAdminContact(supabase, contactId));
 }

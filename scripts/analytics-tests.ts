@@ -19,13 +19,24 @@
  *   one to Google is handing out a working key, and nothing fails when it
  *   happens.
  *
+ * And, since the pre-launch landing (V2), a fourth:
+ *
+ *   A FUNNEL EVENT THAT SAYS TOO MUCH. Eight named events now leave the
+ *   browser. The list is closed, their parameters are an allowlist of short
+ *   scalars, and nothing — no e-mail, no token, no referral code — can ride
+ *   along by accident. Section F holds that line, and section E holds the
+ *   other one: all of it still goes through the one tracker in the one file.
+ *
  * The tracker is driven here exactly as the browser drives it, against a plain
  * array standing in for `window.dataLayer` — no DOM, no network.
  *
  * Run: npm run test:analytics
  */
-import { readFileSync } from "fs";
-import { createTracker, gaEnabled, sanitizePageLocation, type Tracker } from "../lib/analytics/ga";
+import { readFileSync, readdirSync, statSync } from "fs";
+import {
+  EVENT_PARAM_KEYS, PRELAUNCH_EVENTS, createTracker, eventParams, gaEnabled, isPrelaunchEvent,
+  sanitizePageLocation, type EventParams, type PrelaunchEvent, type Tracker,
+} from "../lib/analytics/ga";
 
 /*
   FAKE TIMERS, because a page_view now waits for the address to settle.
@@ -302,6 +313,244 @@ async function main() {
       && !/doubleclick/.test(config)
       && /default-src 'self'/.test(config),
       "only the two Google hosts GA4 needs, no ads domains");
+
+    /*
+      THE FUNNEL GOES THROUGH THE SAME DOOR.
+
+      `trackEvent` is the only way a component sends a funnel event, and it
+      reaches the queue through the SAME module-level tracker as the
+      page_views. That is what keeps "one config per document" (B) true with
+      events in the mix: a second tracker would be a second `config`, and a
+      component pushing to dataLayer itself would be a second integration that
+      none of the checks above can see.
+    */
+    check("trackEvent is exported from the one integration file",
+      /export function trackEvent\(/.test(component));
+    const trackBody = component.match(/export function trackEvent\([^)]*\)[^{]*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    check("…and is a no-op on the server and without a measurement ID, before anything else",
+      /^\s*if\s*\(\s*typeof window === "undefined"\s*\|\|\s*!gaEnabled\(\)\s*\)\s*return;/.test(trackBody),
+      trackBody.trim());
+    check("…then sends through the shared tracker, not one of its own",
+      /trackerFor\(\)\.event\(name,\s*params\)/.test(trackBody) && !/createTracker\(/.test(trackBody));
+    check("the integration builds exactly one tracker",
+      (component.match(/createTracker\(/g) ?? []).length === 1);
+    check("and the page_views use that same one",
+      /function PageViews\(\)[\s\S]*?trackerFor\(\)/.test(component));
+
+    // Every source file, read as code. A sweep rather than a grep because the
+    // two analytics files explain gtag at length in comments, and a comment
+    // naming a thing is not a call to it.
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const entry of readdirSync(dir)) {
+        const full = `${dir}/${entry}`;
+        if (statSync(full).isDirectory()) walk(full, out);
+        else if (/\.tsx?$/.test(entry)) out.push(full);
+      }
+      return out;
+    };
+    const GA_FILE = "lib/analytics/ga.ts";
+    const INTEGRATION = "components/analytics/google-analytics.tsx";
+    const sources = ["app", "lib", "components"].flatMap((d) => walk(d))
+      .map((file) => ({ file, src: codeOnly(read(file)) }));
+    check("the sweep found the application", sources.length > 100, String(sources.length));
+    const outside = (re: RegExp) => sources
+      .filter((s) => s.file !== GA_FILE && s.file !== INTEGRATION && re.test(s.src))
+      .map((s) => s.file);
+    check("no gtag() call outside the analytics module", outside(/\bgtag\s*\(/).length === 0,
+      outside(/\bgtag\s*\(/).join(", "));
+    check("nothing reaches for window.gtag", sources.every((s) => !/window\.gtag\b/.test(s.src)),
+      sources.filter((s) => /window\.gtag\b/.test(s.src)).map((s) => s.file).join(", "));
+    check("dataLayer is touched by the two analytics files only", outside(/\bdataLayer\b/).length === 0,
+      outside(/\bdataLayer\b/).join(", "));
+    check("nobody else builds a tracker or a gtag shim",
+      outside(/\b(createTracker|makeGtag)\b/).length === 0,
+      outside(/\b(createTracker|makeGtag)\b/).join(", "));
+
+    /*
+      THE CALL SITES. The landing's islands call trackEvent; every one of them
+      must import it from the integration rather than re-implement it, and
+      every event named in a literal must be on the list. A call through a
+      variable is allowed — an island may wrap trackEvent to stay quiet inside
+      the editor's preview frame — because the PrelaunchEvent type already
+      holds that line at compile time; those calls are counted, not failed.
+      The file count is printed: zero is a legitimate answer while the landing
+      is being built, and it says so instead of passing silently.
+    */
+    const callers = sources.filter((s) => s.file !== INTEGRATION && /\btrackEvent\s*\(/.test(s.src));
+    let viaVariable = 0;
+    for (const c of callers) {
+      check(`${c.file} imports trackEvent from the integration`,
+        /import\s*\{[^}]*\btrackEvent\b[^}]*\}\s*from\s*["']@\/components\/analytics\/google-analytics["']/.test(c.src));
+      const names = [...c.src.matchAll(/\btrackEvent\(\s*(["'`])([^"'`]*)\1/g)].map((m) => m[2]);
+      viaVariable += (c.src.match(/\btrackEvent\s*\(/g) ?? []).length - names.length;
+      const unknown = names.filter((n) => !isPrelaunchEvent(n));
+      check(`${c.file}: every event it names is on the list`, unknown.length === 0, unknown.join(", "));
+    }
+    console.log(`  · ${callers.length} file(s) call trackEvent; ${viaVariable} call(s) pass the name through a typed variable`);
+
+    // prelaunch_referral_confirmed is on the list for ONE vocabulary, but it
+    // happens on the server — the referred person's confirmation — and is
+    // counted in the database. A browser that sent it would be guessing.
+    const clientFiles = sources.filter((s) => /^\s*["']use client["']/.test(read(s.file)));
+    const claims = clientFiles.filter((s) => s.src.includes("prelaunch_referral_confirmed")).map((s) => s.file);
+    check("no client file sends prelaunch_referral_confirmed", claims.length === 0, claims.join(", "));
+  }
+
+  console.log("\nF. FUNNEL EVENTS — A CLOSED LIST, AN ALLOWLIST, NOTHING WHEN OFF");
+  {
+    /** Order-insensitive deep equality for the small plain objects here. */
+    const same = (a: unknown, b: unknown) =>
+      JSON.stringify(a, Object.keys((a ?? {}) as object).sort())
+        === JSON.stringify(b, Object.keys((b ?? {}) as object).sort());
+
+    // The design's event map (§7), verbatim. A ninth event, a renamed one or
+    // a typo is a deliberate edit HERE, reviewed — not a new stream of data
+    // to a third party that nobody decided to send.
+    const EXPECTED_EVENTS = [
+      "prelaunch_page_view", "prelaunch_before_after_interaction", "prelaunch_form_start",
+      "prelaunch_signup_submitted", "prelaunch_email_confirmed", "prelaunch_referral_shared",
+      "prelaunch_referral_confirmed", "prelaunch_cta_clicked",
+    ];
+    check("the event list is exactly the eight the design names",
+      JSON.stringify([...PRELAUNCH_EVENTS]) === JSON.stringify(EXPECTED_EVENTS), PRELAUNCH_EVENTS.join(", "));
+    check("no event is listed twice", new Set(PRELAUNCH_EVENTS).size === PRELAUNCH_EVENTS.length);
+    check("every name is snake_case under prelaunch_, within GA4's 40-character limit",
+      PRELAUNCH_EVENTS.every((n) => /^prelaunch_[a-z]+(?:_[a-z]+)*$/.test(n) && n.length <= 40));
+    check("isPrelaunchEvent accepts every listed name", PRELAUNCH_EVENTS.every((n) => isPrelaunchEvent(n)));
+    const notEvents: unknown[] = [
+      "page_view", "prelaunch_unknown", "PRELAUNCH_PAGE_VIEW", "", " prelaunch_page_view",
+      undefined, null, 42, ["prelaunch_page_view"], { name: "prelaunch_page_view" },
+    ];
+    check("…and refuses everything else, including GA's own page_view",
+      notEvents.every((n) => !isPrelaunchEvent(n)),
+      notEvents.filter((n) => isPrelaunchEvent(n)).map((n) => JSON.stringify(n)).join(", "));
+
+    const EXPECTED_KEYS = ["section", "form_variant", "pair_index", "channel", "method", "cta_id", "traffic_source"];
+    check("the parameter allowlist is exactly the seven keys the design names",
+      JSON.stringify([...EVENT_PARAM_KEYS]) === JSON.stringify(EXPECTED_KEYS), EVENT_PARAM_KEYS.join(", "));
+    // The same vocabulary the page_location sanitiser refuses (section D): no
+    // allowed key may even LOOK like it carries a credential or an address.
+    check("no allowed key is named like a secret or a person",
+      EVENT_PARAM_KEYS.every((k) => !["token", "secret", "code", "key", "hash", "email", "auth", "session", "name", "user"]
+        .some((part) => k.includes(part))));
+
+    const full: EventParams = {
+      section: "thumbs", form_variant: "hero", pair_index: 3, channel: "allegro",
+      method: "copy", cta_id: "gallery_cta", traffic_source: "facebook",
+    };
+    check("every allowed key with a plain value passes unchanged", same(eventParams(full), full),
+      JSON.stringify(eventParams(full)));
+    check("no params is an empty object", same(eventParams(undefined), {}));
+
+    // Cast on purpose: these are exactly the shapes the type is there to stop,
+    // arriving anyway — from a spread, a stale caller, or an `as`.
+    const leaky = {
+      email: "jan@example.com", token: "SECRETTOKEN", t: "SECRETTOKEN", ref_code: "ABCD2345",
+      referral_code: "ABCD2345", code: "x", answer: "x", user_id: "u", first_name: "Jan",
+      page_location: "https://grovbase.com/?token=SECRETTOKEN",
+    } as unknown as EventParams;
+    check("unknown keys are dropped, whatever they hold", same(eventParams(leaky), {}),
+      JSON.stringify(eventParams(leaky)));
+    check("an e-mail address in an allowed key is dropped",
+      !("traffic_source" in eventParams({ traffic_source: "jan@example.com" })));
+    check("so is a URL carrying a token",
+      !("traffic_source" in eventParams({ traffic_source: "https://x.pl/?token=abc" })));
+    check("and free text with spaces (a name, a sentence)",
+      !("section" in eventParams({ section: "Jan Kowalski" })));
+    const at64 = "a".repeat(64);
+    check("64 characters is the longest value kept", eventParams({ cta_id: at64 }).cta_id === at64);
+    check("65 is dropped — not truncated into a different value",
+      !("cta_id" in eventParams({ cta_id: "a".repeat(65) })));
+    check("an empty string is not a value", !("section" in eventParams({ section: "" })));
+    const shapes = { section: {}, method: [], channel: true, cta_id: null } as unknown as EventParams;
+    check("objects, arrays, booleans and null are dropped", same(eventParams(shapes), {}),
+      JSON.stringify(eventParams(shapes)));
+    check("a number is kept as a whole number", eventParams({ pair_index: 2.6 }).pair_index === 3);
+    check("NaN and Infinity are not numbers worth sending",
+      same(eventParams({ pair_index: Number.NaN, section: Number.POSITIVE_INFINITY }), {}));
+
+    // A property, not an anecdote: whatever arrives, what leaves is a subset
+    // of the allowlist holding short plain tokens or whole numbers.
+    let seed = 20261019;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const pick = <T,>(xs: readonly T[]) => xs[Math.floor(rnd() * xs.length)];
+    const KEY_POOL = [...EXPECTED_KEYS, "email", "token", "ref_code", "page_location", "user", "x"];
+    const VALUE_POOL: unknown[] = [
+      "ok", "hero", "a@b.pl", "https://grovbase.com/", "x".repeat(80), "", " ", "ż", "drop table",
+      7, -1, 3.5, Number.NaN, null, true, {}, [], "A-b_c.9",
+    ];
+    let bad = 0;
+    for (let i = 0; i < 500; i++) {
+      const input: Record<string, unknown> = {};
+      for (let j = 0; j < 4; j++) input[pick(KEY_POOL)] = pick(VALUE_POOL);
+      const out = eventParams(input as EventParams);
+      for (const [k, v] of Object.entries(out)) {
+        const okKey = (EVENT_PARAM_KEYS as readonly string[]).includes(k);
+        const okValue = typeof v === "number" ? Number.isInteger(v) : /^[a-z0-9_.-]{1,64}$/i.test(v);
+        if (!okKey || !okValue) bad++;
+      }
+    }
+    check("500 random inputs: only allowlisted keys with short plain values ever leave", bad === 0,
+      `${bad} bad entr${bad === 1 ? "y" : "ies"}`);
+
+    {
+      const dl: unknown[] = [];
+      const { ga, clock } = tracked(dl, "");
+      ga.event("prelaunch_page_view", { traffic_source: "facebook" });
+      check("no measurement ID: an event pushes nothing at all", dl.length === 0, JSON.stringify(dl));
+      check("…and schedules nothing", !clock.pending);
+    }
+    {
+      const dl: unknown[] = [];
+      const { ga } = tracked(dl, ID);
+      ga.event("not_on_the_list" as PrelaunchEvent);
+      check("an unlisted name sends nothing — and does not even initialise for it", dl.length === 0,
+        JSON.stringify(dl));
+    }
+    {
+      // AN EVENT CAN BE THE FIRST THING A DOCUMENT SENDS — a form focused
+      // before the page_view settled — so it must bring its own `config`
+      // first, or it would reach gtag.js ahead of the property it belongs to.
+      const dl: unknown[] = [];
+      const { ga, clock } = tracked(dl, ID);
+      ga.event("prelaunch_form_start", { form_variant: "hero" });
+      check("an event in a fresh document initialises first: js, config, event",
+        cmd(dl[0])?.[0] === "js" && cmd(dl[1])?.[0] === "config" && cmd(dl[2])?.[0] === "event",
+        dl.map((e) => String(cmd(e)?.[0])).join(", "));
+      check("…with send_page_view off, so it does not smuggle in a page_view",
+        JSON.stringify(configs(dl)[0]).includes('"send_page_view":false'));
+      check("…sent at once, not held back by the page_view settle timer",
+        events(dl).length === 1 && !clock.pending);
+
+      ga.event("prelaunch_cta_clicked", { cta_id: "sticky", section: "hero" });
+      ga.init();
+      ga.pageView("https://grovbase.com/"); clock.run();
+      check("events, a late init and a page_view still share one config", configs(dl).length === 1,
+        `${configs(dl).length}`);
+      check("and the page_view is still reported, once",
+        events(dl).filter((e) => e[1] === "page_view").length === 1);
+      check("every queued entry is an `arguments` object", dl.every((e) => isArgs(e)));
+    }
+    {
+      const dl: unknown[] = [];
+      const { ga } = tracked(dl, ID);
+      ga.event("prelaunch_signup_submitted",
+        { form_variant: "final", email: "jan@example.com", token: "SECRETTOKEN" } as unknown as EventParams);
+      const sent = events(dl)[0] as [string, string, Record<string, unknown>] | undefined;
+      check("the event reaches GA as (event, name, allowlisted params)",
+        sent?.[1] === "prelaunch_signup_submitted" && same(sent?.[2], { form_variant: "final" }),
+        JSON.stringify(sent));
+      check("no queued command anywhere holds the address or the token",
+        !JSON.stringify(dl).includes("@") && !JSON.stringify(dl).includes("SECRETTOKEN"), JSON.stringify(dl));
+      check("an event never carries a page_location", !JSON.stringify(sent).includes("page_location"));
+
+      ga.event("prelaunch_before_after_interaction", { section: "thumbs", pair_index: 0 });
+      ga.event("prelaunch_before_after_interaction", { section: "thumbs", pair_index: 0 });
+      // "Once per tile" is the CALLER's rule (the gallery island remembers
+      // which tiles it reported); the tracker does not guess at intent.
+      check("the tracker does not swallow repeats — once-per-tile is the caller's rule",
+        events(dl).length === 3);
+    }
   }
 
   console.log(failures === 0

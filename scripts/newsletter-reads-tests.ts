@@ -22,7 +22,10 @@
  */
 import { readFileSync } from "fs";
 import { join } from "path";
-import { dashboardTotals, campaignPerformance, sourcePerformance } from "../lib/services/newsletter";
+import {
+  dashboardTotals, campaignPerformance, sourcePerformance,
+  contactsForExport, listContacts, prelaunchContact, prelaunchSummary,
+} from "../lib/services/newsletter";
 
 const ROOT = process.cwd();
 
@@ -41,6 +44,14 @@ type Read = { table: string; columns: string; filters: string[]; headOnly: boole
  */
 function stubClient() {
   const reads: Read[] = [];
+  // Function calls are recorded apart from table reads: an rpc is one round
+  // trip that returns one answer, and counting it as a "read" of some table
+  // would hide what the screen actually asks the database for.
+  const rpcs: { fn: string; args: unknown }[] = [];
+  const rpc = (fn: string, args?: unknown) => {
+    rpcs.push({ fn, args });
+    return Promise.resolve({ data: null, error: null });
+  };
   const from = (table: string) => {
     const read: Read = { table, columns: "", filters: [], headOnly: false };
     reads.push(read);
@@ -68,7 +79,7 @@ function stubClient() {
       Promise.resolve({ data: [], error: null, count: 0 }).then(resolve);
     return builder;
   };
-  return { client: { from } as never, reads };
+  return { client: { from, rpc } as never, reads, rpcs };
 }
 
 const SINCE = "2026-08-01T00:00:00.000Z";
@@ -141,11 +152,14 @@ async function main() {
     sites, so deleting a reader or adding a fourth changes the answer.
   */
   const pageSrc = readFileSync(join(ROOT, "app/admin/newsletter/analityka/page.tsx"), "utf8");
-  const READERS = ["dashboardTotals", "campaignPerformance", "sourcePerformance"];
+  // The fourth, prelaunchSummary, is ONE rpc and no table read at all — so it
+  // is counted here as a call site and measured on its own in section F, where
+  // it cannot hide inside the table-read ceiling of section C.
+  const READERS = ["dashboardTotals", "campaignPerformance", "sourcePerformance", "prelaunchSummary"];
   const callCounts = READERS.map((fn) => ({
     fn, n: (pageSrc.match(new RegExp(`\\b${fn}\\(supabase`, "g")) ?? []).length,
   }));
-  check("the analytics page calls exactly these three readers, once each",
+  check("the analytics page calls exactly these four readers, once each",
     callCounts.every((c) => c.n === 1),
     callCounts.map((c) => `${c.fn} x${c.n}`).join(", ") +
       " — if one were ever called twice, cache() would become the right tool");
@@ -250,6 +264,70 @@ async function main() {
     check(`${r.table} (${r.columns.slice(0, 28)}…) is bounded`,
       r.filters.some((f) => f.startsWith("limit(") || f.startsWith("maybeSingle") || f.startsWith("single")),
       "an unbounded select is unbounded in production too");
+  }
+
+  console.log("\nF. THE PRE-LAUNCH LIST ADDS ONE QUESTION PER SCREEN, AND IT IS BOUNDED");
+  /*
+    The pre-launch list (migration 0144) reaches three newsletter screens.
+    Each gets exactly one new round trip, and the shape is pinned here for the
+    same reason as C: the realistic failure is somebody "just counting the
+    signups" with a select over prelaunch_signups next to the SQL summary that
+    already defines what a signup is.
+
+      - Analityka: prelaunchSummary — one rpc, ZERO table reads;
+      - the contact screen: prelaunchContact — one rpc, zero table reads;
+      - Kontakty with `prelaunch=`: one bounded read of contact ids, the same
+        shape as the group filter, on the screen and in the export alike.
+  */
+  {
+    const { client, reads, rpcs } = stubClient();
+    await prelaunchSummary(client, SINCE, UNTIL);
+    check("Analityka's pre-launch section is one rpc", rpcs.length === 1 && rpcs[0].fn === "prelaunch_admin_summary",
+      rpcs.map((r) => r.fn).join(", "));
+    check("…over the page's own window", JSON.stringify(rpcs[0]?.args) === JSON.stringify({ p_from: SINCE, p_to: UNTIL }),
+      JSON.stringify(rpcs[0]?.args));
+    check("…and reads no table to count anything itself", reads.length === 0,
+      reads.map((r) => r.table).join(", "));
+  }
+  {
+    const { client, reads, rpcs } = stubClient();
+    await prelaunchSummary(client, null, UNTIL);
+    const from = (rpcs[0]?.args as { p_from?: string } | undefined)?.p_from;
+    check("'Cały okres' sends the epoch as its start, not an invented date", from === "1970-01-01T00:00:00.000Z",
+      String(from));
+    check("…still with no table read", reads.length === 0);
+  }
+  {
+    const { client, reads, rpcs } = stubClient();
+    await prelaunchContact(client, "11111111-1111-4111-8111-111111111111");
+    check("the contact screen's pre-launch card is one rpc",
+      rpcs.length === 1 && rpcs[0].fn === "prelaunch_admin_contact", rpcs.map((r) => r.fn).join(", "));
+    check("…and no table read", reads.length === 0, reads.map((r) => r.table).join(", "));
+    const { client: c2, rpcs: rpcs2 } = stubClient();
+    await prelaunchContact(c2, "not-a-uuid");
+    check("a malformed contact id never reaches the database", rpcs2.length === 0);
+  }
+  for (const [label, run] of [
+    ["the contact list", (c: never) => listContacts(c, { prelaunch: "confirmed" })],
+    ["the CSV export", (c: never) => contactsForExport(c, { prelaunch: "pending" })],
+  ] as const) {
+    const { client, reads, rpcs } = stubClient();
+    await run(client);
+    const signupReads = reads.filter((r) => r.table === "prelaunch_signups");
+    check(`${label}: the pre-launch filter is ONE read of prelaunch_signups`, signupReads.length === 1,
+      `${signupReads.length} read(s)`);
+    check(`${label}: …of contact ids only`, signupReads[0]?.columns === "contact_id", signupReads[0]?.columns);
+    check(`${label}: …bounded`, Boolean(signupReads[0]?.filters.some((f) => f.startsWith("limit("))),
+      signupReads[0]?.filters.join(" "));
+    check(`${label}: …with no rpc`, rpcs.length === 0);
+  }
+  {
+    // An unknown value is somebody editing the URL; it must not become a
+    // query (and certainly not an empty list with no explanation).
+    const { client, reads } = stubClient();
+    await listContacts(client, { prelaunch: "expired' or 1=1" });
+    check("an unknown prelaunch= value reads nothing extra",
+      reads.every((r) => r.table !== "prelaunch_signups"), reads.map((r) => r.table).join(", "));
   }
 
   console.log(failures === 0 ? "\nAll newsletter read tests passed." : `\n${failures} FAILED`);
