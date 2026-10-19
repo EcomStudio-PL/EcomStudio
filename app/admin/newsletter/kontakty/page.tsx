@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { LOCALES } from "@/lib/newsletter";
 import {
-  groupsOfContacts, listContacts, listGroups, listSources,
+  groupsOfContacts, listContacts, listGroups, listSources, prelaunchFilterOf,
 } from "@/lib/services/newsletter";
 import { ContactList } from "@/components/admin/newsletter/contact-list";
 
@@ -34,7 +34,7 @@ const CONSENT_VALUES = new Set(["consented", "no_consent", "unsubscribed"]);
 export default async function NewsletterContacts({ searchParams }: {
   searchParams: Promise<{
     q?: string; source?: string; group?: string;
-    consent?: string; locale?: string; page?: string;
+    consent?: string; locale?: string; prelaunch?: string; page?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -48,6 +48,9 @@ export default async function NewsletterContacts({ searchParams }: {
     consent: CONSENT_VALUES.has(params.consent ?? "") ? params.consent : undefined,
     locale: (LOCALES as readonly string[]).includes(params.locale ?? "")
       ? params.locale : undefined,
+    // The pre-launch list (pending | confirmed). /admin/waitlist lands here
+    // with `prelaunch=confirmed`; anything else in the URL is ignored.
+    prelaunch: prelaunchFilterOf(params.prelaunch),
     page,
     pageSize: PAGE_SIZE,
   };

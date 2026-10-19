@@ -83,9 +83,10 @@ export function ContactList({ rows, total, page, pages, sources, groups, groupsB
     groupId: params.get("group") ?? undefined,
     consent: params.get("consent") ?? undefined,
     locale: params.get("locale") ?? undefined,
+    prelaunch: params.get("prelaunch") ?? undefined,
   };
   const activeFilters =
-    ["q", "source", "group", "consent", "locale"].filter((key) => params.get(key)).length;
+    ["q", "source", "group", "consent", "locale", "prelaunch"].filter((key) => params.get(key)).length;
 
   function apply(patch: Record<string, string>) {
     const next = new URLSearchParams(params.toString());
@@ -160,14 +161,25 @@ export function ContactList({ rows, total, page, pages, sources, groups, groupsB
 
   /** Consented, not consented, or gone — three states, each said in words as
    *  well as in colour, because "which of these may I mail" is the one question
-   *  this list exists to answer. */
+   *  this list exists to answer.
+   *
+   *  A "yes" from the first launch form carries a second badge, "bez DOI": it
+   *  was a terms-and-privacy tick stored as marketing consent, with no address
+   *  ever confirmed (see isConsentWithoutDoi). It stays a yes — nobody rewrites
+   *  consent silently — but it is never allowed to look like the real thing. */
   function consentCell(contact: ContactRow) {
     if (contact.unsubscribedAt) {
       return <Badge tone="neutral" dot>{t("newsletter.consent.unsubscribed")}</Badge>;
     }
-    return contact.marketingConsent
-      ? <Badge tone="success" dot>{t("newsletter.consent.yes")}</Badge>
-      : <Badge tone="warning" dot>{t("newsletter.consent.no")}</Badge>;
+    if (!contact.marketingConsent) {
+      return <Badge tone="warning" dot>{t("newsletter.consent.no")}</Badge>;
+    }
+    return contact.consentWithoutDoi ? (
+      <span className="inline-flex flex-wrap items-center gap-1" data-consent-without-doi>
+        <Badge tone="success" dot>{t("newsletter.consent.yes")}</Badge>
+        <Badge tone="warning">{t("admin.newsletter.prelaunch.legacy.badge")}</Badge>
+      </span>
+    ) : <Badge tone="success" dot>{t("newsletter.consent.yes")}</Badge>;
   }
 
   const headers = [
@@ -261,6 +273,16 @@ export function ContactList({ rows, total, page, pages, sources, groups, groupsB
             className="sm:w-32" onChange={(e) => apply({ locale: e.target.value })}>
             <option value="">{t("newsletter.filter.locale")}</option>
             {LOCALES.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+          </Select>
+
+          {/* The pre-launch list, by its own status rather than by source:
+              somebody whose first source was an account or a form and who
+              then signed up on the launch page is on it too. */}
+          <Select value={params.get("prelaunch") ?? ""} aria-label={t("admin.newsletter.prelaunch.filter.label")}
+            className="sm:w-48" data-contact-prelaunch onChange={(e) => apply({ prelaunch: e.target.value })}>
+            <option value="">{t("admin.newsletter.prelaunch.filter.label")}</option>
+            <option value="pending">{t("admin.newsletter.prelaunch.filter.pending")}</option>
+            <option value="confirmed">{t("admin.newsletter.prelaunch.filter.confirmed")}</option>
           </Select>
         </div>
 

@@ -5,13 +5,15 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import {
-  contactTimeline, getContact, groupsOfContacts, listGroups, listSources, suppressionFor,
+  contactTimeline, getContact, groupsOfContacts, listGroups, listSources, prelaunchContact,
+  suppressionFor,
 } from "@/lib/services/newsletter";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { formatDate } from "@/lib/utils";
 import { ContactDetail } from "@/components/admin/newsletter/contact-detail";
+import { PrelaunchContactCard } from "@/components/admin/newsletter/prelaunch-contact-card";
 
 /**
  * ONE CONTACT — the profile, the consent record, and everything that has
@@ -31,6 +33,13 @@ import { ContactDetail } from "@/components/admin/newsletter/contact-detail";
  * item, and it is derived rather than backfilled into the events table because
  * a table of things that happened should not gain rows for things nobody
  * recorded.
+ *
+ * THE PRE-LAUNCH LIST HAS A CARD OF ITS OWN (prelaunch-contact-card.tsx): the
+ * landing page's double opt-in keeps its consent records — two per submission,
+ * with their exact sentences — next to the contact rather than on it, so they
+ * are shown where they live instead of being squeezed into the panel above.
+ * The one place the two meet is the legacy waitlist consent (source
+ * 'waitlist', version 'v1'), which that panel labels "bez DOI".
  */
 export default async function NewsletterContactPage({ params }: {
   params: Promise<{ id: string }>;
@@ -43,12 +52,13 @@ export default async function NewsletterContactPage({ params }: {
   const contact = await getContact(supabase, id);
   if (!contact) notFound();
 
-  const [events, groups, memberships, sources, suppression] = await Promise.all([
+  const [events, groups, memberships, sources, suppression, prelaunch] = await Promise.all([
     contactTimeline(supabase, contact.id),
     listGroups(supabase),
     groupsOfContacts(supabase, [contact.id]),
     listSources(supabase),
     suppressionFor(supabase, contact.email),
+    prelaunchContact(supabase, contact.id),
   ]);
 
   // The application account, when the address belongs to one. Read here the
@@ -85,6 +95,9 @@ export default async function NewsletterContactPage({ params }: {
               : contact.marketingConsent
                 ? <Badge tone="success" dot>{t("newsletter.consent.yes")}</Badge>
                 : <Badge tone="warning" dot>{t("newsletter.consent.no")}</Badge>}
+            {contact.consentWithoutDoi && !contact.unsubscribedAt && (
+              <Badge tone="warning">{t("admin.newsletter.prelaunch.legacy.badge")}</Badge>
+            )}
             {suppression && (
               <Badge tone="danger" dot>{t(`newsletter.reason.${suppression.reason}`)}</Badge>
             )}
@@ -145,8 +158,22 @@ export default async function NewsletterContactPage({ params }: {
                   {t("newsletter.consent.never")}
                 </p>
               )}
+              {/* The record above is real — what it is evidence OF is not
+                  marketing consent. Said under the record, in a sentence. */}
+              {contact.consentWithoutDoi && (
+                <div data-consent-without-doi
+                  className="mt-3 rounded-xl bg-[rgb(var(--warning)/0.10)] px-3 py-2.5">
+                  <Badge tone="warning">{t("admin.newsletter.prelaunch.legacy.badge")}</Badge>
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                    {t("admin.newsletter.prelaunch.legacy.note")}
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
+
+          {/* ── THE PRE-LAUNCH LIST ──────────────────────────────────── */}
+          <PrelaunchContactCard view={prelaunch} />
 
           {/* ── THE ACCOUNT, IF THERE IS ONE ─────────────────────────── */}
           <Card>

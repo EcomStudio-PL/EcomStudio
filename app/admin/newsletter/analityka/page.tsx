@@ -9,7 +9,7 @@ import { Stat } from "@/components/ui/stat";
 import { formatPrice } from "@/lib/utils";
 import { formatRate, formatWindow, rate, resolveRange } from "@/lib/newsletter";
 import {
-  campaignPerformance, dashboardTotals, sourcePerformance,
+  campaignPerformance, dashboardTotals, prelaunchSummary, sourcePerformance,
   type CampaignPerformance,
 } from "@/lib/services/newsletter";
 import { RangePicker } from "@/components/admin/newsletter/range-picker";
@@ -17,6 +17,7 @@ import {
   KpiRow, NoSalesData, RevenuePanel, campaignStatusTone, numberFormat,
 } from "@/components/admin/newsletter/kpi";
 import { Funnel } from "@/components/admin/newsletter/funnel";
+import { PrelaunchStats } from "@/components/admin/newsletter/prelaunch-stats";
 
 /**
  * ANALITYKA — the pulpit's numbers, with the rows behind them.
@@ -35,6 +36,11 @@ import { Funnel } from "@/components/admin/newsletter/funnel";
  * which returns null for a zero denominator, so a campaign nobody received
  * shows an unknown open rate rather than a confident 0%.
  *
+ * THE PRE-LAUNCH LIST LIVES HERE TOO, not on a dashboard of its own: its
+ * signups are this module's contacts, its window is this page's window, and
+ * its numbers come from one SQL function (prelaunch_admin_summary) laid out by
+ * components/admin/newsletter/prelaunch-stats.tsx.
+ *
  * The layout goes wide on purpose. Tables get the full content width (2100px
  * here), and the two narrow sections pair up from `xl`, because the failure
  * this module was asked to avoid is a dashboard rendered as one thin column on
@@ -50,10 +56,13 @@ export default async function NewsletterAnalyticsPage({ searchParams }: {
   const nf = numberFormat(locale);
 
   const range = resolveRange(params);
-  const [totals, campaigns, sources] = await Promise.all([
+  // The pre-launch list rides the same window and the same Promise.all: one
+  // rpc, so it adds a round trip in parallel, never one in series.
+  const [totals, campaigns, sources, prelaunch] = await Promise.all([
     dashboardTotals(supabase, range.since, range.until),
     campaignPerformance(supabase, range.since, range.until),
     sourcePerformance(supabase, range.since, range.until),
+    prelaunchSummary(supabase, range.since, range.until),
   ]);
 
   // One decision, applied to every conversion and money cell below. Asking
@@ -167,6 +176,12 @@ export default async function NewsletterAnalyticsPage({ searchParams }: {
           empty={t("newsletter.analytics.noData")}
         />
       </section>
+
+      {/* ── LISTA PRZEDPREMIEROWA ─────────────────────────────────────────
+          Right under the contact sources because it answers the same kind of
+          question — how people joined — for the one route that has a double
+          opt-in, a referral programme and campaign attribution of its own. */}
+      <PrelaunchStats summary={prelaunch} />
 
       {/* ── KONWERSJA · PRZYCHÓD ──────────────────────────────────────────
           Paired from xl so two short panels do not become two tall bands of
