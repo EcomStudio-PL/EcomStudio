@@ -193,6 +193,15 @@
   --violet: 168 85 247;
   --accent2: 249 80 225;
   --accent2-soft: 64 22 60;
+  /* THE STATUS COLOURS TOO. They were left out of this ramp, so a visitor
+     whose theme is light got the LIGHT values on this dark page: the form's
+     error line in --danger measured 3.41:1 against --bg and the notice in
+     --warning 3.82:1 — both under AA for 12–13px text. The dark values are the
+     `.dark` block's, 7.15:1 and 8.74:1. */
+  --danger: 248 113 113;
+  --warning: 251 146 60;
+  --success: 74 222 128;
+  --info: 96 165 250;
   --glass: 21 13 30;
   --glass-alpha: 0.72;
   --glass-border: 196 150 255;
@@ -225,6 +234,20 @@
      than drifting away from it. */
   --hero-top: calc(4.25rem + env(safe-area-inset-top));
   --hero-art: min(62vw, 32svh);
+  /* How far the badge reaches up INTO the band: 2.6rem on a phone, 5rem on
+     a tablet (below). Was two Tailwind values on the element; it is a token
+     now so a short landscape screen can take the phone's (further down). */
+  --hero-overlap: 2.6rem;
+}
+@media (min-width: 768px) {
+  [data-launch-page] { --hero-overlap: 5rem; }
+}
+/* A PHONE ON ITS SIDE is in the tablet's width band, but its band is the
+   9rem floor below: 5rem into 9rem put the headline over the lit part of the
+   picture (11px at 844×390, scripts/landing-geometry.mjs). Short screens keep
+   the phone's overlap; no tablet is under 560px tall, in either orientation. */
+@media (min-width: 768px) and (max-height: 560px) {
+  [data-launch-page] { --hero-overlap: 2.6rem; }
 }
 
 /* TABLET PORTRAIT — 768 to just under the lg breakpoint.
@@ -257,7 +280,13 @@
        rather than a guess. It only ever BINDS on the short tablets: at
        834×1112 and 820×1180 the 26svh term is still the smaller one and those
        two screens render to the pixel as they did. */
-    --hero-art: min(56vw, 34svh, calc(100svh - 46rem));
+    /* …AND IT NEEDS A FLOOR. A phone turned to landscape is in this width
+       band too (844×390), and there `100svh - 46rem` is NEGATIVE: the band
+       collapsed, the content pad derived from it went below the header, and
+       the headline ran 6px into the logo (scripts/landing-geometry.mjs). The
+       floor binds only below 880px of height — no portrait tablet — so every
+       tablet in portrait keeps its band to the pixel. */
+    --hero-art: max(9rem, min(56vw, 34svh, calc(100svh - 46rem)));
   }
 }
 

@@ -4,8 +4,10 @@ import { getDictionary } from "@/lib/i18n/server";
 import { getPlatformAccess } from "@/lib/server/platform-access";
 import { getPublishedPage } from "@/lib/server/public-site";
 import {
-  getLaunchStore, launchFieldsFromBlocks, resolveLaunchContent,
+  getLaunchStore, launchDefaultsFrom, launchFieldsFromBlocks, resolveLaunchContent,
 } from "@/lib/server/launch-page";
+import { getPrelaunchPublicConfig, launchPageSlug } from "@/lib/server/prelaunch/public";
+import { launchOptionsFromBlocks, launchPerks, safeLaunchCopy } from "@/lib/server/prelaunch/landing";
 import { accessCopyFor, blockedReasonFor, type AccessCopy, type BlockedReason } from "@/lib/platform-access";
 
 /**
@@ -31,26 +33,35 @@ export type AccessView = {
 };
 
 /**
- * The three bonus lines exactly as the launch page resolves them. Empty when
- * nothing is configured — a dialog that invents a benefit is a dialog making
- * a promise nobody agreed to.
+ * The bonus lines exactly as the launch page resolves them — through the SAME
+ * function (`launchPerks`, lib/server/prelaunch/landing.ts), against the same
+ * approved campaign values. The copy carries tokens now ("{credits} kredytów
+ * na start"), so reading the raw fields would print "{credits}" here, and a
+ * card the page hides (an unapproved number, a price lock the checkout does
+ * not offer, early access with no mechanism) would still be promised in the
+ * dialog. Empty when nothing is approved, or when the owner switched the
+ * benefits section off — a dialog that invents a benefit is a dialog making a
+ * promise nobody agreed to.
+ *
+ * The page is the homepage's launch page when it is one (launchPageSlug), not
+ * a second spelling of its slug.
  */
 async function waitlistPerks(supabase: Awaited<ReturnType<typeof createClient>>): Promise<AccessPerk[]> {
   try {
     const { dict, locale } = await getDictionary();
-    const [store, page] = await Promise.all([
+    const slug = await launchPageSlug();
+    const [store, page, config] = await Promise.all([
       getLaunchStore(supabase),
-      getPublishedPage(supabase, "premiera"),
+      getPublishedPage(supabase, slug),
+      getPrelaunchPublicConfig(),
     ]);
-    const c = resolveLaunchContent(
-      store, locale, dict.launch as Record<string, unknown>, "published",
+    if (!launchOptionsFromBlocks(page?.blocks).shown.benefits) return [];
+    const defaults = launchDefaultsFrom(dict);
+    const c = safeLaunchCopy(resolveLaunchContent(
+      store, locale, defaults, "published",
       launchFieldsFromBlocks(page?.blocks, locale),
-    );
-    return [
-      { t: c["benefit.1"], b: c["benefit.1sub"] },
-      { t: c["benefit.2"], b: c["benefit.2sub"] },
-      { t: c["benefit.3"], b: c["benefit.3sub"] },
-    ].filter((p) => p.t.trim() !== "");
+    ), defaults);
+    return launchPerks(c, config, locale, Date.now()).map(({ t, b }) => ({ t, b }));
   } catch {
     return [];
   }

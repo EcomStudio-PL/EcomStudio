@@ -135,17 +135,38 @@ async function main() {
     check("and the old length-based fallback is gone",
       !/authored\.length\s*>\s*0\s*\?/.test(route));
 
-    // THE LAUNCH PAGE IS APPROVED AND MUST RENDER EXACTLY AS IT DID. The route
-    // may decide WHETHER to render it; it may not change WHAT it renders with.
-    const props = [...route.matchAll(/<LaunchPage([\s\S]*?)\/>/g)]
-      .flatMap((m) => [...m[1]!.matchAll(/(\w+)=\{/g)].map((p) => p[1]!));
+    /*
+      THE LAUNCH PAGE IS HANDED AN EXACT, REVIEWED SET OF PROPS.
+
+      This list was frozen at nine when the one-screen page was approved: the
+      route may decide WHETHER to render it, not quietly change WHAT it renders
+      with. Pre-launch Landing V2 (the long page) changes what it renders with
+      ON PURPOSE, so the list is updated here deliberately rather than relaxed:
+      the nine originals stay, and seven are added, each with one job —
+
+        options    section switches + the creators photo (launch block plain values)
+        campaign   the approved campaign, already resolved into lines
+        galleries  the before/after galleries (complete pairs; admin placeholders)
+        isAdmin    an admin on the live page (not ?preview) — placeholders only
+        consents   the two consent sentences exactly as the signup route records them
+        serverNow  the server clock the countdown runs on
+        analytics  the traffic source for the page_view funnel event
+
+      Still EXACT, and spreads are refused: `{...props}` would let anything
+      through without this list ever changing.
+    */
+    const launchTags = [...route.matchAll(/<LaunchPage([\s\S]*?)\/>/g)].map((m) => m[1]!);
+    const props = launchTags.flatMap((tag) => [...tag.matchAll(/(\w+)=\{/g)].map((p) => p[1]!));
     const expected = [
       "social", "content", "signedIn", "showAuthEntry", "waitlistFields",
       "loginLabel", "privacyLabel", "termsLabel", "rightsLabel",
+      "options", "campaign", "galleries", "isAdmin", "consents", "serverNow", "analytics",
     ];
-    check("the launch page is handed exactly the props it was handed before",
+    check("the launch page is handed exactly the reviewed V2 props",
       props.length === expected.length && expected.every((p) => props.includes(p)),
       `got: ${props.join(", ")}`);
+    check("…and no spread can smuggle in another",
+      launchTags.length > 0 && launchTags.every((tag) => !/\{\s*\.\.\./.test(tag)));
   }
 
   console.log("\nD. THE PANEL READS THE SAME FLAG, AND CANNOT DISAGREE WITH IT");

@@ -95,6 +95,15 @@ const securityHeaders = [
 const nextConfig = {
   images: {
     /*
+      AVIF FIRST, THEN WEBP. Next's default is WebP only. The launch page's
+      hero artwork is the largest file on the front door, and AVIF carries the
+      same picture in roughly half the bytes; a browser that cannot read AVIF
+      says so in its Accept header and gets the WebP, so nobody is worse off.
+      Encoding AVIF costs more CPU on the first request per size — paid once,
+      then the optimiser's cache serves it.
+    */
+    formats: ['image/avif', 'image/webp'],
+    /*
       THE OPTIMISER FETCHES WHATEVER THIS ALLOWS (P1-32).
 
       `*.supabase.co` is every Supabase project in the world, not ours. Next's
