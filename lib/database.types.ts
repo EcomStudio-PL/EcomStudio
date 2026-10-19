@@ -4401,6 +4401,71 @@ export type Database = {
         }
         Relationships: []
       }
+      /* Every way a contact arrived (0097); the attribution columns are
+         0144's first-touch capture for (contact, source), written once. */
+      newsletter_contact_sources: {
+        Row: {
+          contact_id: string
+          source_key: string
+          first_seen_at: string
+          last_seen_at: string
+          utm_source: string | null
+          utm_medium: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_term: string | null
+          referrer_host: string | null
+          landing_path: string | null
+          form_variant: string | null
+          attributed_at: string | null
+        }
+        Insert: {
+          contact_id: string
+          source_key: string
+          first_seen_at?: string
+          last_seen_at?: string
+          utm_source?: string | null
+          utm_medium?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_term?: string | null
+          referrer_host?: string | null
+          landing_path?: string | null
+          form_variant?: string | null
+          attributed_at?: string | null
+        }
+        Update: {
+          contact_id?: string
+          source_key?: string
+          first_seen_at?: string
+          last_seen_at?: string
+          utm_source?: string | null
+          utm_medium?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_term?: string | null
+          referrer_host?: string | null
+          landing_path?: string | null
+          form_variant?: string | null
+          attributed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_contact_sources_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "newsletter_contact_sources_source_key_fkey"
+            columns: ["source_key"]
+            isOneToOne: false
+            referencedRelation: "newsletter_sources"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       newsletter_events: {
         Row: {
           id: number
@@ -4874,6 +4939,267 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      /* Pre-launch landing V2 (migration 0144). Admin SELECT only (reward
+         claims: also the owner's own rows); every write goes through the
+         definer functions in lib/server/prelaunch/rpc.ts. */
+      prelaunch_signups: {
+        Row: {
+          id: string
+          email: string
+          contact_id: string | null
+          status: string
+          created_at: string
+          confirmed_at: string | null
+          referral_code: string
+          referred_by: string | null
+          referral_counted_at: string | null
+          referral_rejected: string | null
+          canonical_email: string
+          first_name: string | null
+          prior_contact: boolean
+          prior_account: boolean
+          ip_hash: string | null
+          last_ip_hash: string | null
+          last_submit_at: string | null
+          form_variant: string | null
+          seller_channel: string | null
+          answer_hash: string | null
+          answer_until: string | null
+          last_sent_at: string | null
+          sends_24h: number
+          sends_window_at: string | null
+          consent_set_id: string | null
+          locale: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          email: string
+          contact_id?: string | null
+          status?: string
+          created_at?: string
+          confirmed_at?: string | null
+          referral_code: string
+          referred_by?: string | null
+          referral_counted_at?: string | null
+          referral_rejected?: string | null
+          canonical_email: string
+          first_name?: string | null
+          prior_contact?: boolean
+          prior_account?: boolean
+          ip_hash?: string | null
+          last_ip_hash?: string | null
+          last_submit_at?: string | null
+          form_variant?: string | null
+          seller_channel?: string | null
+          answer_hash?: string | null
+          answer_until?: string | null
+          last_sent_at?: string | null
+          sends_24h?: number
+          sends_window_at?: string | null
+          consent_set_id?: string | null
+          locale?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          contact_id?: string | null
+          status?: string
+          created_at?: string
+          confirmed_at?: string | null
+          referral_code?: string
+          referred_by?: string | null
+          referral_counted_at?: string | null
+          referral_rejected?: string | null
+          canonical_email?: string
+          first_name?: string | null
+          prior_contact?: boolean
+          prior_account?: boolean
+          ip_hash?: string | null
+          last_ip_hash?: string | null
+          last_submit_at?: string | null
+          form_variant?: string | null
+          seller_channel?: string | null
+          answer_hash?: string | null
+          answer_until?: string | null
+          last_sent_at?: string | null
+          sends_24h?: number
+          sends_window_at?: string | null
+          consent_set_id?: string | null
+          locale?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prelaunch_signups_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "newsletter_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prelaunch_signups_referred_by_fkey"
+            columns: ["referred_by"]
+            isOneToOne: false
+            referencedRelation: "prelaunch_signups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prelaunch_optin_tokens: {
+        Row: {
+          id: string
+          signup_id: string
+          token_hash: string
+          consent_set: string | null
+          origin: string
+          created_at: string
+          expires_at: string
+          used_at: string | null
+          sent_at: string | null
+          send_failed_at: string | null
+          ip_hash: string | null
+          form_variant: string | null
+          locale: string | null
+        }
+        Insert: {
+          id?: string
+          signup_id: string
+          token_hash: string
+          consent_set?: string | null
+          origin?: string
+          created_at?: string
+          expires_at: string
+          used_at?: string | null
+          sent_at?: string | null
+          send_failed_at?: string | null
+          ip_hash?: string | null
+          form_variant?: string | null
+          locale?: string | null
+        }
+        Update: {
+          id?: string
+          signup_id?: string
+          token_hash?: string
+          consent_set?: string | null
+          origin?: string
+          created_at?: string
+          expires_at?: string
+          used_at?: string | null
+          sent_at?: string | null
+          send_failed_at?: string | null
+          ip_hash?: string | null
+          form_variant?: string | null
+          locale?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prelaunch_optin_tokens_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "prelaunch_signups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prelaunch_consents: {
+        Row: {
+          id: string
+          signup_id: string
+          consent_set: string
+          consent_key: string
+          consent_version: string
+          consent_text: string
+          doc_versions: Json | null
+          locale: string | null
+          form_variant: string | null
+          accepted_at: string
+          confirmed_at: string | null
+          ip_hash: string | null
+        }
+        Insert: {
+          id?: string
+          signup_id: string
+          consent_set: string
+          consent_key: string
+          consent_version: string
+          consent_text: string
+          doc_versions?: Json | null
+          locale?: string | null
+          form_variant?: string | null
+          accepted_at?: string
+          confirmed_at?: string | null
+          ip_hash?: string | null
+        }
+        Update: {
+          id?: string
+          signup_id?: string
+          consent_set?: string
+          consent_key?: string
+          consent_version?: string
+          consent_text?: string
+          doc_versions?: Json | null
+          locale?: string | null
+          form_variant?: string | null
+          accepted_at?: string
+          confirmed_at?: string | null
+          ip_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prelaunch_consents_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "prelaunch_signups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prelaunch_reward_claims: {
+        Row: {
+          id: string
+          user_id: string
+          kind: string
+          source_signup: string
+          canonical_email: string | null
+          amount: number
+          credit_transaction_id: string | null
+          campaign: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          kind: string
+          source_signup: string
+          canonical_email?: string | null
+          amount?: number
+          credit_transaction_id?: string | null
+          campaign: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          kind?: string
+          source_signup?: string
+          canonical_email?: string | null
+          amount?: number
+          credit_transaction_id?: string | null
+          campaign?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prelaunch_reward_claims_source_signup_fkey"
+            columns: ["source_signup"]
+            isOneToOne: false
+            referencedRelation: "prelaunch_signups"
             referencedColumns: ["id"]
           },
         ]
@@ -7945,6 +8271,53 @@ export type Database = {
       // the two vault secrets EXIST and never returns them, and a narrower
       // type here would invite a caller to expect fields it must not have.
       newsletter_scheduler_status: { Args: Record<string, never>; Returns: Json }
+      /* Pre-launch landing V2 (migration 0144). The binding contract —
+         argument names and reply keys — is lib/server/prelaunch/rpc.ts, which
+         parses every reply. The p_token ones are gated by server_call_ok and
+         granted to anon (the route runs as anon); the reward grant is the
+         caller's own session; the admin reads check is_admin(). */
+      prelaunch_public_config: { Args: Record<string, never>; Returns: Json }
+      prelaunch_signup: {
+        Args: {
+          p_token: string | null
+          p_email: string
+          p_first_name?: string | null
+          p_locale?: string
+          p_form?: string
+          p_consents?: Json | null
+          p_doc_versions?: Json | null
+          p_attr?: Json | null
+          p_ref_code?: string | null
+          p_ip_hash?: string | null
+          p_optin_hash?: string | null
+          p_answer_hash?: string | null
+        }
+        Returns: Json
+      }
+      prelaunch_resend: {
+        Args: {
+          p_token: string | null
+          p_email?: string | null
+          p_old_hash?: string | null
+          p_ip_hash?: string | null
+          p_optin_hash?: string | null
+        }
+        Returns: Json
+      }
+      prelaunch_confirm: { Args: { p_token: string | null; p_token_hash: string }; Returns: Json }
+      prelaunch_set_channel: {
+        Args: { p_token: string | null; p_answer_hash: string; p_channel: string }
+        Returns: string
+      }
+      prelaunch_mail_payload: { Args: { p_token: string | null }; Returns: Json }
+      prelaunch_mark_sent: {
+        Args: { p_token: string | null; p_token_id: string; p_ok: boolean }
+        Returns: boolean
+      }
+      prelaunch_reward_ensure: { Args: Record<string, never>; Returns: Json }
+      prelaunch_forget_contact: { Args: { p_contact: string }; Returns: Json }
+      prelaunch_admin_summary: { Args: { p_from: string; p_to: string }; Returns: Json }
+      prelaunch_admin_contact: { Args: { p_contact: string }; Returns: Json }
     }
     Enums: {
       asset_type: "image" | "video" | "text"
