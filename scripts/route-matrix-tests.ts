@@ -59,6 +59,19 @@ const PUBLIC: Record<string, string> = {
     that calls that token-protected is worse than no matrix.
   */
   "/api/waitlist": "public sign-up form — anonymous by design; rate-limited, and its token use is OUTBOUND only",
+  /*
+    THE PRE-LAUNCH LIST (Landing V2). Anonymous by design, like /api/waitlist,
+    and for the same reason its proof-of-server token is OUTBOUND: it lets
+    these routes call the 0144 definer functions, it does not authenticate the
+    visitor. What stands in front instead is section F below — POST + JSON
+    only, the Origin rule, an in-memory limiter, a body cap — and the durable
+    limits inside the SQL. Each answers uniformly, so none can be asked
+    whether an address is on the list.
+  */
+  "/api/public/prelaunch/signup": "pre-launch signup (double opt-in) — anonymous by design; uniform answer, mail in after()",
+  "/api/public/prelaunch/resend": "re-send the confirmation link — anonymous by design; always the same answer",
+  "/api/public/prelaunch/confirm": "the double opt-in itself — the hashed token from the mail IS the credential",
+  "/api/public/prelaunch/channel": "\"Gdzie sprzedajesz?\" — bound to the submission's own short-lived answer handle",
 };
 
 /** No session; a secret or signed token proves the caller instead. */
@@ -144,6 +157,34 @@ for (const route of TRIAL_ORIGINALS) {
     /accountBlockedResponse\(supabase, user\.id\)/.test(src) && /isTrialUuid\(/.test(src)
     && /rateLimit\(/.test(src) && /"Cache-Control":\s*"no-store"/.test(src)
     && /export const runtime = "nodejs"/.test(src) && /export const maxDuration = \d+/.test(src));
+}
+
+/*
+  THE PRE-LAUNCH ROUTES, registered by name like the trial-watermark ones.
+  Each must run on Node, never be cached, and pass the one shared door
+  (lib/server/prelaunch/http.ts) before reading a field — and that door must
+  still hold all of its checks, in its order.
+*/
+const PRELAUNCH: readonly string[] = [
+  "/api/public/prelaunch/signup", "/api/public/prelaunch/resend",
+  "/api/public/prelaunch/confirm", "/api/public/prelaunch/channel",
+];
+for (const route of PRELAUNCH) {
+  const src = routes.find((r) => r.route === route)?.src ?? "";
+  check(`${route} exists and is PUBLIC with a reason`, src !== "" && Boolean(PUBLIC[route]));
+  check(`${route} is nodejs, force-dynamic, guarded first and exports only POST`,
+    /export const runtime = "nodejs"/.test(src) && /export const dynamic = "force-dynamic"/.test(src)
+    && /await guardRequest\(request,/.test(src) && !/export async function (GET|PUT|PATCH|DELETE)/.test(src));
+  check(`${route} is exempt from step-up (an admin previewing the landing is not refused)`, !stepUpAppliesTo(route));
+}
+{
+  const door = readFileSync(join(ROOT, "lib/server/prelaunch/http.ts"), "utf8");
+  const at = (re: RegExp) => door.search(re);
+  const order = [/request\.method !== "POST"/, /startsWith\("application\/json"\)/, /originAllowed\(request\)/, /rateLimit\(/, /JSON\.parse\(/];
+  const positions = order.map(at);
+  check("the shared door checks method → content-type → Origin → rate limit → JSON, in that order",
+    positions.every((p) => p >= 0) && positions.every((p, i) => i === 0 || p > positions[i - 1]!), positions.join(","));
+  check("and every answer it builds is no-store", /"Cache-Control": "no-store"/.test(door) && /headers: NO_STORE/.test(door));
 }
 
 console.log("\nB. EVERY /api/admin ROUTE RE-CHECKS THE ROLE ITSELF");

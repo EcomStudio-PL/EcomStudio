@@ -2,8 +2,9 @@ import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { deliver, deliverHtml, type SmtpConfig } from "@/lib/server/mailer";
-import { buildDedupeKey, notify } from "@/lib/server/notify";
-import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
+import { notify } from "@/lib/server/notify";
+import { collectEventContext } from "@/lib/server/event-context";
+import { waitlistSignupNotice } from "@/lib/server/prelaunch/attribution";
 import { dispatchToken, readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
 import {
   defaultTemplate, lookupPublishedTemplate, renderTemplateEmail,
@@ -20,10 +21,16 @@ export const dynamic = "force-dynamic";
  * lets a visitor read the list, count it, or probe whether an address is on
  * it beyond the answer they get for their own submission.
  *
- * The reply is deliberately the same shape for a new address and a known one:
- * the customer is told plainly ("you are already on the list") because that is
- * useful and they just typed the address themselves, but nothing here reveals
- * anyone else's.
+ * The reply is the same for a new address and a known one — `created` both
+ * times. It used to say "exists" for a known address, on the reasoning that the
+ * customer had just typed it themselves; but so can anybody else, and "is this
+ * address on the list" is exactly the question a public form must not answer
+ * (Landing V2, audit A1). A known address still sends nothing and announces
+ * nothing: the confirmation and the operator ping below stay new-row only.
+ *
+ * The Landing V2 page itself no longer posts here — it uses the double opt-in
+ * endpoints under /api/public/prelaunch/. This route stays as the target of the
+ * CMS newsletter form's forwarder (app/api/public/newsletter/route.ts).
  */
 
 const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
@@ -100,7 +107,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid_email" }, { status: 400 });
   }
   if (result.status === "exists") {
-    return NextResponse.json({ ok: true, status: "exists" });
+    return NextResponse.json({ ok: true, status: "created" });
   }
 
   // The confirmation, when the admin turned it on. Best-effort by design: a
@@ -172,32 +179,10 @@ export async function POST(request: Request) {
   // request-scoped state. The locale the visitor is reading the page in beats
   // Accept-Language, because it is the one we will write to them in.
   const context = await collectEventContext();
-  // Empty rows are dropped rather than rendered as a dangling label, so the
-  // fields the admin left off the form simply are not in the message.
-  const rows: [string, string][] = [
-    ["👤 Użytkownik", `${firstName} ${lastName}`.trim()],
-    ["📧 E-mail", email],
-    ["🕒 Data", formatWarsaw(new Date())],
-    // Which block of the landing page the visitor used, then what the server
-    // saw of the visit: campaign, entry point, address, device.
-    ["🌍 Źródło", source],
-    ...contextRows({ ...context, language: locale.toUpperCase() }),
-  ];
-  const tplData = eventDataFrom(context, {
-    name: `${firstName} ${lastName}`.trim(),
-    email,
-    source,
-    language: locale.toUpperCase(),
-  });
-  after(() => notify(supabase, {
-    type: "waitlist.signup",
-    title: "NOWY ZAPIS NA LISTĘ",
-    icon: "📝",
-    rows: rows.filter(([, value]) => value !== ""),
-    data: tplData,
-    footer: "GrovBase Waitlist",
-    dedupeKey: buildDedupeKey("waitlist.signup", email),
-  }));
+  // The payload builder is shared with the pre-launch signup (which drops the
+  // raw IP); this door keeps every row it always sent, the IP included.
+  const notice = waitlistSignupNotice(context, { firstName, lastName, email, source, locale }, { withIp: true });
+  after(() => notify(supabase, notice));
 
   return NextResponse.json({ ok: true, status: "created" });
 }

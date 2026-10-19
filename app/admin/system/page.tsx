@@ -7,6 +7,7 @@ import { SUPABASE_URL } from "@/lib/supabase/config";
 import { REGISTRATION_SETTINGS_KEY } from "@/lib/server/registration-config";
 import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
 import { TRIAL_WATERMARK_SETTING_KEY } from "@/lib/trial-watermark/config";
+import { PRELAUNCH_SETTING_KEY } from "@/lib/server/prelaunch/campaign-config";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,11 @@ export default async function AdminSystem() {
     // Here it would be bare number fields and an unaudited `enabled` box.
     .filter((s) => s.key !== REGISTRATION_SETTINGS_KEY && s.key !== TOOLS_LAYOUT_KEY)
     .filter((s) => s.key !== TRIAL_WATERMARK_SETTING_KEY)
+    // The pre-launch campaign likewise (Strony WWW → the launch page): its
+    // figures are promises to visitors and money once rewards are on, so they
+    // are range-checked, audited and switched on behind a confirm there. Here
+    // they would be bare number fields with no approval rules at all (S5).
+    .filter((s) => s.key !== PRELAUNCH_SETTING_KEY)
     .sort((a, b) => SECTION_ORDER.indexOf(a.key) - SECTION_ORDER.indexOf(b.key))
     .map((s) => ({ key: s.key, value: (s.value ?? {}) as Record<string, unknown> }));
   const isDev = SUPABASE_URL.includes("ezyhwkcrrysanbcbkzsq");

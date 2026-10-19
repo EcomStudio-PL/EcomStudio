@@ -98,6 +98,15 @@ function entry(
  *  about them, in a message that exists to welcome them. */
 const SUBSCRIBER_PLACEHOLDERS = ["first_name", "name", "email", "date", "time"] as const;
 
+/**
+ * What the pre-launch DOUBLE OPT-IN mail may say. It goes to an address
+ * somebody typed into a public form, before anybody has proven they own it —
+ * so it carries NO first name (S9: a stranger's "name" would otherwise be a
+ * message we relay to any inbox through our own SMTP). The recipient's own
+ * address is fine; the link and its lifetime are the point of the mail.
+ */
+const OPTIN_PLACEHOLDERS = ["email", "confirm_url", "expires_hours"] as const;
+
 /** Every editable message, grouped the way the panel lists them. */
 export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // Rejestracja
@@ -128,6 +137,23 @@ export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // GrovBase says.
   entry("waitlist.confirmation", "email", "app", "tpl.waitlistConfirm", "tpl.gMarketing", true,
     SUBSCRIBER_PLACEHOLDERS, { deliverySwitch: true }),
+  // The same welcome in English and German. message_templates has one row per
+  // (event, channel) and no locale, so a language is its own event key. They
+  // share the Polish one's switch — ONE decision, email_settings.
+  // confirmation_enabled, which waitlist_confirmation_payload still gates on —
+  // so turning the welcome off turns it off in every language at once.
+  entry("waitlist.confirmation_en", "email", "app", "tpl.waitlistConfirmEn", "tpl.gMarketing", true,
+    SUBSCRIBER_PLACEHOLDERS, { deliverySwitch: true }),
+  entry("waitlist.confirmation_de", "email", "app", "tpl.waitlistConfirmDe", "tpl.gMarketing", true,
+    SUBSCRIBER_PLACEHOLDERS, { deliverySwitch: true }),
+  // The pre-launch double opt-in, per language. NO delivery switch, on
+  // purpose: without this mail nobody can ever confirm, so "off" would mean
+  // "the signup form silently collects addresses it can never use". The
+  // studio edits the words; the button always points at the server-computed
+  // confirmation link (lib/server/prelaunch/mail.ts), like the auth mails.
+  entry("waitlist.optin", "email", "app", "tpl.waitlistOptin", "tpl.gMarketing", true, OPTIN_PLACEHOLDERS),
+  entry("waitlist.optin_en", "email", "app", "tpl.waitlistOptinEn", "tpl.gMarketing", true, OPTIN_PLACEHOLDERS),
+  entry("waitlist.optin_de", "email", "app", "tpl.waitlistOptinDe", "tpl.gMarketing", true, OPTIN_PLACEHOLDERS),
   // Poczta
   entry("mail.received", "telegram", "app", "tpl.newMail", "tpl.gMail", true, ["name", "email", "date", "time"]),
   // Płatności — templates ready, business hooks not built yet (no billing).
@@ -263,6 +289,50 @@ const DEFAULTS: Record<string, TemplateDef> = {
     footer: "GrovBase",
     showLogo: true, showFields: false, showCta: false,
   } },
+  "waitlist.confirmation_en:email": { channel: "email", email: {
+    subject: "You're on the GrovBase list 🚀",
+    heading: "You're on the list",
+    body: "Thanks for signing up. We'll let you know as one of the first when GrovBase launches.",
+    ctaLabel: "", ctaUrl: "",
+    footer: "GrovBase",
+    showLogo: true, showFields: false, showCta: false,
+  } },
+  "waitlist.confirmation_de:email": { channel: "email", email: {
+    subject: "Du bist auf der GrovBase-Liste 🚀",
+    heading: "Du bist auf der Liste",
+    body: "Danke für deine Anmeldung. Wir sagen dir als einem der Ersten Bescheid, sobald GrovBase startet.",
+    ctaLabel: "", ctaUrl: "",
+    footer: "GrovBase",
+    showLogo: true, showFields: false, showCta: false,
+  } },
+  // The double opt-in. `ctaUrl` names the placeholder so the studio's preview
+  // draws the button; on a real send the code replaces the URL with the
+  // computed link whatever the template says. showFields stays off: the mail
+  // goes to an unproven address, and the field table is an operator's dossier.
+  "waitlist.optin:email": { channel: "email", email: {
+    subject: "Potwierdź zapis na listę GrovBase",
+    heading: "Potwierdź swój adres e-mail",
+    body: "Ktoś — mamy nadzieję, że Ty — zapisał ten adres na listę przedpremierową GrovBase. Kliknij przycisk poniżej, aby potwierdzić zapis. Link jest ważny przez {{expires_hours}} godz. Jeśli to nie Ty, po prostu zignoruj tę wiadomość: bez potwierdzenia nie napiszemy do Ciebie ponownie.",
+    ctaLabel: "Potwierdzam zapis", ctaUrl: "{{confirm_url}}",
+    footer: "GrovBase",
+    showLogo: true, showFields: false, showCta: true,
+  } },
+  "waitlist.optin_en:email": { channel: "email", email: {
+    subject: "Confirm your GrovBase signup",
+    heading: "Confirm your e-mail address",
+    body: "Someone — hopefully you — added this address to the GrovBase pre-launch list. Click the button below to confirm your signup. The link is valid for {{expires_hours}} hours. If this wasn't you, simply ignore this e-mail: without a confirmation we won't write to you again.",
+    ctaLabel: "Confirm my signup", ctaUrl: "{{confirm_url}}",
+    footer: "GrovBase",
+    showLogo: true, showFields: false, showCta: true,
+  } },
+  "waitlist.optin_de:email": { channel: "email", email: {
+    subject: "Bestätige deine Anmeldung bei GrovBase",
+    heading: "Bestätige deine E-Mail-Adresse",
+    body: "Jemand – hoffentlich du – hat diese Adresse für die Vorab-Liste von GrovBase eingetragen. Klicke auf den Button unten, um die Anmeldung zu bestätigen. Der Link ist {{expires_hours}} Stunden gültig. Warst du das nicht, ignoriere diese E-Mail einfach: Ohne Bestätigung schreiben wir dir nicht noch einmal.",
+    ctaLabel: "Anmeldung bestätigen", ctaUrl: "{{confirm_url}}",
+    footer: "GrovBase",
+    showLogo: true, showFields: false, showCta: true,
+  } },
   "mail.received:telegram": { channel: "telegram", telegram: tgDefault("📬", "NOWA WIADOMOŚĆ", [
     "👤 | {{name}}",
     "📧 | {{email}}",
@@ -325,6 +395,10 @@ export const SAMPLE_DATA: Record<string, string> = {
   plan: "Pro",
   code: "482 193",
   first_name: "Jan",
+  // The double opt-in's own two. The link is a sample, not a token: the real
+  // one is computed per send and never shown in the panel.
+  confirm_url: "https://grovbase.com/potwierdz-zapis#t=przyklad",
+  expires_hours: "72",
 };
 
 /* ── channel renderers ──────────────────────────────────────────────────────*/

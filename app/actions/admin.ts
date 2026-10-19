@@ -8,6 +8,7 @@ import { writableCapabilities, type PlanCapabilities } from "@/lib/plans/capabil
 import { syncPrice } from "@/lib/server/stripe-pricing";
 import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
 import { TRIAL_WATERMARK_SETTING_KEY } from "@/lib/trial-watermark/config";
+import { PRELAUNCH_SETTING_KEY } from "@/lib/server/prelaunch/campaign-config";
 
 type Result = { ok: boolean; error?: string };
 
@@ -401,6 +402,9 @@ export async function saveSettingAction(key: string, value: Record<string, unkno
     // Likewise the trial watermark: only saveTrialWatermarkAction writes it
     // (strict validation, audit, a confirmed switch-on).
     if (key === TRIAL_WATERMARK_SETTING_KEY) return { ok: false, error: "generic" };
+    // And the pre-launch campaign: only savePrelaunchCampaignAction writes it
+    // (ranges, approvals, audit, a confirmed rewards switch-on).
+    if (key === PRELAUNCH_SETTING_KEY) return { ok: false, error: "generic" };
     const { supabase } = await requireAdmin();
     const { data: existing } = await supabase.from("app_settings")
       .select("value").eq("key", key).maybeSingle();
