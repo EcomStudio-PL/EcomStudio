@@ -118,7 +118,7 @@ console.log("\nB. THE REST OF THE FAMILY — same shape, different facts");
   check("waitlist gets its own voice line", waitlist.text.includes("Nowy kontakt zainteresowany GrovBase"));
   check("EN renders the British flag", waitlist.text.includes("🇬🇧 EN"));
   check("waitlist button opens the list",
-    waitlist.keyboard?.inline_keyboard[0]?.[0]?.url?.endsWith("/admin/waitlist") === true);
+    waitlist.keyboard?.inline_keyboard[0]?.[0]?.url?.endsWith("/admin/waitlist?view=pending") === true);
 
   const mail = renderTelegramCard({
     type: "mail.received", title: "NOWY E-MAIL", icon: "✉️",

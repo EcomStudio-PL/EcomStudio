@@ -72,7 +72,7 @@ const SUBJECTS: Readonly<Record<string, string>> = {
  *  gets the dashboard, which is never the wrong place to land. */
 const DESTINATIONS: Readonly<Record<string, { label: string; path: string }>> = {
   "user.registered": { label: "Otwórz listę użytkowników", path: "/admin/users" },
-  "waitlist.signup": { label: "Otwórz listę oczekujących", path: "/admin/waitlist" },
+  "waitlist.signup": { label: "Otwórz listę oczekujących", path: "/admin/waitlist?view=pending" },
 };
 
 const DEFAULT_DESTINATION = { label: "Otwórz panel GrovBase", path: "/admin" };
