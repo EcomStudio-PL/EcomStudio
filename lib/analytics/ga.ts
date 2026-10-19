@@ -108,7 +108,63 @@ export type Tracker = {
   init: () => void;
   /** One page_view for the address the router SETTLES on. */
   pageView: (href: string, title?: string) => void;
+  /** One named funnel event (see PRELAUNCH_EVENTS). Initialises first, so an
+   *  event can never reach the queue ahead of the `config` it belongs to. */
+  event: (name: PrelaunchEvent, params?: EventParams) => void;
 };
+
+/* ── FUNNEL EVENTS ─────────────────────────────────────────────────────── */
+
+/**
+ * THE ONLY CUSTOM EVENTS THIS APP SENDS — a closed list, so a typo or a new
+ * event is a compile error and a reviewed change, never a silent new stream of
+ * data to a third party.
+ *
+ * `prelaunch_referral_confirmed` happens on the SERVER (the referred person's
+ * confirmation) and is counted in the database; it is listed so the funnel has
+ * one vocabulary, but nothing in the browser can send it truthfully.
+ */
+export const PRELAUNCH_EVENTS = [
+  "prelaunch_page_view",
+  "prelaunch_before_after_interaction",
+  "prelaunch_form_start",
+  "prelaunch_signup_submitted",
+  "prelaunch_email_confirmed",
+  "prelaunch_referral_shared",
+  "prelaunch_referral_confirmed",
+  "prelaunch_cta_clicked",
+] as const;
+export type PrelaunchEvent = (typeof PRELAUNCH_EVENTS)[number];
+
+/**
+ * WHAT AN EVENT MAY CARRY — names, not people. An allowlist of parameter keys
+ * with short scalar values: which section, which form, which pair, which share
+ * button, which traffic source. Never an e-mail, a token, a referral code or a
+ * free-text field (none of those keys exist here), so nothing personal can be
+ * attached to an event by accident.
+ */
+export const EVENT_PARAM_KEYS = [
+  "section", "form_variant", "pair_index", "channel", "method", "cta_id", "traffic_source",
+] as const;
+export type EventParams = Partial<Record<(typeof EVENT_PARAM_KEYS)[number], string | number>>;
+
+const PARAM_VALUE_RE = /^[a-z0-9_.\-]{1,64}$/i;
+
+/** The parameters an event is allowed to send — unknown keys, non-scalar and
+ *  odd-looking values are dropped rather than sanitised into something else. */
+export function eventParams(params: EventParams | undefined): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  if (!params) return out;
+  for (const key of EVENT_PARAM_KEYS) {
+    const value = params[key];
+    if (typeof value === "number" && Number.isFinite(value)) out[key] = Math.round(value);
+    else if (typeof value === "string" && PARAM_VALUE_RE.test(value)) out[key] = value;
+  }
+  return out;
+}
+
+export const isPrelaunchEvent = (name: unknown): name is PrelaunchEvent =>
+  typeof name === "string" && (PRELAUNCH_EVENTS as readonly string[]).includes(name);
 
 /**
  * A ROUTE THAT REDIRECTS IS STILL ONE VISIT.
@@ -170,12 +226,19 @@ export function createTracker(
   let pending: unknown = null;
   const gtag = makeGtag(dataLayer);
 
+  const init = () => {
+    if (started || !gaEnabled(id)) return;
+    started = true;
+    gtag("js", new Date());
+    gtag("config", id, { send_page_view: false });
+  };
+
   return {
-    init() {
-      if (started || !gaEnabled(id)) return;
-      started = true;
-      gtag("js", new Date());
-      gtag("config", id, { send_page_view: false });
+    init,
+    event(name, params) {
+      if (!gaEnabled(id) || !isPrelaunchEvent(name)) return;
+      init();
+      gtag("event", name, eventParams(params));
     },
     pageView(href, title) {
       if (!gaEnabled(id)) return;

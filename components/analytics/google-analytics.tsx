@@ -3,7 +3,8 @@ import { Suspense, useEffect, useRef } from "react";
 import Script from "next/script";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  GA_MEASUREMENT_ID, createTracker, gaEnabled, type DataLayer, type Tracker,
+  GA_MEASUREMENT_ID, createTracker, gaEnabled,
+  type DataLayer, type EventParams, type PrelaunchEvent, type Tracker,
 } from "@/lib/analytics/ga";
 
 /**
@@ -51,6 +52,16 @@ function trackerFor(): Tracker {
     tracker = createTracker(window.dataLayer, GA_MEASUREMENT_ID);
   }
   return tracker;
+}
+
+/**
+ * A FUNNEL EVENT FROM ANY CLIENT COMPONENT — through the same tracker and the
+ * same queue as the page_views, so this file stays the only GA integration.
+ * A no-op when GA is not configured or during server rendering.
+ */
+export function trackEvent(name: PrelaunchEvent, params?: EventParams): void {
+  if (typeof window === "undefined" || !gaEnabled()) return;
+  trackerFor().event(name, params);
 }
 
 export function GoogleAnalytics() {

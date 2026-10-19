@@ -1,11 +1,15 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
+import { LAUNCH_V2_TEXT_FIELDS, launchPlainFromContent, type LaunchPlain } from "@/lib/launch/fields";
 
 /**
- * THE LAUNCH PAGE'S CONTENT AND THE SWITCH THAT SHOWS IT.
+ * THE LAUNCH PAGE'S CONTENT.
  *
- * Two settings rows drive everything: `homepage.mode` decides which front
- * door "/" opens, and `launch_page` holds the admin's copy.
+ * Which page "/" opens is NOT decided here: since migration 0110 it is the
+ * `is_homepage` flag on the cms_pages row (lib/server/homepage.ts). This file
+ * only knows the launch page's words. The legacy `launch_page` settings row
+ * is read underneath as a second layer for sites edited before the CMS owned
+ * the page.
  *
  * The copy is stored as OVERRIDES ONLY — {published: {pl: {"hero.h1": "…"}},
  * draft: {…}} — because the shipped dictionary already carries a complete,
@@ -15,11 +19,12 @@ import type { Client } from "@/lib/services/workspace";
  */
 
 /**
- * The page is ONE screen now, so the vocabulary is the vocabulary of one
- * screen. The old `value.*`, `how.*` and `final.*` groups described three
- * scrolling sections that no longer exist; leaving them in the admin editor
- * would be a form whose fields change nothing. `cleanOverrides` drops any
- * stored value whose key is not here, so old rows are ignored, not fatal.
+ * The page's vocabulary. The first version was ONE screen and its old
+ * `value.*`, `how.*` and `final.*` groups were dropped for that reason; the
+ * Landing V2 brief turns it back into a long page, whose new sections have
+ * their own, new keys (lib/launch/fields.ts) appended at the end — the old
+ * groups stay retired. `cleanOverrides` drops any stored value whose key is
+ * not here, so old rows are ignored, not fatal.
  */
 export const LAUNCH_FIELDS = [
   // Hero. `h1Accent` is the tail of the headline that carries the gradient —
@@ -37,6 +42,9 @@ export const LAUNCH_FIELDS = [
   "success.title", "success.body", "success.follow",
   "social.heading",
   "seo.title", "seo.description", "seo.ogTitle", "seo.ogDescription",
+  // Landing V2 — offer line, consents, after-submit, galleries, cost strip,
+  // creators, final call to action, sticky bar.
+  ...LAUNCH_V2_TEXT_FIELDS,
 ] as const;
 
 export type LaunchField = (typeof LAUNCH_FIELDS)[number];
@@ -114,6 +122,26 @@ export function launchDefault(defaults: LaunchDefaults, field: LaunchField): str
   if (field === "hero.image") return "";
   const value = defaults[field];
   return typeof value === "string" ? value : "";
+}
+
+/**
+ * The shipped copy for one locale, V2 keys included: the `launch` namespace
+ * first, then `prelaunch` — where the V2 defaults live so they are NOT shipped
+ * to every public page's client dictionary (the root client scope carries the
+ * whole `launch` namespace; see lib/i18n/scopes.ts).
+ */
+export function launchDefaultsFrom(dict: Record<string, unknown>): LaunchDefaults {
+  const launch = (dict.launch ?? {}) as Record<string, unknown>;
+  const v2 = (dict.prelaunch ?? {}) as Record<string, unknown>;
+  return { ...v2, ...launch };
+}
+
+/** The launch block's non-localized values: section switches and two pictures. */
+export function launchPlainFromBlocks(
+  blocks: { type: string; content?: unknown }[] | null | undefined,
+): LaunchPlain {
+  const block = (blocks ?? []).find((b) => b.type === "launch");
+  return launchPlainFromContent(block?.content);
 }
 
 /**
