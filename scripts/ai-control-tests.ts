@@ -327,7 +327,9 @@ console.log("K. four status colours, and each one means what it says");
   // (where red and green are close together).
   const triplets = [...css.matchAll(/--warning:\s*(\d+)\s+(\d+)\s+(\d+)/g)]
     .map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
-  check("both themes define a warning colour", triplets.length === 2);
+  // Two themes, plus the pre-launch page's own dark ramp ([data-launch-page]),
+  // which carries the dark value for visitors whose theme is light.
+  check("both themes define a warning colour", triplets.length >= 2);
   check("warning is orange, not magenta",
     triplets.every(([r, g, b]) => r > g && g > b), JSON.stringify(triplets));
   check("warning is not yellow", triplets.every(([r, g]) => r - g > 60), JSON.stringify(triplets));

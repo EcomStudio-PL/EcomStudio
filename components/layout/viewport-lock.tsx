@@ -55,7 +55,14 @@ export function ViewportLock() {
 
     // NOT passive: a passive listener may not call preventDefault, and
     // preventing the default IS the entire job here.
-    const block = (event: GestureEvent) => event.preventDefault();
+    //
+    // EXCEPT ON A PAGE THAT ALLOWS ZOOM. The public pre-launch page declares
+    // `user-scalable=yes` in its own viewport (WCAG 1.4.4: a marketing page
+    // must be magnifiable); the lock exists for the app, so it steps aside
+    // whenever the page in front of it says zoom is allowed.
+    const zoomAllowed = () => /user-scalable\s*=\s*yes/i
+      .test(document.querySelector('meta[name="viewport"]')?.getAttribute("content") ?? "");
+    const block = (event: GestureEvent) => { if (!zoomAllowed()) event.preventDefault(); };
     for (const name of GESTURES) {
       document.addEventListener(name, block, { passive: false });
     }

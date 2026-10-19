@@ -218,6 +218,15 @@ console.log("\nE. THE GATE IS THE TOKEN, SO THE GRANT MUST LET anon REACH IT");
 const MUST_REACH_ANON: Array<[string, string]> = [
   ["usage_events_reconcile", "0102_reconcile_stale_usage_events"],
   ["waitlist_confirmation_payload", "0106_waitlist_confirmation_is_token_gated"],
+  // The pre-launch signup is anonymous by definition, like the waitlist above:
+  // its definer functions are gated by the server token inside, so the grant
+  // must reach anon or every signup silently fails (0144).
+  ["prelaunch_signup", "0144_prelaunch_landing"],
+  ["prelaunch_resend", "0144_prelaunch_landing"],
+  ["prelaunch_confirm", "0144_prelaunch_landing"],
+  ["prelaunch_set_channel", "0144_prelaunch_landing"],
+  ["prelaunch_mail_payload", "0144_prelaunch_landing"],
+  ["prelaunch_mark_sent", "0144_prelaunch_landing"],
   ["server_expire_account_blocks", "0108_cron_can_expire_blocks"],
 ];
 for (const [fn, file] of MUST_REACH_ANON) {

@@ -95,11 +95,17 @@ export function formatLaunchDate(iso: string | null | undefined, locale: string,
   const at = parts(ms);
   const sameYear = at.year === parts(now).year;
   const midnight = at.hour === "00" && at.minute === "00";
-  return new Intl.DateTimeFormat(tag, {
-    timeZone: zone,
-    day: "numeric",
-    month: "long",
-    ...(sameYear ? {} : { year: "numeric" }),
-    ...(midnight ? {} : { hour: "2-digit", minute: "2-digit", hourCycle: "h23" as const }),
+  const date = new Intl.DateTimeFormat(tag, {
+    timeZone: zone, day: "numeric", month: "long", ...(sameYear ? {} : { year: "numeric" }),
   }).format(new Date(ms));
+  if (midnight) return date;
+  const time = new Intl.DateTimeFormat(tag, {
+    timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(new Date(ms));
+  // "20 listopada o 10:00", "20 November at 10:00", "20. November um 10:00":
+  // the joining word is the language's, not Intl's (whose date-time pattern
+  // differs between ICU versions and drops it in Polish).
+  return `${date} ${TIME_JOINER[locale] ?? TIME_JOINER.pl} ${time}`;
 }
+
+const TIME_JOINER: Record<string, string> = { pl: "o", en: "at", de: "um" };

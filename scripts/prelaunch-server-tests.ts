@@ -872,8 +872,8 @@ async function sectionL() {
   install({ publicConfig: { rewards_active: true }, reward: { data: { granted: 120, signup: 100, referrals: 20 }, error: null } });
   await ensurePrelaunchRewards(session.client as unknown as Client, ws);
   const log = session.rpcs("log_activity")[0]?.args;
-  check("L3 a grant → log_activity('prelaunch.reward_granted') on the layout's workspace, amounts only",
-    log?.p_action === "prelaunch.reward_granted" && log.p_workspace_id === ws
+  check("L3 a grant → log_activity('prelaunch_reward.granted') on the layout's workspace, amounts only",
+    log?.p_action === "prelaunch_reward.granted" && log.p_workspace_id === ws
     && JSON.stringify(log.p_metadata) === JSON.stringify({ granted: 120, signup: 100, referrals: 20 }), log);
   install({ publicConfig: { rewards_active: true } });
   (session.handlers as { rpc?: unknown }).rpc = () => { throw new Error("db down"); };

@@ -150,8 +150,13 @@ function scan(file: string): Scanned {
     if (known(m[1]!)) namespaces.add(m[1]!);
   }
   const deps: string[] = [];
+  // TYPE-ONLY IMPORTS SHIP NOTHING. `import type` is erased by the compiler,
+  // so following it would charge a client surface with namespaces it never
+  // loads (the public landing reuses the before/after slider, whose file
+  // imports server types for its props).
+  const runtime = src.replace(/(^|\n)\s*(?:import|export)\s+type\s[^;]*?from\s+["'][^"']+["'];?/g, "$1");
   IMPORT.lastIndex = 0;
-  while ((m = IMPORT.exec(src)) !== null) {
+  while ((m = IMPORT.exec(runtime)) !== null) {
     const r = resolveImport(m[1]!, file);
     if (r) deps.push(r);
   }

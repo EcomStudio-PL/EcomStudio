@@ -65,7 +65,7 @@ export function scrubForLog(text: string): string {
 }
 
 const logFailure = (kind: string, detail: unknown) =>
-  console.error("prelaunch.mail", kind, scrubForLog(typeof detail === "string" ? detail : safeError(detail)));
+  console.error("[prelaunch] mail", kind, scrubForLog(typeof detail === "string" ? detail : safeError(detail)));
 
 /** The template for an event: the published one, else its built-in default. */
 async function templateFor(supabase: Client, token: string, event: string): Promise<EmailTemplateDef | null> {

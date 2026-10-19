@@ -28,7 +28,7 @@ export function prelaunchIpHash(ip: string): string | null {
   if (!secret) {
     if (!warned) {
       warned = true;
-      console.error("prelaunch.ip", "no server secret: IP throttles rely on the in-memory limiter only");
+      console.error("[prelaunch] ip", "no server secret: IP throttles rely on the in-memory limiter only");
     }
     return null;
   }

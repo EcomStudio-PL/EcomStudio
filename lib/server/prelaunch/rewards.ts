@@ -40,12 +40,12 @@ export async function ensurePrelaunchRewards(supabase: Client, workspaceId: stri
     if (!result || result.granted <= 0) return;
     await supabase.rpc("log_activity", {
       p_workspace_id: workspaceId,
-      p_action: "prelaunch.reward_granted",
+      p_action: "prelaunch_reward.granted",
       p_entity_type: "workspace",
       p_entity_id: workspaceId,
       p_metadata: { granted: result.granted, signup: result.signup, referrals: result.referrals },
     });
   } catch (e) {
-    console.error("prelaunch.reward", safeError(e));
+    console.error("[prelaunch] reward", safeError(e));
   }
 }
