@@ -23,6 +23,7 @@ import { runWorkerBatch } from "@/lib/server/newsletter/worker";
 import { readIntegrationSecrets, dispatchToken, type MailConfig } from "@/lib/server/integrations";
 import { putSecret } from "@/lib/server/secret-store";
 import { bulkMailer, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
+import { rpcForgetContact } from "@/lib/server/prelaunch/rpc";
 
 /**
  * EVERY WRITE THE NEWSLETTER MAKES.
@@ -337,6 +338,15 @@ export async function deleteContactAction(id: string): Promise<Result> {
     const { data: before } = await supabase.from("newsletter_contacts")
       .select("email").eq("id", id).maybeSingle();
     if (!before) return { ok: false, error: "missing" };
+
+    // A pre-launch signup points at its contact (migration 0144), and that
+    // reference has no cascade: the migration may not say the word. So the
+    // pre-launch rows are scrubbed and unlinked FIRST — address, name and IP
+    // hashes gone, counts kept — and the contact can then go like any other.
+    // Before 0144 the function does not exist and there is nothing to unlink,
+    // so a refusal here is not a reason to stop: if a link really remained,
+    // the delete below fails on it and reports "generic", as it would anyway.
+    await rpcForgetContact(supabase, id);
 
     const { error } = await supabase.from("newsletter_contacts").delete().eq("id", id);
     if (error) return { ok: false, error: "generic" };

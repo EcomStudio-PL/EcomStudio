@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Builder } from "@/components/admin/cms/builder";
 import { ensureLaunchSectionAction } from "@/app/actions/public-pages";
 import { getPage, listBlocks, listPages, listSectionTemplates } from "@/lib/services/cms";
+import { prelaunchCampaignPanelAction } from "@/app/actions/prelaunch-admin";
+import { PrelaunchCampaign } from "@/components/admin/prelaunch-campaign";
 
 /**
  * THE BUILDER, for one page.
@@ -23,17 +25,24 @@ export default async function AdminWwwPage({ params }: { params: Promise<{ slug:
   // editors never shows an admin an empty form where their text used to be.
   if (page.kind === "launch") await ensureLaunchSectionAction(page.id);
 
-  const [blocks, templates, pages] = await Promise.all([
+  const [blocks, templates, pages, campaign] = await Promise.all([
     listBlocks(supabase, page.id),
     listSectionTemplates(supabase),
     // Only what the CTA picker needs: a name, an address and whether it is
     // live yet. The builder never receives other pages' content.
     listPages(supabase),
+    // The launch page's FIGURES (date, credits, approvals) are not copy: they
+    // live in the private campaign row and are edited in their own panel,
+    // above the builder that edits the words. Any other page has none.
+    page.kind === "launch" ? prelaunchCampaignPanelAction() : Promise.resolve(null),
   ]);
 
   return (
-    <Builder page={page} blocks={blocks} templates={templates}
-      pages={pages.map((p) => ({ slug: p.slug, title: p.title, status: p.status, kind: p.kind }))}
-      previewPath={`/podglad/${page.slug}`} />
+    <>
+      {campaign && <PrelaunchCampaign panel={campaign} />}
+      <Builder page={page} blocks={blocks} templates={templates}
+        pages={pages.map((p) => ({ slug: p.slug, title: p.title, status: p.status, kind: p.kind }))}
+        previewPath={`/podglad/${page.slug}`} />
+    </>
   );
 }

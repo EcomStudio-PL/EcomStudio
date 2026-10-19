@@ -13,6 +13,7 @@ import {
   copyFor, ensureBonusNotification, ensureOffer, getBonusConfig, getCampaignStart, toView,
 } from "@/lib/server/welcome-bonus";
 import { renderPlaceholders } from "@/lib/welcome-bonus";
+import { ensurePrelaunchRewards } from "@/lib/server/prelaunch/rewards";
 import { WelcomeBonusMount } from "@/components/onboarding/welcome-bonus-mount";
 import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
 import { I18nScope } from "@/lib/i18n/provider";
@@ -186,6 +187,10 @@ export default async function AppLayout({ children, searchParams }: {
       )
     : null;
   const bonusView = bonusOffer ? toView(bonusOffer) : null;
+  // PRE-LAUNCH REWARDS: what a confirmed waitlist signup (and its confirmed
+  // referrals) earned, paid the first time the verified account with that
+  // address opens the app. A no-op while rewards are off; never throws.
+  await ensurePrelaunchRewards(supabase, workspace.id);
   const bonusCopy = copyFor(bonusConfig, false);
   if (bonusView?.status === "ELIGIBLE") {
     const values = { credits: bonusView.amount, hours: Math.ceil(bonusView.secondsLeft / 3600) };
