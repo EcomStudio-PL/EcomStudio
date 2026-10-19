@@ -25,7 +25,14 @@
  *
  * WHAT IT DOES ASSERT, all of it really measured:
  *
- *   1. exactly ONE viewport meta tag, carrying all five directives
+ *   1. exactly ONE viewport meta tag, carrying all five directives — with ONE
+ *      deliberate exception: while "/" is the pre-launch page it ALLOWS zoom
+ *      (maximum-scale=5, user-scalable=yes; app/page.tsx generateViewport).
+ *      The launch page is a document a stranger reads once, consent sentences
+ *      and all, and WCAG 1.4.4 lets them enlarge it; the app stays pinned.
+ *      Which of the two is expected is decided by what "/" renders
+ *      ([data-launch-page]), and every other route is still checked for the
+ *      lock.
  *   2. the computed touch-action on the shell and on every scroll container
  *      is a value that PERMITS panning — the real risk of this change is
  *      shipping `none` or a one-axis `pan-*` somewhere, and that is visible
@@ -114,8 +121,22 @@ console.log("\n══ viewport declaration ══");
   const metas = await page.$$eval("meta[name=viewport]", (els) => els.map((e) => e.getAttribute("content")));
   note(metas.length === 1, `exactly one <meta name="viewport"> (found ${metas.length})`);
   const c = metas[0] ?? "";
-  for (const want of ["width=device-width", "initial-scale=1", "maximum-scale=1", "user-scalable=no", "viewport-fit=cover"]) {
+  // The launch page lets a reader zoom; everything else keeps the 1:1 lock.
+  const launch = await page.$("[data-launch-page]") !== null;
+  const zoom = launch ? ["maximum-scale=5", "user-scalable=yes"] : ["maximum-scale=1", "user-scalable=no"];
+  console.log(`  "/" renders ${launch ? "the pre-launch page — zoom ALLOWED there" : "an app/CMS page — zoom locked"}`);
+  for (const want of ["width=device-width", "initial-scale=1", ...zoom, "viewport-fit=cover"]) {
     note(c.includes(want), `meta says ${want}`);
+  }
+  if (launch) {
+    // The lock itself is untouched elsewhere: a route that is never the
+    // launch page still carries it.
+    const other = await ctx.newPage();
+    await other.goto(`${BASE}/admin/login`, { waitUntil: "domcontentloaded", timeout: 60000 });
+    const lockMeta = await other.$$eval("meta[name=viewport]", (els) => els.map((e) => e.getAttribute("content")));
+    note(lockMeta.length === 1 && lockMeta[0].includes("maximum-scale=1") && lockMeta[0].includes("user-scalable=no"),
+      `…while /admin/login keeps maximum-scale=1, user-scalable=no (${lockMeta[0] ?? "none"})`);
+    await other.close();
   }
   const css = await page.evaluate(() => ({
     touch: getComputedStyle(document.body).touchAction,

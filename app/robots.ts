@@ -18,6 +18,10 @@ const PRIVATE = [
   "/profile$", "/profile/",
   "/tools", "/inspirations", "/support", "/retusz", "/wideo", "/k/",
   "/reset-password",
+  // The double opt-in landing. Its token lives in the fragment and never in
+  // an indexable URL, and the page itself is noindex — but a crawler has no
+  // business there at all.
+  "/potwierdz-zapis",
   // GrovNews Premium is subscriber content; its public face is /blog. The
   // page and its subtree only — not every public path that starts "grovnews".
   "/grovnews$", "/grovnews/",

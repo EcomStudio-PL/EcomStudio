@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -8,7 +8,14 @@ import {
 } from "@/components/cms/site-shell";
 import { LaunchPage } from "@/components/launch/launch-page";
 import { ProductSurface } from "@/components/home/product-surface";
-import { getLaunchStore, resolveLaunchContent, launchFieldsFromBlocks } from "@/lib/server/launch-page";
+import {
+  getLaunchStore, resolveLaunchContent, launchFieldsFromBlocks, launchDefaultsFrom,
+} from "@/lib/server/launch-page";
+import { getLaunchConsents, getPrelaunchPublicConfig } from "@/lib/server/prelaunch/public";
+import {
+  launchOptionsFromBlocks, loadLaunchView, safeLaunchCopy, seoText, trafficSourceFrom,
+} from "@/lib/server/prelaunch/landing";
+import { collectEventContext } from "@/lib/server/event-context";
 import { getActiveHomepage, type ActiveHomepage } from "@/lib/server/homepage";
 import {
   getGlobalSections, getNavPages, getPublicSite, getPublishedPage, getDraftBlocks,
@@ -30,7 +37,7 @@ import { DEFAULT_HOME_BLOCKS } from "@/lib/cms-defaults";
  *
  * Three outcomes, and the first two are the same two pages that used to be the
  * two halves of the enum:
- *   kind 'launch'  → the pre-launch page, rendered exactly as before
+ *   kind 'launch'  → the pre-launch page (the long V2 page, components/launch)
  *   any other page → its published sections, in the site chrome IT asks for
  *   nothing flagged → the built-in default layout, as an unpublished `home`
  *                     has always produced
@@ -52,24 +59,36 @@ export async function generateMetadata(): Promise<Metadata> {
     const [store, page] = await Promise.all([
       getLaunchStore(supabase), getPublishedPage(supabase, home.slug),
     ]);
-    const content = resolveLaunchContent(
-      store, locale, dict.launch, "published", launchFieldsFromBlocks(page?.blocks, locale),
-    );
+    const defaults = launchDefaultsFrom(dict);
+    const content = safeLaunchCopy(resolveLaunchContent(
+      store, locale, defaults, "published", launchFieldsFromBlocks(page?.blocks, locale),
+    ), defaults);
+    // THE SHARE IMAGE. A file the owner picked in the builder (a media-bucket
+    // URL, checked in landing.ts), else the 1200×630 JPEG cut from the hero
+    // artwork — a JPEG because some unfurlers still mishandle WebP, and the
+    // exact size the large card is drawn at, so nothing is cropped blind.
+    const og = launchOptionsFromBlocks(page?.blocks).ogImage;
+    const image = og ? { url: og } : { url: "/launch/og.jpg", width: 1200, height: 630 };
+    // Editor markers never reach a <title> or a share card (an admin's own
+    // render of an edited page carries them; see lib/ice/stega.ts).
+    const ogTitle = seoText(content["seo.ogTitle"]);
+    const ogDescription = seoText(content["seo.ogDescription"]);
     return {
       ...canonical,
-      title: content["seo.title"],
-      description: content["seo.description"],
+      title: seoText(content["seo.title"]),
+      description: seoText(content["seo.description"]),
       openGraph: {
-        title: content["seo.ogTitle"],
-        description: content["seo.ogDescription"],
+        title: ogTitle,
+        description: ogDescription,
         type: "website",
         url: "/",
-        ...(content["hero.image"] ? { images: [content["hero.image"]] } : {}),
+        images: [image],
       },
       twitter: {
         card: "summary_large_image",
-        title: content["seo.ogTitle"],
-        description: content["seo.ogDescription"],
+        title: ogTitle,
+        description: ogDescription,
+        images: [image.url],
       },
     };
   }
@@ -82,13 +101,35 @@ export async function generateMetadata(): Promise<Metadata> {
   return pageMetadata(page, locale, "/");
 }
 
+/**
+ * THE LAUNCH PAGE MAY BE ZOOMED.
+ *
+ * The root layout pins every page at 1:1 on a touch device — GrovBase is a
+ * tool, and a double tap that throws the interface to 180% breaks it. The
+ * launch page is not a tool: it is a document a stranger reads once, with
+ * consent sentences and small print they are entitled to enlarge (WCAG
+ * 1.4.4). Next merges a page's viewport over the layout's KEY BY KEY
+ * (resolve-metadata.js mergeViewport), so this overrides only the two zoom
+ * directives — width, initial scale, viewport-fit and the theme colours stay
+ * the layout's — and only while "/" IS the launch page; any other homepage
+ * keeps the lock.
+ */
+export async function generateViewport(): Promise<Viewport> {
+  const home = await getActiveHomepage().catch(() => null);
+  return home?.kind === "launch" ? { maximumScale: 5, userScalable: true } : {};
+}
+
 export default async function LandingPage({ searchParams }: {
-  searchParams: Promise<{ preview?: string; draft?: string }>;
+  searchParams: Promise<{
+    preview?: string; draft?: string;
+    utm_source?: string | string[]; ref_code?: string | string[];
+  }>;
 }) {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const supabase = await createClient();
-  const { preview, draft } = await searchParams;
+  const params = await searchParams;
+  const { preview, draft } = params;
   const [{ data: { user: visitor } }, live, access] = await Promise.all([
     supabase.auth.getUser(),
     getActiveHomepage(),
@@ -97,18 +138,25 @@ export default async function LandingPage({ searchParams }: {
     getPlatformAccess(supabase),
   ]);
 
+  // The role is read once, and only when it can matter: it decides whether a
+  // preview is allowed AND whether the launch page shows an admin its gallery
+  // placeholders. Every other homepage costs a signed-in visitor no query.
+  const admin = preview || live?.kind === "launch" ? await viewerIsAdmin(supabase, visitor?.id) : false;
+
   // "Podgląd" from the admin panel: an admin — and only an admin — can look at
   // another page as the homepage, or at an unpublished draft, without changing
   // what the public sees. For everyone else the query string does nothing.
-  const previewing = await previewTarget(supabase, preview, visitor?.id);
+  const previewing = await previewTarget(supabase, preview, admin);
   const target = previewing ?? live;
   const which: "published" | "draft" = previewing && draft === "1" ? "draft" : "published";
 
   // ── THE PRE-LAUNCH PAGE ────────────────────────────────────────────────
-  // Unchanged in every respect a visitor can see. The only thing that moved is
-  // how the route learns that this is the page to render.
+  // The long V2 page. What it may promise (approved campaign values only),
+  // which galleries a visitor sees and the consent sentences it records are
+  // all resolved here, on the server, and handed down as finished values —
+  // see lib/server/prelaunch/landing.ts.
   if (target?.kind === "launch") {
-    const [store, site, published, draftBlocks, registration] = await Promise.all([
+    const [store, site, published, draftBlocks, registration, config, consents, context] = await Promise.all([
       getLaunchStore(supabase),
       getPublicSite(supabase),
       getPublishedPage(supabase, target.slug),
@@ -116,14 +164,30 @@ export default async function LandingPage({ searchParams }: {
       // Which optional fields the signup form asks for. Read here rather than
       // in the form so both copies of it get the same answer in one round trip.
       getRegistrationConfig(supabase),
+      getPrelaunchPublicConfig(),
+      getLaunchConsents(locale, supabase),
+      collectEventContext().catch(() => null),
     ]);
-    const blocks = which === "draft" ? draftBlocks : published?.blocks;
+    const blocks = (which === "draft" ? draftBlocks : published?.blocks) ?? [];
+    const defaults = launchDefaultsFrom(dict);
+    const content = safeLaunchCopy(resolveLaunchContent(
+      store, locale, defaults, which, launchFieldsFromBlocks(blocks, locale),
+    ), defaults);
+    const serverNow = Date.now();
+    // Placeholders for empty galleries are an admin's view of the LIVE page;
+    // a ?preview render is "what a visitor will see", so it gets none.
+    const isAdmin = admin && !preview;
+    const view = await loadLaunchView(supabase, { blocks, copy: content, locale, config, isAdmin, now: serverNow });
+    const trafficSource = trafficSourceFrom({
+      firstTouchUtm: context?.utmSource,
+      firstTouchHost: context?.referrer,
+      utmSource: typeof params.utm_source === "string" ? params.utm_source : null,
+      refCode: typeof params.ref_code === "string" ? params.ref_code : null,
+    });
     return (
       <LaunchPage
         social={site}
-        content={resolveLaunchContent(
-          store, locale, dict.launch, which, launchFieldsFromBlocks(blocks, locale),
-        )}
+        content={content}
         signedIn={Boolean(visitor)}
         showAuthEntry={access.showAuthEntry}
         waitlistFields={registration.waitlist}
@@ -131,6 +195,13 @@ export default async function LandingPage({ searchParams }: {
         privacyLabel={t("launch.privacyPage")}
         termsLabel={t("launch.terms")}
         rightsLabel={t("launch.rights")}
+        options={view.options}
+        campaign={view.campaign}
+        galleries={view.galleries}
+        isAdmin={isAdmin}
+        consents={consents}
+        serverNow={serverNow}
+        analytics={{ trafficSource }}
       />
     );
   }
@@ -213,6 +284,21 @@ export default async function LandingPage({ searchParams }: {
 }
 
 /**
+ * IS THE VIEWER AN ADMIN? Re-read from `profiles` on every request rather than
+ * trusted from anywhere: it unlocks the preview below and the launch page's
+ * admin-only gallery placeholders. A signed-out visitor costs no query.
+ */
+async function viewerIsAdmin(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  visitorId: string | undefined,
+): Promise<boolean> {
+  if (!visitorId) return false;
+  const { data: profile } = await supabase
+    .from("profiles").select("role").eq("id", visitorId).maybeSingle();
+  return profile?.role === "admin";
+}
+
+/**
  * WHAT AN ADMIN ASKED TO SEE INSTEAD, IF THEY ARE AN ADMIN.
  *
  * `?preview=<slug>` renders that page at "/" for this request only. The two
@@ -220,8 +306,8 @@ export default async function LandingPage({ searchParams }: {
  * `waitlist` is what /podglad/<launch page> redirects to, and `full` was the
  * other half of the retired enum.
  *
- * The role is re-read here rather than trusted from anywhere: a query string is
- * attacker-controlled, and this is the one place it can change what renders.
+ * The role comes from viewerIsAdmin, re-read on this request — a query string
+ * is attacker-controlled, and this is the one place it can change what renders.
  *
  * `null` means "no preview is in effect" — not "show nothing" — so a bad slug
  * or a customer who guessed the parameter simply gets the real homepage.
@@ -229,12 +315,9 @@ export default async function LandingPage({ searchParams }: {
 async function previewTarget(
   supabase: Awaited<ReturnType<typeof createClient>>,
   preview: string | undefined,
-  visitorId: string | undefined,
+  isAdmin: boolean,
 ): Promise<ActiveHomepage | null> {
-  if (!preview || !visitorId) return null;
-  const { data: profile } = await supabase
-    .from("profiles").select("role").eq("id", visitorId).maybeSingle();
-  if (profile?.role !== "admin") return null;
+  if (!preview || !isAdmin) return null;
 
   if (preview === "waitlist") {
     const { data } = await supabase
