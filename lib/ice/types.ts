@@ -1,3 +1,5 @@
+import type { GalleryItem, GalleryKey } from "@/lib/launch/gallery";
+
 /**
  * THE INLINE CONTENT EDITOR'S SHARED VOCABULARY — types only, no values, so
  * any side (server layer, editor chunk, tests) can import it for free.
@@ -173,6 +175,63 @@ export type IceTextInfo = {
 
 export type IceUsage = { kind: string; key: string; label: string };
 
+/* ── the launch page's PRZED/PO galleries (lib/server/ice/gallery.ts) ──── */
+
+/**
+ * One gallery as the panel edits it. Unlike every other ICE element it has a
+ * DRAFT: the pairs live in a `launch_gallery` CMS block, so a save changes the
+ * draft and only "Opublikuj" makes it public — the CMS's own publish, with a
+ * version in the page history.
+ */
+export type IceGallery = {
+  key: GalleryKey;
+  /** The draft block, or null while the gallery was never saved. */
+  blockId: string | null;
+  /** The draft's section switch (cms_blocks.visible); true for a new one. */
+  visible: boolean;
+  draft: GalleryItem[];
+  /** What visitors are shown now (the published snapshot's block). */
+  published: GalleryItem[];
+  /** The published section switch; null = never published. */
+  publishedVisible: boolean | null;
+  /** The draft differs from what is published (pairs or switch). */
+  diverged: boolean;
+  /** The draft block's updated_at — the compare-and-set base of a save. */
+  updatedAt: string | null;
+};
+
+export type IceGalleryState = {
+  pageId: string;
+  galleries: IceGallery[];
+  /** The launch block itself (the page's copy) has an unpublished builder
+   *  draft: publishing the galleries would publish it too. */
+  unpublishedLaunchDraft: boolean;
+  /** Library facts of every picture the galleries use, by the URL a pair
+   *  stores — thumbnails, sizes, zoom limits. A URL with no entry is a file
+   *  the library no longer knows. */
+  assets: Record<string, IceAsset>;
+};
+
+/** One distinct earlier state of a gallery, from the page's version history. */
+export type IceGalleryVersion = {
+  /** cms_page_versions.id — what "Przywróć do szkicu" names. */
+  id: string;
+  version: number;
+  reason: string;
+  label: string | null;
+  createdAt: string;
+  author: string | null;
+  visible: boolean;
+  items: GalleryItem[];
+  /** sha256 of the state (switch + pairs); identical states are listed once. */
+  fingerprint: string;
+  /** The same state as the current draft / as what is published now. */
+  isDraft: boolean;
+  isPublished: boolean;
+};
+
+export type IceGallerySaveInput = { key: GalleryKey; items: GalleryItem[]; visible: boolean; base: string | null };
+
 /** The server actions the editor calls — passed in, so a probe can swap them. */
 export type IceTransport = {
   setEdit: (on: boolean, path: string) => Promise<IceResult<{ nonce: string | null }>>;
@@ -190,6 +249,14 @@ export type IceTransport = {
   registerUpload: (input: { path: string; name: string }) => Promise<IceResult<IceAsset>>;
   cmsMap: (path: string) => Promise<IceResult<IceCmsPage>>;
   cmsSave: (input: { blockId: string; path: string[]; locale: IceLocale | null; value: string; expected: string | null; base: string | null; action?: "save" | "restore" }) => Promise<IceResult<{ updatedAt: string }>>;
+  /* The launch page's galleries: draft → publish, with a history. */
+  galleryState: (path: string) => Promise<IceResult<IceGalleryState>>;
+  gallerySave: (input: IceGallerySaveInput) => Promise<IceResult<{ blockId: string; updatedAt: string }>>;
+  /** Publishes the WHOLE launch page (every gallery and the page's copy). */
+  galleryPublish: (input: { confirmLaunchDraft?: boolean }) => Promise<IceResult<{ version: number; publishedAt: string }>>;
+  galleryDiscard: (input: { key: GalleryKey; base: string | null }) => Promise<IceResult<{ updatedAt: string }>>;
+  galleryVersions: (input: { key: GalleryKey }) => Promise<IceResult<{ versions: IceGalleryVersion[]; assets: Record<string, IceAsset> }>>;
+  galleryRestore: (input: { key: GalleryKey; version: string; base: string | null }) => Promise<IceResult<{ blockId: string; updatedAt: string }>>;
   /** Where the browser puts an uploaded file. Absent = Supabase Storage (the
    *  real editor); a probe passes its own so nothing leaves the page. */
   putFile?: (path: string, file: File) => Promise<boolean>;

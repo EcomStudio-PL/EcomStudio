@@ -228,7 +228,12 @@ function literalKeys(text: string, marker: string): string[] {
     .map((m) => m[1]);
 }
 
-const written = literalKeys(source("app/actions/cms.ts"), "function snapshotOf");
+// The writer moved to the service when the inline editor's gallery publish
+// started sharing it (lib/services/cms.ts publishPage); publishPageAction and
+// schedulePageAction both use that one function.
+const written = literalKeys(source("lib/services/cms.ts"), "export function snapshotOf");
+check("the actions no longer keep a second snapshot writer of their own",
+  !/function snapshotOf/.test(source("app/actions/cms.ts")) && /snapshotOf\(/.test(source("app/actions/cms.ts")));
 const read = literalKeys(source("lib/server/public-site.ts"), "export function toBlocks");
 
 check("the snapshot writer was found in the source", written.length > 0, written.join(","));
@@ -271,6 +276,38 @@ check("a draft is offered, and says it is a draft",
   targets.some((tg) => tg.value === "/2x-kredyty" && tg.label.includes("cms.status.draft")),
   JSON.stringify(targets.find((tg) => tg.value === "/2x-kredyty")));
 check("nothing is offered twice", new Set(values).size === values.length, values.join(" "));
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+console.log("\nG. THE LAUNCH PAGE'S GALLERIES ARE KNOWN, NEVER OFFERED, AND READ-ONLY HERE");
+
+/*
+  A launch_gallery block is one PRZED/PO gallery of the launch page. It must be
+  a KNOWN type (rollback re-creates only known types — a gallery missing from
+  BLOCK_TYPES vanished on every "Przywróć"), it must never be in the picker
+  (it is created by the inline editor, one per gallery key), and the builder
+  shows it as a summary with a switch: no style, responsive or code tab whose
+  settings the launch page would silently ignore.
+*/
+const offered = SECTION_GROUPS.flatMap((g) => g.types);
+check("BLOCK_TYPES includes launch_gallery", TYPES.has("launch_gallery"));
+check("…and the add-section palette does not offer it (nor launch)",
+  !offered.includes("launch_gallery") && !offered.includes("launch"), offered.join(","));
+const galleryFields = fieldsFor("launch_gallery");
+check("a gallery's builder form is ONE read-only summary row",
+  galleryFields.length === 1 && galleryFields[0].kind === "gallery", JSON.stringify(galleryFields));
+const gallerySplit = splitFields("launch_gallery", galleryFields);
+check("…offered immediately, nothing folded away",
+  gallerySplit.quick.length === 1 && gallerySplit.advanced.length === 0);
+const builderSrc = source("components/admin/cms/builder.tsx");
+check("the builder shows a gallery the Content tab only",
+  /const tabsFor = \(type: string\): Tab\[\] => \(type === GALLERY_BLOCK_TYPE \? \["content"\] : ALL_TABS\)/.test(builderSrc)
+  && /tabs\.map\(\(k\)/.test(builderSrc));
+check("…and offers no duplicate / template for the launch block and the galleries",
+  /!NOT_COPYABLE_TYPES\.has\(b\.type\)/.test(builderSrc));
+check("…and no delete for a gallery (its undo could not re-create it)",
+  /b\.type !== GALLERY_BLOCK_TYPE && \(/.test(builderSrc));
+const launchSplit = splitFields("launch", fieldsFor("launch"));
+check("the launch form still opens whole (no 'Więcej ustawień')", launchSplit.advanced.length === 0);
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log(failures === 0 ? "\nAll builder tests passed." : `\n${failures} check(s) failed.`);

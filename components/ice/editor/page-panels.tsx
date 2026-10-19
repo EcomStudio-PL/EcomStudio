@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { notify } from "@/lib/notify";
 import type { IceCmsField, IceElement, IceVersion } from "@/lib/ice/types";
-import type { Target } from "./scan";
+import { GALLERY_KEYS } from "@/lib/launch/gallery";
+import { galleryUid, type Target } from "./scan";
 import { cmsFieldLabel } from "./cms-panel";
 import { Btn, Sheet, call, errorText, roleLabel, when, type EditorCtx } from "./shared";
 import s from "./editor.module.css";
@@ -24,12 +25,21 @@ export function entriesOf(ctx: EditorCtx, targets: Target[]): Entry[] {
       return { uid, label: roleLabel(t, e), section: t(`ice.sec.${sec.key}`), found: found.has(uid), kind: e.kind };
     }));
   }
-  return info.cms.fields
+  const fields: Entry[] = info.cms.fields
     .filter((f) => (f.kind === "text" ? Object.values(f.values).some((v) => v && v.trim()) : Boolean(f.url)))
     .map((f) => {
       const uid = f.kind === "text" ? `c:${f.id}` : `cm:${f.id}`;
       return { uid, label: cmsFieldLabel(t, f), section: t(`ice.block.${f.blockType}`), found: found.has(uid), kind: f.kind };
     });
+  // The launch page's three galleries — listed always, painted or not: an
+  // empty or hidden gallery is exactly the one that needs its pairs.
+  const galleries: Entry[] = info.cms.launch && ctx.path === "/"
+    ? GALLERY_KEYS.map((key) => {
+      const uid = galleryUid(key);
+      return { uid, label: t(`ice.gallery.name.${key}`), section: t("ice.block.launch_gallery"), found: found.has(uid), kind: "gallery" };
+    })
+    : [];
+  return [...fields, ...galleries];
 }
 
 export function ElementsPanel({ ctx, targets, onPick, onClose }: {

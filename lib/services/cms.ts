@@ -1,6 +1,7 @@
 import type { Client } from "@/lib/services/workspace";
-import type { ChromeMode, CmsBlock, CmsCode, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
+import type { ChromeMode, CmsBlock, CmsBlockContent, CmsCode, LocaleText, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
 import { BLOCK_TYPES, isChromeMode } from "@/lib/cms";
+import { disallowedTokens } from "@/lib/launch/fields";
 
 /**
  * THE CMS, AS BUSINESS LOGIC.
@@ -175,6 +176,92 @@ export function isBlockType(value: string): boolean {
   return (BLOCK_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * SECTIONS THAT EXIST ONCE, ON ONE PAGE, AND ARE NEVER COPIED.
+ *
+ * `launch` is the launch page's own copy; `launch_gallery` is one of its three
+ * PRZED/PO galleries, one block per gallery key (a unique index in 0144). A
+ * duplicate of either is a second answer to "which one does the page show",
+ * and a template of either carries one page's pairs onto pages that cannot
+ * render them. Duplicate, "Zapisz jako szablon" and "Moje sekcje" refuse both.
+ */
+export const NOT_COPYABLE_TYPES: ReadonlySet<string> = new Set(["launch", "launch_gallery"]);
+
+/* ── THE LAUNCH BLOCK'S INVARIANT ─────────────────────────────────────────
+ *
+ * Every launch field exists in the stored `content.fields` as an OBJECT —
+ * `{}` at least — so the inline editor can always write one language of it:
+ * cms_inline_patch (0141) creates only the LAST key of a path and refuses
+ * `bad_path` when `fields.<key>` itself is missing. An empty object reads
+ * exactly like an absent key everywhere (no language → the shipped default),
+ * so adding one never changes what the page shows.
+ *
+ * Kept here, pure and with the key list passed in, because the list lives in
+ * a server-only module and the client components that import this file must
+ * not pull it in.
+ */
+export function ensureLaunchFieldObjects(content: CmsBlockContent, keys: readonly string[]): CmsBlockContent {
+  const bag = content.fields && typeof content.fields === "object" && !Array.isArray(content.fields)
+    ? content.fields : {};
+  const fields: Record<string, LocaleText> = { ...bag };
+  for (const key of keys) {
+    const v = fields[key] as unknown;
+    if (!v || typeof v !== "object" || Array.isArray(v)) fields[key] = {};
+  }
+  return { ...content, fields };
+}
+
+/**
+ * The first launch line that uses a `{token}` its key does not allow
+ * (lib/launch/fields.ts ALLOWED_TOKENS), or null. Checked on every save of the
+ * launch block: "{premiera}" typed into the headline would otherwise hide the
+ * headline (an unresolvable line is not rendered), and a value token in a line
+ * not built for it would publish an unapproved promise.
+ */
+export function launchTokenProblem(content: CmsBlockContent): { key: string; locale: string; tokens: string[] } | null {
+  const bag = (content.fields ?? {}) as Record<string, unknown>;
+  for (const [key, text] of Object.entries(bag)) {
+    if (!text || typeof text !== "object") continue;
+    for (const [locale, value] of Object.entries(text as Record<string, unknown>)) {
+      if (typeof value !== "string") continue;
+      const tokens = disallowedTokens(key, value);
+      if (tokens.length > 0) return { key, locale, tokens };
+    }
+  }
+  return null;
+}
+
+/**
+ * A version's blocks as rows to insert again (Historia → "Przywróć").
+ *
+ * Every KNOWN type comes back — the launch page's galleries included, which
+ * is why `launch_gallery` is in BLOCK_TYPES — with its content and its switch
+ * exactly as the version holds them. The launch block is brought up to the
+ * invariant above on the way, so an old version restored and published never
+ * leaves the inline editor unable to write a field that version predates.
+ */
+export function versionBlockRows(
+  snapshot: unknown, pageId: string, adminId: string, launchKeys: readonly string[],
+) {
+  const restored = Array.isArray(snapshot) ? snapshot : [];
+  return (restored as Record<string, unknown>[]).map((b, i) => {
+    const type = String(b.type ?? "text");
+    const content = (b.content ?? {}) as CmsBlockContent;
+    return {
+      page_id: pageId,
+      type,
+      sort_order: Number(b.sort_order ?? i),
+      visible: b.visible !== false,
+      content: (type === "launch" ? ensureLaunchFieldObjects(content, launchKeys) : content) as never,
+      style: (b.style ?? {}) as never,
+      code: (b.code ?? {}) as never,
+      analytics_id: typeof b.analytics_id === "string" ? b.analytics_id : null,
+      anchor: typeof b.anchor === "string" ? b.anchor : null,
+      updated_by: adminId,
+    };
+  }).filter((r) => isBlockType(r.type));
+}
+
 /* ── REDIRECTS ────────────────────────────────────────────────────────────
  *
  * The admin's view of the routing table. The PUBLIC read is a different path
@@ -254,4 +341,72 @@ export async function nextVersion(supabase: Client, pageId: string): Promise<num
     .select("version").eq("page_id", pageId)
     .order("version", { ascending: false }).limit(1).maybeSingle();
   return (data?.version ?? 0) + 1;
+}
+
+/* ── PUBLISHING ───────────────────────────────────────────────────────────── */
+
+/**
+ * The draft, frozen into the shape the public renderer reads.
+ *
+ * EVERY COLUMN THAT RENDERER LOOKS AT HAS TO BE IN HERE. A visitor never sees
+ * cms_blocks — only this snapshot — so a field left out is a setting that
+ * works in the preview and silently does nothing once the page is live. The
+ * section window and the audience are exactly that kind of field: invisible by
+ * design, and impossible to notice missing.
+ */
+export function snapshotOf(blocks: CmsBlock[]) {
+  return blocks.map((b) => ({
+    id: b.id, type: b.type, sort_order: b.sort_order, visible: b.visible,
+    content: b.content, style: b.style ?? {}, code: b.code ?? {},
+    analytics_id: b.analytics_id ?? null, anchor: b.anchor ?? null,
+    show_from: b.show_from ?? null, show_until: b.show_until ?? null,
+    audience: b.audience ?? "everyone",
+  }));
+}
+
+export type PublishOutcome =
+  | { ok: true; slug: string; version: number; blocks: number; publishedAt: string }
+  | { ok: false; error: string };
+
+/**
+ * Publish: take a snapshot of the draft, store it as the page's published
+ * content AND as a numbered version.
+ *
+ * The version is written FIRST. If the update fails afterwards nothing is
+ * live that is not also in the history; the other order could publish
+ * something with no record of it.
+ *
+ * One implementation for both doors: Strony WWW's "Publikuj"
+ * (app/actions/cms.ts publishPageAction) and the inline editor's gallery
+ * "Opublikuj" (lib/server/ice/gallery.ts). Each caller decides who may ask,
+ * writes its own audit row and clears its own caches.
+ */
+export async function publishPage(supabase: Client, adminId: string, pageId: string): Promise<PublishOutcome> {
+  const blocks = await listBlocks(supabase, pageId);
+  const { data: page } = await supabase.from("cms_pages")
+    .select("slug, seo").eq("id", pageId).maybeSingle();
+  if (!page) return { ok: false, error: "missing" };
+
+  const snapshot = snapshotOf(blocks);
+
+  const version = await nextVersion(supabase, pageId);
+  const { error: versionError } = await supabase.from("cms_page_versions").insert({
+    page_id: pageId, version, snapshot: snapshot as never,
+    seo: (page.seo ?? {}) as never, reason: "publish", created_by: adminId,
+  });
+  if (versionError) return { ok: false, error: "generic" };
+
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("cms_pages").update({
+    published_snapshot: snapshot as never,
+    status: "published",
+    published_at: now,
+    updated_at: now,
+    updated_by: adminId,
+    // Publishing now clears a pending schedule — it has happened.
+    scheduled_at: null,
+  }).eq("id", pageId);
+  if (error) return { ok: false, error: "generic" };
+
+  return { ok: true, slug: page.slug, version, blocks: snapshot.length, publishedAt: now };
 }

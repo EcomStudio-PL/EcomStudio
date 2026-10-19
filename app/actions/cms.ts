@@ -4,12 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { CMS_TAG } from "@/lib/server/public-site";
 import {
-  listBlocks, nextVersion, slugProblem, slugify, isBlockType,
+  listBlocks, nextVersion, slugProblem, slugify, isBlockType, publishPage, snapshotOf,
+  NOT_COPYABLE_TYPES, ensureLaunchFieldObjects, launchTokenProblem, versionBlockRows,
 } from "@/lib/services/cms";
 import { SEED_PAGES } from "@/lib/cms-seed";
 import { TEMPLATE_KEYS, templateBlocks } from "@/lib/cms-templates";
 import { normalizePath, normalizeTarget, sourceIsProtected } from "@/lib/server/redirects";
-import type { CmsBlock, CmsBlockContent, CmsCode, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
+import { LAUNCH_FIELDS } from "@/lib/server/launch-page";
+import { GALLERY_BLOCK_TYPE } from "@/lib/launch/gallery";
+import type { CmsBlockContent, CmsCode, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
 import { isChromeMode } from "@/lib/cms";
 
 /**
@@ -26,7 +29,9 @@ import { isChromeMode } from "@/lib/cms";
  * paths to stay in step with the pages that exist.
  */
 
-type Result<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
+/** `detail` names WHERE a refusal is, when that helps the admin find it
+ *  ("hero.h1 (pl): {premiera}") — never anything they did not type. */
+type Result<T = unknown> = { ok: true; data?: T } | { ok: false; error: string; detail?: string };
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -213,6 +218,8 @@ export async function saveSectionTemplateAction(input: {
     const { data: block } = await supabase.from("cms_blocks")
       .select("type, content, style, code, anchor").eq("id", input.blockId).maybeSingle();
     if (!block) return { ok: false, error: "missing" };
+    // The launch page's copy and its galleries belong to that one page.
+    if (NOT_COPYABLE_TYPES.has(block.type)) return { ok: false, error: "notCopyable" };
 
     const { data: created, error } = await supabase.from("cms_templates").insert({
       kind: "section",
@@ -253,6 +260,8 @@ export async function applySectionTemplateAction(input: {
       type?: string; content?: unknown; style?: unknown; code?: unknown; anchor?: string | null;
     } | undefined;
     if (!first?.type || !isBlockType(first.type)) return { ok: false, error: "type" };
+    // A template saved before this rule existed may still hold one.
+    if (NOT_COPYABLE_TYPES.has(first.type)) return { ok: false, error: "notCopyable" };
 
     const { data: last } = await supabase.from("cms_blocks")
       .select("sort_order").eq("page_id", input.pageId)
@@ -580,10 +589,54 @@ export async function saveBlockAction(input: {
     const { supabase, adminId } = await requireAdmin();
     if (!isBlockType(input.type)) return { ok: false, error: "type" };
 
+    /*
+      THE LAUNCH PAGE'S GALLERIES ARE NOT WRITTEN FROM HERE.
+
+      A gallery's pairs are created and edited in "Edytuj stronę", with a
+      compare-and-set on every save (lib/server/ice/gallery.ts). The builder
+      loaded its copy of every block when the page opened, and it sends the
+      WHOLE content on every eye click, visibility tick, style edit and undo —
+      so letting this write a gallery's content would quietly put back the
+      pairs as they were an hour ago in another tab. For a stored gallery this
+      writes its switch and nothing else; a new one cannot be made here at all,
+      and no other block can be turned into one.
+    */
+    if (input.id) {
+      const { data: stored } = await supabase.from("cms_blocks")
+        .select("type").eq("id", input.id).maybeSingle();
+      if (stored?.type === GALLERY_BLOCK_TYPE) {
+        const { error } = await supabase.from("cms_blocks").update({
+          visible: input.visible, updated_at: new Date().toISOString(), updated_by: adminId,
+        }).eq("id", input.id);
+        if (error) return { ok: false, error: "generic" };
+        await touchPage(supabase, input.pageId, adminId);
+        revalidatePath(`/admin/www`);
+        return { ok: true, data: { id: input.id } };
+      }
+      if (input.type === GALLERY_BLOCK_TYPE) return { ok: false, error: "galleryManaged" };
+    } else if (input.type === GALLERY_BLOCK_TYPE) {
+      return { ok: false, error: "galleryManaged" };
+    }
+
+    let content = input.content;
+    if (input.type === "launch") {
+      // Every launch field present (at least `{}`), so the inline editor can
+      // always write it — and no line may carry a token its key does not
+      // allow, or the line would vanish from the page (lib/launch/fields.ts).
+      content = ensureLaunchFieldObjects(content, LAUNCH_FIELDS);
+      const token = launchTokenProblem(content);
+      if (token) {
+        return {
+          ok: false, error: "text_token",
+          detail: `${token.key} (${token.locale}): ${token.tokens.map((x) => `{${x}}`).join(", ")}`,
+        };
+      }
+    }
+
     const row = {
       page_id: input.pageId,
       type: input.type,
-      content: input.content as never,
+      content: content as never,
       style: (input.style ?? {}) as never,
       code: (input.code ?? {}) as never,
       visible: input.visible,
@@ -655,6 +708,9 @@ export async function duplicateBlockAction(blockId: string): Promise<Result<{ id
       .select("page_id, type, visible, content, style, code, sort_order")
       .eq("id", blockId).maybeSingle();
     if (!source) return { ok: false, error: "missing" };
+    // A second launch block or a second gallery for the same key is a page
+    // that no longer knows which one it shows.
+    if (NOT_COPYABLE_TYPES.has(source.type)) return { ok: false, error: "notCopyable" };
 
     // Straight after the original, and everything below it shifts down, so a
     // copy lands where a person expects rather than at the bottom.
@@ -699,66 +755,22 @@ export async function deleteBlockAction(blockId: string): Promise<Result> {
 /* ── PUBLISH AND HISTORY ─────────────────────────────────────────────────── */
 
 /**
- * The draft, frozen into the shape the public renderer reads.
- *
- * EVERY COLUMN THAT RENDERER LOOKS AT HAS TO BE IN HERE. A visitor never sees
- * cms_blocks — only this snapshot — so a field left out is a setting that
- * works in the preview and silently does nothing once the page is live. The
- * section window and the audience are exactly that kind of field: invisible by
- * design, and impossible to notice missing.
- */
-function snapshotOf(blocks: CmsBlock[]) {
-  return blocks.map((b) => ({
-    id: b.id, type: b.type, sort_order: b.sort_order, visible: b.visible,
-    content: b.content, style: b.style ?? {}, code: b.code ?? {},
-    analytics_id: b.analytics_id ?? null, anchor: b.anchor ?? null,
-    show_from: b.show_from ?? null, show_until: b.show_until ?? null,
-    audience: b.audience ?? "everyone",
-  }));
-}
-
-/**
  * Publish: take a snapshot of the draft, store it as the page's published
- * content AND as a numbered version, and clear the public cache.
- *
- * The version is written FIRST. If the update fails afterwards nothing is
- * live that is not also in the history; the other order could publish
- * something with no record of it.
+ * content AND as a numbered version (version first — see publishPage in
+ * lib/services/cms.ts, which the inline editor's gallery publish shares),
+ * then record it and clear the public cache.
  */
 export async function publishPageAction(pageId: string): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    const blocks = await listBlocks(supabase, pageId);
-    const { data: page } = await supabase.from("cms_pages")
-      .select("slug, seo").eq("id", pageId).maybeSingle();
-    if (!page) return { ok: false, error: "missing" };
-
-    const snapshot = snapshotOf(blocks);
-
-    const version = await nextVersion(supabase, pageId);
-    const { error: versionError } = await supabase.from("cms_page_versions").insert({
-      page_id: pageId, version, snapshot: snapshot as never,
-      seo: (page.seo ?? {}) as never, reason: "publish", created_by: adminId,
-    });
-    if (versionError) return { ok: false, error: "generic" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase.from("cms_pages").update({
-      published_snapshot: snapshot as never,
-      status: "published",
-      published_at: now,
-      updated_at: now,
-      updated_by: adminId,
-      // Publishing now clears a pending schedule — it has happened.
-      scheduled_at: null,
-    }).eq("id", pageId);
-    if (error) return { ok: false, error: "generic" };
+    const published = await publishPage(supabase, adminId, pageId);
+    if (!published.ok) return { ok: false, error: published.error };
 
     await logAudit(supabase, {
-      actorId: adminId, action: "cms.published", entityType: "cms_page", entityId: page.slug,
-      after: { blocks: snapshot.length, version },
+      actorId: adminId, action: "cms.published", entityType: "cms_page", entityId: published.slug,
+      after: { blocks: published.blocks, version: published.version },
     });
-    invalidate(page.slug);
+    invalidate(published.slug);
     return { ok: true };
   } catch (e) { return { ok: false, error: message(e) }; }
 }
@@ -904,18 +916,9 @@ export async function rollbackPageAction(pageId: string, versionId: string): Pro
     const restored = Array.isArray(version.snapshot) ? version.snapshot : [];
     await supabase.from("cms_blocks").delete().eq("page_id", pageId);
     if (restored.length > 0) {
-      const rows = (restored as Record<string, unknown>[]).map((b, i) => ({
-        page_id: pageId,
-        type: String(b.type ?? "text"),
-        sort_order: Number(b.sort_order ?? i),
-        visible: b.visible !== false,
-        content: (b.content ?? {}) as never,
-        style: (b.style ?? {}) as never,
-        code: (b.code ?? {}) as never,
-        analytics_id: typeof b.analytics_id === "string" ? b.analytics_id : null,
-        anchor: typeof b.anchor === "string" ? b.anchor : null,
-        updated_by: adminId,
-      })).filter((r) => isBlockType(r.type));
+      // Every known type, the launch page's galleries included (a gallery
+      // dropped here would vanish from the page at the next publish).
+      const rows = versionBlockRows(restored, pageId, adminId, LAUNCH_FIELDS);
       const { error } = await supabase.from("cms_blocks").insert(rows);
       if (error) return { ok: false, error: "generic" };
     }

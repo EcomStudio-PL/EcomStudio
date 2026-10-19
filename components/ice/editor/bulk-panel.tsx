@@ -5,10 +5,19 @@ import { ICE_MAX_IMAGE_BYTES, ICE_MAX_SAMPLE_BYTES } from "@/lib/ice/sniff";
 import { notify } from "@/lib/notify";
 import { useFileDrop } from "@/components/ui/file-drop";
 import {
-  Btn, Sheet, bytes, call, cls, errorText, fitWarnings, localSize, naturalCompare, previewUrl, roleLabel, type EditorCtx, type T,
+  groupPairs, naturalCompare, pairSuffix, type BulkFile, type BulkProblem, type BulkProblemReason, type BulkUnit, type PairSide,
+} from "@/lib/ice/pairs";
+import {
+  Btn, Sheet, bytes, call, cls, errorText, fitWarnings, localSize, previewUrl, roleLabel, type EditorCtx, type T,
 } from "./shared";
 import { precheck, uploadOne } from "./upload";
 import s from "./editor.module.css";
+
+// The name pairing moved to lib/ice/pairs.ts so the launch page's gallery
+// upload (gallery-panel.tsx) and the unit tests share it without this panel;
+// it is re-exported under the names it always had.
+export { groupPairs, pairSuffix };
+export type { BulkFile, BulkProblem, BulkProblemReason, BulkUnit, PairSide };
 
 /**
  * "WGRAJ WIELE" — many pictures into one of the page's bulk groups at once.
@@ -40,12 +49,6 @@ const ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
 /* ── the plan: pure, so the tests can hold it without a DOM ───────────────── */
 
 export type BulkMode = "empty" | "replace";
-export type PairSide = "before" | "after";
-export type BulkFile = { id: string; name: string };
-/** What fills one row: one file, or a pair's [before, after]. */
-export type BulkUnit<F extends BulkFile> = { id: string; name: string; files: F[] };
-export type BulkProblemReason = "noSuffix" | "missingBefore" | "missingAfter" | "duplicate";
-export type BulkProblem<F extends BulkFile> = { file: F; reason: BulkProblemReason; base: string };
 /** A row of the group: one slot, or a pair slot's [before, after] keys. */
 export type BulkRow<F extends BulkFile> = { keys: string[]; occupied: boolean; unit: BulkUnit<F> | null };
 export type BulkPlan<F extends BulkFile> = {
@@ -62,58 +65,6 @@ export type BulkPlan<F extends BulkFile> = {
   /** Occupied slots this plan overwrites (what "replace all" must confirm). */
   replaced: number;
 };
-
-/**
- * "buty-przed.jpg" → { base: "buty", side: "before" }. The suffix — -przed /
- * -po / -before / -after, any case — must sit right before the extension; the
- * greedy base takes the LAST one ("a-przed-po.jpg" is the after of
- * "a-przed"). Anything else is null.
- */
-export function pairSuffix(name: string): { base: string; side: PairSide } | null {
-  const stem = name.replace(/\.[^./\\]+$/, "");
-  const m = /^(.+)-(przed|po|before|after)$/i.exec(stem);
-  const base = m?.[1].trim();
-  if (!m || !base) return null;
-  const word = m[2].toLowerCase();
-  return { base, side: word === "przed" || word === "before" ? "before" : "after" };
-}
-
-/**
- * Files → complete pairs, matched by base name regardless of case. A base
- * with a half missing, or with two files for the same half, is a problem —
- * never guessed at — and so is a file without a recognised suffix.
- */
-export function groupPairs<F extends BulkFile>(files: readonly F[]): { pairs: BulkUnit<F>[]; problems: BulkProblem<F>[] } {
-  const groups = new Map<string, { base: string; before: F[]; after: F[] }>();
-  const problems: BulkProblem<F>[] = [];
-  for (const f of files) {
-    const p = pairSuffix(f.name);
-    if (!p) {
-      problems.push({ file: f, reason: "noSuffix", base: "" });
-      continue;
-    }
-    const key = p.base.toLocaleLowerCase();
-    const g = groups.get(key) ?? { base: p.base, before: [], after: [] };
-    // The "before" file names the pair, so the label does not depend on
-    // which half was dropped first.
-    if (p.side === "before") g.base = p.base;
-    g[p.side].push(f);
-    groups.set(key, g);
-  }
-  const pairs: BulkUnit<F>[] = [];
-  for (const [key, g] of groups) {
-    if (g.before.length === 1 && g.after.length === 1) {
-      pairs.push({ id: `pair:${key}`, name: g.base, files: [g.before[0], g.after[0]] });
-      continue;
-    }
-    const reason: BulkProblemReason = g.before.length > 1 || g.after.length > 1 ? "duplicate"
-      : g.before.length === 0 ? "missingBefore" : "missingAfter";
-    for (const f of [...g.before, ...g.after]) problems.push({ file: f, reason, base: g.base });
-  }
-  pairs.sort((a, b) => naturalCompare(a.name, b.name) || naturalCompare(a.id, b.id));
-  problems.sort((a, b) => naturalCompare(a.file.name, b.file.name) || naturalCompare(a.file.id, b.file.id));
-  return { pairs, problems };
-}
 
 /**
  * Files + the group's slots + the mode → who goes where.

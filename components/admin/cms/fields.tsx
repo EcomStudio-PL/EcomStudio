@@ -8,9 +8,11 @@ import { Input, Textarea, Select, Label } from "@/components/ui/input";
 import { CMS_ICON_NAMES } from "@/lib/cms-icons";
 import { FORM_HANDLERS } from "@/lib/cms-forms";
 import { FEATURE_GROUPS } from "@/lib/features";
-import { readField, writeField, type FieldDef } from "@/lib/cms-schema";
+import { readField, toggleOn, writeField, type FieldDef } from "@/lib/cms-schema";
 import type { LinkTarget } from "@/lib/cms-links";
 import type { CmsBlockContent, CmsItem, LocaleText } from "@/lib/cms";
+import { isCompletePair, readGalleryContent } from "@/lib/launch/gallery";
+import { IceEditButton } from "./visual-editor";
 
 /**
  * THE CONTENT INPUTS.
@@ -58,11 +60,13 @@ export function LinkTargetsProvider({ targets, children }: {
   );
 }
 
-export function Field({ def, locale, content, onChange, onChangeWith }: {
+export function Field({ def, locale, content, onChange, onChangeWith, visible }: {
   def: FieldDef; locale: Locale; content: CmsBlockContent;
   onChange: (content: CmsBlockContent) => void;
   /** Apply an edit to the LATEST content, for fields that write twice. */
   onChangeWith: (update: (content: CmsBlockContent) => CmsBlockContent) => void;
+  /** The section's own switch — read by the gallery summary only. */
+  visible?: boolean;
 }) {
   const { t } = useI18n();
   const label = t(`cms.label.${def.label}`);
@@ -70,10 +74,48 @@ export function Field({ def, locale, content, onChange, onChangeWith }: {
   const value = readField(content, def, locale);
   const set = (next: string) => onChange(writeField(content, def, locale, next));
   const localized = def.kind === "text" || def.kind === "textarea" || def.kind === "richtext";
-  const id = `cms-${def.key.replace(/\./g, "-")}`;
+  const id = `cms-${def.key.replace(/[.#]/g, "-")}`;
 
   if (def.kind === "items") {
     return <ItemsField label={label} hint={hint} locale={locale} content={content} onChange={onChange} />;
+  }
+
+  // A group heading of a long form (the launch page). It stores nothing; it
+  // is what turns ninety inputs into sections a person can find again.
+  if (def.kind === "heading") {
+    return (
+      <div className="border-t border-line pt-4 first:border-t-0 first:pt-0" data-field-group={def.label}>
+        <h3 className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{label}</h3>
+        {hint && <p className="mt-1 text-[11.5px] leading-relaxed text-faint">{hint}</p>}
+      </div>
+    );
+  }
+
+  /*
+    "POKAŻ SEKCJĘ …" — ON MEANS THE SECTION IS ON THE PAGE.
+
+    One value for every language (the language tabs do not apply), written
+    explicitly as "1" or "0" once touched; until then the box shows the
+    section's own default, which for the price strip and the "who is behind
+    it" tile is OFF — neither goes public before the owner has looked at it.
+  */
+  if (def.kind === "toggle") {
+    const on = toggleOn(content, def);
+    return (
+      <div data-field-toggle={def.key}>
+        <label htmlFor={id} className="flex cursor-pointer items-center gap-2.5 text-[13px] font-semibold tracking-tight text-ink">
+          <input id={id} type="checkbox" checked={on}
+            className="h-4 w-4 shrink-0 accent-[rgb(var(--accent))]"
+            onChange={(e) => set(e.target.checked ? "1" : "0")} />
+          {label}
+        </label>
+        {hint && <p className="mt-1.5 pl-[26px] text-[11.5px] leading-relaxed text-faint">{hint}</p>}
+      </div>
+    );
+  }
+
+  if (def.kind === "gallery") {
+    return <GallerySummary label={label} hint={hint} content={content} visible={visible ?? true} />;
   }
 
   if (def.kind === "groups") {
@@ -249,6 +291,52 @@ export function LinkInput({ id, value, onChange, placeholder }: {
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * A PRZED/PO GALLERY OF THE LAUNCH PAGE, AS THE BUILDER SHOWS IT.
+ *
+ * Read-only on purpose: the pairs are chosen, cropped, aligned and ordered in
+ * "Edytuj stronę", against the page itself, with a compare-and-set on every
+ * save. What this says is what the DRAFT holds (pairs, complete or not, the
+ * switch), and the button opens the launch page in the inline editor straight
+ * on this gallery's panel.
+ */
+function GallerySummary({ label, hint, content, visible }: {
+  label: string; hint?: string; content: CmsBlockContent; visible: boolean;
+}) {
+  const { t } = useI18n();
+  const gallery = readGalleryContent(content);
+  const items = gallery?.items ?? [];
+  const complete = items.filter(isCompletePair).length;
+  const name = gallery ? t(`cms.label.launchGallery${gallery.gallery[0].toUpperCase()}${gallery.gallery.slice(1)}`) : label;
+  return (
+    <div data-gallery-summary={gallery?.gallery ?? ""}>
+      <Label>{name}</Label>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-xl border border-line bg-sunken/50 p-3 text-[12.5px]">
+        <dt className="text-faint">{t("cms.label.launchGalleryPairs")}</dt>
+        <dd className="font-semibold tabular-nums">{items.length}</dd>
+        <dt className="text-faint">{t("cms.label.launchGalleryComplete")}</dt>
+        <dd className="tabular-nums">{complete}</dd>
+        <dt className="text-faint">{t("cms.label.launchGalleryIncomplete")}</dt>
+        <dd className={items.length - complete > 0 ? "font-semibold tabular-nums text-warning" : "tabular-nums"}>
+          {items.length - complete}
+        </dd>
+        <dt className="text-faint">{t("cms.label.launchGalleryState")}</dt>
+        <dd>{t(visible ? "cms.label.launchGalleryShown" : "cms.label.launchGalleryHidden")}</dd>
+      </dl>
+      {items.length > 0 && complete === 0 && (
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">{t("cms.label.launchGalleryNoComplete")}</p>
+      )}
+      {hint && <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">{hint}</p>}
+      {gallery && (
+        <div className="mt-2.5">
+          <IceEditButton path="/" elementId={`g:${gallery.gallery}`} label={t("cms.label.launchGalleryEdit")}
+            className="w-full lg:w-auto" />
+        </div>
+      )}
+    </div>
   );
 }
 

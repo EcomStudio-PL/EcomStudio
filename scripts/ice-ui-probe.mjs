@@ -454,8 +454,9 @@ const EDITOR_SRC = `"use client";
 import { useEffect, useState } from "react";
 import Editor from "@/components/ice/editor/editor";
 import type {
-  IceAsset, IceCmsPage, IceLocale, IcePageInfo, IceSlotState, IceTextState, IceTransport, IceVersion,
+  IceAsset, IceCmsPage, IceGallery, IceGalleryVersion, IceLocale, IcePageInfo, IceSlotState, IceTextState, IceTransport, IceVersion,
 } from "@/lib/ice/types";
+import { GALLERY_KEYS, GALLERY_MAX_ITEMS, incompletePairs, type GalleryItem, type GalleryKey } from "@/lib/launch/gallery";
 
 /**
  * THE FAKE TRANSPORT — every IceTransport method, in memory, with the
@@ -523,6 +524,15 @@ function snap(st: IceSlotState | undefined) {
 
 const MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "video/mp4", "video/webm"]);
 
+/** The fake's stand-in for the server's sha256 fingerprint (djb2, hex). */
+function fingerprint(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0");
+}
+type GalleryState = { visible: boolean; items: GalleryItem[] };
+const galleryIdentity = (s: GalleryState) => JSON.stringify([s.visible, s.items]);
+
 function makeTransport(initial: IcePageInfo, defaults: Defaults): IceTransport {
   const assets: IceAsset[] = clone(SEED_ASSETS);
   const files = new Map<string, { file: File; url: string; width: number | null; height: number | null }>();
@@ -547,6 +557,27 @@ function makeTransport(initial: IcePageInfo, defaults: Defaults): IceTransport {
     .map((s) => ({ kind: "slot", key: s.key, label: s.key }));
   const withUsage = (a: IceAsset): IceAsset => ({ ...a, usage: usageOf(a.id).length });
   const newest = <V extends { createdAt: string }>(list: V[]) => [...list].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
+  // The launch page's galleries: a draft per key, and a publish that writes
+  // ONE page version holding every gallery (the CMS publish's shape).
+  const galleries = new Map<GalleryKey, IceGallery>(GALLERY_KEYS.map((key) => [key, {
+    key, blockId: null, visible: true, draft: [], published: [], publishedVisible: null, diverged: false, updatedAt: null,
+  }]));
+  const pageVersions: { id: string; version: number; createdAt: string; galleries: Partial<Record<GalleryKey, GalleryState>> }[] = [];
+  const gallery = (key: GalleryKey) => galleries.get(key) ?? { key, blockId: null, visible: true, draft: [], published: [], publishedVisible: null, diverged: false, updatedAt: null };
+  const settle = (g: IceGallery) => {
+    g.diverged = g.blockId !== null && galleryIdentity({ visible: g.visible, items: g.draft })
+      !== galleryIdentity({ visible: g.publishedVisible ?? true, items: g.published });
+  };
+  const galleryAssets = (lists: GalleryItem[][]) => {
+    const out: Record<string, IceAsset> = {};
+    for (const items of lists) for (const it of items) for (const half of [it.before, it.after]) {
+      const a = half ? assets.find((x) => x.url === half.url) : undefined;
+      if (a) out[a.url] = withUsage(a);
+    }
+    return out;
+  };
+  const galleryConflict = (key: GalleryKey) => ({ ok: false as const, error: "conflict", current: clone(gallery(key)) });
 
   // Seeds: one filled thumbnail, one filled sample, a text saved and reset.
   const seedSlot = (key: string, a: IceAsset, at: string) => {
@@ -721,6 +752,94 @@ function makeTransport(initial: IcePageInfo, defaults: Defaults): IceTransport {
         locale: input.locale, action: input.action ?? "save", before: { path: f.path, value: shown },
         after: { path: f.path, value: input.value, action: input.action ?? "save" }, createdAt: at, author: AUTHOR });
       return { ok: true, data: { updatedAt: at } };
+    },
+    async galleryState(path) {
+      rec("galleryState", [path]); await wait();
+      if (path !== "/") return { ok: false, error: "unsupported" };
+      const list = GALLERY_KEYS.map((k) => clone(gallery(k)));
+      return { ok: true, data: {
+        pageId: cms?.pageId ?? "00000000-0000-4000-8000-0000000000aa", galleries: list, unpublishedLaunchDraft: false,
+        assets: galleryAssets(list.flatMap((g) => [g.draft, g.published])),
+      } };
+    },
+    async gallerySave(input) {
+      rec("gallerySave", input); await wait();
+      const g = galleries.get(input.key);
+      if (!g) return { ok: false, error: "bad_key" };
+      if (takeConflict()) { g.updatedAt = stamp(); g.blockId ??= uid(); return galleryConflict(input.key); }
+      if ((g.updatedAt ?? null) !== (input.base ?? null)) return galleryConflict(input.key);
+      if (input.items.length > GALLERY_MAX_ITEMS) return { ok: false, error: "too_many" };
+      g.blockId ??= uid();
+      g.draft = clone(input.items);
+      g.visible = input.visible;
+      g.updatedAt = stamp();
+      settle(g);
+      return { ok: true, data: { blockId: g.blockId, updatedAt: g.updatedAt } };
+    },
+    async galleryPublish(input) {
+      rec("galleryPublish", input); await wait();
+      const incomplete: Partial<Record<GalleryKey, number[]>> = {};
+      for (const g of galleries.values()) {
+        const bad = g.visible ? incompletePairs(g.draft) : [];
+        if (g.blockId && bad.length > 0) incomplete[g.key] = bad;
+      }
+      if (Object.keys(incomplete).length > 0) return { ok: false, error: "incomplete_pairs", current: { incomplete } };
+      const at = stamp();
+      const snapshot: Partial<Record<GalleryKey, GalleryState>> = {};
+      for (const g of galleries.values()) {
+        if (!g.blockId) continue;
+        g.published = clone(g.draft);
+        g.publishedVisible = g.visible;
+        settle(g);
+        snapshot[g.key] = { visible: g.visible, items: clone(g.draft) };
+      }
+      const version = pageVersions.length + 1;
+      pageVersions.push({ id: uid(), version, createdAt: at, galleries: snapshot });
+      return { ok: true, data: { version, publishedAt: at } };
+    },
+    async galleryDiscard(input) {
+      rec("galleryDiscard", input); await wait();
+      const g = galleries.get(input.key);
+      if (!g || !g.blockId) return { ok: false, error: "block_missing" };
+      if (input.base !== null && input.base !== g.updatedAt) return galleryConflict(input.key);
+      g.draft = clone(g.published);
+      g.visible = g.publishedVisible ?? true;
+      g.updatedAt = stamp();
+      settle(g);
+      return { ok: true, data: { updatedAt: g.updatedAt } };
+    },
+    async galleryVersions(input) {
+      rec("galleryVersions", input); await wait();
+      const g = gallery(input.key);
+      const seen = new Set<string>();
+      const list: IceGalleryVersion[] = [];
+      for (const v of newest(pageVersions)) {
+        const s = v.galleries[input.key];
+        if (!s) continue;
+        const id = galleryIdentity(s);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        list.push({
+          id: v.id, version: v.version, reason: "publish", label: null, createdAt: v.createdAt, author: AUTHOR,
+          visible: s.visible, items: clone(s.items), fingerprint: fingerprint(id),
+          isDraft: id === galleryIdentity({ visible: g.visible, items: g.draft }),
+          isPublished: id === galleryIdentity({ visible: g.publishedVisible ?? true, items: g.published }),
+        });
+      }
+      return { ok: true, data: { versions: list.slice(0, 20), assets: galleryAssets(list.map((v) => v.items.slice(0, 4))) } };
+    },
+    async galleryRestore(input) {
+      rec("galleryRestore", input); await wait();
+      const g = galleries.get(input.key);
+      const s = pageVersions.find((v) => v.id === input.version)?.galleries[input.key];
+      if (!g || !s) return { ok: false, error: "version_missing" };
+      if ((g.updatedAt ?? null) !== (input.base ?? null)) return galleryConflict(input.key);
+      g.blockId ??= uid();
+      g.draft = clone(s.items);
+      g.visible = s.visible;
+      g.updatedAt = stamp();
+      settle(g);
+      return { ok: true, data: { blockId: g.blockId, updatedAt: g.updatedAt } };
     },
   };
 }

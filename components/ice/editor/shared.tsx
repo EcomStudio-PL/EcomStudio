@@ -39,6 +39,10 @@ const KNOWN = new Set([
   "alt_too_long", "alt_invisible", "alt_markup", "alt_newline",
   "asset_missing", "asset_kind", "asset_format", "asset_too_large", "format", "too_large", "upload_missing", "upload_failed",
   "block_missing", "not_published", "not_in_snapshot", "not_editable", "draft_diverged", "bad_path", "invalid", "noop", "network",
+  // A launch line with a {token} its key does not allow.
+  "text_token",
+  // The launch page's galleries (lib/server/ice/gallery.ts).
+  "bad_key", "bad_input", "too_many", "bad_item", "duplicate_id", "incomplete_pairs", "launch_draft", "version_missing",
 ]);
 
 export function errorText(t: T, code: string): string {
@@ -219,6 +223,6 @@ export async function localSize(file: File): Promise<{ width: number; height: nu
   }
 }
 
-/** Natural, case-insensitive order: "2.jpg" before "10.jpg". */
-export const naturalCompare = (a: string, b: string) =>
-  a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+/** Natural, case-insensitive order: "2.jpg" before "10.jpg" (one definition,
+ *  in lib/ice/pairs.ts, next to the pairing that sorts by it). */
+export { naturalCompare } from "@/lib/ice/pairs";

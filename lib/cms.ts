@@ -253,12 +253,23 @@ export const BLOCK_TYPES = [
   // Added with Builder 2.0 — the sections a campaign landing is made of.
   "countdown", "promo_bar", "offer", "bonus", "guarantee", "trust_badges",
   "urgency_cta", "sticky_cta",
+  /*
+   * Added with Landing V2: one block per PRZED/PO gallery of the launch page
+   * (lib/launch/gallery.ts). A KNOWN type, because the history has to carry
+   * it — rollback re-creates only known types, and a gallery missing from
+   * this list was silently dropped by every "Przywróć". It is NOT an addable
+   * section (see SECTION_GROUPS below): its pairs are created and edited only
+   * in "Edytuj stronę" (lib/server/ice/gallery.ts), and the builder shows it
+   * as a read-only summary with a visibility switch.
+   */
+  "launch_gallery",
 ] as const;
 
 /**
  * The section types an admin may actually add, grouped the way the picker
  * shows them. Deliberately NOT the same list as BLOCK_TYPES: `launch` belongs
- * to exactly one page and is created with it, so it is never offered here.
+ * to exactly one page and is created with it, so it is never offered here —
+ * and neither is `launch_gallery`, which the inline editor creates.
  *
  * THE FIRST GROUP IS THE ONE THAT GETS USED. A picker that opens on
  * twenty-eight equal choices is a decision, not a shortcut, so the six
@@ -300,6 +311,34 @@ export type SectionType = (typeof BLOCK_TYPES)[number];
  * written — which is exactly why they must not be a second copy of that data.
  */
 export const LIVE_DATA_SECTIONS = new Set(["tools_grid", "models", "pricing_table"]);
+
+/**
+ * JSON WITH EVERY OBJECT'S KEYS SORTED, at every depth.
+ *
+ * "Is the draft the same as what is published?" is asked of jsonb that
+ * Postgres hands back with its keys in its own order, next to objects this
+ * code just built in another. Comparing their plain JSON.stringify would call
+ * two identical sections different; this is the comparison 0141's
+ * `content is distinct from …` makes, done in TypeScript. Arrays keep their
+ * order — the order of a list IS its content.
+ */
+export function canonicalJson(value: unknown): string {
+  const norm = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(norm);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(v as Record<string, unknown>).sort()) {
+        const inner = (v as Record<string, unknown>)[key];
+        // An undefined member is what JSON drops anyway; dropping it here too
+        // keeps {a: undefined} equal to {} the way the database sees them.
+        if (inner !== undefined) out[key] = norm(inner);
+      }
+      return out;
+    }
+    return v;
+  };
+  return JSON.stringify(norm(value)) ?? "null";
+}
 
 export function lt(text: LocaleText | undefined, locale: string): string {
   if (!text) return "";

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { notify } from "@/lib/notify";
 import type { IceLocale, IcePageInfo, IceResult, IceTransport } from "@/lib/ice/types";
-import { UI_ATTR, hitTest, scanPage, targetElements, unionBox, type Target } from "./scan";
+import { GALLERY_KEYS, isGalleryKey, type GalleryKey } from "@/lib/launch/gallery";
+import { UI_ATTR, galleryUid, hitTest, scanPage, targetElements, unionBox, type Target } from "./scan";
 import { actionsTransport } from "./transport";
 import { Btn, call, cls, errorText, pageLabel, roleLabel, sectionLabel, type EditorCtx, type T } from "./shared";
 import { TextPanel } from "./text-panel";
@@ -14,6 +15,8 @@ import { MediaPanel } from "./media-panel";
 import { PairPanel } from "./pair-panel";
 import { SamplesPanel } from "./samples-panel";
 import { BulkPanel } from "./bulk-panel";
+import { GalleryPanel } from "./gallery-panel";
+import { useFramed } from "../framed";
 import s from "./editor.module.css";
 
 /**
@@ -33,11 +36,18 @@ type Open =
   | { kind: "elements" }
   | { kind: "history" }
   | { kind: "bulkGroups" }
-  | { kind: "bulk"; group: string };
+  | { kind: "bulk"; group: string }
+  /** The launch page's galleries — one panel for all three; `key` is the
+   *  section that was clicked (null: the toolbar button). */
+  | { kind: "gallery"; key: GalleryKey | null };
 
 type Hover = { box: { x: number; y: number; w: number; h: number }; label: string };
 
+/** The page is the launch page at "/" — the only page with galleries. */
+const hasGalleries = (info: IcePageInfo | null, path: string) => info?.kind === "cms" && info.cms.launch && path === "/";
+
 function labelOf(t: T, info: IcePageInfo, target: Target): string {
+  if (target.kind === "gallery") return `${t("ice.gallery.title")} · ${t(`ice.gallery.name.${target.key}`)}`;
   if (target.kind === "cms" || target.kind === "cmsMedia") return cmsFieldLabel(t, target.field);
   const section = sectionLabel(t, info, target.element.id);
   return section ? `${section} · ${roleLabel(t, target.element)}` : roleLabel(t, target.element);
@@ -64,14 +74,33 @@ function detachedTarget(info: IcePageInfo, uid: string): Target | null {
     if (f.kind === "text" && uid === `c:${f.id}`) return { kind: "cms", uid, field: f, runs: [] };
     if (f.kind === "media" && uid === `cm:${f.id}`) return { kind: "cmsMedia", uid, field: f, els: [] };
   }
+  // A gallery that is not on the page (empty, hidden, never published) is
+  // still reachable from the list, a deep link or the builder.
+  if (info.cms.launch) {
+    const key = GALLERY_KEYS.find((k) => uid === galleryUid(k));
+    if (key) return { kind: "gallery", uid, key, els: [] };
+  }
   return null;
 }
 
-export default function Editor({ session, path, transport = actionsTransport }: {
+type EditorProps = {
   session: { nonce: string; path: string };
   path: string;
   transport?: IceTransport;
-}) {
+};
+
+/**
+ * Nothing at all inside a frame. The edit cookie is Path=/ for "/", so it
+ * reaches the builder's preview and the galleries' "Podgląd PC / Telefon"
+ * too; those frames must show the page as a visitor sees it, not a second
+ * editor fighting the first one.
+ */
+export default function Editor(props: EditorProps) {
+  const framed = useFramed();
+  return framed ? null : <EditorInFrameless {...props} />;
+}
+
+function EditorInFrameless({ session, path, transport = actionsTransport }: EditorProps) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [info, setInfo] = useState<IcePageInfo | null>(null);
@@ -142,18 +171,19 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     const marked: Element[] = [];
     for (const target of targets) {
       for (const el of targetElements(target)) {
-        el.setAttribute("data-ice-target", target.kind === "media" || target.kind === "cmsMedia" ? "media" : "text");
+        el.setAttribute("data-ice-target", target.kind === "media" || target.kind === "cmsMedia" ? "media"
+          : target.kind === "gallery" ? "gallery" : "text");
         marked.push(el);
       }
     }
     return () => marked.forEach((el) => el.removeAttribute("data-ice-target"));
   }, [targets]);
   useEffect(() => {
-    if (open?.kind !== "target") return;
-    const els = targetElements(open.target);
+    const gallery = open?.kind === "gallery" && open.key ? targets.find((x) => x.uid === galleryUid(open.key as GalleryKey)) : undefined;
+    const els: Element[] = open?.kind === "target" ? targetElements(open.target) : gallery ? targetElements(gallery) : [];
     els.forEach((el) => el.setAttribute("data-ice-selected", ""));
     return () => els.forEach((el) => el.removeAttribute("data-ice-selected"));
-  }, [open]);
+  }, [open, targets]);
 
   const openTarget = useCallback((target: Target) => {
     // Re-read the page NOW: the scan after a change is debounced, and a panel
@@ -188,8 +218,32 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     };
   }, [open]);
 
+  /*
+    THE GALLERY PANEL HOLDS UNSAVED WORK FOR THREE GALLERIES at once, and
+    closing it any other way than its own close button (which asks) would
+    drop that work silently. While it has unsaved edits, opening another
+    element or panel is refused with a sentence instead.
+  */
+  const galleryDirty = useRef(false);
+  const galleryHeld = useCallback((): boolean => {
+    if (openRef.current?.kind !== "gallery" || !galleryDirty.current) return false;
+    notify.message(t("ice.gallery.unsavedElsewhere"));
+    return true;
+  }, [t]);
+  const openPanel = (next: Open) => {
+    if (!galleryHeld()) setOpen(next);
+  };
+
   const select = useCallback((target: Target) => {
     setHover(null);
+    // A gallery opens THE gallery panel. If it is already open (for this or
+    // another gallery) it stays open and switches tab — its unsaved edits of
+    // every gallery live in that one panel and must survive the click.
+    if (target.kind === "gallery") {
+      setOpen({ kind: "gallery", key: target.key });
+      return;
+    }
+    if (galleryHeld()) return;
     // The element already open: keep its panel (and the unsaved draft).
     if (openRef.current?.kind === "target" && openRef.current.target.uid === target.uid) return;
     // Another panel is open: close it first (it puts its preview back), and
@@ -200,7 +254,7 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       return;
     }
     openTarget(target);
-  }, [openTarget]);
+  }, [galleryHeld, openTarget]);
 
   // From the list (or the history): the element on the page if it is
   // painted, else a target with nothing on the page — every panel works from
@@ -221,7 +275,7 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     deepLinked.current = true;
     const id = decodeURIComponent(m[1]);
     const target = targets.find((x) => x.uid === `t:${id}` || x.uid === `m:${id}` || x.uid === id)
-      ?? (info ? detachedTarget(info, `t:${id}`) ?? detachedTarget(info, `m:${id}`) : null);
+      ?? (info ? detachedTarget(info, `t:${id}`) ?? detachedTarget(info, `m:${id}`) ?? detachedTarget(info, id) : null);
     history.replaceState(null, "", location.pathname + location.search);
     if (target) {
       targetElements(target)[0]?.scrollIntoView({ block: "center" });
@@ -360,6 +414,10 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       // Registering an upload revalidates too (the library screen), and any
       // revalidation re-renders this page inside the action — unmarked.
       registerUpload: (input) => after(transport.registerUpload(input)),
+      // Publishing the galleries revalidates "/", the page under the editor.
+      // A gallery DRAFT save, discard or restore changes nothing a visitor
+      // sees and revalidates nothing, so it needs no fresh render.
+      galleryPublish: (input) => after(transport.galleryPublish(input)),
     };
   }, [router, transport]);
 
@@ -377,6 +435,7 @@ export default function Editor({ session, path, transport = actionsTransport }: 
   }), [info, loadInfo, locale, path, t, tx]);
 
   const leave = async () => {
+    if (galleryHeld()) return;
     setLeaving(true);
     const res = await call(transport.setEdit(false, path));
     if (!res.ok) {
@@ -405,15 +464,23 @@ export default function Editor({ session, path, transport = actionsTransport }: 
           <strong>{ctx ? ctx.pageLabel : t("ice.loading")}</strong>
           <span>{t("ice.bar.mode")} · {path} · {t("ice.bar.count", { n: found })}</span>
         </span>
-        <Btn small kind="ghost" disabled={!ctx} onClick={() => setOpen({ kind: "elements" })}>{t("ice.bar.elements")}</Btn>
-        {bulkGroups.length > 0 && <Btn small kind="ghost" onClick={() => setOpen({ kind: "bulkGroups" })}>{t("ice.bar.bulk")}</Btn>}
-        <Btn small kind="ghost" disabled={!ctx} onClick={() => setOpen({ kind: "history" })}>{t("ice.bar.history")}</Btn>
+        <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "elements" })}>{t("ice.bar.elements")}</Btn>
+        {bulkGroups.length > 0 && <Btn small kind="ghost" onClick={() => openPanel({ kind: "bulkGroups" })}>{t("ice.bar.bulk")}</Btn>}
+        {hasGalleries(info, path) && (
+          <Btn small kind="ghost" onClick={() => setOpen({ kind: "gallery", key: open?.kind === "gallery" ? open.key : null })}>
+            {t("ice.bar.galleries")}
+          </Btn>
+        )}
+        <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "history" })}>{t("ice.bar.history")}</Btn>
         <Btn small kind="primary" disabled={leaving} onClick={() => void leave()}>{leaving ? t("ice.bar.leaving") : t("ice.bar.leave")}</Btn>
       </div>
       {ctx && open?.kind === "target" && (
         open.target.kind === "text" ? <TextPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
         : open.target.kind === "cms" ? <CmsTextPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
         : open.target.kind === "cmsMedia" ? <CmsMediaPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
+        // A gallery never opens as a target (select() routes it to its own
+        // panel below); nothing is drawn for one here.
+        : open.target.kind === "gallery" ? null
         : open.target.element.kind === "pair" ? <PairPanel key={open.target.uid} ctx={ctx} element={open.target.element} onClose={close} />
         : open.target.element.kind === "samples" ? <SamplesPanel key={open.target.uid} ctx={ctx} element={open.target.element} onClose={close} />
         : <MediaPanel key={open.target.uid} ctx={ctx} element={open.target.element} onClose={close} />
@@ -422,6 +489,10 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       {ctx && open?.kind === "history" && <PageHistoryPanel ctx={ctx} onOpen={pickUid} onClose={close} />}
       {ctx && open?.kind === "bulkGroups" && <BulkGroupsPanel ctx={ctx} onPick={(g) => setOpen({ kind: "bulk", group: g })} onClose={close} />}
       {ctx && open?.kind === "bulk" && <BulkPanel key={open.group} ctx={ctx} groupKey={open.group} onClose={close} />}
+      {ctx && open?.kind === "gallery" && hasGalleries(info, path) && (
+        <GalleryPanel ctx={ctx} focusKey={isGalleryKey(open.key) ? open.key : null} onClose={close}
+          onDirtyChange={(dirty) => { galleryDirty.current = dirty; }} />
+      )}
     </>
   );
 }

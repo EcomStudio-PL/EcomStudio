@@ -14,18 +14,48 @@
  *   F. SEO — the page's own metadata, its fallbacks, and noindex.
  *   G. THE PUBLIC BUNDLE — the builder is admin-only and stays that way.
  *   H. THE WAITING-LIST PAGE — untouched, still the front door.
+ *   I. THE PICKER AND THE SEED AGREE WITH THE RENDERER.
+ *   J. THE LAUNCH PAGE IN THE BUILDER (Landing V2) — every field, the section
+ *      switches, the token rule, the "every field exists" invariant, and the
+ *      galleries the builder may switch but never write — the pure rules and
+ *      the real actions over a fake Supabase (scripts/stubs/ice-*.ts).
  *
- * Run: npm run test:cms
+ * Run: npm run test:cms — built with the ice stubs for the actions:
+ *   esbuild scripts/cms-tests.ts --bundle --platform=node --format=esm \
+ *     --alias:@/lib/supabase/server=./scripts/stubs/ice-supabase-server.ts \
+ *     --alias:@/lib/services/audit=./scripts/stubs/ice-audit.ts \
+ *     --alias:next/headers=./scripts/stubs/ice-next-headers.ts \
+ *     --alias:next/cache=./scripts/stubs/ice-next-cache.ts \
+ *     --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp \
+ *     --outfile=.next/cms-tests.mjs --log-level=error && node .next/cms-tests.mjs
+ * Optional: I18N_FRAGMENT=<path to an i18n-*.json fragment> checks the labels
+ * against the dictionaries with that fragment merged in (before it lands).
  */
 import { readFileSync, readdirSync } from "fs";
 import { scopeCss, styleSafe } from "../lib/cms-css";
 import { sanitizeHtml, sanitizeRichText } from "../lib/cms-sanitize";
 import { resolveHandler, FORM_HANDLERS, isContactTopic } from "../lib/cms-forms";
-import { slugProblem, slugify, RESERVED, isBlockType } from "../lib/services/cms";
+import {
+  slugProblem, slugify, RESERVED, isBlockType, NOT_COPYABLE_TYPES, ensureLaunchFieldObjects, launchTokenProblem,
+  versionBlockRows,
+} from "../lib/services/cms";
 import { resolveStyle, DEVICE_PRESETS } from "../lib/cms-style";
 import { pageMetadata, RESERVED_SLUGS } from "../lib/server/cms-page";
-import { SECTION_GROUPS, BLOCK_TYPES } from "../lib/cms";
+import { SECTION_GROUPS, BLOCK_TYPES, canonicalJson, type CmsBlockContent } from "../lib/cms";
 import { SEED_PAGES } from "../lib/cms-seed";
+import {
+  LAUNCH_GALLERY_FIELDS, LAUNCH_SECTION_FIELDS, fieldsFor, readField, toggleOn, writeField, type FieldDef,
+} from "../lib/cms-schema";
+import { LAUNCH_FIELDS } from "../lib/server/launch-page";
+import { LAUNCH_MEDIA_KEYS, LAUNCH_SECTIONS, LAUNCH_SHOW_KEYS, SECTION_DEFAULT_SHOWN, sectionKey } from "../lib/launch/fields";
+import { lookup } from "../lib/i18n/t";
+import {
+  applySectionTemplateAction, duplicateBlockAction, publishPageAction, rollbackPageAction, saveBlockAction,
+  saveSectionTemplateAction,
+} from "../app/actions/cms";
+import { ensureLaunchSectionAction } from "../app/actions/public-pages";
+import { FakeDb, type Row } from "./stubs/ice-fake-db";
+import { iceState, resetIceState } from "./stubs/ice-state";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -432,6 +462,278 @@ check("every seeded section is a type the renderer knows",
 check("nothing in the seed invents legal wording",
   SEED_PAGES.filter((p) => p.slug === "regulamin" || p.slug === "polityka-prywatnosci")
     .every((p) => JSON.stringify(p.sections).includes("przygotowaniu")));
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+console.log("\nJ. THE LAUNCH PAGE IN THE BUILDER (Landing V2)");
+
+const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
+const isObj = (v: unknown) => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+const LAUNCH_KEYS = LAUNCH_FIELDS as readonly string[];
+
+// H, strengthened: the launch page draws its own sections — the galleries
+// included — and still never the generic CMS renderer.
+check("the launch page reads the gallery blocks itself, never through BlockRenderer",
+  !/BlockRenderer/.test(launch) && !/cms-sec/.test(launch));
+
+{
+  const rows = LAUNCH_SECTION_FIELDS.filter((f) => f.kind !== "heading");
+  const keys = rows.map((f) => f.key);
+  const notOnce = LAUNCH_KEYS.filter((k) => keys.filter((x) => x === k).length !== 1);
+  check(`every field the page reads (${LAUNCH_KEYS.length} LAUNCH_FIELDS) is in the builder form exactly once`,
+    notOnce.length === 0, notOnce.join(", "));
+  const extra = keys.filter((k) => !LAUNCH_KEYS.includes(k));
+  check("…and the only other rows are the 8 section switches and the 2 pictures stored next to `fields`",
+    same([...extra].sort(), [...LAUNCH_SHOW_KEYS, ...LAUNCH_MEDIA_KEYS].sort()), extra.join(", "));
+  const toggles = rows.filter((f) => f.kind === "toggle");
+  check("each switch is a toggle on its section's `showX` key, defaulting to that section's own default",
+    toggles.length === LAUNCH_SECTIONS.length
+    && LAUNCH_SECTIONS.every((s) => toggles.some((f) => f.key === sectionKey(s) && f.defaultOn === SECTION_DEFAULT_SHOWN[s])));
+  check("…so the cost strip and the creators tile start OFF (no unapproved prices, no invented people)",
+    toggles.find((f) => f.key === "showCost")?.defaultOn === false && toggles.find((f) => f.key === "showCreators")?.defaultOn === false);
+  check("the two pictures (creatorsImage, ogImage) are media fields",
+    LAUNCH_MEDIA_KEYS.every((k) => rows.find((f) => f.key === k)?.kind === "media"));
+  check("no key twice (headings included), and every label / hint is an i18n key without a dot",
+    new Set(LAUNCH_SECTION_FIELDS.map((f) => f.key)).size === LAUNCH_SECTION_FIELDS.length
+    && LAUNCH_SECTION_FIELDS.every((f) => !f.label.includes(".") && !(f.hint ?? "").includes(".")));
+  check("the form opens with a group heading, and the galleries' texts have their own group",
+    LAUNCH_SECTION_FIELDS[0].kind === "heading" && LAUNCH_SECTION_FIELDS.some((f) => f.kind === "heading" && f.label === "launchGroupGalleries"));
+
+  const showCost = rows.find((f) => f.key === "showCost") as FieldDef;
+  const showFinal = rows.find((f) => f.key === "showFinal") as FieldDef;
+  const c0: CmsBlockContent = { fields: { "hero.h1": { pl: "X" } } };
+  check("an untouched switch reads as its default", !toggleOn(c0, showCost) && toggleOn(c0, showFinal));
+  const on = writeField(c0, showCost, "de", "1") as Record<string, unknown>;
+  const off = writeField(on as CmsBlockContent, showCost, "pl", "0") as Record<string, unknown>;
+  check("a switch is stored at the content root as \"1\" / \"0\" — never per language, never inside `fields`",
+    on.showCost === "1" && !("showCost" in ((on.fields ?? {}) as object)) && toggleOn(on as CmsBlockContent, showCost)
+    && off.showCost === "0" && !toggleOn(off as CmsBlockContent, showCost) && readField(off as CmsBlockContent, showCost, "en") === "0");
+  const heading = LAUNCH_SECTION_FIELDS.find((f) => f.kind === "heading") as FieldDef;
+  const summary = LAUNCH_GALLERY_FIELDS[0];
+  const galleryContent = { gallery: "thumbs", items: [{ id: "aaaaaaaa-0000-4000-8000-0000000000aa", before: null, after: null }] } as unknown as CmsBlockContent;
+  check("a heading and a gallery summary store nothing: writeField returns the same object, readField reads \"\"",
+    writeField(c0, heading, "pl", "x") === c0 && writeField(galleryContent, summary, "pl", "x") === galleryContent
+    && readField(galleryContent, summary, "pl") === "" && readField(c0, heading, "pl") === "");
+  check("fieldsFor('launch_gallery') is that one read-only summary",
+    fieldsFor("launch_gallery") === LAUNCH_GALLERY_FIELDS && LAUNCH_GALLERY_FIELDS.length === 1 && summary.kind === "gallery");
+}
+
+{
+  // Every label the builder draws for the launch page and its galleries, in
+  // all three languages — a raw `cms.label.…` on screen is a visible bug.
+  type Dict = Record<string, unknown>;
+  const loadDict = (l: string) => JSON.parse(readFileSync(`lib/i18n/dictionaries/${l}.json`, "utf8")) as Dict;
+  const DICTS: Record<string, Dict> = { pl: loadDict("pl"), en: loadDict("en"), de: loadDict("de") };
+  const fragmentPath = process.env.I18N_FRAGMENT;
+  const merge = (into: Dict, from: Dict) => {
+    for (const [k, v] of Object.entries(from)) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        if (!into[k] || typeof into[k] !== "object") into[k] = {};
+        merge(into[k] as Dict, v as Dict);
+      } else into[k] = v;
+    }
+  };
+  if (fragmentPath) {
+    const fragment = JSON.parse(readFileSync(fragmentPath, "utf8")) as Record<string, Dict>;
+    for (const l of ["pl", "en", "de"]) merge(DICTS[l], fragment[l] ?? {});
+  }
+  const labelKeys = [...LAUNCH_SECTION_FIELDS, ...LAUNCH_GALLERY_FIELDS]
+    .flatMap((f) => [f.label, f.hint]).filter((k): k is string => Boolean(k)).map((k) => `cms.label.${k}`);
+  const summaryKeys = ["Thumbs", "Retouch", "Fashion", "Pairs", "Complete", "Incomplete", "State", "Shown", "Hidden", "NoComplete", "Edit", "Count"]
+    .map((s) => `cms.label.launchGallery${s}`);
+  const otherKeys = ["cms.sectionType.launch", "cms.sectionType.launch_gallery", "cms.err.text_token", "cms.err.galleryManaged", "cms.err.notCopyable"];
+  const all = [...new Set([...labelKeys, ...summaryKeys, ...otherKeys])];
+  const missing = ["pl", "en", "de"].flatMap((l) => all.filter((k) => {
+    const v = lookup(DICTS[l], k);
+    return typeof v !== "string" || !v.trim();
+  }).map((k) => `${l}:${k}`));
+  check(`every builder label / hint of the launch page and its galleries exists in pl, en and de (${all.length} keys${fragmentPath ? ", fragment merged" : ""})`,
+    missing.length === 0, `${missing.length} missing: ${missing.slice(0, 8).join(", ")}`);
+}
+
+{
+  const raw = { fields: { "hero.h1": { pl: "H" }, "hero.badge": "nie obiekt" }, showCost: "1" } as unknown as CmsBlockContent;
+  const fixed = ensureLaunchFieldObjects(raw, LAUNCH_KEYS);
+  check("the invariant: every launch field becomes an object; written values kept; a non-object replaced by {}; root keys kept",
+    LAUNCH_KEYS.every((k) => isObj(fixed.fields?.[k])) && same(fixed.fields?.["hero.h1"], { pl: "H" })
+    && same(fixed.fields?.["hero.badge"], {}) && (fixed as Record<string, unknown>).showCost === "1");
+  check("…idempotent, and it never mutates its input",
+    same(ensureLaunchFieldObjects(fixed, LAUNCH_KEYS), fixed) && (raw.fields as Record<string, unknown>)["hero.badge"] === "nie obiekt");
+  const tok = (fields: Record<string, Record<string, string>>) => launchTokenProblem({ fields });
+  check("the token rule refuses '{premiera}' and a value token in the headline, names the field and the language",
+    same(tok({ "hero.h1": { pl: "Start {premiera}" } }), { key: "hero.h1", locale: "pl", tokens: ["premiera"] })
+    && tok({ "hero.h1": { en: "{credits} now" } })?.tokens[0] === "credits");
+  check("…and allows each line its own tokens: hero.offer {date}{credits}, ref.body {referral}, hero.consent {terms}{privacy}",
+    tok({ "hero.offer": { pl: "Startujemy {date} – {credits} kredytów" }, "ref.body": { de: "+{referral}" },
+      "hero.consent": { pl: "Akceptuję {terms} i {privacy}." }, "hero.h1": { pl: "Bez znaczników" } }) === null);
+  check("…a typo such as '{credit}' is refused even where {credits} is allowed",
+    tok({ "hero.offer": { pl: "{credit} kredytów" } })?.tokens[0] === "credit");
+
+  const ITEM = { id: "aaaaaaaa-0000-4000-8000-0000000000a1", before: { url: "u1" }, after: { url: "u2" } };
+  const snap = [
+    { id: "x1", type: "launch", sort_order: 0, visible: true, content: { fields: { "hero.h1": { pl: "H" } } } },
+    { id: "x2", type: "launch_gallery", sort_order: 10, visible: false, content: { gallery: "thumbs", items: [ITEM] } },
+    { id: "x3", type: "evil_type", sort_order: 20, visible: true, content: {} },
+  ];
+  const rows = versionBlockRows(snap, "page", "admin", LAUNCH_KEYS);
+  const gal = rows.find((r) => r.type === "launch_gallery");
+  check("rollback rows keep a launch_gallery: the same content, the same switch, the same place",
+    Boolean(gal) && same(gal?.content, snap[1].content) && gal?.visible === false && gal?.sort_order === 10);
+  check("…drop an unknown type, and bring the launch block up to the invariant",
+    !rows.some((r) => r.type === "evil_type")
+    && LAUNCH_KEYS.every((k) => isObj((rows.find((r) => r.type === "launch")?.content as unknown as CmsBlockContent).fields?.[k])));
+  check("the never-copied types are exactly launch and launch_gallery", same([...NOT_COPYABLE_TYPES].sort(), ["launch", "launch_gallery"]));
+}
+
+/* ── the actions themselves, over a fake Supabase ─────────────────────── */
+{
+  const ADMIN = "aaaaaaaa-0000-4000-8000-000000000001";
+  const PAGE = "bbbbbbbb-0000-4000-8000-000000000001";
+  const B_LAUNCH = "cccccccc-0000-4000-8000-000000000001";
+  const B_GAL = "cccccccc-0000-4000-8000-000000000002";
+  const B_HERO = "cccccccc-0000-4000-8000-000000000003";
+  const T0 = "2026-10-01T10:00:00.000Z";
+  const ITEM = { id: "aaaaaaaa-0000-4000-8000-0000000000a1", before: { url: "u1" }, after: { url: "u2" } };
+  const launchContent = () => ({ fields: { "hero.h1": { pl: "Stary" } } });
+
+  const fresh = () => {
+    resetIceState();
+    const d = new FakeDb();
+    d.user = { id: ADMIN };
+    d.tables.profiles = [{ id: ADMIN, role: "admin" }];
+    d.tables.cms_pages = [{
+      id: PAGE, slug: "premiera", kind: "launch", status: "published", is_homepage: true, seo: {}, published_at: T0,
+      published_snapshot: [{ id: B_LAUNCH, type: "launch", sort_order: 0, visible: true, content: launchContent() }],
+    }];
+    d.tables.cms_blocks = [
+      { id: B_LAUNCH, page_id: PAGE, type: "launch", sort_order: 0, visible: true, content: launchContent(), style: {}, code: {}, updated_at: T0 },
+      { id: B_GAL, page_id: PAGE, type: "launch_gallery", sort_order: 10, visible: true, content: { gallery: "thumbs", items: [ITEM] }, style: {}, code: {}, updated_at: T0 },
+      { id: B_HERO, page_id: PAGE, type: "hero", sort_order: 20, visible: true, content: {}, style: {}, code: {}, updated_at: T0 },
+    ];
+    d.tables.cms_page_versions = [];
+    d.tables.cms_templates = [];
+    iceState.client = d.client();
+    return d;
+  };
+  const block = (d: FakeDb, id: string) => (d.tables.cms_blocks ?? []).find((r) => r.id === id) as Row | undefined;
+  const wrote = (d: FakeDb, table: string, op?: string) =>
+    d.calls.filter((c) => c.kind === "from" && c.table === table && c.op !== "select" && (!op || c.op === op)).length;
+
+  {
+    const d = fresh();
+    const r = await saveBlockAction({
+      id: B_GAL, pageId: PAGE, type: "launch_gallery", content: { gallery: "thumbs", items: [] } as unknown as CmsBlockContent,
+      style: { base: { paddingTop: "xl" } }, visible: false, anchor: "galeria",
+    });
+    const g = block(d, B_GAL);
+    check("saveBlockAction on a stored gallery writes its switch and NOTHING else (stale builder content is ignored)",
+      r.ok && g?.visible === false && same(g?.content, { gallery: "thumbs", items: [ITEM] }) && same(g?.style, {}) && g?.anchor === undefined,
+      JSON.stringify({ r, g }));
+  }
+  {
+    const d = fresh();
+    const r = await saveBlockAction({ pageId: PAGE, type: "launch_gallery", content: { gallery: "retouch", items: [] } as unknown as CmsBlockContent, visible: true });
+    check("…refuses to CREATE a gallery (only the inline editor does) — galleryManaged, no insert",
+      !r.ok && r.error === "galleryManaged" && wrote(d, "cms_blocks", "insert") === 0);
+    const r2 = await saveBlockAction({ id: B_HERO, pageId: PAGE, type: "launch_gallery", content: {}, visible: true });
+    check("…and to turn another block into one", !r2.ok && r2.error === "galleryManaged" && block(d, B_HERO)?.type === "hero");
+  }
+  {
+    const d = fresh();
+    const r = await saveBlockAction({ id: B_LAUNCH, pageId: PAGE, type: "launch", content: { fields: { "hero.h1": { pl: "Start {premiera}" } } }, visible: true });
+    check("a launch save with a token the line does not allow → text_token, naming the line; nothing written",
+      !r.ok && r.error === "text_token" && /hero\.h1 \(pl\): \{premiera\}/.test(r.ok ? "" : r.detail ?? "")
+      && same(block(d, B_LAUNCH)?.content, launchContent()) && wrote(d, "cms_blocks") === 0, JSON.stringify(r));
+  }
+  {
+    const d = fresh();
+    const r = await saveBlockAction({ id: B_LAUNCH, pageId: PAGE, type: "launch", content: { fields: { "hero.h1": { pl: "Nowy" } } }, visible: true });
+    const stored = block(d, B_LAUNCH)?.content as CmsBlockContent | undefined;
+    check("a launch save is normalised: every field stored as an object, the edit kept",
+      r.ok && LAUNCH_KEYS.every((k) => isObj(stored?.fields?.[k])) && stored?.fields?.["hero.h1"]?.pl === "Nowy");
+  }
+  {
+    const d = fresh();
+    d.tables.cms_templates = [{ id: "dddddddd-0000-4000-8000-000000000001", kind: "section", payload: [{ type: "launch_gallery", content: { gallery: "thumbs", items: [] } }] }];
+    const results = await Promise.all([
+      duplicateBlockAction(B_LAUNCH), duplicateBlockAction(B_GAL),
+      saveSectionTemplateAction({ name: "x", blockId: B_GAL }), saveSectionTemplateAction({ name: "x", blockId: B_LAUNCH }),
+      applySectionTemplateAction({ pageId: PAGE, templateId: "dddddddd-0000-4000-8000-000000000001" }),
+    ]);
+    check("Duplicate, 'Zapisz jako szablon' and 'Moje sekcje' refuse the launch block and the galleries → notCopyable, nothing inserted",
+      results.every((x) => !x.ok && x.error === "notCopyable") && wrote(d, "cms_blocks", "insert") === 0 && wrote(d, "cms_templates", "insert") === 0,
+      JSON.stringify(results));
+    // The fake client has no `.gt()`, which the duplicate's re-numbering uses,
+    // so a real duplicate cannot complete here; what matters is that an
+    // ordinary section is not refused by the new rule.
+    const other = await duplicateBlockAction(B_HERO);
+    check("…while any other section is not refused by that rule", other.ok || other.error !== "notCopyable", JSON.stringify(other));
+  }
+  {
+    const d = fresh();
+    const ITEM2 = { id: "aaaaaaaa-0000-4000-8000-0000000000a2", before: { url: "u3" }, after: null };
+    const galleryV1 = { gallery: "thumbs", items: [ITEM, ITEM2] };
+    d.tables.cms_page_versions = [{
+      id: "eeeeeeee-0000-4000-8000-000000000001", page_id: PAGE, version: 1, seo: {},
+      snapshot: [
+        { id: "old-launch", type: "launch", sort_order: 0, visible: true, content: launchContent() },
+        { id: "old-gallery", type: "launch_gallery", sort_order: 10, visible: false, content: galleryV1 },
+      ],
+    }];
+    const r = await rollbackPageAction(PAGE, "eeeeeeee-0000-4000-8000-000000000001");
+    const back = (d.tables.cms_blocks ?? []).filter((b) => b.type === "launch_gallery");
+    check("Historia → Przywróć keeps the gallery: re-created with identical content and switch",
+      r.ok && back.length === 1 && same(back[0].content, galleryV1) && back[0].visible === false, JSON.stringify(back));
+  }
+  {
+    const d = fresh();
+    const r = await publishPageAction(PAGE);
+    const page = d.tables.cms_pages[0];
+    const snap = page.published_snapshot as Row[];
+    const order = d.calls.flatMap((c, i) => (c.kind === "from" && c.op !== "select" && (c.table === "cms_page_versions" || c.table === "cms_pages") ? [`${c.table}:${i}`] : []));
+    check("publishPageAction (now through the shared publishPage) publishes every block, the galleries included",
+      r.ok && snap.length === 3 && snap.some((b) => b.id === B_GAL && b.type === "launch_gallery") && page.status === "published");
+    check("…the version is written FIRST, then the page; one audit row; the public cache cleared",
+      order.length === 2 && order[0].startsWith("cms_page_versions") && order[1].startsWith("cms_pages")
+      && iceState.audits.length === 1 && iceState.audits[0].action === "cms.published" && iceState.revalidated.includes("tag:cms-pages"),
+      JSON.stringify({ order, audits: iceState.audits.map((a) => a.action), rev: iceState.revalidated }));
+  }
+  {
+    const d = fresh();
+    d.tables.cms_blocks = d.tables.cms_blocks.filter((b) => b.type !== "launch");
+    const r = await ensureLaunchSectionAction(PAGE);
+    const created = (d.tables.cms_blocks ?? []).find((b) => b.type === "launch");
+    check("ensureLaunchSectionAction on a page without its section creates one with EVERY field present (at least {})",
+      r.ok && Boolean(created) && LAUNCH_KEYS.every((k) => isObj((created?.content as CmsBlockContent | undefined)?.fields?.[k])));
+    check("…and never creates a gallery", (d.tables.cms_blocks ?? []).filter((b) => b.type === "launch_gallery").length === 1);
+  }
+  {
+    const d = fresh();
+    const r = await ensureLaunchSectionAction(PAGE);
+    const draft = block(d, B_LAUNCH)?.content as CmsBlockContent;
+    const live = (d.tables.cms_pages[0].published_snapshot as Row[])[0].content as CmsBlockContent;
+    check("an existing section missing fields: draft AND published copy normalised the same way when they were equal (the inline editor is not locked out)",
+      r.ok && LAUNCH_KEYS.every((k) => isObj(draft.fields?.[k])) && same(draft, live) && d.tables.cms_pages[0].published_at === T0
+      && draft.fields?.["hero.h1"]?.pl === "Stary");
+  }
+  {
+    const d = fresh();
+    const other = { fields: { "hero.h1": { pl: "Inny" } } };
+    (d.tables.cms_pages[0].published_snapshot as Row[])[0].content = other;
+    const r = await ensureLaunchSectionAction(PAGE);
+    check("…when the draft already differs from what is published, only the draft is normalised",
+      r.ok && LAUNCH_KEYS.every((k) => isObj((block(d, B_LAUNCH)?.content as CmsBlockContent).fields?.[k]))
+      && same((d.tables.cms_pages[0].published_snapshot as Row[])[0].content, other));
+  }
+  {
+    const d = fresh();
+    const full = ensureLaunchFieldObjects(launchContent(), LAUNCH_KEYS);
+    (block(d, B_LAUNCH) as Row).content = full;
+    (d.tables.cms_pages[0].published_snapshot as Row[])[0].content = full;
+    const r = await ensureLaunchSectionAction(PAGE);
+    check("…and a section that already holds every field is not written at all",
+      r.ok && wrote(d, "cms_blocks") === 0 && wrote(d, "cms_pages") === 0);
+  }
+}
 
 console.log(failures === 0 ? "\nAll CMS tests passed." : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

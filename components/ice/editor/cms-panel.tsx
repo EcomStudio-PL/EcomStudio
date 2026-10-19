@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { notify } from "@/lib/notify";
 import { hasInvisible } from "@/lib/ice/stega";
+import { ALLOWED_TOKENS, disallowedTokens } from "@/lib/launch/fields";
 import type { IceAsset, IceCmsField, IceLocale, IceVersion } from "@/lib/ice/types";
 import type { Target } from "./scan";
 import { livePreview } from "./preview";
@@ -37,12 +38,24 @@ function historyKey(ctx: EditorCtx, f: IceCmsField, locale: IceLocale | null): s
   return `${pageId}:${f.blockId}:${[...f.path, ...(locale ? [locale] : [])].join(".")}`;
 }
 
-function localProblem(value: string, multiline: boolean): string | null {
+/** A launch line's key ("hero.offer"), or null for any other CMS field. */
+const launchKey = (f: IceCmsField): string | null => (f.blockType === "launch" && f.path[0] === "fields" ? f.path[1] : null);
+
+/**
+ * Launch lines that may be left empty — the page then shows nothing there.
+ * The inline editor never saves an empty line (`text_empty`), so these are
+ * cleared in Strony WWW, and the panel says so where it matters.
+ */
+const OPTIONAL_LAUNCH = new Set(["feature.1b", "feature.2b", "feature.3b", "creators.signature", "final.sub"]);
+
+function localProblem(value: string, multiline: boolean, key: string | null): string | null {
   if (!value.trim()) return "text_empty";
   if (value.length > 2000) return "text_too_long";
   if (hasInvisible(value)) return "text_invisible";
   if (/[<>]/.test(value)) return "text_markup";
   if (!multiline && /\n/.test(value)) return "text_newline";
+  // The server refuses it too (lib/server/ice/actions.ts cmsSave).
+  if (key && disallowedTokens(key, value).length > 0) return "text_token";
   return null;
 }
 
@@ -92,10 +105,14 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
   const clean = field.multiline
     ? draft.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[\t ]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim()
     : draft.replace(/[\t ]+/g, " ").trim();
-  const problem = localProblem(clean, field.multiline);
+  const key = launchKey(field);
+  const problem = localProblem(clean, field.multiline, key);
   const changed = clean !== (live ?? "");
-  // A field painted as several paragraphs is previewed after saving only.
-  const canPreview = tab === ctx.locale && !field.multiline && target.runs.length > 0;
+  const tokens = key ? ALLOWED_TOKENS[key] ?? [] : [];
+  // A field painted as several paragraphs is previewed after saving only —
+  // and so is a launch line with a {token}: the page shows it with the
+  // approved value in place (or not at all), never the raw token.
+  const canPreview = tab === ctx.locale && !field.multiline && target.runs.length > 0 && !/\{[a-zA-Z_]+\}/.test(clean);
 
   useEffect(() => {
     if (canPreview && !problem) preview.show(clean);
@@ -169,6 +186,8 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
         </span>
       </label>
       {field.multiline && <p className={s.note}>{t("ice.cms.paragraphs")}</p>}
+      {tokens.length > 0 && <p className={s.note}>{t("ice.cms.tokens", { tokens: tokens.map((x) => `{${x}}`).join(", ") })}</p>}
+      {key && OPTIONAL_LAUNCH.has(key) && <p className={s.note}>{t("ice.cms.optionalLine")}</p>}
       {problem && changed && <p className={s.error}>{t(`ice.error.${problem}`)}</p>}
       <p className={s.meta}>{t("ice.cms.versionNote")}</p>
       <div className={s.between}>

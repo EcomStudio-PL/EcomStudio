@@ -25,10 +25,13 @@ const KNOWN_ERRORS = new Set(["step_up_required", "unsupported", "not_admin", "u
  * page) and then opens that page — with `#ice=<element id>` when one element
  * was asked for, which the editor opens on arrival.
  */
-export function IceEditButton({ path, elementId, className }: {
+export function IceEditButton({ path, elementId, className, label }: {
   path: string;
   elementId?: string | null;
   className?: string;
+  /** What the button says when it opens one particular thing — the builder's
+   *  "Edytuj pary w Edytuj stronę" — instead of "Edytuj wizualnie". */
+  label?: string;
 }) {
   const { t } = useI18n();
   const [pending, start] = useTransition();
@@ -55,7 +58,7 @@ export function IceEditButton({ path, elementId, className }: {
     <Button type="button" size="sm" variant="secondary" onClick={open} disabled={busy} aria-busy={busy}
       data-ice-admin-edit={path} className={cn("h-11 shrink-0 lg:h-9", className)}>
       <PenLine size={14} aria-hidden />
-      {busy ? t("iceAdmin.opening") : t("iceAdmin.edit")}
+      {busy ? t("iceAdmin.opening") : label ?? t("iceAdmin.edit")}
     </Button>
   );
 }

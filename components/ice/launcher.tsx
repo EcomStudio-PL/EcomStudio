@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { notify } from "@/lib/notify";
 import { stegaStrip } from "@/lib/ice/stega";
 import { iceSetEditAction } from "@/app/actions/ice";
+import { useFramed } from "./framed";
 
 /**
  * THE "EDYTUJ STRONĘ" BUTTON — the only part of the visual editor a page loads
@@ -34,6 +35,9 @@ export function IceLauncher({ sessions, supported }: { sessions: Session[]; supp
   const session = sessions.find((s) => s.path === path) ?? null;
   const [pending, start] = useTransition();
   const [lift, setLift] = useState(false);
+  // In a preview frame (the builder's, the gallery panel's): no button and no
+  // editor — the frame shows the page as a visitor sees it.
+  const framed = useFramed();
 
   // Text copied off a page in edit mode never carries the invisible markers.
   useEffect(() => {
@@ -65,6 +69,7 @@ export function IceLauncher({ sessions, supported }: { sessions: Session[]; supp
     };
   }, [path]);
 
+  if (framed) return null;
   if (session) {
     return (
       <Suspense fallback={null}>

@@ -21,8 +21,14 @@
  *      rows and the one cache tag each write makes stale
  *   J  boundaries: the "use server" file only delegates, server-only
  *      everywhere in lib/server/ice, the client never imports the registry
+ *   K  the launch page's PRZED/PO galleries (lib/server/ice/gallery.ts): the
+ *      state, validation refusals, compare-and-set, publish refusals and the
+ *      launch-draft confirmation, discard / history / restore by gallery KEY,
+ *      and the launch copy's token rule in cmsSave
  *
  * Mocks only — no network, no database (scripts/stubs/ice-*.ts).
+ * Optional: I18N_FRAGMENT=<path to an i18n-*.json fragment> checks the new
+ * labels against the dictionaries with that fragment merged in.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -63,6 +69,12 @@ import { CMS_TAG } from "@/lib/server/public-site";
 import { MEDIA_SLOT_TAG } from "@/lib/server/media-slots";
 import { iceState, resetIceState } from "./stubs/ice-state";
 import { FakeDb, STORAGE_PUBLIC, type Row } from "./stubs/ice-fake-db";
+import { LAUNCH_FIELDS, launchDefaultsFrom } from "@/lib/server/launch-page";
+import { LAUNCH_V2_BUILDER_ONLY, LAUNCH_V2_TEXT_FIELDS, disallowedTokens } from "@/lib/launch/fields";
+import { GALLERY_KEYS, GALLERY_SORT, mediaPublicPrefix, type GalleryItem } from "@/lib/launch/gallery";
+import { SUPABASE_URL } from "@/lib/supabase/config";
+import { canonicalJson } from "@/lib/cms";
+import type { IceGallery, IceGalleryState, IceGalleryVersion } from "@/lib/ice/types";
 
 let failures = 0;
 let passed = 0;
@@ -88,6 +100,45 @@ function deepFreeze<T>(o: T): T {
   }
   return o;
 }
+
+/**
+ * The shipped dictionaries — with an i18n fragment merged in when
+ * I18N_FRAGMENT names one (a track's keys before they land). Always a deep
+ * COPY: Z below proves nothing in this run touched the real ones.
+ */
+function withFragment(): Record<IceLocale, Dict> {
+  const out = JSON.parse(JSON.stringify(DICTS)) as Record<IceLocale, Dict>;
+  const path = process.env.I18N_FRAGMENT;
+  if (!path) return out;
+  const merge = (into: Dict, from: Dict) => {
+    for (const [k, v] of Object.entries(from)) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        if (!into[k] || typeof into[k] !== "object") into[k] = {};
+        merge(into[k] as Dict, v as Dict);
+      } else into[k] = v;
+    }
+  };
+  const fragment = JSON.parse(readFileSync(path, "utf8")) as Record<string, Dict>;
+  for (const l of LOCALES) merge(out[l], fragment[l] ?? {});
+  return out;
+}
+
+/**
+ * Every editor string the gallery panel (and the editor's gallery entry
+ * points) asks for: the literal keys read out of the source, plus the few
+ * built from a variable there (confirm dialogs, preview devices).
+ */
+const ICE_GALLERY_LABELS: string[] = (() => {
+  const src = ["components/ice/editor/gallery-panel.tsx", "components/ice/editor/editor.tsx", "components/ice/editor/page-panels.tsx",
+    "components/ice/editor/cms-panel.tsx"].map((f) => readFileSync(f, "utf8")).join("\n");
+  const literal = [...src.matchAll(/["'`](ice\.(?:gallery|bulk|pair|media|crop|cms|bar|kind)\.[A-Za-z0-9_.]+)["'`]/g)].map((m) => m[1]);
+  const built = [
+    ...["remove", "publish", "discard", "close", "restore"].flatMap((k) => [`ice.gallery.confirm.${k}.title`, `ice.gallery.confirm.${k}.action`]),
+    "ice.gallery.confirm.discard.body", "ice.gallery.confirm.close.body",
+    "ice.gallery.preview.desktop", "ice.gallery.preview.phone",
+  ];
+  return [...new Set([...literal, ...built])].sort();
+})();
 
 /** Every string leaf of a dictionary, with its dotted path. */
 function leaves(d: unknown, path: string[] = [], out: [string, string][] = []): [string, string][] {
@@ -395,6 +446,55 @@ async function sectionA() {
   const launchBad = LAUNCH_TEXT_FIELDS.filter((f) => /consent|safety|placeholder|seo/i.test(f) || /^hero\.image/.test(f));
   check("A14 LAUNCH_TEXT_FIELDS exclude consent/safety/placeholder/seo/hero.image", launchBad.length === 0 && LAUNCH_TEXT_FIELDS.length > 0, short(launchBad));
   check("A14b LAUNCH_TEXT_FIELDS are unique", new Set(LAUNCH_TEXT_FIELDS).size === LAUNCH_TEXT_FIELDS.length);
+  /*
+    A14, UPDATED DELIBERATELY FOR LANDING V2. The launch page grew new copy
+    (offer line variants, after-signup screen, galleries' headings, cost strip,
+    creators, final CTA, sticky bar); every new localized line is editable
+    inline EXCEPT the builder-only ones — the marketing consent and the two
+    consent link labels (lib/launch/fields.ts LAUNCH_V2_BUILDER_ONLY) — on top
+    of the old exclusions above. The new lines are APPENDED: a marker carries
+    a field's index, and F2 pins hero.h1 at index 1.
+  */
+  const LEGACY_24 = [
+    "hero.badge", "hero.h1", "hero.h1Accent", "hero.sub", "hero.cta",
+    "feature.1t", "feature.1b", "feature.2t", "feature.2b", "feature.3t", "feature.3b",
+    "form.title", "form.sub", "perks.heading",
+    "benefit.1", "benefit.1sub", "benefit.2", "benefit.2sub", "benefit.3", "benefit.3sub",
+    "social.heading", "success.title", "success.body", "success.follow",
+  ];
+  const v2Inline = LAUNCH_V2_TEXT_FIELDS.filter((k) => !(LAUNCH_V2_BUILDER_ONLY as readonly string[]).includes(k));
+  check("A14c LAUNCH_TEXT_FIELDS = the 24 earlier lines (same order) + every V2 line except the builder-only consent ones, appended",
+    same(LAUNCH_TEXT_FIELDS, [...LEGACY_24, ...v2Inline]) && LAUNCH_TEXT_FIELDS[1] === "hero.h1"
+    && LAUNCH_V2_BUILDER_ONLY.every((k) => !LAUNCH_TEXT_FIELDS.includes(k)), short(LAUNCH_TEXT_FIELDS.slice(24)));
+  const notOnPage = LAUNCH_TEXT_FIELDS.filter((k) => !(LAUNCH_FIELDS as readonly string[]).includes(k));
+  check("A14d every inline launch line is a field the page reads (LAUNCH_FIELDS)", notOnPage.length === 0, short(notOnPage));
+  const badTokens: string[] = [];
+  for (const l of LOCALES) {
+    const defaults = launchDefaultsFrom(DICTS[l]);
+    for (const k of LAUNCH_TEXT_FIELDS) {
+      const v = defaults[k];
+      if (typeof v === "string" && disallowedTokens(k, v).length) badTokens.push(`${l}:${k}`);
+    }
+  }
+  check("A14e no shipped default of an inline launch line uses a {token} its line does not allow (lib/launch/fields.ts ALLOWED_TOKENS)",
+    badTokens.length === 0, short(badTokens));
+  {
+    const labels = [
+      ...LAUNCH_TEXT_FIELDS.map((k) => `ice.launchField.${k.replace(/\./g, "_")}`),
+      "ice.block.launch_gallery", "ice.kind.gallery", "ice.bar.galleries", "ice.cms.tokens", "ice.cms.optionalLine",
+      ...GALLERY_KEYS.map((k) => `ice.gallery.name.${k}`),
+      ...["text_token", "bad_key", "bad_input", "too_many", "bad_item", "duplicate_id", "incomplete_pairs", "launch_draft", "version_missing"]
+        .map((c) => `ice.error.${c}`),
+      ...ICE_GALLERY_LABELS,
+    ];
+    const dicts = withFragment();
+    const missing = LOCALES.flatMap((l) => labels.filter((k) => {
+      const v = lookup(dicts[l], k);
+      return typeof v !== "string" || !v.trim();
+    }).map((k) => `${l}:${k}`));
+    check(`A14f every inline launch line's label and every gallery-panel string exists in pl, en and de (${labels.length} keys${process.env.I18N_FRAGMENT ? ", fragment merged" : ""})`,
+      missing.length === 0, `${missing.length} missing: ${short(missing, 6)}`);
+  }
   check("A15 pagesOfText lists every page a key renders on (a /home key → [/home])",
     same(pagesOfText(pageTextKeys(HOME)[0]), ["/home"]) && pagesOfText("nope.key").length === 0);
 }
@@ -720,6 +820,8 @@ async function sectionF() {
   const launch = blockFields({ id: B_LAUNCH, type: "launch", content: { fields: { "hero.h1": { pl: "H1" } } } }, null);
   check("F2 a launch block lists LAUNCH_TEXT_FIELDS under [\"fields\", f]",
     same(launch.map((x) => x.path), LAUNCH_TEXT_FIELDS.map((x) => ["fields", x])) && launch.every((x, i) => x.n === i && x.kind === "text") && same(launch[1].values, { pl: "H1" }));
+  check("F2b a launch_gallery block has no inline text fields (its pairs are the gallery panel's; nothing in it is ever marked)",
+    blockFields({ id: B_LAUNCH, type: "launch_gallery", content: { gallery: "thumbs", items: [] } }, null).length === 0);
   check("F3 unknown block type → []; non-uuid id → []; no id → []",
     blockFields({ id: B_HERO, type: "custom_html", content: {} }, null).length === 0
     && blockFields({ id: "hero-1", type: "hero", content: {} }, null).length === 0 && blockFields({ type: "hero", content: {} }, null).length === 0);
@@ -1018,6 +1120,12 @@ async function sectionI() {
     ["uploadTicket", () => actions.uploadTicket({ name: "a.png", size: 100, type: "image/png" })],
     ["registerUpload", () => actions.registerUpload({ path: uploadPath(), name: "a.png" })],
     ["cmsSave", () => actions.cmsSave({ blockId: B_HERO, path: ["title"], locale: "pl", value: "Nowy", expected: "Stary tytuł", base: null })],
+    ["galleryState", () => actions.galleryState("/")],
+    ["gallerySave", () => actions.gallerySave({ key: "thumbs", items: [], visible: true, base: null })],
+    ["galleryPublish", () => actions.galleryPublish({ confirmLaunchDraft: true })],
+    ["galleryDiscard", () => actions.galleryDiscard({ key: "thumbs", base: null })],
+    ["galleryVersions", () => actions.galleryVersions({ key: "thumbs" })],
+    ["galleryRestore", () => actions.galleryRestore({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
   ];
   const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths" && k !== "iceDbReady");
   const covered = new Set(CALLS.map(([n]) => n.replace(/\(.*\)$/, "")));
@@ -1056,6 +1164,12 @@ async function sectionI() {
       ["iceUploadTicketAction", () => wrappers.iceUploadTicketAction({ name: "a", size: 1, type: "image/png" })],
       ["iceRegisterUploadAction", () => wrappers.iceRegisterUploadAction({ path: uploadPath(), name: "a" })], ["iceCmsMapAction", () => wrappers.iceCmsMapAction("/oferta")],
       ["iceCmsSaveAction", () => wrappers.iceCmsSaveAction({ blockId: B_HERO, path: ["title"], locale: "pl", value: "x", expected: null, base: null })],
+      ["iceGalleryStateAction", () => wrappers.iceGalleryStateAction("/")],
+      ["iceGallerySaveAction", () => wrappers.iceGallerySaveAction({ key: "thumbs", items: [], visible: true, base: null })],
+      ["iceGalleryPublishAction", () => wrappers.iceGalleryPublishAction({})],
+      ["iceGalleryDiscardAction", () => wrappers.iceGalleryDiscardAction({ key: "thumbs", base: null })],
+      ["iceGalleryVersionsAction", () => wrappers.iceGalleryVersionsAction({ key: "thumbs" })],
+      ["iceGalleryRestoreAction", () => wrappers.iceGalleryRestoreAction({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
     ];
     const names = Object.keys(wrappers);
     const results = await Promise.all(wrapperCalls.map(([, f]) => f()));
@@ -1530,6 +1644,280 @@ async function sectionI() {
   }
 }
 
+/* ══ K. THE LAUNCH PAGE'S GALLERIES ════════════════════════════════════════ */
+
+const GPFX = mediaPublicPrefix(SUPABASE_URL);
+const GURL = (n: string) => `${GPFX}gal/${n}.png`;
+const I1 = "a0a0a0a0-0000-4000-8000-000000000001";
+const I2 = "a0a0a0a0-0000-4000-8000-000000000002";
+const I3 = "a0a0a0a0-0000-4000-8000-000000000003";
+const G_DRAFT = "9a9a9a9a-0000-4000-8000-000000000001";
+/** The same gallery's id in the published snapshot: a rollback in Strony WWW
+ *  re-creates every block, so draft and snapshot ids need not agree. */
+const G_LIVE = "9a9a9a9a-0000-4000-8000-000000000002";
+const B_LAUNCHD = "9a9a9a9a-0000-4000-8000-000000000003";
+const V1 = "eeeeeeee-0000-4000-8000-000000000001";
+const V2 = "eeeeeeee-0000-4000-8000-000000000002";
+const V3 = "eeeeeeee-0000-4000-8000-000000000003";
+const V4 = "eeeeeeee-0000-4000-8000-000000000004";
+
+const pairOf = (id: string, a: string | null, b: string | null): GalleryItem =>
+  ({ id, before: a ? { url: GURL(a) } : null, after: b ? { url: GURL(b) } : null });
+const LIVE_ITEMS = () => [pairOf(I1, "a1", "b1")];
+const DRAFT_ITEMS = () => [pairOf(I1, "a1", "b1"), pairOf(I2, "a2", "b2")];
+const launchCopy = () => ({ fields: { "hero.h1": { pl: "H" }, "hero.offer": { pl: "Stara oferta" } } });
+
+/** The launch page at "/", published with its copy and one gallery; the
+ *  draft gallery has one pair more than the live one. */
+function galleryDb(): FakeDb {
+  const db = freshDb();
+  const home = db.tables.cms_pages.find((p) => p.id === HOMEPAGE_ID) as Row;
+  home.published_at = BASE_TS;
+  home.seo = {};
+  home.published_snapshot = [
+    { id: B_LAUNCHD, type: "launch", sort_order: 0, visible: true, content: launchCopy() },
+    { id: G_LIVE, type: "launch_gallery", sort_order: 10, visible: true, content: { gallery: "thumbs", items: LIVE_ITEMS() } },
+  ];
+  db.tables.cms_blocks = db.tables.cms_blocks.filter((b) => b.page_id !== HOMEPAGE_ID);
+  db.tables.cms_blocks.push(
+    { id: B_LAUNCHD, page_id: HOMEPAGE_ID, type: "launch", sort_order: 0, visible: true, content: launchCopy(), updated_at: BASE_TS },
+    { id: G_DRAFT, page_id: HOMEPAGE_ID, type: "launch_gallery", sort_order: 10, visible: true, content: { gallery: "thumbs", items: DRAFT_ITEMS() }, updated_at: BASE_TS },
+  );
+  db.tables.media_assets = ["a1", "b1", "a2", "b2", "a3", "b3"].map((n, i) => ({
+    id: `5a5a5a5a-0000-4000-8000-00000000000${i + 1}`, kind: "image", mime: "image/png", size_bytes: 1000, storage_path: `gal/${n}.png`,
+    external_url: null, poster_url: null, title: `${n}.png`, alt: null, width: 1080, height: 1080, variants: null, created_at: "2026-01-01T00:00:00Z",
+  }));
+  db.tables.media_assets.push({
+    id: "5a5a5a5a-0000-4000-8000-0000000000ff", kind: "video", mime: "video/mp4", size_bytes: 1000, storage_path: "gal/clip.png",
+    external_url: null, poster_url: null, title: "clip", alt: null, width: null, height: null, variants: null, created_at: "2026-01-01T00:00:00Z",
+  });
+  db.tables.cms_page_versions = [];
+  return db;
+}
+const blockRow = (db: FakeDb, id: string) => db.tables.cms_blocks.find((b) => b.id === id) as Row | undefined;
+const writesTo = (db: FakeDb, table: string) => db.calls.filter((c) => c.kind === "from" && c.table === table && c.op !== "select").length;
+
+async function sectionK() {
+  console.log("\nK. GALLERIES — the launch page's PRZED/PO pairs: draft, publish, history");
+
+  // ── galleryState ─────────────────────────────────────────────────────────
+  {
+    const db = galleryDb();
+    const r = await actions.galleryState("/");
+    const st = r.ok ? (r.data as IceGalleryState) : null;
+    const thumbs = st?.galleries.find((g) => g.key === "thumbs");
+    const retouch = st?.galleries.find((g) => g.key === "retouch");
+    check("K1 galleryState(/): the three galleries in order, each found by its KEY (draft and snapshot ids differ)",
+      Boolean(st) && same(st!.galleries.map((g) => g.key), [...GALLERY_KEYS]) && st!.pageId === HOMEPAGE_ID
+      && thumbs?.blockId === G_DRAFT && same(thumbs?.draft, DRAFT_ITEMS()) && same(thumbs?.published, LIVE_ITEMS())
+      && thumbs?.diverged === true && thumbs?.updatedAt === BASE_TS && thumbs?.visible === true && thumbs?.publishedVisible === true,
+      JSON.stringify(thumbs));
+    check("K1b a gallery never saved: no block, empty, switch on by default, nothing published, not diverged",
+      retouch?.blockId === null && retouch.draft.length === 0 && retouch.published.length === 0 && retouch.publishedVisible === null
+      && retouch.diverged === false && retouch.visible === true);
+    check("K1c the launch copy has no unpublished draft; every picture's library facts come keyed by the URL a pair stores",
+      st?.unpublishedLaunchDraft === false && st.assets[GURL("a2")]?.width === 1080 && st.assets[GURL("b1")]?.kind === "image"
+      && Object.keys(st.assets).length === 4);
+    check("K1d reading the state writes nothing, audits nothing, revalidates nothing",
+      writesTo(db, "cms_blocks") === 0 && writesTo(db, "cms_pages") === 0 && iceState.audits.length === 0 && iceState.revalidated.length === 0);
+    const other = await actions.galleryState("/oferta");
+    const db2 = galleryDb();
+    (db2.tables.cms_pages.find((p) => p.id === HOMEPAGE_ID) as Row).kind = "page";
+    const notLaunch = await actions.galleryState("/");
+    check("K1e any other page, or a homepage that is not the launch page → unsupported",
+      !other.ok && other.error === "unsupported" && !notLaunch.ok && notLaunch.error === "unsupported");
+  }
+
+  // ── gallerySave refusals ─────────────────────────────────────────────────
+  const save = (o: Partial<Parameters<typeof actions.gallerySave>[0]>) =>
+    actions.gallerySave({ key: "thumbs", items: DRAFT_ITEMS(), visible: true, base: BASE_TS, ...o } as Parameters<typeof actions.gallerySave>[0]);
+  const many = Array.from({ length: 31 }, (_, i) => pairOf(`b0b0b0b0-0000-4000-8000-${String(i + 1).padStart(12, "0")}`, "a1", "b1"));
+  const REFUSALS: [string, Partial<Parameters<typeof actions.gallerySave>[0]>, string, unknown?][] = [
+    ["an unknown gallery key", { key: "banners" as "thumbs" }, "bad_key"],
+    ["a switch that is not a boolean", { visible: "yes" as unknown as boolean }, "bad_input"],
+    ["a base that is not a string", { base: 42 as unknown as string }, "bad_input"],
+    ["items that are not a list", { items: {} as unknown as GalleryItem[] }, "bad_item"],
+    ["31 pairs (the limit is 30)", { items: many }, "too_many"],
+    ["a pair id that is not a uuid", { items: [{ ...pairOf(I1, "a1", "b1"), id: "pair-1" }] }, "bad_item", { index: 1 }],
+    ["the same pair twice", { items: [pairOf(I1, "a1", "b1"), pairOf(I1, "a2", "b2")] }, "duplicate_id", { index: 2 }],
+    ["a picture from another host", { items: [{ ...pairOf(I1, "a1", null), after: { url: "https://evil.example/x.png" } }] }, "bad_item", { index: 1 }],
+    ["markup in a caption", { items: [{ ...pairOf(I1, "a1", "b1"), caption: { pl: "<b>x</b>" } }] }, "bad_item", { index: 1 }],
+    ["a zoom past 2.5", { items: [{ ...pairOf(I1, "a1", "b1"), before: { url: GURL("a1"), crop: { x: 50, y: 50, zoom: 3 } } }] }, "bad_item", { index: 1 }],
+    ["a bucket URL the library does not know", { items: [pairOf(I1, "a1", "zz")] }, "asset_missing", { index: 1 }],
+    ["a video as a picture", { items: [pairOf(I1, "a1", "b1"), { ...pairOf(I2, "a2", null), after: { url: `${GPFX}gal/clip.png` } }] }, "asset_kind", { index: 2 }],
+  ];
+  for (const [what, input, code, current] of REFUSALS) {
+    const db = galleryDb();
+    const r = await save(input);
+    check(`K2 gallerySave refuses ${what} → ${code}${current ? " (naming the pair)" : ""}, nothing written`,
+      !r.ok && r.error === code && (current === undefined || same(r.current, current))
+      && writesTo(db, "cms_blocks") === 0 && iceState.audits.length === 0 && same(blockRow(db, G_DRAFT)?.content, { gallery: "thumbs", items: DRAFT_ITEMS() }),
+      JSON.stringify(r));
+  }
+
+  // ── gallerySave: compare-and-set, update, create ─────────────────────────
+  {
+    const db = galleryDb();
+    const stale = await save({ base: "2026-09-01T00:00:00.000Z" });
+    const cur = (stale.ok ? null : stale.current) as IceGallery | null;
+    check("K3 a stale base → conflict, with the gallery as it is now; nothing written",
+      !stale.ok && stale.error === "conflict" && cur?.key === "thumbs" && cur.updatedAt === BASE_TS && cur.draft.length === 2
+      && writesTo(db, "cms_blocks") === 0 && iceState.audits.length === 0, JSON.stringify(stale));
+    const noBase = await save({ base: null });
+    check("K3b no base while the gallery exists (another tab created it) → conflict", !noBase.ok && noBase.error === "conflict");
+  }
+  {
+    const db = galleryDb();
+    const items = [pairOf(I2, "a2", "b2"), { ...pairOf(I1, "a1", "b1"), caption: { pl: "Buty", en: "Shoes" } }];
+    const r = await save({ items, visible: false });
+    const row = blockRow(db, G_DRAFT);
+    const call = db.calls.find((c) => c.kind === "from" && c.table === "cms_blocks" && c.op === "update");
+    check("K4 a save writes the DRAFT block: {gallery, items} in the new order, the switch, compare-and-set on updated_at",
+      r.ok && same(row?.content, { gallery: "thumbs", items }) && row?.visible === false
+      && call?.kind === "from" && call.ops.includes(`eq(updated_at,${BASE_TS})`) && call.ops.includes(`eq(id,${G_DRAFT})`), JSON.stringify(r));
+    check("K4b … the published snapshot is untouched (no publish), the audit row keeps the draft it replaced, nothing is revalidated",
+      same((db.tables.cms_pages.find((p) => p.id === HOMEPAGE_ID)?.published_snapshot as Row[])[1].content, { gallery: "thumbs", items: LIVE_ITEMS() })
+      && iceState.audits.length === 1 && iceState.audits[0].action === "ice.gallery.saved"
+      && same((iceState.audits[0].before as { draft: { items: unknown[] } }).draft.items, DRAFT_ITEMS()) && iceState.revalidated.length === 0);
+  }
+  {
+    const db = galleryDb();
+    const r = await save({ key: "retouch", items: [pairOf(I3, "a3", "b3")], base: null });
+    const created = db.tables.cms_blocks.find((b) => b.type === "launch_gallery" && (b.content as { gallery?: string }).gallery === "retouch");
+    check("K5 the first save of a gallery creates its block (draft): type launch_gallery, on the launch page, at its fixed place",
+      r.ok && created?.page_id === HOMEPAGE_ID && created.sort_order === GALLERY_SORT.retouch && created.visible === true
+      && same(created.content, { gallery: "retouch", items: [pairOf(I3, "a3", "b3")] }) && (r.ok && r.data.blockId === created.id));
+    const db2 = galleryDb();
+    const base = db2.client();
+    iceState.client = {
+      ...base,
+      from(table: string) {
+        const q = base.from(table);
+        if (table !== "cms_blocks") return q;
+        return Object.assign(q, {
+          insert: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: "duplicate key value violates unique constraint \"cms_blocks_one_launch_gallery\"", code: "23505" } }) }) }),
+        });
+      },
+    };
+    const race = await save({ key: "fashion", items: [], base: null });
+    check("K5b two first saves at once: the one-gallery-per-key index refuses the second (23505) → conflict, not a second block",
+      !race.ok && race.error === "conflict", JSON.stringify(race));
+  }
+
+  // ── galleryPublish ───────────────────────────────────────────────────────
+  {
+    const db = galleryDb();
+    (blockRow(db, G_DRAFT) as Row).content = { gallery: "thumbs", items: [pairOf(I1, "a1", "b1"), pairOf(I3, "a3", null)] };
+    const r = await actions.galleryPublish({ confirmLaunchDraft: true });
+    check("K6 publish refuses while a SWITCHED-ON gallery holds an incomplete pair, naming it (1-based) — nothing written",
+      !r.ok && r.error === "incomplete_pairs" && same(r.current, { incomplete: { thumbs: [2] } })
+      && writesTo(db, "cms_page_versions") === 0 && writesTo(db, "cms_pages") === 0, JSON.stringify(r));
+    (blockRow(db, G_DRAFT) as Row).visible = false;
+    const hidden = await actions.galleryPublish({});
+    check("K6b … a switched-OFF gallery with an incomplete pair does not block publishing", hidden.ok, JSON.stringify(hidden));
+  }
+  {
+    const db = galleryDb();
+    (blockRow(db, B_LAUNCHD) as Row).content = { fields: { "hero.h1": { pl: "Szkic z Strony WWW" } } };
+    const r = await actions.galleryPublish({});
+    check("K7 the launch copy has an unpublished builder draft → launch_draft until confirmed; nothing written",
+      !r.ok && r.error === "launch_draft" && writesTo(db, "cms_page_versions") === 0 && writesTo(db, "cms_pages") === 0);
+    const st = await actions.galleryState("/");
+    check("K7b … and the state says so (unpublishedLaunchDraft)", st.ok && (st.data as IceGalleryState).unpublishedLaunchDraft === true);
+    iceState.audits = []; iceState.revalidated = [];
+    const ok = await actions.galleryPublish({ confirmLaunchDraft: true });
+    const page = db.tables.cms_pages.find((p) => p.id === HOMEPAGE_ID) as Row;
+    const snap = page.published_snapshot as Row[];
+    const version = db.tables.cms_page_versions[0];
+    check("K7c confirmed: the whole page is published through the CMS's publish — a version row first, then the snapshot with the draft gallery",
+      ok.ok && ok.data.version === 1 && version?.reason === "publish" && version?.version === 1
+      && same(snap.find((b) => b.type === "launch_gallery")?.content, { gallery: "thumbs", items: DRAFT_ITEMS() })
+      && snap.find((b) => b.type === "launch_gallery")?.id === G_DRAFT, JSON.stringify(ok));
+    check("K7d … one audit row (ice.gallery.published, with launchDraft), and exactly the CMS tag and \"/\" revalidated",
+      iceState.audits.length === 1 && iceState.audits[0].action === "ice.gallery.published"
+      && (iceState.audits[0].after as { launchDraft?: boolean }).launchDraft === true
+      && same(iceState.revalidated, [`tag:${CMS_TAG}`, "path:/"]), JSON.stringify(iceState.revalidated));
+  }
+
+  // ── galleryDiscard ───────────────────────────────────────────────────────
+  {
+    const db = galleryDb();
+    const r = await actions.galleryDiscard({ key: "thumbs", base: BASE_TS });
+    const row = blockRow(db, G_DRAFT);
+    check("K8 discard puts the PUBLISHED pairs back into the draft — found by key although the snapshot's block id differs",
+      r.ok && same(row?.content, { gallery: "thumbs", items: LIVE_ITEMS() }) && row?.visible === true
+      && iceState.audits[0]?.action === "ice.gallery.discarded"
+      && same((iceState.audits[0]?.before as { draft: { items: unknown[] } }).draft.items, DRAFT_ITEMS()), JSON.stringify(r));
+    const db2 = galleryDb();
+    const stale = await actions.galleryDiscard({ key: "thumbs", base: "2026-09-01T00:00:00.000Z" });
+    const missing = await actions.galleryDiscard({ key: "retouch", base: null });
+    check("K8b a stale base → conflict; a gallery with no draft block → block_missing (discard never creates one)",
+      !stale.ok && stale.error === "conflict" && !missing.ok && missing.error === "block_missing" && writesTo(db2, "cms_blocks") === 0);
+  }
+
+  // ── galleryVersions / galleryRestore ─────────────────────────────────────
+  const withVersions = () => {
+    const db = galleryDb();
+    const gal = (id: string, items: GalleryItem[], visible = true) => ({ id, type: "launch_gallery", sort_order: 10, visible, content: { gallery: "thumbs", items } });
+    db.tables.cms_page_versions = [
+      { id: V1, page_id: HOMEPAGE_ID, version: 1, reason: "publish", label: null, created_at: "2026-10-01T09:00:00Z", created_by: ADMIN, snapshot: [gal("x1", LIVE_ITEMS())] },
+      { id: V2, page_id: HOMEPAGE_ID, version: 2, reason: "publish", label: "Edytor wizualny · fields.hero.h1 (pl)", created_at: "2026-10-01T10:00:00Z", created_by: ADMIN, snapshot: [gal("x2", LIVE_ITEMS())] },
+      { id: V3, page_id: HOMEPAGE_ID, version: 3, reason: "publish", label: null, created_at: "2026-10-01T11:00:00Z", created_by: CUSTOMER, snapshot: [gal("x3", DRAFT_ITEMS())] },
+      { id: V4, page_id: HOMEPAGE_ID, version: 4, reason: "rollback", label: null, created_at: "2026-10-01T12:00:00Z", created_by: null, snapshot: [{ id: "x4", type: "launch", content: {} }] },
+    ];
+    return db;
+  };
+  {
+    withVersions();
+    const r = await actions.galleryVersions({ key: "thumbs" });
+    const list = r.ok ? (r.data.versions as IceGalleryVersion[]) : [];
+    check("K9 the history lists each distinct state of THIS gallery once, newest first (v3, v2); a version without it is skipped",
+      r.ok && same(list.map((v) => v.version), [3, 2]) && list[0].fingerprint !== list[1].fingerprint && /^[0-9a-f]{64}$/.test(list[0].fingerprint),
+      JSON.stringify(list.map((v) => [v.version, v.fingerprint.slice(0, 8)])));
+    check("K9b … marked against now (v3 = the draft, v2 = what is published), with the authors and thumbnail facts",
+      list[0]?.isDraft === true && list[0].isPublished === false && list[1]?.isPublished === true && list[1].isDraft === false
+      && list[1].author === "Ada Admin" && r.ok && Boolean(r.data.assets[GURL("a1")]) && iceState.audits.length === 0);
+  }
+  {
+    const db = withVersions();
+    const r = await actions.galleryRestore({ key: "thumbs", version: V1, base: BASE_TS });
+    check("K10 restore copies that version's pairs and switch into the DRAFT (not live), audited, nothing revalidated",
+      r.ok && same(blockRow(db, G_DRAFT)?.content, { gallery: "thumbs", items: LIVE_ITEMS() })
+      && same((db.tables.cms_pages.find((p) => p.id === HOMEPAGE_ID)?.published_snapshot as Row[])[1].content, { gallery: "thumbs", items: LIVE_ITEMS() })
+      && iceState.audits[0]?.action === "ice.gallery.restored" && iceState.revalidated.length === 0, JSON.stringify(r));
+    const bad = await Promise.all([
+      actions.galleryRestore({ key: "thumbs", version: "v1", base: BASE_TS }),
+      actions.galleryRestore({ key: "thumbs", version: V4, base: BASE_TS }),
+      actions.galleryRestore({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-0000000000ff", base: BASE_TS }),
+    ]);
+    check("K10b a malformed id, a version without this gallery, an unknown version → version_missing",
+      bad.every((x) => !x.ok && x.error === "version_missing"), JSON.stringify(bad));
+    const db2 = withVersions();
+    (db2.tables.cms_page_versions[0].snapshot as Row[])[0].content = { gallery: "thumbs", items: [pairOf(I1, "a1", "gone")] };
+    const lost = await actions.galleryRestore({ key: "thumbs", version: V1, base: BASE_TS });
+    check("K10c a version whose picture the library lost is refused (asset_missing, naming the pair), the draft untouched",
+      !lost.ok && lost.error === "asset_missing" && same(lost.current, { index: 1 }) && same(blockRow(db2, G_DRAFT)?.content, { gallery: "thumbs", items: DRAFT_ITEMS() }));
+  }
+
+  // ── cmsSave on the launch copy: the token rule ───────────────────────────
+  {
+    const db = galleryDb();
+    db.rpcs.cms_inline_patch = () => ({ data: NOW_TS, error: null });
+    const base = { blockId: B_LAUNCHD, locale: "pl" as IceLocale, base: BASE_TS };
+    const typo = await actions.cmsSave({ ...base, path: ["fields", "hero.h1"], value: "Start {premiera}", expected: "H" });
+    const wrongLine = await actions.cmsSave({ ...base, path: ["fields", "hero.h1"], value: "{credits} kredytów", expected: "H" });
+    const credit = await actions.cmsSave({ ...base, path: ["fields", "hero.offer"], value: "{credit} kredytów", expected: "Stara oferta" });
+    check("K11 cmsSave refuses a launch line with a token its key does not allow → text_token (naming it), no RPC",
+      [typo, wrongLine, credit].every((x) => !x.ok && x.error === "text_token") && same(typo.ok ? null : typo.current, { tokens: ["premiera"] })
+      && db.rpcCalls("cms_inline_patch").length === 0, JSON.stringify([typo, wrongLine, credit]));
+    const offer = await actions.cmsSave({ ...base, path: ["fields", "hero.offer"], value: "Startujemy {date} – odbierz {credits} kredytów", expected: "Stara oferta" });
+    check("K11b … and lets a line use exactly its own tokens (hero.offer: {date}, {credits})",
+      offer.ok && db.rpcCalls("cms_inline_patch")[0]?.args.p_value === "Startujemy {date} – odbierz {credits} kredytów", JSON.stringify(offer));
+  }
+  check("K12 canonicalJson is what decides \"same gallery\" (key order is not a difference)",
+    canonicalJson({ b: 1, a: 2 }) === canonicalJson({ a: 2, b: 1 }));
+}
+
 /* ══ J. BOUNDARIES ═════════════════════════════════════════════════════════ */
 
 function filesUnder(dir: string): string[] {
@@ -1615,6 +2003,7 @@ async function main() {
   await sectionG();
   await sectionH();
   await sectionI();
+  await sectionK();
   sectionJ();
   check("Z the shipped dictionaries were never mutated by anything in this run", LOCALES.every((l, i) => JSON.stringify(DICTS[l]) === SHIPPED_JSON[i]));
   globalThis.fetch = realFetch;
