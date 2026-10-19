@@ -23,7 +23,9 @@ export const GALLERY_BLOCK_TYPE = "launch_gallery";
 /** Sort order of each gallery's block, after the launch block (0). */
 export const GALLERY_SORT: Record<GalleryKey, number> = { thumbs: 10, retouch: 20, fashion: 30 };
 
-export const GALLERY_MAX_ITEMS = 40;
+/** 3 galleries × 30 pairs × 2 halves = 180 pictures, which keeps the whole
+ *  page inside ONE cms_media_meta lookup (capped at 200 paths). */
+export const GALLERY_MAX_ITEMS = 30;
 export const GALLERY_CAPTION_MAX = 160;
 export const GALLERY_LOCALES = ["pl", "en", "de"] as const;
 export type GalleryLocale = (typeof GALLERY_LOCALES)[number];

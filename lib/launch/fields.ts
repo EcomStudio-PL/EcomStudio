@@ -23,6 +23,8 @@ export const LAUNCH_V2_TEXT_FIELDS = [
   "success.resend", "success.resendHint",
   "channel.q", "channel.allegro", "channel.amazon", "channel.own", "channel.multi", "channel.thanks",
   "ref.title", "ref.body", "ref.bodyNone", "ref.copy",
+  // When credits are promised: they arrive with an account, not with the e-mail.
+  "reward.note",
   // Galleries — their words live here so the inline editor can edit them.
   "gallery.thumbs.eyebrow", "gallery.thumbs.title",
   "gallery.retouch.eyebrow", "gallery.retouch.title",
@@ -49,33 +51,50 @@ export const LAUNCH_V2_BUILDER_ONLY = ["hero.consentMarketing", "consent.termsLa
 
 /**
  * Non-localized values stored directly on the launch block's content (NOT in
- * `fields`): two pictures and the per-section visibility switches. A switch
- * is stored as "1" when the section is HIDDEN and is absent when it shows, so
- * a page published before V2 shows every section by default.
+ * `fields`): two pictures and the per-section visibility switches.
+ *
+ * A switch is stored as "1" (shown) or "0" (hidden); ABSENT means the
+ * section's default below. Two sections default to HIDDEN on purpose: the
+ * cost strip states prices and the "who is behind it" tile speaks for real
+ * people — neither may go public until the owner has looked at it and turned
+ * it on (no unapproved figures, no invented biography).
  */
-export const LAUNCH_HIDE_KEYS = [
-  "hideCountdown", "hideBenefits", "hideCost", "hideCreators",
-  "hideFinal", "hideSticky", "hideChannel", "hideReferral",
+export const LAUNCH_SECTIONS = [
+  "countdown", "benefits", "cost", "creators", "final", "sticky", "channel", "referral",
 ] as const;
-export type LaunchHideKey = (typeof LAUNCH_HIDE_KEYS)[number];
+export type LaunchSection = (typeof LAUNCH_SECTIONS)[number];
+export const SECTION_DEFAULT_SHOWN: Record<LaunchSection, boolean> = {
+  countdown: true, benefits: true, cost: false, creators: false,
+  final: true, sticky: true, channel: true, referral: true,
+};
+/** The stored key of a section switch: "showCost", "showCreators", … */
+export const sectionKey = (s: LaunchSection) => `show${s[0].toUpperCase()}${s.slice(1)}` as `show${Capitalize<LaunchSection>}`;
+export const LAUNCH_SHOW_KEYS = LAUNCH_SECTIONS.map(sectionKey);
+export type LaunchShowKey = ReturnType<typeof sectionKey>;
 export const LAUNCH_MEDIA_KEYS = ["creatorsImage", "ogImage"] as const;
 export type LaunchMediaKey = (typeof LAUNCH_MEDIA_KEYS)[number];
 
-export type LaunchPlain = Partial<Record<LaunchHideKey | LaunchMediaKey, string>>;
+export type LaunchPlain = Partial<Record<LaunchShowKey | LaunchMediaKey, string>>;
 
 /** Read the plain values off a launch block's content (lenient). */
 export function launchPlainFromContent(content: unknown): LaunchPlain {
   const out: LaunchPlain = {};
   if (!content || typeof content !== "object") return out;
   const c = content as Record<string, unknown>;
-  for (const key of [...LAUNCH_HIDE_KEYS, ...LAUNCH_MEDIA_KEYS]) {
+  for (const key of [...LAUNCH_SHOW_KEYS, ...LAUNCH_MEDIA_KEYS]) {
     const v = c[key];
     if (typeof v === "string" && v.trim()) out[key] = v.trim().slice(0, 1024);
   }
   return out;
 }
 
-export const isHidden = (plain: LaunchPlain, key: LaunchHideKey): boolean => plain[key] === "1";
+/** Whether a section shows: its stored switch, else its default. */
+export function isSectionShown(plain: LaunchPlain, section: LaunchSection): boolean {
+  const v = plain[sectionKey(section)];
+  if (v === "1") return true;
+  if (v === "0") return false;
+  return SECTION_DEFAULT_SHOWN[section];
+}
 
 /**
  * A consent sentence as the visitor sees it and as it is RECORDED.
@@ -118,3 +137,32 @@ export const REFERRAL_PARAM = "ref_code";
 /** "Gdzie sprzedajesz?" — the same four values as profiles.seller_channel (0135). */
 export const SELLER_CHANNELS = ["allegro", "amazon", "own_store", "multi"] as const;
 export type SellerChannel = (typeof SELLER_CHANNELS)[number];
+
+/**
+ * WHICH TOKENS EACH LINE MAY USE. Everything else is refused when the copy is
+ * saved (builder, inline editor and the copy migration alike): a typo such as
+ * "{credit}" would otherwise render as text, and a value token in a line not
+ * built for it ("{credits}" in a headline) would hide a line that must show.
+ * Consent sentences use their own two link tokens and no value tokens.
+ */
+export const ALLOWED_TOKENS: Readonly<Record<string, readonly string[]>> = {
+  "hero.offer": ["date", "credits"],
+  "hero.offerDate": ["date"],
+  "hero.offerCredits": ["credits"],
+  "benefit.1": ["credits"],
+  "benefit.1sub": ["standard"],
+  "benefit.3sub": ["hours"],
+  "ref.body": ["referral"],
+  "hero.consent": ["terms", "privacy"],
+  "hero.consentMarketing": ["terms", "privacy"],
+};
+
+/** The `{word}` tokens in a line that its key does not allow (empty = fine). */
+export function disallowedTokens(key: string, text: string): string[] {
+  const allowed = ALLOWED_TOKENS[key] ?? [];
+  const out: string[] = [];
+  for (const m of text.matchAll(/\{([a-zA-Z_]+)\}/g)) {
+    if (!allowed.includes(m[1]) && !out.includes(m[1])) out.push(m[1]);
+  }
+  return out;
+}
