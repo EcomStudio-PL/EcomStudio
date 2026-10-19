@@ -96,8 +96,13 @@ const config = code("lib/seller-home-config.ts");
 section("1. THE PUBLIC PAGE, /start, /dashboard, THE HEADER AND THE SHELL ARE UNTOUCHED");
 // Pinned to the release before the first redesign (5d966f0). A change to any
 // of these is not part of a /home redesign and must be argued for on its own.
+// RE-PINNED, argued for: Pre-launch Landing V2 (after efec08f) changed two of
+// them and nothing about /home — app/page.tsx renders the long launch page
+// (campaign values, galleries, consents) in its `kind = launch` branch only;
+// app/(app)/layout.tsx gained one awaited call, ensurePrelaunchRewards (a
+// no-op while the campaign's rewards are off).
 const FROZEN: readonly [string, string][] = [
-  ["app/page.tsx", "1fb062ed1449314369c75e1abfe87d26d4b85163c159a4ecf7469fa22f7f52c1"],
+  ["app/page.tsx", "0217353e237b5c2bc5938b78ce04f9e26a6e89e49f93417867601957e87d5e6f"],
   ["app/[slug]/page.tsx", "acc6b04382426e2df0aa75198da1dd4ce9ba9585c59db4a8a9d672eaeaf95cdb"],
   ["lib/home-sections.ts", "d2a57f246d437d09545d3020943b613183e5c77668ebb4fd7122f612ad68cdb9"],
   ["lib/home-picks.ts", "c01b282598d0c5bff6768dee3bbf2f43429ba72ecf1ea3f040df41d274910fc6"],
@@ -113,7 +118,7 @@ const FROZEN: readonly [string, string][] = [
   ["app/(app)/dashboard/page.tsx", "200419c0840054885847a2cfca17918bd524644630b63c3be324e798b12c7eb2"],
   ["app/(app)/dashboard/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
   ["app/(app)/home/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
-  ["app/(app)/layout.tsx", "fc003f788c68cbc3f26bdf516905d845a4d21a7b9abf1bbc37fa66e205826129"],
+  ["app/(app)/layout.tsx", "7f1f75642959af636de84337f02036bfe5156ec0e73d07c35cd33d36806ece9f"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   ["components/feedback/feedback-cta.tsx", "d2406baf43ee849094e94fe01cc9a1620c1e01a354cd62a6049832cc2c1690a2"],
@@ -135,11 +140,17 @@ for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync
   check("components/layout/mega-topbar.tsx differs only by the visitor's cennik link",
     sha(restored) === "913fe0c30674ddd6651a6025bbb646859c08a92f9a462dcc59df672690d7937a" && restored !== bar);
 }
-// The shared media components and globals are pinned against git, not a
-// literal: the redesign reuses them and must not edit them.
-check("…the shared media components, tool-thumb and globals.css are byte-identical to the last release",
-  ["components/tools/tool-thumb.tsx", "components/media/slot-media.tsx", "components/media/slot-video.tsx", "app/globals.css"]
+// The shared media components are pinned against git, not a literal: the
+// redesign reuses them and must not edit them.
+check("…the shared media components and tool-thumb are byte-identical to the last release",
+  ["components/tools/tool-thumb.tsx", "components/media/slot-media.tsx", "components/media/slot-video.tsx"]
     .every((f) => !gitChanged(f)));
+// globals.css moved to a literal when Pre-launch Landing V2 edited it — inside
+// `[data-launch-page]` only (the status colours of its dark ramp, the
+// --hero-overlap token, a floor under --hero-art for phones in landscape).
+// /home's rules are untouched; any further edit must be argued for here.
+check("…globals.css is the reviewed Pre-launch Landing V2 version",
+  sha(readFileSync("app/globals.css")) === "23e3dff24b2c7965ac56c725df2d2c76593e84b2ef497ef3d07c76f579811d11");
 check("/home requires a session (middleware's protected paths)", isProtectedPath("/home") && isProtectedPath("/dashboard"));
 check("/dashboard still forwards to /home", /redirect\("\/home"\)/.test(code("app/(app)/dashboard/page.tsx")));
 const homePage = code("app/(app)/home/page.tsx");
