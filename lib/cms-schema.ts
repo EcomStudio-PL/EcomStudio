@@ -1,4 +1,5 @@
 import type { CmsBlockContent, LocaleText } from "./cms";
+import { SECTION_DEFAULT_SHOWN, sectionKey, type LaunchSection } from "./launch/fields";
 
 /**
  * WHAT EACH SECTION IS MADE OF.
@@ -22,7 +23,11 @@ export type FieldKind =
   | "groups"    // which tool/feature groups a live section shows
   | "handler"   // which approved form handler receives a submission
   | "datetime"  // an absolute moment — a campaign deadline
-  | "items";    // the repeatable list (cards, steps, questions…)
+  | "items"     // the repeatable list (cards, steps, questions…)
+  // ── added with the long launch page (Landing V2) ──
+  | "toggle"    // a section switch: "1" shown / "0" hidden, one value for every language
+  | "heading"   // a group heading in a long form — draws a title, stores NOTHING
+  | "gallery";  // a PRZED/PO gallery: a read-only summary and the way into the inline editor
 
 export type FieldDef = {
   /** A key of CmsBlockContent, or — for `launch` — a key inside content.fields. */
@@ -32,10 +37,21 @@ export type FieldDef = {
   label: string;
   /** Shown under the input when the field needs explaining. */
   hint?: string;
+  /** toggle: whether the switch reads ON while nothing is stored — the
+   *  section's own default (lib/launch/fields.ts SECTION_DEFAULT_SHOWN). */
+  defaultOn?: boolean;
 };
 
 const f = (key: string, kind: FieldKind, label: string, hint?: string): FieldDef =>
   ({ key, kind, label, ...(hint ? { hint } : {}) });
+
+/** A group heading of the launch form. Its key only has to be unique and can
+ *  never collide with a stored one — `#` is in no content key. */
+const group = (name: string, hint?: string): FieldDef => f(`#${name}`, "heading", name, hint);
+
+/** "Pokaż sekcję …": the switch of one launch section, stored as `showX`. */
+const show = (section: LaunchSection, label: string, hint?: string): FieldDef =>
+  ({ ...f(sectionKey(section), "toggle", label, hint), defaultOn: SECTION_DEFAULT_SHOWN[section] });
 
 const HEADING = f("title", "text", "heading");
 const BODY = f("description", "textarea", "body");
@@ -175,44 +191,142 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
  * The launch page's own vocabulary. These land in `content.fields`, keyed the
  * same way the public component reads them, so what the admin types is what
  * the page shows — no translation table in between.
+ *
+ * LANDING V2 MADE IT A LONG PAGE, and the form follows the page from top to
+ * bottom in named groups (`heading` rows store nothing). Every key the page
+ * reads (lib/server/launch-page.ts LAUNCH_FIELDS) is here exactly once —
+ * scripts/cms-tests.ts holds the two lists equal — plus the values that are
+ * not text: the section switches (`showX`, "Pokaż sekcję …", one value for
+ * every language) and two pictures stored next to `fields`.
+ *
+ * Lines that may use a `{token}` say which in their hint; any other token is
+ * refused on save (lib/launch/fields.ts ALLOWED_TOKENS). The PRZED/PO pairs
+ * themselves are not here: each gallery is its own section, edited inline.
  */
+const OPTIONAL = "launchOptionalHint";
+
 export const LAUNCH_SECTION_FIELDS: FieldDef[] = [
+  group("launchGroupHero"),
   f("hero.badge", "text", "launchBadge"),
   f("hero.h1", "text", "launchHeadline"),
   f("hero.h1Accent", "text", "launchHeadlineAccent", "launchHeadlineAccentHint"),
   f("hero.sub", "textarea", "launchSub"),
+  f("hero.offer", "textarea", "launchOffer", "launchOfferHint"),
+  f("hero.offerDate", "textarea", "launchOfferDate", "launchOfferDateHint"),
+  f("hero.offerCredits", "textarea", "launchOfferCredits", "launchOfferCreditsHint"),
+  f("hero.offerNone", "textarea", "launchOfferNone", "launchOfferNoneHint"),
   f("feature.1t", "text", "launchFeature1T"),
-  f("feature.1b", "text", "launchFeature1B"),
+  f("feature.1b", "text", "launchFeature1B", OPTIONAL),
   f("feature.2t", "text", "launchFeature2T"),
-  f("feature.2b", "text", "launchFeature2B"),
+  f("feature.2b", "text", "launchFeature2B", OPTIONAL),
   f("feature.3t", "text", "launchFeature3T"),
-  f("feature.3b", "text", "launchFeature3B"),
+  f("feature.3b", "text", "launchFeature3B", OPTIONAL),
+  f("hero.image", "media", "launchImage", "launchImageHint"),
+
+  group("launchGroupCountdown"),
+  show("countdown", "launchShowCountdown", "launchShowCountdownHint"),
+  f("countdown.label", "text", "launchCountdownLabel"),
+
+  group("launchGroupForm"),
   f("form.title", "text", "launchFormTitle"),
   f("form.sub", "text", "launchFormSub"),
+  f("form.firstName", "text", "launchFirstName"),
   f("hero.placeholder", "text", "launchPlaceholder"),
   f("hero.cta", "text", "launchCta"),
   f("form.safety", "text", "launchFormSafety"),
   f("hero.consent", "textarea", "launchConsent", "launchConsentHint"),
-  f("hero.image", "media", "launchImage", "launchImageHint"),
-  f("perks.heading", "text", "launchPerksHeading"),
-  f("benefit.1", "text", "launchBenefit1"),
-  f("benefit.1sub", "text", "launchBenefit1Sub"),
-  f("benefit.2", "text", "launchBenefit2"),
-  f("benefit.2sub", "text", "launchBenefit2Sub"),
-  f("benefit.3", "text", "launchBenefit3"),
-  f("benefit.3sub", "text", "launchBenefit3Sub"),
+  f("hero.consentMarketing", "textarea", "launchConsentMarketing", "launchConsentMarketingHint"),
+  f("consent.termsLabel", "text", "launchTermsLabel", "launchTermsLabelHint"),
+  f("consent.privacyLabel", "text", "launchPrivacyLabel", "launchPrivacyLabelHint"),
+
+  group("launchGroupAfter", "launchGroupAfterHint"),
   f("success.title", "text", "launchSuccessTitle"),
   f("success.body", "text", "launchSuccessBody"),
+  f("success.resend", "text", "launchResend"),
+  f("success.resendHint", "text", "launchResendNote"),
   f("success.follow", "text", "launchSuccessFollow"),
   f("social.heading", "text", "launchSocialHeading"),
+  show("channel", "launchShowChannel"),
+  f("channel.q", "text", "launchChannelQ"),
+  f("channel.allegro", "text", "launchChannelAllegro"),
+  f("channel.amazon", "text", "launchChannelAmazon"),
+  f("channel.own", "text", "launchChannelOwn"),
+  f("channel.multi", "text", "launchChannelMulti"),
+  f("channel.thanks", "text", "launchChannelThanks"),
+  show("referral", "launchShowReferral"),
+  f("ref.title", "text", "launchRefTitle"),
+  f("ref.body", "textarea", "launchRefBody", "launchRefBodyHint"),
+  f("ref.bodyNone", "textarea", "launchRefBodyNone", "launchRefBodyNoneHint"),
+  f("ref.copy", "text", "launchRefCopy"),
+
+  group("launchGroupBenefits"),
+  show("benefits", "launchShowBenefits"),
+  f("perks.heading", "text", "launchPerksHeading"),
+  f("benefit.1", "text", "launchBenefit1", "launchBenefit1Hint"),
+  f("benefit.1sub", "text", "launchBenefit1Sub", "launchBenefit1SubHint"),
+  f("benefit.2", "text", "launchBenefit2"),
+  f("benefit.2sub", "text", "launchBenefit2Sub", "launchBenefit2SubHint"),
+  f("benefit.3", "text", "launchBenefit3"),
+  f("benefit.3sub", "text", "launchBenefit3Sub", "launchBenefit3SubHint"),
+  f("reward.note", "textarea", "launchRewardNote", "launchRewardNoteHint"),
+
+  group("launchGroupGalleries", "launchGroupGalleriesHint"),
+  f("gallery.thumbs.eyebrow", "text", "launchGalleryThumbsEyebrow"),
+  f("gallery.thumbs.title", "text", "launchGalleryThumbsTitle"),
+  f("gallery.retouch.eyebrow", "text", "launchGalleryRetouchEyebrow"),
+  f("gallery.retouch.title", "text", "launchGalleryRetouchTitle"),
+  f("gallery.fashion.eyebrow", "text", "launchGalleryFashionEyebrow"),
+  f("gallery.fashion.title", "text", "launchGalleryFashionTitle"),
+  f("gallery.cta", "text", "launchGalleryCta"),
+  f("gallery.before", "text", "launchGalleryBefore"),
+  f("gallery.after", "text", "launchGalleryAfter"),
+
+  group("launchGroupCost"),
+  show("cost", "launchShowCost", "launchShowCostHint"),
+  f("cost.left", "text", "launchCostLeft"),
+  f("cost.leftValue", "text", "launchCostLeftValue"),
+  f("cost.right", "text", "launchCostRight"),
+  f("cost.rightValue", "text", "launchCostRightValue"),
+
+  group("launchGroupCreators"),
+  show("creators", "launchShowCreators", "launchShowCreatorsHint"),
+  f("creators.eyebrow", "text", "launchCreatorsEyebrow"),
+  f("creators.title", "text", "launchCreatorsTitle"),
+  f("creators.body", "textarea", "launchCreatorsBody"),
+  f("creators.signature", "text", "launchCreatorsSignature", OPTIONAL),
+  f("creatorsImage", "media", "launchCreatorsImage", "launchCreatorsImageHint"),
+
+  group("launchGroupFinal"),
+  show("final", "launchShowFinal"),
+  f("final.title", "text", "launchFinalTitle"),
+  f("final.sub", "text", "launchFinalSub", OPTIONAL),
+
+  group("launchGroupSticky"),
+  show("sticky", "launchShowSticky", "launchShowStickyHint"),
+  f("sticky.cta", "text", "launchStickyCta"),
+
+  group("launchGroupSeo"),
   f("seo.title", "text", "seoTitle"),
   f("seo.description", "textarea", "seoDescription"),
   f("seo.ogTitle", "text", "seoOgTitle"),
   f("seo.ogDescription", "textarea", "seoOgDescription"),
+  f("ogImage", "media", "launchOgImage", "launchOgImageHint"),
+];
+
+/**
+ * A PRZED/PO gallery of the launch page in the builder: what it holds (pairs,
+ * complete or not, shown or hidden) and the way into the inline editor, where
+ * its pairs are edited. Nothing here writes — saveBlockAction stores only a
+ * gallery's switch (app/actions/cms.ts), and its content belongs to
+ * lib/server/ice/gallery.ts.
+ */
+export const LAUNCH_GALLERY_FIELDS: FieldDef[] = [
+  f("items", "gallery", "launchGallery", "launchGalleryHint"),
 ];
 
 export function fieldsFor(type: string): FieldDef[] {
   if (type === "launch") return LAUNCH_SECTION_FIELDS;
+  if (type === "launch_gallery") return LAUNCH_GALLERY_FIELDS;
   return SECTION_FIELDS[type] ?? [HEADING, BODY];
 }
 
@@ -259,7 +373,8 @@ export function splitFields(type: string, fields: FieldDef[]): {
 } {
   // The launch page is one long form by design — it IS the page, and every
   // field on it is used. Splitting it would hide half a page behind a toggle.
-  if (type === "launch") return { quick: fields, advanced: [] };
+  // A gallery has a single row (its summary), which must not be folded away.
+  if (type === "launch" || type === "launch_gallery") return { quick: fields, advanced: [] };
   const extra = new Set(EXTRA_QUICK[type] ?? []);
   const quick = fields.filter((f) => ALWAYS_QUICK.has(f.key) || extra.has(f.key));
   const advanced = fields.filter((f) => !quick.includes(f));
@@ -276,11 +391,28 @@ export const usesFieldBag = (type: string) => type === "launch";
  *  A dotted field key is the marker for the `fields` bag — the launch page's
  *  vocabulary — and matches how writeField stores it. */
 /** Field kinds whose value is ONE string shared by every language — a URL, a
- *  handler name, an alignment. Localising those would be a bug: /cennik is
- *  /cennik in German too. */
-const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler", "datetime"]);
+ *  handler name, an alignment, a section switch. Localising those would be a
+ *  bug: /cennik is /cennik in German too, and a section is either on the page
+ *  or not, whatever language it is read in. */
+const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler", "datetime", "toggle"]);
+
+/** Kinds that draw something but are not a stored value: a group heading, a
+ *  gallery's summary. Reading one gives "", writing one changes nothing — an
+ *  unknown kind falling through to the text branch would otherwise write a
+ *  `{pl: …}` object over whatever key it names (for a gallery, its pairs). */
+const NOT_STORED = new Set<FieldKind>(["heading", "gallery"]);
+
+/** A section switch as it reads: "1" on, "0" off, nothing stored → the
+ *  section's own default. */
+export function toggleOn(content: CmsBlockContent, def: FieldDef): boolean {
+  const v = readField(content, def, "pl");
+  if (v === "1") return true;
+  if (v === "0") return false;
+  return def.defaultOn === true;
+}
 
 export function readField(content: CmsBlockContent, def: FieldDef, locale: string): string {
+  if (NOT_STORED.has(def.kind)) return "";
   if (def.key.includes(".")) {
     const bag = content.fields ?? {};
     const text = bag[def.key] as Record<string, string | undefined> | undefined;
@@ -297,6 +429,10 @@ export function readField(content: CmsBlockContent, def: FieldDef, locale: strin
 export function writeField(
   content: CmsBlockContent, def: FieldDef, locale: string, value: string,
 ): CmsBlockContent {
+  if (NOT_STORED.has(def.kind)) return content;
+  // A switch is always written explicitly ("1" or "0"): a switch turned off
+  // must stay off even for a section whose default is on.
+  if (def.kind === "toggle") return { ...content, [def.key]: value === "1" ? "1" : "0" };
   if (def.key.includes(".")) {
     const bag = { ...(content.fields ?? {}) };
     const prev = (bag[def.key] ?? {}) as LocaleText;

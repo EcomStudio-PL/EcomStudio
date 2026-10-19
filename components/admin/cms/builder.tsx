@@ -17,7 +17,8 @@ import {
 import { SECTION_GROUPS, type CmsBlockContent, type CmsCode, type SectionStyle } from "@/lib/cms";
 import { DEVICE_PRESETS, type DeviceKind } from "@/lib/cms-style";
 import { fieldsFor, splitFields } from "@/lib/cms-schema";
-import type { BlockRow, PageRow, SectionTemplateRow } from "@/lib/services/cms";
+import { NOT_COPYABLE_TYPES, type BlockRow, type PageRow, type SectionTemplateRow } from "@/lib/services/cms";
+import { GALLERY_BLOCK_TYPE, isCompletePair, readGalleryContent } from "@/lib/launch/gallery";
 import { Button } from "@/components/ui/button";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,16 @@ import { cn, formatDate } from "@/lib/utils";
 
 type Tab = "content" | "style" | "responsive" | "code";
 type Pane = "tree" | "editor" | "preview";
+
+const ALL_TABS: Tab[] = ["content", "style", "responsive", "code"];
+/**
+ * A launch-page gallery offers its summary and its switch, nothing else. The
+ * launch page draws its galleries itself, so padding, a background, per-device
+ * hiding, an anchor or a show window set here would work in no preview and do
+ * nothing on the page — a setting that silently does nothing is worse than
+ * none (the same reason the snapshot carries every column it has).
+ */
+const tabsFor = (type: string): Tab[] => (type === GALLERY_BLOCK_TYPE ? ["content"] : ALL_TABS);
 
 const SAVE_DELAY = 1200;
 /** Far more undo than anyone uses, and still bounded. */
@@ -172,7 +183,9 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
       setPreviewNonce((n) => n + 1);
     } else {
       setSaveState("error");
-      toast.error(t(`cms.err.${res.error}`));
+      // `detail` says where (a field and a language), when the refusal is
+      // about one line — "{premiera}" in the headline, say.
+      toast.error(t(`cms.err.${res.error}`), res.detail ? { description: res.detail } : undefined);
     }
   }, [page.id, t]);
 
@@ -422,6 +435,10 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
   useEffect(() => { setWidth(DEVICE_PRESETS[device][0]); }, [device]);
 
   const fields = useMemo(() => (active ? fieldsFor(active.type) : []), [active]);
+  // The tab on screen: the one asked for, unless this section does not have
+  // it (a gallery has its content summary only).
+  const tabs = active ? tabsFor(active.type) : ALL_TABS;
+  const shownTab: Tab = tabs.includes(tab) ? tab : "content";
   const { quick, advanced } = useMemo(
     () => (active ? splitFields(active.type, fields) : { quick: [], advanced: [] }),
     [active, fields],
@@ -610,7 +627,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                     </span>
                     {!compact && (
                       <span className="block truncate text-[11px] text-faint">
-                        {summarize(b, locale) || `#${i + 1}`}
+                        {(b.type === GALLERY_BLOCK_TYPE ? gallerySummaryLine(b, t) : summarize(b, locale)) || `#${i + 1}`}
                       </span>
                     )}
                   </button>
@@ -624,17 +641,28 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                       }}>
                       {b.visible ? <Eye size={13} /> : <EyeOff size={13} />}
                     </TinyBtn>
-                    <TinyBtn title={t("cms.duplicate")} disabled={pending}
-                      onClick={() => run(duplicateBlockAction(b.id))}>
-                      <Copy size={13} />
-                    </TinyBtn>
-                    <TinyBtn title={t("cms.saveAsTemplate")} disabled={pending}
-                      onClick={() => saveAsTemplate(b)}>
-                      <BookmarkPlus size={13} />
-                    </TinyBtn>
-                    <TinyBtn title={t("common.delete")} onClick={() => setDeleting(b)}>
-                      <Trash2 size={13} />
-                    </TinyBtn>
+                    {/* The launch page's copy and its galleries exist once:
+                        no copy, no template (the server refuses both too). */}
+                    {!NOT_COPYABLE_TYPES.has(b.type) && (
+                      <>
+                        <TinyBtn title={t("cms.duplicate")} disabled={pending}
+                          onClick={() => run(duplicateBlockAction(b.id))}>
+                          <Copy size={13} />
+                        </TinyBtn>
+                        <TinyBtn title={t("cms.saveAsTemplate")} disabled={pending}
+                          onClick={() => saveAsTemplate(b)}>
+                          <BookmarkPlus size={13} />
+                        </TinyBtn>
+                      </>
+                    )}
+                    {/* A gallery is switched off, not deleted, here: its pairs
+                        are made in the inline editor, and "Cofnij" could not
+                        create one again. */}
+                    {b.type !== GALLERY_BLOCK_TYPE && (
+                      <TinyBtn title={t("common.delete")} onClick={() => setDeleting(b)}>
+                        <Trash2 size={13} />
+                      </TinyBtn>
+                    )}
                   </span>
                 </li>
               ))}
@@ -747,20 +775,22 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                 </div>
 
                 <div className="flex gap-0.5 border-b border-line px-2 py-1.5">
-                  {(["content", "style", "responsive", "code"] as Tab[]).map((k) => (
-                    <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k}
+                  {tabs.map((k) => (
+                    <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={shownTab === k}
                       data-settings-tab={k}
                       className={cn("flex-1 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold transition-colors",
-                        tab === k ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-ink")}>
+                        shownTab === k ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised hover:text-ink")}>
                       {t(`cms.tab.${k}`)}
                     </button>
                   ))}
                 </div>
 
                 <div className="thin-scroll max-h-[calc(100dvh-16rem)] space-y-4 overflow-y-auto p-3.5">
-                  {tab === "content" && (
+                  {shownTab === "content" && (
                     <>
-                      <LocaleTabs locale={locale} onChange={setLocale} />
+                      {/* A gallery's summary has no language: its captions
+                          are edited with its pairs, in the inline editor. */}
+                      {active.type !== GALLERY_BLOCK_TYPE && <LocaleTabs locale={locale} onChange={setLocale} />}
                       {fields.length === 0 && (
                         <p className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-[12px] text-faint">
                           {t("cms.noContentFields")}
@@ -769,6 +799,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                       <div className="space-y-4" data-quick-fields>
                         {quick.map((def) => (
                           <Field key={def.key} def={def} locale={locale} content={active.content}
+                            visible={active.visible}
                             onChange={(content) => edit({ content })}
                             onChangeWith={(update) => edit({ content: update(active.content) })} />
                         ))}
@@ -800,15 +831,15 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                     </>
                   )}
 
-                  {tab === "style" && (
+                  {shownTab === "style" && (
                     <StylePanel style={active.style} onChange={(style) => edit({ style })} />
                   )}
 
-                  {tab === "responsive" && (
+                  {shownTab === "responsive" && (
                     <ResponsivePanel style={active.style} onChange={(style) => edit({ style })} />
                   )}
 
-                  {tab === "code" && (
+                  {shownTab === "code" && (
                     <>
                       {active.type === "custom_code" ? (
                         <CodePanel code={active.code} sectionId={active.id}
@@ -974,6 +1005,14 @@ function SaveStatus({ state, t }: { state: string; t: (k: string) => string }) {
       {t("cms.saveError")}
     </span>
   );
+}
+
+/** "Miniaturki · 6 par" — which gallery, and how full it is (the draft). */
+function gallerySummaryLine(block: Draft, t: (k: string, vars?: Record<string, string | number>) => string): string {
+  const g = readGalleryContent(block.content);
+  if (!g) return "";
+  const name = t(`cms.label.launchGallery${g.gallery[0].toUpperCase()}${g.gallery.slice(1)}`);
+  return `${name} · ${t("cms.label.launchGalleryCount", { n: g.items.filter(isCompletePair).length, total: g.items.length })}`;
 }
 
 /** A one-line hint of what is in a section, so the tree is scannable. */

@@ -7,6 +7,7 @@ import { CATALOG_ITEMS } from "@/lib/tool-cards";
 import { LAYOUT_SECTIONS, itemLabelKey } from "@/lib/tool-layout";
 import { categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { PHOTO_TOOLS, TOOLS } from "@/lib/images/tools";
+import { LAUNCH_V2_BUILDER_ONLY, LAUNCH_V2_TEXT_FIELDS } from "@/lib/launch/fields";
 import type { IceElement, IcePage, IceSection, IceSlotSpec } from "./types";
 
 /**
@@ -463,13 +464,29 @@ export const CMS_FIELDS: Readonly<Record<string, { text: string[]; media: string
 /** CMS text fields whose value is split into paragraphs on blank lines. */
 export const CMS_MULTILINE = new Set(["description"]);
 
-/** The launch page's own copy ("/" when the premiere page is the homepage). */
+/**
+ * The launch page's own copy ("/" when the premiere page is the homepage).
+ *
+ * The Landing V2 lines are APPENDED (a marker carries a field's index in this
+ * list, so the existing ones keep their numbers), and are every new localized
+ * key except the builder-only ones: the consent sentence and its two link
+ * labels are a legal statement reviewed in Strony WWW, never retyped on the
+ * live page — the same policy as hero.consent, form.safety, the e-mail
+ * placeholder and seo.* (scripts/ice-tests.ts A14).
+ *
+ * Lines with a value token ({credits} in hero.offer / benefit.1, {referral} in
+ * ref.body) ARE editable here, by design: the admin edits the sentence, the
+ * number is still the approved campaign value, and a line whose value is not
+ * approved is not shown at all. What may not be typed is any other token —
+ * cmsSave refuses it (`text_token`, lib/launch/fields.ts ALLOWED_TOKENS).
+ */
 export const LAUNCH_TEXT_FIELDS: readonly string[] = [
   "hero.badge", "hero.h1", "hero.h1Accent", "hero.sub", "hero.cta",
   "feature.1t", "feature.1b", "feature.2t", "feature.2b", "feature.3t", "feature.3b",
   "form.title", "form.sub", "perks.heading",
   "benefit.1", "benefit.1sub", "benefit.2", "benefit.2sub", "benefit.3", "benefit.3sub",
   "social.heading", "success.title", "success.body", "success.follow",
+  ...LAUNCH_V2_TEXT_FIELDS.filter((k) => !(LAUNCH_V2_BUILDER_ONLY as readonly string[]).includes(k)),
 ];
 
 /* ── what is NOT in the editor, and why (shown in Admin → Edytor wizualny) ── */

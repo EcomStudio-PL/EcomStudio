@@ -1,6 +1,7 @@
 "use server";
 import * as ice from "@/lib/server/ice/actions";
-import type { IceLocale, IceSlotWrite } from "@/lib/ice/types";
+import type { IceGallerySaveInput, IceLocale, IceSlotWrite } from "@/lib/ice/types";
+import type { GalleryKey } from "@/lib/launch/gallery";
 
 /**
  * THE VISUAL EDITOR'S SERVER ACTIONS — thin wrappers, per the house rule.
@@ -34,4 +35,12 @@ export async function iceCmsSaveAction(input: {
   blockId: string; path: string[]; locale: IceLocale | null; value: string; expected: string | null; base: string | null; action?: "save" | "restore";
 }) {
   return ice.cmsSave(input);
+}
+export async function iceGalleryStateAction(path: string) { return ice.galleryState(path); }
+export async function iceGallerySaveAction(input: IceGallerySaveInput) { return ice.gallerySave(input); }
+export async function iceGalleryPublishAction(input: { confirmLaunchDraft?: boolean }) { return ice.galleryPublish(input); }
+export async function iceGalleryDiscardAction(input: { key: GalleryKey; base: string | null }) { return ice.galleryDiscard(input); }
+export async function iceGalleryVersionsAction(input: { key: GalleryKey }) { return ice.galleryVersions(input); }
+export async function iceGalleryRestoreAction(input: { key: GalleryKey; version: string; base: string | null }) {
+  return ice.galleryRestore(input);
 }

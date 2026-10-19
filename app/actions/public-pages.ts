@@ -2,7 +2,9 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
-import { LAUNCH_FIELDS, type LaunchField } from "@/lib/server/launch-page";
+import { LAUNCH_FIELDS, launchDefault, launchDefaultsFrom, type LaunchField } from "@/lib/server/launch-page";
+import { ensureLaunchFieldObjects } from "@/lib/services/cms";
+import { canonicalJson, type CmsBlockContent, type LocaleText } from "@/lib/cms";
 import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
 import de from "@/lib/i18n/dictionaries/de.json";
@@ -79,37 +81,68 @@ export async function savePublicSiteAction(input: {
 
 // ---------- LAUNCH SECTION ----------
 
+/** The shipped copy per language — `launch` with the V2 keys of `prelaunch`
+ *  underneath (launchDefaultsFrom), the same map the page itself falls back
+ *  to, so a freshly seeded block says what the page would have said. */
 const DICTS: Record<string, Record<string, unknown>> = {
-  pl: pl.launch as Record<string, unknown>,
-  en: (en as typeof pl).launch as Record<string, unknown>,
-  de: (de as typeof pl).launch as Record<string, unknown>,
+  pl: launchDefaultsFrom(pl as Record<string, unknown>),
+  en: launchDefaultsFrom(en as Record<string, unknown>),
+  de: launchDefaultsFrom(de as Record<string, unknown>),
 };
 
-/** Seed the launch page's single section from whatever copy already exists:
- *  the old app_settings overrides first, then the shipped translations. */
+/**
+ * THE LAUNCH PAGE'S SECTION, AND ITS ONE INVARIANT.
+ *
+ * The first time the page is opened its single `launch` section is created
+ * from whatever copy already exists: the old app_settings overrides first,
+ * then the shipped translations.
+ *
+ * Every time it is opened, every launch field is made to exist in the stored
+ * `content.fields` as an object — `{}` at least (lib/services/cms.ts
+ * ensureLaunchFieldObjects) — so "Edytuj stronę" can write any of them; a
+ * field added by a release after the block was created would otherwise be
+ * refused there as `bad_path`. An empty object renders exactly like a missing
+ * key, so nothing a visitor sees changes.
+ *
+ * THE PUBLISHED COPY IS KEPT IN STEP. The inline editor refuses to touch a
+ * block whose draft differs from what is published (`draft_diverged`, 0141),
+ * so adding the empty objects to the draft alone would lock the inline editor
+ * out of the live page merely because somebody opened Strony WWW. When the
+ * draft equals the published block, the same objects are added to both; the
+ * snapshot write is compare-and-set on `published_at` (every publish and every
+ * inline edit moves it), and when it loses that race nothing is touched — the
+ * next opening tries again. A draft that already differs is only normalised
+ * itself: its next publish carries the objects out.
+ *
+ * Never creates or touches a gallery: those belong to the inline editor.
+ */
 export async function ensureLaunchSectionAction(pageId: string): Promise<Result> {
   try {
-    const { supabase } = await requireAdmin();
-    const { count } = await supabase.from("cms_blocks")
-      .select("id", { count: "exact", head: true }).eq("page_id", pageId).eq("type", "launch");
-    if ((count ?? 0) > 0) return { ok: true };
+    const { supabase, adminId } = await requireAdmin();
+    const { data: existing } = await supabase.from("cms_blocks")
+      .select("id, content, updated_at").eq("page_id", pageId).eq("type", "launch")
+      .order("sort_order").limit(1);
+    const block = (existing ?? [])[0] as { id: string; content: unknown; updated_at: string } | undefined;
+    if (block) return await normaliseLaunchBlock(supabase, pageId, adminId, block);
 
     const { data: legacy } = await supabase.from("app_settings")
       .select("value").eq("key", "launch_page").maybeSingle();
     const store = (legacy?.value ?? {}) as { published?: Record<string, Record<string, string>> };
     const published = store.published ?? {};
 
-    const fields: Record<string, Record<string, string>> = {};
+    const fields: Record<string, LocaleText> = {};
     for (const field of LAUNCH_FIELDS) {
-      const perLocale: Record<string, string> = {};
-      for (const locale of ["pl", "en", "de"]) {
+      const perLocale: LocaleText = {};
+      for (const locale of ["pl", "en", "de"] as const) {
         const fromLegacy = published[locale]?.[field];
-        const shipped = DICTS[locale]?.[field];
-        const value = fromLegacy ?? (typeof shipped === "string" ? shipped : "");
-        // hero.image and hero.consent are intentionally empty by default.
+        const shipped = launchDefault(DICTS[locale] ?? {}, field as LaunchField);
+        const value = fromLegacy ?? shipped;
+        // hero.image is empty by default, and so are the optional second
+        // lines: those keys are seeded as `{}` (the invariant) and read as
+        // "use the shipped text", which for them is no text.
         if (value) perLocale[locale] = value;
       }
-      if (Object.keys(perLocale).length > 0) fields[field as LaunchField] = perLocale;
+      fields[field] = perLocale;
     }
 
     const { error } = await supabase.from("cms_blocks").insert({
@@ -122,6 +155,35 @@ export async function ensureLaunchSectionAction(pageId: string): Promise<Result>
     // it just created.
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
+}
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+async function normaliseLaunchBlock(
+  supabase: Supabase, pageId: string, adminId: string,
+  block: { id: string; content: unknown; updated_at: string },
+): Promise<Result> {
+  const current = (block.content && typeof block.content === "object" ? block.content : {}) as CmsBlockContent;
+  const normalised = ensureLaunchFieldObjects(current, LAUNCH_FIELDS);
+  if (canonicalJson(normalised) === canonicalJson(current)) return { ok: true };
+
+  const { data: page } = await supabase.from("cms_pages")
+    .select("published_snapshot, published_at").eq("id", pageId).maybeSingle();
+  const snapshot = Array.isArray(page?.published_snapshot) ? (page.published_snapshot as Record<string, unknown>[]) : null;
+  const at = snapshot ? snapshot.findIndex((b) => b && b.id === block.id) : -1;
+  const live = at >= 0 && snapshot ? snapshot[at] : null;
+  if (snapshot && live && page?.published_at && canonicalJson(live.content ?? {}) === canonicalJson(current)) {
+    const next = snapshot.map((b, i) => (i === at ? { ...b, content: normalised } : b));
+    const { data: moved } = await supabase.from("cms_pages")
+      .update({ published_snapshot: next as never })
+      .eq("id", pageId).eq("published_at", page.published_at).select("id");
+    // Somebody published or edited inline in between: leave both alone.
+    if (!moved || moved.length === 0) return { ok: true };
+  }
+  await supabase.from("cms_blocks")
+    .update({ content: normalised as never, updated_at: new Date().toISOString(), updated_by: adminId })
+    .eq("id", block.id).eq("updated_at", block.updated_at);
+  return { ok: true };
 }
 
 /** Publish, and refresh the page's own public URL as well as the admin list. */

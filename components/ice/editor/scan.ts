@@ -1,4 +1,5 @@
 import { MARK_START, stegaLocate } from "@/lib/ice/stega";
+import { isGalleryKey, type GalleryKey } from "@/lib/launch/gallery";
 import type { IceCmsField, IceElement, IcePageInfo } from "@/lib/ice/types";
 
 /**
@@ -20,7 +21,15 @@ export type Target =
   | { kind: "text"; uid: string; element: IceElement; key: string; runs: TextRun[] }
   | { kind: "cms"; uid: string; field: IceCmsField; runs: TextRun[] }
   | { kind: "media"; uid: string; element: IceElement; els: HTMLElement[] }
-  | { kind: "cmsMedia"; uid: string; field: IceCmsField; els: HTMLElement[] };
+  | { kind: "cmsMedia"; uid: string; field: IceCmsField; els: HTMLElement[] }
+  /** A PRZED/PO gallery section of the launch page ([data-launch-gallery]):
+   *  the whole section, and the LAST thing a pointer can hit — a text or a
+   *  picture inside it is always taken first. */
+  | { kind: "gallery"; uid: string; key: GalleryKey; els: HTMLElement[] };
+
+/** The element id a gallery is known by ("g:thumbs") — also what a deep link
+ *  (#ice=g:thumbs) and the builder's "Edytuj pary" name. */
+export const galleryUid = (key: GalleryKey) => `g:${key}`;
 
 const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "TITLE", "TEXTAREA", "OPTION"]);
 
@@ -119,6 +128,18 @@ export function scanPage(info: IcePageInfo, nonce: string): Target[] {
     const els = Array.from(section.querySelectorAll("img")).filter((img) => imgStems(img).includes(stem));
     if (els.length) targets.push({ kind: "cmsMedia", uid: `cm:${f.id}`, field: f, els });
   }
+  // The launch page's galleries: each section the page marks with its key —
+  // and, for an admin, the dashed placeholder of an empty one, which carries
+  // the same attribute — opens the gallery panel.
+  if (info.cms.launch) {
+    const byKey = new Map<GalleryKey, HTMLElement[]>();
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-launch-gallery]"))) {
+      const key = el.getAttribute("data-launch-gallery");
+      if (!isGalleryKey(key) || el.closest(`[${UI_ATTR}]`)) continue;
+      byKey.set(key, [...(byKey.get(key) ?? []), el]);
+    }
+    for (const [key, els] of byKey) targets.push({ kind: "gallery", uid: galleryUid(key), key, els });
+  }
   return targets;
 }
 
@@ -214,9 +235,12 @@ export function hitTest(
   const stack = all.filter(allowed);
   const textByParent = new Map<Element, Target[]>();
   const mediaByEl = new Map<Element, Target>();
+  const galleryByEl = new Map<Element, Target>();
   for (const t of targets) {
     if (t.kind === "text" || t.kind === "cms") {
       for (const el of targetElements(t)) textByParent.set(el, [...(textByParent.get(el) ?? []), t]);
+    } else if (t.kind === "gallery") {
+      for (const el of t.els) if (!galleryByEl.has(el)) galleryByEl.set(el, t);
     } else {
       for (const el of t.els) if (!mediaByEl.has(el)) mediaByEl.set(el, t);
     }
@@ -256,6 +280,16 @@ export function hitTest(
     let cur: Element | null = el;
     while (cur) {
       const t = mediaByEl.get(cur);
+      if (t) return { target: t, rects: [cur.getBoundingClientRect()] };
+      cur = cur.parentElement;
+    }
+  }
+  // Last: the gallery section around the pointer (its pairs, its empty
+  // space). Nothing more specific was under it.
+  for (const el of stack) {
+    let cur: Element | null = el;
+    while (cur) {
+      const t = galleryByEl.get(cur);
       if (t) return { target: t, rects: [cur.getBoundingClientRect()] };
       cur = cur.parentElement;
     }

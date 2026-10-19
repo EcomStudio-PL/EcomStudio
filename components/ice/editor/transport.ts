@@ -1,8 +1,9 @@
 "use client";
 import {
-  iceAssetsAction, iceCmsMapAction, iceCmsSaveAction, iceHistoryAction, iceLibraryAction, icePageAction,
-  icePageHistoryAction, iceRegisterUploadAction, iceSetEditAction, iceSlotSaveAction, iceSlotStateAction,
-  iceTextSaveAction, iceTextStateAction, iceUploadTicketAction, iceUsageAction,
+  iceAssetsAction, iceCmsMapAction, iceCmsSaveAction, iceGalleryDiscardAction, iceGalleryPublishAction,
+  iceGalleryRestoreAction, iceGallerySaveAction, iceGalleryStateAction, iceGalleryVersionsAction, iceHistoryAction,
+  iceLibraryAction, icePageAction, icePageHistoryAction, iceRegisterUploadAction, iceSetEditAction, iceSlotSaveAction,
+  iceSlotStateAction, iceTextSaveAction, iceTextStateAction, iceUploadTicketAction, iceUsageAction,
 } from "@/app/actions/ice";
 import type { IceTransport } from "@/lib/ice/types";
 
@@ -23,4 +24,10 @@ export const actionsTransport: IceTransport = {
   registerUpload: iceRegisterUploadAction,
   cmsMap: iceCmsMapAction,
   cmsSave: iceCmsSaveAction,
+  galleryState: iceGalleryStateAction,
+  gallerySave: iceGallerySaveAction,
+  galleryPublish: iceGalleryPublishAction,
+  galleryDiscard: iceGalleryDiscardAction,
+  galleryVersions: iceGalleryVersionsAction,
+  galleryRestore: iceGalleryRestoreAction,
 };
