@@ -826,8 +826,17 @@ begin
   -- Read the two "did we know this person" facts first (D7).
   v_prior_contact := exists (select 1 from public.newsletter_contacts where lower(email) = v_email);
   v_prior_account := exists (select 1 from auth.users where lower(email) = v_email);
-  v_contact := public.newsletter_upsert_contact(
-    p_email := v_email, p_source_key := 'waitlist', p_locale := v_locale);
+  -- newsletter_upsert_contact (0097) reads, then inserts: two first submits
+  -- of one new address at the same moment collide on its unique index. The
+  -- loser's insert waits for the winner and raises; by then the row exists,
+  -- so the second attempt finds it — one uniform answer for both.
+  begin
+    v_contact := public.newsletter_upsert_contact(
+      p_email := v_email, p_source_key := 'waitlist', p_locale := v_locale);
+  exception when unique_violation then
+    v_contact := public.newsletter_upsert_contact(
+      p_email := v_email, p_source_key := 'waitlist', p_locale := v_locale);
+  end;
   if v_contact is null then
     return jsonb_build_object('status', 'invalid');
   end if;
@@ -1187,6 +1196,11 @@ begin
     on conflict (lower(email)) do update set
       status = 'confirmed',
       confirmed_at = coalesce(public.waitlist_subscribers.confirmed_at, now()),
+      -- The confirmed person's own name and language, never one typed into
+      -- the legacy door by somebody else before the proof.
+      first_name = v_first,
+      last_name = null,
+      locale = v_locale,
       updated_at = now();
   exception when others then
     raise notice 'prelaunch: legacy waitlist mirror failed: %', sqlerrm;

@@ -15,7 +15,8 @@
  *     --alias:server-only=./scripts/server-only-stub.js --external:sharp \
  *     --outfile=.next/launch-gallery-tests.cjs --log-level=error && node .next/launch-gallery-tests.cjs
  */
-import { canonicalJson } from "@/lib/cms";
+import { canonicalJson, type CmsBlock, type CmsBlockContent } from "@/lib/cms";
+import { mergeLaunchContent, versionBlockRows, withCurrentGalleries } from "@/lib/services/cms";
 import { GALLERY_MAX_ITEMS, type GalleryItem } from "@/lib/launch/gallery";
 import { groupPairs, naturalCompare, pairSuffix } from "@/lib/ice/pairs";
 import {
@@ -158,6 +159,39 @@ check("D3 canonicalJson sorts keys at every depth and drops undefined members",
   check("D5 at most `max` states", same(dedupeVersions(rows, 2).map((r) => r.v), [9, 8]) && dedupeVersions([], 20).length === 0);
   const twenty = Array.from({ length: 50 }, (_, i) => ({ v: 50 - i, fingerprint: `f${i % 25}` }));
   check("D6 the default cap is 20", dedupeVersions(twenty).length === 20 && dedupeVersions(twenty)[0].v === 50);
+}
+
+// ── E. THE BUILDER AND THE HISTORY DO NOT UNDO THE GALLERIES OR THE INLINE EDITOR ──
+{
+  const stored = { fields: { "hero.badge": { pl: "NOWA", en: "NEW" }, "gallery.cta": { pl: "Inline CTA" } }, x: 1 } as unknown as CmsBlockContent;
+  const base = { fields: { "hero.badge": { pl: "STARA", en: "OLD" }, "gallery.cta": { pl: "Stare CTA" } }, x: 1 } as unknown as CmsBlockContent;
+  const next = { fields: { "hero.badge": { pl: "STARA", en: "OLD" }, "gallery.cta": { pl: "Stare CTA" }, "final.sub": { pl: "Builder" } }, x: 1 } as unknown as CmsBlockContent;
+  const merged = mergeLaunchContent(stored, base, next) as unknown as { fields: Record<string, Record<string, string>>; x: number };
+  check("E1 a builder save does not write back fields it did not change (an inline edit made meanwhile stays)",
+    merged.fields["gallery.cta"].pl === "Inline CTA" && merged.fields["hero.badge"].pl === "NOWA" && merged.fields["hero.badge"].en === "NEW",
+    JSON.stringify(merged));
+  check("E2 …and what the builder DID change goes over what is stored", merged.fields["final.sub"].pl === "Builder" && merged.x === 1);
+  const edited = mergeLaunchContent(stored, base,
+    { fields: { "hero.badge": { pl: "BUILDER", en: "OLD" }, "gallery.cta": { pl: "Stare CTA" } }, x: 2 } as unknown as CmsBlockContent) as unknown as { fields: Record<string, Record<string, string>>; x: number };
+  check("E3 per language: the builder's Polish edit lands, the inline editor's English stays; top-level keys merge the same way",
+    edited.fields["hero.badge"].pl === "BUILDER" && edited.fields["hero.badge"].en === "NEW" && edited.x === 2, JSON.stringify(edited));
+
+  const gallery = (key: string): CmsBlock => ({ id: `g-${key}`, type: "launch_gallery", sort_order: 10, visible: true,
+    content: { gallery: key, items: [{ id: key }] } as unknown as CmsBlockContent });
+  const current: CmsBlock[] = [
+    { id: "l1", type: "launch", sort_order: 0, visible: true, content: { fields: {} } as unknown as CmsBlockContent },
+    gallery("thumbs"), gallery("retouch"),
+  ];
+  const olderVersion = [{ id: "l1", type: "launch", sort_order: 0, visible: true, content: { fields: {} } }];
+  const rows = withCurrentGalleries(versionBlockRows(olderVersion, "p1", "a1", []), current, "p1", "a1");
+  check("E4 restoring a version that predates the galleries keeps every current gallery (and its pairs)",
+    rows.filter((r) => r.type === "launch_gallery").map((r) => (r.content as unknown as { gallery: string }).gallery).sort().join(",") === "retouch,thumbs"
+      && rows.length === 3);
+  const withThumbs = [...olderVersion, { id: "g-old", type: "launch_gallery", sort_order: 10, visible: true, content: { gallery: "thumbs", items: [] } }];
+  const rows2 = withCurrentGalleries(versionBlockRows(withThumbs, "p1", "a1", []), current, "p1", "a1");
+  check("E5 …a gallery the version DOES contain comes from the version; one it lacks is kept as it is now",
+    rows2.length === 3
+      && JSON.stringify((rows2.find((r) => (r.content as unknown as { gallery: string }).gallery === "thumbs")!.content as unknown as { items: unknown[] }).items) === "[]");
 }
 
 console.log(`\n${failures === 0 ? `All launch-gallery tests passed (${passed} checks).` : `${failures} LAUNCH-GALLERY TEST(S) FAILED (${passed} passed).`}`);

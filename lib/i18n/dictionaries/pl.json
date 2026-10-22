@@ -1242,7 +1242,8 @@
           "existing_account": "Osoba miała już konto",
           "existing_contact": "Osoba była już w kontaktach",
           "same_network": "Ta sama sieć co polecający",
-          "self": "Polecenie samego siebie"
+          "self": "Polecenie samego siebie",
+          "other_link": "Potwierdzono link spoza polecenia"
         },
         "referralsTitle": "Polecenia",
         "rejectedTitle": "Niezaliczone polecenia — powód",

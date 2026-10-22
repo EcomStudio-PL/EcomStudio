@@ -1880,7 +1880,7 @@ export type PrelaunchStatus = (typeof PRELAUNCH_STATUSES)[number];
 export const PRELAUNCH_FORMS = ["hero", "final"] as const;
 export const SELLER_CHANNELS = ["allegro", "amazon", "own_store", "multi"] as const;
 export const REFERRAL_REJECTIONS = [
-  "self", "same_network", "cap", "duplicate", "existing_contact", "existing_account", "cluster",
+  "self", "same_network", "cap", "duplicate", "existing_contact", "existing_account", "cluster", "other_link",
 ] as const;
 export const PRELAUNCH_CONSENT_KEYS = ["terms_privacy", "marketing_email"] as const;
 /** The first-touch attribution kept on the contact's 'waitlist' source row. */

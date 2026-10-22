@@ -38,13 +38,16 @@ import { rpcRewardEnsure } from "./rpc";
 /**
  * The shown wallet as the database has it NOW. getWallet is a per-request memo
  * (React cache) and was read before the grant, so asking it again replays the
- * old balance; this one read runs only when ensurePrelaunchRewards paid
- * something (review S4). The wallet service itself is not touched.
+ * old balance — and so does the SAME query sent again: Next.js memoises
+ * identical GET fetches within one render, which is what PostgREST reads are.
+ * Hence a different column list (a different URL), read only when
+ * ensurePrelaunchRewards paid something (review S4). The wallet service itself
+ * is not touched.
  */
 export async function walletAfterGrant(supabase: Client, workspaceId: string) {
   const { data } = await supabase
     .from("credit_wallets")
-    .select("*")
+    .select("id, workspace_id, balance")
     .eq("workspace_id", workspaceId)
     .maybeSingle();
   return data;

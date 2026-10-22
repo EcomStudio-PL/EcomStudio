@@ -124,6 +124,7 @@ check "no stored value is a video promise any more" "select not exists (select 1
 check "new V2 keys exist as objects (every-key invariant)" "select bool_and(jsonb_typeof($PUB->'fields'->k) = 'object') from map m, jsonb_object_keys(m.m) k"
 check "one history row, version 2, manual, labelled" "select count(*) = 1 and min(version) = 2 and min(reason) = 'manual' and min(label) like 'Landing V2%' from cms_page_versions where version > 1"
 check "the history row holds the snapshot as it was" "select md5(snapshot::text) = '$SNAP_BEFORE' from cms_page_versions where version = 2"
+check "hero.image exists as an object (no builder normalisation write later)" "select jsonb_typeof($PUB->'fields'->'hero.image') = 'object' and jsonb_typeof($DRAFT->'fields'->'hero.image') = 'object'"
 check "the gallery block and block style are untouched" "select (select content->'style'->>'pad' from cms_blocks where type='launch') = 'lg' and (select content from cms_blocks where type='launch_gallery') = '{\"gallery\":\"thumbs\",\"items\":[]}'::jsonb and (select published_snapshot->1->'content' from cms_pages) = '{\"gallery\":\"thumbs\",\"items\":[]}'::jsonb"
 
 echo "B · a second run"
@@ -145,10 +146,11 @@ check "a language absent from a key the admin edited is filled in" "select $PUB-
 
 echo "D · unknown keys and other properties"
 reset_db
-seed_page premiera true "(select f || '{\"custom.key\":{\"pl\":\"zostaje\"},\"showCost\":{\"pl\":\"1\"}}'::jsonb from oldf)" 1
+seed_page premiera true "(select f || '{\"custom.key\":{\"pl\":\"zostaje\"},\"showCost\":{\"pl\":\"1\"},\"hero.image\":{\"url\":\"https://x/y.jpg\"}}'::jsonb from oldf)" 1
 apply && ok "0145 applies" || bad "0145 applies"
 check "a key outside the map stays" "select $PUB->'fields'->'custom.key'->>'pl' = 'zostaje' and $DRAFT->'fields'->'custom.key'->>'pl' = 'zostaje'"
 check "an admin's section switch stays" "select $PUB->'fields'->'showCost'->>'pl' = '1'"
+check "an admin's hero image stays" "select $PUB->'fields'->'hero.image'->>'url' = 'https://x/y.jpg'"
 
 echo "E · a draft that diverged from the snapshot"
 reset_db

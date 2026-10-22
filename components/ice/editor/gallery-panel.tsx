@@ -64,6 +64,13 @@ function half(url: string, crop?: GalleryCrop | null): GalleryHalf {
   return crop && !isCenter(crop) ? { url, crop } : { url };
 }
 
+/** A frame copied to the other picture keeps its position but never a zoom
+ *  that picture's own crop editor would refuse (it would paint soft). */
+function capped(crop: GalleryCrop | null | undefined, asset: IceAsset): GalleryCrop | null {
+  if (!crop) return null;
+  return { ...crop, zoom: Math.min(crop.zoom, zoomCap(asset, SPEC)) };
+}
+
 /** A picture the library no longer describes still has to be paintable. */
 function fallbackAsset(url: string): IceAsset {
   return {
@@ -674,8 +681,8 @@ function PairEditor({ ctx, item, n, assetOf, learn, onChange, onBack }: {
       <div className={s.field}>
         <span className={s.label}>{t("ice.pair.align")}</span>
         <div className={s.row}>
-          <Btn small disabled={!both} onClick={() => item.after && setHalf("after", half(item.after.url, cropOf("before")))}>{t("ice.pair.copyToAfter")}</Btn>
-          <Btn small disabled={!both} onClick={() => item.before && setHalf("before", half(item.before.url, cropOf("after")))}>{t("ice.pair.copyToBefore")}</Btn>
+          <Btn small disabled={!both} onClick={() => item.after && setHalf("after", half(item.after.url, capped(cropOf("before"), assetOf(item.after.url))))}>{t("ice.pair.copyToAfter")}</Btn>
+          <Btn small disabled={!both} onClick={() => item.before && setHalf("before", half(item.before.url, capped(cropOf("after"), assetOf(item.before.url))))}>{t("ice.pair.copyToBefore")}</Btn>
           <label className={s.check}>
             <input type="checkbox" checked={blend} disabled={!both} onChange={(e) => setOverlay(e.target.checked)} />
             {t("ice.pair.overlay")}

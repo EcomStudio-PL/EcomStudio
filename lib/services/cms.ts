@@ -262,6 +262,76 @@ export function versionBlockRows(
   }).filter((r) => isBlockType(r.type));
 }
 
+/**
+ * A LAUNCH BLOCK SAVED BY THE BUILDER, MERGED FIELD BY FIELD.
+ *
+ * The builder loaded its copy of the launch block when the page opened and
+ * sends the WHOLE content on every autosave. Written as-is, that copy puts
+ * back every field somebody changed since in "Edytuj stronę" (a three-way
+ * race the inline editor itself guards with a compare-and-set). So the save
+ * carries what the builder started from (`base`) and only what the builder
+ * actually changed — per field and language, and per other top-level key —
+ * goes over what is stored now. Pure; values compared as JSON.
+ */
+export function mergeLaunchContent(
+  stored: CmsBlockContent, base: CmsBlockContent, next: CmsBlockContent,
+): CmsBlockContent {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const obj = (v: unknown): Record<string, unknown> =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const s = obj(stored), b = obj(base), n = obj(next);
+  const out: Record<string, unknown> = { ...s };
+  for (const key of new Set([...Object.keys(n), ...Object.keys(b)])) {
+    if (key === "fields" || same(n[key], b[key])) continue;
+    if (key in n) out[key] = n[key]; else delete out[key];
+  }
+  const sf = obj(s.fields), bf = obj(b.fields), nf = obj(n.fields);
+  const fields: Record<string, unknown> = { ...sf };
+  for (const key of new Set([...Object.keys(nf), ...Object.keys(bf)])) {
+    const nv = obj(nf[key]), bv = obj(bf[key]);
+    let merged: Record<string, unknown> | null = null;
+    for (const loc of new Set([...Object.keys(nv), ...Object.keys(bv)])) {
+      if (same(nv[loc], bv[loc])) continue;
+      merged ??= { ...obj(fields[key]) };
+      if (loc in nv) merged[loc] = nv[loc]; else delete merged[loc];
+    }
+    if (merged) fields[key] = merged;
+  }
+  out.fields = fields;
+  return out as CmsBlockContent;
+}
+
+/**
+ * THE LAUNCH PAGE'S GALLERIES SURVIVE A RESTORE OF A VERSION THAT PREDATES
+ * THEM. A gallery has its own history (the inline editor's "Historia"); a
+ * page version from before galleries existed — the 0145 "treści sprzed
+ * aktualizacji" one, say — would otherwise drop every gallery from the draft,
+ * and the next publish would take them off the page. A gallery the version
+ * DOES contain is restored from it as usual.
+ */
+export function withCurrentGalleries(
+  rows: ReturnType<typeof versionBlockRows>, current: CmsBlock[], pageId: string, adminId: string,
+) {
+  const key = (content: unknown) =>
+    content && typeof content === "object" ? String((content as Record<string, unknown>).gallery ?? "") : "";
+  const restoredKeys = new Set(rows.filter((r) => r.type === "launch_gallery").map((r) => key(r.content)));
+  const kept = current
+    .filter((b) => b.type === "launch_gallery" && key(b.content) !== "" && !restoredKeys.has(key(b.content)))
+    .map((b) => ({
+      page_id: pageId,
+      type: b.type,
+      sort_order: b.sort_order,
+      visible: b.visible,
+      content: b.content as never,
+      style: (b.style ?? {}) as never,
+      code: (b.code ?? {}) as never,
+      analytics_id: b.analytics_id ?? null,
+      anchor: b.anchor ?? null,
+      updated_by: adminId,
+    }));
+  return [...rows, ...kept];
+}
+
 /* ── REDIRECTS ────────────────────────────────────────────────────────────
  *
  * The admin's view of the routing table. The PUBLIC read is a different path
@@ -322,7 +392,15 @@ export async function listVersions(supabase: Client, pageId: string): Promise<Ve
   const { data } = await supabase.from("cms_page_versions")
     .select("id, version, reason, label, created_at, created_by, snapshot")
     .eq("page_id", pageId).order("version", { ascending: false }).limit(50);
-  return (data ?? []).map((v) => ({
+  // The newest 50, plus every older LABELLED manual version: a named restore
+  // point (the 0145 "Landing V2 — treści sprzed aktualizacji" one) must not
+  // scroll out of reach because fifty inline saves came after it.
+  const oldest = data && data.length === 50 ? data[data.length - 1]!.version : null;
+  const { data: pinned } = oldest === null ? { data: [] } : await supabase.from("cms_page_versions")
+    .select("id, version, reason, label, created_at, created_by, snapshot")
+    .eq("page_id", pageId).eq("reason", "manual").not("label", "is", null).lt("version", oldest)
+    .order("version", { ascending: false }).limit(20);
+  return [...(data ?? []), ...(pinned ?? [])].map((v) => ({
     id: v.id,
     version: v.version,
     reason: v.reason,

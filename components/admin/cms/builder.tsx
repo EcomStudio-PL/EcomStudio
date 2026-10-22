@@ -159,9 +159,16 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queued = useRef<Draft | null>(null);
+  /** Per section, the content as the builder last loaded or saved it: the
+   *  launch block's save is merged per field over what is stored now, so a
+   *  change made meanwhile in "Edytuj stronę" is not written back over. */
+  const baseline = useRef(new Map<string, Draft["content"]>(
+    initial.flatMap((b) => (b.id ? [[b.id, b.content] as [string, Draft["content"]]] : [])),
+  ));
 
   const persist = useCallback(async (draft: Draft) => {
     setSaveState("saving");
+    const base = draft.id ? baseline.current.get(draft.id) : undefined;
     const res = await saveBlockAction({
       id: draft.id,
       pageId: page.id,
@@ -175,8 +182,10 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
       showFrom: draft.showFrom,
       showUntil: draft.showUntil,
       audience: draft.audience,
+      ...(draft.type === "launch" && base ? { base } : {}),
     });
     if (res.ok) {
+      if (draft.id) baseline.current.set(draft.id, draft.content);
       setSaveState("saved");
       // The preview reads the database, so it only becomes correct once the
       // save has landed.

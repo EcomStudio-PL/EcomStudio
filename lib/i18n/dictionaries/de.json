@@ -1242,7 +1242,8 @@
           "existing_account": "Hatte bereits ein Konto",
           "existing_contact": "War bereits in den Kontakten",
           "same_network": "Gleiches Netzwerk wie die empfehlende Person",
-          "self": "Hat sich selbst empfohlen"
+          "self": "Hat sich selbst empfohlen",
+          "other_link": "Über einen Link ohne diese Empfehlung bestätigt"
         },
         "referralsTitle": "Empfehlungen",
         "rejectedTitle": "Nicht gezählte Empfehlungen — Grund",

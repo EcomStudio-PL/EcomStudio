@@ -1242,7 +1242,8 @@
           "existing_account": "Already had an account",
           "existing_contact": "Already in contacts",
           "same_network": "Same network as the referrer",
-          "self": "Referred themselves"
+          "self": "Referred themselves",
+          "other_link": "Confirmed through a link without this referral"
         },
         "referralsTitle": "Referrals",
         "rejectedTitle": "Referrals not counted — reason",

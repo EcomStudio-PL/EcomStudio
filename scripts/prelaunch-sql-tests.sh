@@ -33,7 +33,7 @@
 # section breaks copies of 0144 on purpose and checks the suite goes red
 # where it should.
 #
-# Local harness only, its own databases (prelaunch_sqltest, _m1…_m3), removed
+# Local harness only, its own databases (prelaunch_sqltest, _m1…_m4), removed
 # on exit (KEEP_DB=1 keeps them; SKIP_MUTANTS=1 skips section Z).
 #
 #   bash scripts/pg-harness-up.sh && bash scripts/prelaunch-sql-tests.sh
@@ -71,7 +71,7 @@ for v in IS_ADMIN TOUCH SERVER_CALL_OK ACCOUNT_BLOCKED APPLY_TX UPSERT RESUB WAI
 done
 
 DB_MAIN="${PRELAUNCH_DB:-prelaunch_sqltest}"
-MUTANT_DBS=("${DB_MAIN}_m1" "${DB_MAIN}_m2" "${DB_MAIN}_m3")
+MUTANT_DBS=("${DB_MAIN}_m1" "${DB_MAIN}_m2" "${DB_MAIN}_m3" "${DB_MAIN}_m4")
 WORK=$(mktemp -d)
 cleanup() {
   if [ "${KEEP_DB:-0}" != "1" ]; then
@@ -1431,6 +1431,30 @@ select public.t_true('F19 five DOI mails in 24 h to ONE mailbox across five spel
   select not (r->>'send')::boolean and (r->>'throttled')::boolean
     from (select public.t_submit('mb6', 'mbox+6@example.com', 'net-mb-6') as r) x $q$);
 SQL
+  # two FIRST submits of one new address at the same moment (E2E finding):
+  # both get an answer, one contact, one signup
+  race "begin; set local role anon; select public.t_submit('tw1', 'twin.first@example.com', 'net-tw1'); select pg_sleep(0.5); commit;" \
+       "begin; set local role anon; select public.t_submit('tw2', 'twin.first@example.com', 'net-tw2'); select pg_sleep(0.5); commit;"
+  local twin_errors twin_rows
+  twin_errors=$(cat "$WORK"/race_*.out | grep -c 'ERROR' || true)
+  twin_rows=$(q -c "select (select count(*) from public.newsletter_contacts where email = 'twin.first@example.com')::text || ','
+                       || (select count(*) from public.prelaunch_signups where email = 'twin.first@example.com')::text")
+  if [ "$twin_errors" = "0" ] && [ "$twin_rows" = "1,1" ]; then
+    record 'F20 two first submits of one new address at the same moment: both answered, one contact, one signup' true ''
+  else
+    record 'F20 two first submits of one new address at the same moment: both answered, one contact, one signup' false \
+      "errors: $twin_errors; contacts,signups: $twin_rows; $(cat "$WORK"/race_*.out | grep ERROR | head -2 | tr '\n' ' ')"
+  fi
+  q >/dev/null <<'SQL'
+-- the legacy mirror carries the CONFIRMED person's name, not the legacy door's
+select public.t_be('anon');
+select public.waitlist_subscribe('mirror.name@example.com', 'hero', 'pl', '{"first_name":"Intruz","last_name":"X"}'::jsonb);
+select public.t_submit('mn1', 'mirror.name@example.com', 'net-mn', p_first := 'Halina', p_locale := 'en');
+select public.t_confirm('mn1');
+select public.t_eq('F21 the legacy waitlist row of a confirmed address carries the confirmed name and language, not a name typed into the legacy door', 'postgres', $q$
+  select coalesce(first_name, 'null') || ',' || coalesce(last_name, 'null') || ',' || locale || ',' || status
+    from public.waitlist_subscribers where email = 'mirror.name@example.com' $q$, 'Halina,null,en,confirmed');
+SQL
 }
 
 # ── E. THE CREDITS ──────────────────────────────────────────────────────────
@@ -1836,6 +1860,7 @@ run_suite "$DB_MAIN" "$MIGRATION"
 #   1. the DOI claim without "used_at is null"   → D5 (a spent link is claimed again)
 #   2. the reward ensure granted to anon         → G3 A8
 #   3. no referrer lock before counting          → F12 (the duplicate rule races)
+#   4. no retry of the contact upsert            → F20 (two first submits race)
 mutate() {  # $1 = n, $2 = perl program → path of the mutant
   local out="$WORK/0144_mutant_$1.sql"
   perl -0777 -pe "$2" "$MIGRATION" > "$out"
@@ -1845,16 +1870,18 @@ MUTANT_FILES=(
   "$(mutate 1 's/where token_hash = p_token_hash and used_at is null and expires_at > now\(\)/where token_hash = p_token_hash and expires_at > now()/')"
   "$(mutate 2 's/grant execute on function public\.prelaunch_reward_ensure\(\) to authenticated;/grant execute on function public.prelaunch_reward_ensure() to anon, authenticated;/')"
   "$(mutate 3 's/select \* into v_ref from public\.prelaunch_signups where id = v_row\.referred_by for update;/select * into v_ref from public.prelaunch_signups where id = v_row.referred_by;/')"
+  "$(mutate 4 's/  exception when unique_violation then\n    v_contact := public\.newsletter_upsert_contact\(\n      p_email := v_email, p_source_key := .waitlist., p_locale := v_locale\);\n//')"
 )
 MUTANT_LABELS=(
   'prelaunch_confirm claims a token without "used_at is null"'
   'prelaunch_reward_ensure granted to anon'
   'prelaunch_confirm counts without locking the referrer'
+  'prelaunch_signup does not retry the contact upsert'
 )
-MUTANT_EXPECT=('D5' 'G3 A8' 'F12')
+MUTANT_EXPECT=('D5' 'G3 A8' 'F12' 'F20')
 
 Z_RESULTS=()
-for i in 0 1 2; do
+for i in 0 1 2 3; do
   n=$((i + 1))
   label="Z$n  mutant $n caught (${MUTANT_LABELS[$i]})"
   if [ "${SKIP_MUTANTS:-0}" = "1" ]; then

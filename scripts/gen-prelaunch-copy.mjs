@@ -36,8 +36,12 @@ const require = createRequire(import.meta.url);
 const OLD_REF = "efec08f";
 const OUT = "supabase/migrations/0145_prelaunch_copy.sql";
 const LOCALES = ["pl", "en", "de"];
-/** Plain media keys in the bag (no copy to migrate). */
+/** Plain media keys in the bag (no copy to migrate) — but each must EXIST as
+ *  an object, like every launch key: the builder normalises a missing one on
+ *  first open (a write without a version that also trips an open inline
+ *  editor's conflict check), so 0145 adds it instead. */
 const SKIP = new Set(["hero.image"]);
+const OBJECT_KEYS = [...SKIP];
 
 // LAUNCH_FIELDS straight from the module the renderer uses — never a copy.
 const dir = mkdtempSync(join(tmpdir(), "gen-prelaunch-copy-"));
@@ -76,7 +80,8 @@ const sql = `-- 0145 — PRE-LAUNCH LANDING V2: the launch page's new copy, in t
 -- Per key and language: a value that is absent or still the OLD shipped
 -- default becomes the NEW default; anything an admin wrote is left alone. New
 -- V2 keys are added (an empty default as "", so the key exists for the inline
--- editor). Draft and published snapshot get the same transform; a
+-- editor; the media key hero.image is added as {} when missing). Draft and
+-- published snapshot get the same transform; a
 -- cms_page_versions row with the snapshot as it was is written first, only
 -- when something changes. Idempotent.
 --
@@ -87,6 +92,7 @@ const sql = `-- 0145 — PRE-LAUNCH LANDING V2: the launch page's new copy, in t
 do $do$
 declare
   v_map constant jsonb := $copy$${json}$copy$::jsonb;
+  v_objects constant text[] := array[${OBJECT_KEYS.map((k) => `'${k}'`).join(", ")}];
   v_page uuid;
   v_seo jsonb;
   v_snap jsonb;
@@ -160,6 +166,11 @@ begin
           end if;
         end loop;
         v_fields := v_fields || jsonb_build_object(v_key, v_obj);
+      end loop;
+      foreach v_key in array v_objects loop
+        if jsonb_typeof(v_fields -> v_key) is distinct from 'object' then
+          v_fields := v_fields || jsonb_build_object(v_key, '{}'::jsonb);
+        end if;
       end loop;
       v_out := v_target || jsonb_build_object('fields', v_fields);
     end if;

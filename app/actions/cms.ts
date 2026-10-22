@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/services/audit";
 import { CMS_TAG } from "@/lib/server/public-site";
 import {
   listBlocks, nextVersion, slugProblem, slugify, isBlockType, publishPage, snapshotOf,
-  NOT_COPYABLE_TYPES, ensureLaunchFieldObjects, launchTokenProblem, versionBlockRows,
+  NOT_COPYABLE_TYPES, ensureLaunchFieldObjects, launchTokenProblem, mergeLaunchContent, versionBlockRows, withCurrentGalleries,
 } from "@/lib/services/cms";
 import { SEED_PAGES } from "@/lib/cms-seed";
 import { TEMPLATE_KEYS, templateBlocks } from "@/lib/cms-templates";
@@ -584,6 +584,9 @@ export async function saveBlockAction(input: {
   showFrom?: string | null;
   showUntil?: string | null;
   audience?: string | null;
+  /** The content this save started from (the launch block: merged per field
+   *  over what is stored, see mergeLaunchContent). */
+  base?: CmsBlockContent;
 }): Promise<Result<{ id: string }>> {
   try {
     const { supabase, adminId } = await requireAdmin();
@@ -619,6 +622,13 @@ export async function saveBlockAction(input: {
     }
 
     let content = input.content;
+    if (input.type === "launch" && input.id && input.base) {
+      const { data: current } = await supabase.from("cms_blocks")
+        .select("type, content").eq("id", input.id).maybeSingle();
+      if (current?.type === "launch") {
+        content = mergeLaunchContent((current.content ?? {}) as CmsBlockContent, input.base, content);
+      }
+    }
     if (input.type === "launch") {
       // Every launch field present (at least `{}`), so the inline editor can
       // always write it — and no line may carry a token its key does not
@@ -914,11 +924,12 @@ export async function rollbackPageAction(pageId: string, versionId: string): Pro
     });
 
     const restored = Array.isArray(version.snapshot) ? version.snapshot : [];
+    // Every known type, the launch page's galleries included (a gallery
+    // dropped here would vanish from the page at the next publish) — and a
+    // gallery the version predates is kept as it is now (withCurrentGalleries).
+    const rows = withCurrentGalleries(versionBlockRows(restored, pageId, adminId, LAUNCH_FIELDS), current, pageId, adminId);
     await supabase.from("cms_blocks").delete().eq("page_id", pageId);
-    if (restored.length > 0) {
-      // Every known type, the launch page's galleries included (a gallery
-      // dropped here would vanish from the page at the next publish).
-      const rows = versionBlockRows(restored, pageId, adminId, LAUNCH_FIELDS);
+    if (rows.length > 0) {
       const { error } = await supabase.from("cms_blocks").insert(rows);
       if (error) return { ok: false, error: "generic" };
     }

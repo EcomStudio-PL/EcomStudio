@@ -17,8 +17,18 @@ import type { Client } from "@/lib/services/workspace";
 type Rpc = (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 /** Call by name. The generated types learn these functions with 0144; until a
  *  regenerate, the name is checked here, in one place, instead of at every call. */
-const call = (supabase: Client, fn: string, args?: Record<string, unknown>) =>
-  (supabase.rpc as unknown as Rpc).call(supabase, fn, args);
+const call = async (supabase: Client, fn: string, args?: Record<string, unknown>) => {
+  const result = await (supabase.rpc as unknown as Rpc).call(supabase, fn, args);
+  // Every caller turns an error into its uniform answer; the cause is said
+  // here, once — scrubbed, since a constraint message can quote the address.
+  if (result.error) {
+    console.error("[prelaunch] rpc", fn, result.error.message
+      .replace(/[^\s<>"'(),;:[\]=]+@[^\s<>"'(),;:[\]=]+/g, "[address]")
+      .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
+      .slice(0, 300));
+  }
+  return result;
+};
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 const bool = (v: unknown): boolean => v === true;
