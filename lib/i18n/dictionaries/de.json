@@ -10864,7 +10864,8 @@
       "okBody": "Wir melden uns, sobald GrovBase startet.",
       "okTitle": "Geschafft! Du stehst auf der Liste.",
       "okTitleName": "Geschafft, {name}! Du stehst auf der Liste.",
-      "title": "Bestätige deine Anmeldung zum Start"
+      "title": "Bestätige deine Anmeldung zum Start",
+      "metaDescription": "Bestätige deine Anmeldung zur GrovBase-Startliste mit einem Klick."
     },
     "consentChanged": "Der Text der Einwilligungen wurde gerade geändert. Bitte lade die Seite neu und setze die Häkchen erneut.",
     "copied": "Kopiert",

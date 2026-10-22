@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -36,11 +36,18 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const { dict } = await getDictionary();
   const t = makeT(dict);
+  const description = t("prelaunchUi.confirm.metaDescription");
   return {
     title: t("prelaunchUi.confirm.title"),
+    description,
+    openGraph: { description },
     robots: { index: false, follow: false },
   };
 }
+
+/** Zoom allowed here, as on the launch page it belongs to (WCAG 1.4.4): the
+ *  app's global pinch lock is for the tool screens, not a one-button page. */
+export const viewport: Viewport = { maximumScale: 5, userScalable: true };
 
 /**
  * The launch page's own referral wording, so the share card here says what

@@ -159,7 +159,13 @@ const nextConfig = {
     serverActions: { bodySizeLimit: '4.5mb' },
   },
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      { source: "/(.*)", headers: securityHeaders },
+      // The double opt-in landing: noindex as a HEADER too. Its <meta> is
+      // streamed with the page body (dynamic metadata), where a crawler that
+      // reads only <head> would miss it.
+      { source: "/potwierdz-zapis", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+    ];
   },
   // THE CENNIK HAS ONE ADDRESS: /plany. The old /cennik (a never-published
   // CMS draft, so a 404 today) answers 308 there — permanent, method-keeping,

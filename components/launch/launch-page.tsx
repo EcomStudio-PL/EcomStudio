@@ -166,7 +166,7 @@ export function LaunchPage({
           height. One element, one download — see ART_SIZES. */}
       <div aria-hidden data-launch-art
         className="pointer-events-none absolute inset-x-0 top-[var(--hero-top)] h-[var(--hero-art)] lg:left-auto lg:top-0 lg:aspect-[1808/1152] lg:h-auto lg:w-[64%] xl:w-[61%] 2xl:w-[56%]">
-        <Image src={art} alt="" fill priority sizes={ART_SIZES}
+        <Image src={art} alt="" fill priority fetchPriority="high" sizes={ART_SIZES}
           className="object-cover object-[6%_center] md:object-[6%_12%] lg:object-center" />
         {/* Phone band: top AND bottom fade — it does not start at the screen
             edge, so its upper edge would otherwise be a seam across the page. */}

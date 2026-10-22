@@ -198,7 +198,7 @@ export function ConfirmSignup({ share }: { share: ConfirmShareCopy | null }) {
       )}
 
       <p className="mt-7 border-t border-line pt-5">
-        <Link href="/" className="tap text-sm font-medium text-accent transition-opacity hover:opacity-75">
+        <Link href="/" className="tap text-sm font-medium text-ink underline decoration-accent decoration-2 underline-offset-4 transition-opacity hover:opacity-75">
           ← {t("prelaunchUi.confirm.back")}
         </Link>
       </p>

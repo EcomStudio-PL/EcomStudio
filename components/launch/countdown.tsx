@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { remainingParts, unitKey, type CountdownUnit } from "./countdown-math";
@@ -35,6 +36,7 @@ export function LaunchCountdown({ launchAtMs, serverNow, iso, label, dateLabel, 
   size?: "sm" | "md";
 }) {
   const { t, locale } = useI18n();
+  const router = useRouter();
   const [skew] = useState(() => serverNow - Date.now());
   // The state is the remainder in MINUTES (rounded up), not in milliseconds:
   // the one-second tick below then sets the same number fifty-nine times out
@@ -49,6 +51,14 @@ export function LaunchCountdown({ launchAtMs, serverNow, iso, label, dateLabel, 
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
   }, [launchAtMs, skew]);
+
+  // The launch moment passing in an OPEN tab: the countdown removes itself,
+  // and the server copy around it — the offer line that names the date — is
+  // rendered again, so the page never announces a date already past.
+  const ended = minutesLeft <= 0 && launchAtMs > serverNow;
+  useEffect(() => {
+    if (ended) router.refresh();
+  }, [ended, router]);
 
   if (minutesLeft <= 0) return null;
   const parts = remainingParts(minutesLeft * 60_000);

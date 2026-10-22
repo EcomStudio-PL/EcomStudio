@@ -10864,7 +10864,8 @@
       "okBody": "Damy Ci znać, gdy GrovBase wystartuje.",
       "okTitle": "Gotowe! Jesteś na liście.",
       "okTitleName": "Gotowe, {name}! Jesteś na liście.",
-      "title": "Potwierdź zapis na premierę"
+      "title": "Potwierdź zapis na premierę",
+      "metaDescription": "Potwierdź zapis na listę premierową GrovBase jednym kliknięciem."
     },
     "consentChanged": "Treść zgód właśnie się zmieniła. Odśwież stronę i zaznacz je ponownie.",
     "copied": "Skopiowano",

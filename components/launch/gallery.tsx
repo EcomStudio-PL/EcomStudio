@@ -94,7 +94,16 @@ export function LaunchGallery({ galleryKey, eyebrow, title, tiles, labels, cta }
           landmark={false} arrowTop="calc(50% - 1.1rem)"
           className="[--rail-cols:1.3] [--rail-gap:10px] sm:[--rail-cols:2.4] sm:[--rail-gap:12px] lg:[--rail-cols:4] lg:[--rail-gap:16px]">
           {tiles.map((tile) => (
-            <figure key={tile.id} className="min-w-0" data-launch-tile={tile.index}>
+            <figure key={tile.id} className="min-w-0" data-launch-tile={tile.index}
+              // A slider focused by KEYBOARD in a tile the rail shows only in
+              // part would be moved off-screen: Chromium does not scroll a
+              // partly visible focus target. The tile is brought in, within
+              // the rail only (block: nearest keeps the page where it is).
+              onFocusCapture={(e) => {
+                if (!(e.target as Element).matches?.(":focus-visible")) return;
+                const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                e.currentTarget.scrollIntoView({ inline: "nearest", block: "nearest", behavior: reduce ? "auto" : "smooth" });
+              }}>
               <div
                 className="overflow-hidden rounded-2xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.16)]"
                 onPointerDownCapture={(e) => {

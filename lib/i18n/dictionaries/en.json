@@ -10864,7 +10864,8 @@
       "okBody": "We'll let you know when GrovBase launches.",
       "okTitle": "Done! You're on the list.",
       "okTitleName": "Done, {name}! You're on the list.",
-      "title": "Confirm your launch signup"
+      "title": "Confirm your launch signup",
+      "metaDescription": "Confirm your GrovBase launch-list signup with one click."
     },
     "consentChanged": "The consent wording has just changed. Please refresh the page and tick the boxes again.",
     "copied": "Copied",
