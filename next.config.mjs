@@ -141,7 +141,10 @@ const nextConfig = {
   // imapflow and mailparser reach for their encodings and TLS pieces through
   // dynamic requires the bundler cannot follow, so they stay external too —
   // bundled, they fail at runtime on the first IMAP connection.
-  serverExternalPackages: ['sharp', 'imapflow', 'mailparser'],
+  // pdfkit (the legal documents' PDFs) finds its own files at runtime relative
+  // to where it is installed (createRequire for its standard fonts, a URL for
+  // its colour profile); bundled, those lookups point nowhere.
+  serverExternalPackages: ['sharp', 'imapflow', 'mailparser', 'pdfkit'],
   // THE TRIAL WATERMARK IS READ FROM DISK, NOT SERVED. Its PNG sits next to
   // the module that loads it (lib/server/trial-watermark/asset.ts), outside
   // public/, and is read with fs at a path built at runtime — which the file
@@ -150,6 +153,12 @@ const nextConfig = {
   // delivered clean). '/**' because every producer route can reach it.
   outputFileTracingIncludes: {
     '/**': ['./lib/server/trial-watermark/assets/*.png'],
+    // THE LEGAL PDFs' FONTS, the same way: Inter TTFs (and their OFL licence)
+    // read from disk by lib/server/legal/pdf.ts, needed by the four PDF routes.
+    '/regulamin/pdf': ['./lib/server/legal/fonts/*'],
+    '/polityka-prywatnosci/pdf': ['./lib/server/legal/fonts/*'],
+    '/polityka-cookies/pdf': ['./lib/server/legal/fonts/*'],
+    '/umowa-powierzenia-danych/pdf': ['./lib/server/legal/fonts/*'],
   },
   experimental: {
     // Replying with an attachment posts the file through a server action, and
