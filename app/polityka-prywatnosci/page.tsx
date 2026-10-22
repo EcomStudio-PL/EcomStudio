@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LegalPage } from "@/components/cms/legal-page";
+import { LegalPage, type LegalSearchParams } from "@/components/cms/legal-page";
 import { legalMetadata } from "@/lib/server/legal-metadata";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +10,6 @@ export function generateMetadata(): Promise<Metadata> {
   return legalMetadata("polityka-prywatnosci", "legal.privacyTitle");
 }
 
-export default function PrivacyPage() {
-  return <LegalPage slug="polityka-prywatnosci" titleKey="legal.privacyTitle" />;
+export default function PrivacyPage({ searchParams }: { searchParams: LegalSearchParams }) {
+  return <LegalPage slug="polityka-prywatnosci" titleKey="legal.privacyTitle" searchParams={searchParams} />;
 }

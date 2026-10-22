@@ -29,7 +29,7 @@ if (!BASE) {
   process.exit(2);
 }
 const WIDTHS = [375, 390, 414, 430];
-const PATHS = ["/", "/login", "/register", "/regulamin", "/polityka-prywatnosci"];
+const PATHS = ["/", "/login", "/register", "/regulamin", "/polityka-prywatnosci", "/polityka-cookies", "/umowa-powierzenia-danych"];
 
 const browser = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",

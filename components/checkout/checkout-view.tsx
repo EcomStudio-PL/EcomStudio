@@ -10,6 +10,7 @@ import { ShieldCheck, Lock, ChevronDown, Loader2, AlertTriangle } from "lucide-r
 import { useI18n } from "@/lib/i18n/provider";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import { consentParts } from "@/lib/launch/fields";
 import { Input, Label } from "@/components/ui/input";
 import {
   beginCheckoutAction, recheckTopupAction, saveCheckoutInvoiceAction, type InvoiceDetails,
@@ -672,8 +673,16 @@ function PaymentPanel({ quote, returnUrl, reference }: {
             ? <span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" aria-hidden />{t("checkout.processing")}</span>
             : `${t("checkout.pay")} ${money}`}
         </button>
+        {/* The two documents the customer accepts, one tap away, in a new
+            tab so the payment form stays where it is. */}
         <p className="mt-2 text-center text-[11px] leading-snug text-faint">
-          {t("checkout.legal")}
+          {consentParts(t("checkout.legalLinked"), { terms: t("legal.acceptTerms"), privacy: t("legal.acceptPrivacy") })
+            .map((part, i) => part.kind === "link" ? (
+              <a key={i} href={part.link === "terms" ? "/regulamin" : "/polityka-prywatnosci"} target="_blank" rel="noopener noreferrer"
+                className="underline decoration-faint/50 underline-offset-2 transition-colors hover:text-muted">
+                {part.text}
+              </a>
+            ) : part.text)}
         </p>
       </div>
     </div>

@@ -7,16 +7,21 @@ import { getPublishedPage } from "@/lib/server/public-site";
 import { pageMetadata } from "@/lib/server/cms-page";
 
 /**
- * WHAT REGULAMIN AND POLITYKA PRYWATNOŚCI TELL A CRAWLER.
+ * WHAT THE LEGAL DOCUMENTS TELL A CRAWLER (lib/legal/docs.ts: Regulamin,
+ * Polityka prywatności, Polityka cookies, Umowa powierzenia).
  *
- * These two keep their own routes — they are linked from the footer, the
- * signup consent line and the sitemap, and those links must not change. But
+ * These keep their own routes — they are linked from the footer, the consent
+ * lines, the checkout and the sitemap, and those links must not change. But
  * their SEO belongs with the rest of the CMS, so once an admin publishes one,
  * the title and description they wrote in Ustawienia strony are what a search
  * result shows.
  *
  * Until then the page is a draft and there is nothing to read, so it falls
  * back to its own heading — which is what these routes have always done.
+ *
+ * The canonical address is always the bare /<slug>: ?lang=pl (the Polish
+ * text for a visitor whose language is not ready yet) is the same document,
+ * not a second page to index.
  */
 export async function legalMetadata(slug: string, titleKey: string): Promise<Metadata> {
   const supabase = await createClient();

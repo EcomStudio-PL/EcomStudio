@@ -69,7 +69,7 @@ function check(label, ok, detail = "") {
 
 /** Routes an anonymous visitor can reach. Confirmed against
  *  lib/supabase/middleware.ts PROTECTED_PREFIXES on 2026-09-19. */
-const PUBLIC_PAGES = ["/", "/regulamin", "/polityka-prywatnosci"];
+const PUBLIC_PAGES = ["/", "/regulamin", "/polityka-prywatnosci", "/polityka-cookies", "/umowa-powierzenia-danych"];
 
 /** Widths that have to be free of horizontal scroll. The narrow end is a
  *  small iPhone; 430 is a Pro Max; 768 is the tablet breakpoint. */

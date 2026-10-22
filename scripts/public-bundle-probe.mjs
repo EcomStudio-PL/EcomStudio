@@ -31,7 +31,7 @@ import { existsSync } from "node:fs";
 const BASE = (process.argv[2] || process.env.PERF_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 
 /** Routes an anonymous visitor reaches that have no business holding auth code. */
-const PUBLIC_ROUTES = ["/regulamin", "/polityka-prywatnosci"];
+const PUBLIC_ROUTES = ["/regulamin", "/polityka-prywatnosci", "/polityka-cookies", "/umowa-powierzenia-danych"];
 
 /*
   Markers chosen because they appear in @supabase/auth-js and @supabase/ssr and

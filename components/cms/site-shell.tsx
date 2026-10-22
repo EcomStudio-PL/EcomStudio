@@ -151,8 +151,8 @@ export function MinimalHeader() {
   );
 }
 
-/** The legal minimum: who is selling, and the two documents that must be one
- *  click away from anything that takes money. */
+/** The legal minimum: who is selling, and the documents that must be one
+ *  click away from anything that takes money (the cookie policy with them). */
 export function MinimalFooter({ t }: { t: CmsT }) {
   return (
     <footer data-chrome="minimal" className="mt-auto border-t border-line bg-sunken/40">
@@ -161,6 +161,7 @@ export function MinimalFooter({ t }: { t: CmsT }) {
         <span className="flex flex-wrap gap-4">
           <Link href="/regulamin" className="tap transition-colors hover:text-ink">{t("launch.terms")}</Link>
           <Link href="/polityka-prywatnosci" className="tap transition-colors hover:text-ink">{t("launch.privacyPage")}</Link>
+          <Link href="/polityka-cookies" className="tap transition-colors hover:text-ink">{t("legal.cookiesShort")}</Link>
         </span>
       </div>
     </footer>
@@ -249,6 +250,7 @@ export function SiteFooter({ global, nav, site, locale, t }: ShellProps) {
           <span className="flex flex-wrap gap-4">
             <Link href="/regulamin" className="tap transition-colors hover:text-ink">{t("launch.terms")}</Link>
             <Link href="/polityka-prywatnosci" className="tap transition-colors hover:text-ink">{t("launch.privacyPage")}</Link>
+            <Link href="/polityka-cookies" className="tap transition-colors hover:text-ink">{t("legal.cookiesShort")}</Link>
           </span>
         </div>
       </div>

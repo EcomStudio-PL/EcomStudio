@@ -14,6 +14,8 @@ import { Countdown } from "./countdown";
 import { CmsImage } from "./cms-image";
 import { CustomBlock } from "./custom-block";
 import { CmsForm } from "./cms-form";
+import { LegalText } from "@/components/legal/legal-text";
+import { legalViewFor, readLegalDoc, type LegalDocContent } from "@/lib/legal/content";
 
 /**
  * THE PUBLIC RENDERER.
@@ -255,6 +257,11 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
 
     case "rich_text":
     case "legal": {
+      // A legal DOCUMENT (content.doc, lib/legal/content.ts) is stored text,
+      // shown line for line by LegalText — React escapes it, no markup is
+      // printed. This is what the builder preview (/podglad) shows.
+      const legal = block.type === "legal" ? readLegalDoc(c) : null;
+      if (legal) return <LegalDocSection doc={legal} locale={locale} t={t} />;
       // Authored markup when there is any, the plain paragraphs the old
       // `legal` sections already hold when there is not. Both are sanitised.
       const html = sanitizeRichText(lt(c.html, locale));
@@ -1135,6 +1142,28 @@ export function legalHtml(block: CmsBlock, locale: string): string {
 /** Re-exported so callers that only need the allowlist do not reach past this
  *  module into the sanitiser. */
 export { sanitizeHtml };
+
+/**
+ * A `legal` section that holds a document, in the language of the page: its
+ * own text when that language is active, otherwise a short notice (the
+ * visitor-facing page, components/cms/legal-page.tsx, adds the way to the
+ * Polish text and the PDF).
+ */
+function LegalDocSection({ doc, locale, t }: { doc: LegalDocContent; locale: string; t: CmsT }) {
+  const view = legalViewFor(doc, locale);
+  if (view.mode === "soon") {
+    return (
+      <div className="cms-center-x max-w-3xl" data-legal-soon>
+        <p className="text-[15px] leading-relaxed text-muted">{t(view.polish ? "legal.soonBody" : "legal.pendingBody")}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="cms-center-x max-w-3xl text-left">
+      <LegalText text={view.entry.text} lang={view.locale} />
+    </div>
+  );
+}
 
 /** Stylised dashboard mock-up used when a hero has no media configured. */
 function HeroMockup() {
