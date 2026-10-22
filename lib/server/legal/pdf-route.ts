@@ -1,7 +1,7 @@
 import "server-only";
-import { isLegalLocale, legalDoc, type LegalLocale } from "@/lib/legal/docs";
+import { isLegalLocale, LEGAL_DOCS, LEGAL_LOCALES, legalDoc, type LegalLocale } from "@/lib/legal/docs";
 import { SITE_URL } from "@/lib/site";
-import { getPublishedLegal, legalSha256, legalVersionTag, type PublishedLegal } from "./published";
+import { getPublishedLegal, legalPdfTag, legalSha256, type PublishedLegal } from "./published";
 import { renderLegalPdf, type LegalPdfInput } from "./pdf";
 
 /**
@@ -9,8 +9,9 @@ import { renderLegalPdf, type LegalPdfInput } from "./pdf";
  *
  *   /regulamin/pdf                    the Polish text, as published now
  *   /regulamin/pdf?v=<12-hex tag>     the same, cacheable for a year when the
- *                                     tag is the current text's (a new text
- *                                     is a new tag, so a new URL)
+ *                                     tag is the current one (legalPdfTag: the
+ *                                     text, version, date and language — any
+ *                                     change is a new tag, so a new URL)
  *   /regulamin/pdf?lang=en            a language whose status is "active";
  *                                     a "soon" language has no PDF (404)
  *
@@ -83,7 +84,9 @@ export function legalPdfDisposition(pdfName: string, version: string, lang: Lega
 }
 
 // ── A small per-instance LRU of rendered PDFs ──────────────────────────────
-const CACHE_MAX = 8;
+// Room for every document in every language twice over (the published text
+// and the one just replaced), so a crawler walking all of them evicts nothing.
+const CACHE_MAX = LEGAL_DOCS.length * LEGAL_LOCALES.length * 2;
 const rendered = new Map<string, Promise<Uint8Array<ArrayBuffer>>>();
 
 function cachedPdf(key: string, render: () => Promise<Buffer>): Promise<Uint8Array<ArrayBuffer>> {
@@ -140,7 +143,7 @@ export async function legalPdfResponse(request: Request, slug: string, deps: Par
     const entry = page && doc ? doc[lang] : null;
     if (!entry || entry.status !== "active" || entry.text.trim() === "") return plain(404);
 
-    const tag = legalVersionTag(entry.text, entry.sha256);
+    const tag = legalPdfTag(entry, lang);
     const etag = legalPdfEtag(tag, lang);
     const headers: Record<string, string> = {
       ETag: etag,

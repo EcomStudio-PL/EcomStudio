@@ -6,7 +6,7 @@ import { BlockRenderer, renderContext, legalHtml, headingsOf } from "@/component
 import { AnnouncementBar, SiteHeader, SiteFooter } from "@/components/cms/site-shell";
 import { LegalDocument, LegalSoon } from "@/components/legal/legal-document";
 import { getGlobalSections, getNavPages, getPublicSite } from "@/lib/server/public-site";
-import { getPublishedLegal, legalVersionTag } from "@/lib/server/legal/published";
+import { getPublishedLegal, legalPdfTag } from "@/lib/server/legal/published";
 import { getPlatformAccess } from "@/lib/server/platform-access";
 import { legalViewFor } from "@/lib/legal/content";
 import { parseLegalText } from "@/lib/legal/document";
@@ -81,14 +81,14 @@ export async function LegalPage({ slug, titleKey, searchParams }: {
         slug={slug} t={t} visitor={locale} doc={doc}
         view={view}
         outline={parseLegalText(view.entry.text)}
-        pdfTag={legalVersionTag(view.entry.text, view.entry.sha256)}
+        pdfTag={legalPdfTag(view.entry, view.locale)}
         publishedAt={page?.publishedAt ?? null}
       />
     ) : (
       <LegalSoon
         slug={slug} titleKey={titleKey} t={t} visitor={locale} doc={doc}
         shown={view.locale}
-        polishTag={view.polish ? legalVersionTag(view.polish.text, view.polish.sha256) : null}
+        polishTag={view.polish ? legalPdfTag(view.polish, "pl") : null}
       />
     );
   } else {

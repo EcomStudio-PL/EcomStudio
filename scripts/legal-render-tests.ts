@@ -45,7 +45,9 @@ import { LEGAL_DOCS, type LegalLocale } from "@/lib/legal/docs";
 import {
   legalViewFor, normalizeLegalText, readLegalDoc, type LegalDocContent, type LegalLocaleDoc,
 } from "@/lib/legal/content";
-import { nodeText, normaliseForCompare, parseLegalText, legalPlainText, type LegalHeading } from "@/lib/legal/document";
+import {
+  nodeText, normaliseForCompare, parseLegalText, legalPlainText, splitLinks, type LegalHeading,
+} from "@/lib/legal/document";
 import { consentParts, consentPlainText } from "@/lib/launch/fields";
 import { LegalText } from "@/components/legal/legal-text";
 import { LegalDocument, LegalSoon } from "@/components/legal/legal-document";
@@ -198,6 +200,16 @@ function main() {
     check("DPA: § headings are top-level when the document has no chapters",
       dpa.filter((e) => e.id.startsWith("par-")).length === 10);
   }
+  {
+    // A repeated "1." heading must not take the anchor of a "1.2." heading
+    // ("pkt-1" + "-2" = "pkt-1-2"), wherever the two stand.
+    const ids = (t: string) => parseLegalText(t).headings.map((h) => h.id);
+    const a = ids("Tytuł\n\nWersja: 1\n\n1. Wstęp\n\n1.2. Zakres\n\n1. Wstęp\n\n1. Wstęp");
+    const b = ids("Tytuł\n\nWersja: 1\n\n1. Wstęp\n\n1. Wstęp\n\n1.2. Zakres");
+    check("heading ids stay unique when a repeated heading's suffix equals another heading's id",
+      new Set(a).size === a.length && new Set(b).size === b.length, `${a.join(",")} | ${b.join(",")}`);
+    check("…and the first heading of each kind keeps its plain id", a[0] === "pkt-1" && a[1] === "pkt-1-2" && b[0] === "pkt-1");
+  }
 
   /* ═════════════════════════════════════════════════════════════════════ */
   section("C. EVERY WEB AND E-MAIL ADDRESS IS A LINK THAT SAYS WHAT IT IS");
@@ -226,6 +238,27 @@ function main() {
     check(`${slug}: web links open in a new tab without an opener`,
       web.every((a) => /target="_blank"/.test(a.attrs) && /rel="noopener noreferrer"/.test(a.attrs)));
     check(`${slug}: linking changed no character`, normaliseForCompare(visible) === normaliseForCompare(text));
+  }
+  {
+    // Addresses in running Polish text: the quotes, the closing bracket and
+    // the full stop belong to the sentence, a bracket the address opened
+    // belongs to the address.
+    const links = (t: string) => splitLinks(t).filter((s) => s.href).map((s) => s.href);
+    const joined = (t: string) => splitLinks(t).map((s) => s.text).join("");
+    const cases: { text: string; want: string[] }[] = [
+      { text: "na stronie „https://grovbase.com/regulamin” oraz", want: ["https://grovbase.com/regulamin"] },
+      { text: "(zob. https://grovbase.com/polityka-cookies).", want: ["https://grovbase.com/polityka-cookies"] },
+      { text: "https://pl.wikipedia.org/wiki/RODO_(UE) i dalej", want: ["https://pl.wikipedia.org/wiki/RODO_(UE)"] },
+      { text: "(https://pl.wikipedia.org/wiki/RODO_(UE))", want: ["https://pl.wikipedia.org/wiki/RODO_(UE)"] },
+      { text: "«https://example.com/a» ‚https://example.com/b’", want: ["https://example.com/a", "https://example.com/b"] },
+      { text: "pisz: contact@grovbase.com.", want: ["mailto:contact@grovbase.com"] },
+      { text: "adres https:// bez hosta", want: [] },
+    ];
+    for (const c of cases) {
+      check(`link «${c.text}» → ${c.want.join(" + ") || "no link"}`,
+        JSON.stringify(links(c.text)) === JSON.stringify(c.want), JSON.stringify(links(c.text)));
+      check(`…and every character of «${c.text}» is still shown`, joined(c.text) === c.text);
+    }
   }
 
   /* ═════════════════════════════════════════════════════════════════════ */

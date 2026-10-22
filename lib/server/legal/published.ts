@@ -31,8 +31,24 @@ export function legalSha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-/** The short version tag a PDF URL carries (`?v=`): the first 12 hex
- *  characters of the text's digest, so a new text is a new URL. */
+/** The first 12 hex characters of the text's digest (the stored one when
+ *  there is one) — how the admin and the reports name a text. */
 export function legalVersionTag(text: string, stored?: string): string {
   return (stored && /^[0-9a-f]{64}$/.test(stored) ? stored : legalSha256(text)).slice(0, 12);
+}
+
+/**
+ * The tag a PDF URL (`?v=`) and its ETag carry: everything the file prints —
+ * the text, the version label, the effective date and the language — so a
+ * corrected version or date is a new URL, never a year-old cached copy.
+ */
+export function legalPdfTag(
+  entry: { text: string; sha256?: string; version: string; effective: string | null },
+  lang: string,
+): string {
+  const textSha = entry.sha256 && /^[0-9a-f]{64}$/.test(entry.sha256) ? entry.sha256 : legalSha256(entry.text);
+  return createHash("sha256")
+    .update(`${textSha}|${entry.version}|${entry.effective ?? ""}|${lang}`, "utf8")
+    .digest("hex")
+    .slice(0, 12);
 }

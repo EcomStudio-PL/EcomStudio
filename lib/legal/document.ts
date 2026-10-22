@@ -130,11 +130,14 @@ export function parseLegalText(raw: string): LegalOutline {
   const blocks = blocksOf(lines);
   const nodes: LegalNode[] = [];
   const headings: LegalHeading[] = [];
-  const used = new Map<string, number>();
+  // Every id handed out so far: "pkt-1-2" (a "1.2." heading) and the second
+  // "1." heading's "pkt-1" + "-2" must not end up the same anchor.
+  const used = new Set<string>();
   const uniqueId = (id: string) => {
-    const n = (used.get(id) ?? 0) + 1;
-    used.set(id, n);
-    return n === 1 ? id : `${id}-${n}`;
+    let candidate = id;
+    for (let n = 2; used.has(candidate); n += 1) candidate = `${id}-${n}`;
+    used.add(candidate);
+    return candidate;
   };
 
   let title: string | null = null;
@@ -213,7 +216,23 @@ export function normaliseForCompare(text: string): string {
 
 export type LinkSegment = { text: string; href?: string };
 
-const LINKS = /(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)\]])|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+// A web address runs to the next space, angle bracket or quotation mark —
+// Polish „…” and the other typographic quotes included, so a quoted address
+// does not carry the closing quote into its link.
+const LINKS = /(https?:\/\/[^\s<>"'„”“‚‘’«»]+)|([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+
+/** The end of a sentence is not part of an address: trailing punctuation goes,
+ *  and so does a ")" or "]" the address did not open itself. */
+function trimAddress(value: string): string {
+  let v = value;
+  for (;;) {
+    const last = v.slice(-1);
+    if (/[.,;:!?]/.test(last)) { v = v.slice(0, -1); continue; }
+    if (last === ")" && (v.match(/\(/g) ?? []).length < (v.match(/\)/g) ?? []).length) { v = v.slice(0, -1); continue; }
+    if (last === "]" && (v.match(/\[/g) ?? []).length < (v.match(/\]/g) ?? []).length) { v = v.slice(0, -1); continue; }
+    return v;
+  }
+}
 
 /** Split a line into plain text and links (web addresses and e-mail
  *  addresses), keeping every character visible as it was. */
@@ -222,8 +241,9 @@ export function splitLinks(text: string): LinkSegment[] {
   let last = 0;
   for (const m of text.matchAll(LINKS)) {
     const start = m.index ?? 0;
+    const value = m[1] ? trimAddress(m[0]) : m[0];
+    if (m[1] && !/^https?:\/\/[^/]/.test(value)) continue;
     if (start > last) out.push({ text: text.slice(last, start) });
-    const value = m[0];
     out.push({ text: value, href: m[1] ? value : `mailto:${value}` });
     last = start + value.length;
   }

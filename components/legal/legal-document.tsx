@@ -115,7 +115,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
   view: LegalDocView;
   /** parseLegalText(view.entry.text) — parsed once by the caller. */
   outline: LegalOutline;
-  /** legalVersionTag of the text on screen. */
+  /** legalPdfTag of the text on screen. */
   pdfTag: string;
   publishedAt: string | null;
 }) {

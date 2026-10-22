@@ -100,9 +100,9 @@ export function legalRelated(slug: string, polish = false): LegalRelatedItem[] {
 /* ── VERSION, DATE, LANGUAGES, PDF ───────────────────────────────────────── */
 
 /**
- * The PDF of exactly this text: `?v=` is the text's version tag
- * (legalVersionTag, lib/server/legal/published.ts), so a new text is a new
- * address and no cache can hand out the old file; `&lang=` only for a
+ * The PDF of exactly this text: `?v=` is its PDF tag (legalPdfTag,
+ * lib/server/legal/published.ts — text, version, date, language), so any
+ * change is a new address and no cache can hand out the old file; `&lang=` only for a
  * language other than Polish, the route's default.
  */
 export function legalPdfHref(slug: string, tag: string, locale: LegalLocale = "pl"): string {

@@ -43,7 +43,7 @@ import {
   legalPdfCacheControl, legalPdfDisposition, legalPdfEtag, legalPdfEtagMatches, legalPdfFileName, legalPdfLang,
   legalPdfResponse, type LegalPdfDeps,
 } from "@/lib/server/legal/pdf-route";
-import { legalVersionTag, type PublishedLegal } from "@/lib/server/legal/published";
+import { legalPdfTag, legalVersionTag, type PublishedLegal } from "@/lib/server/legal/published";
 import type { PublicPage } from "@/lib/server/public-site";
 
 let failures = 0;
@@ -353,7 +353,7 @@ async function sectionQ() {
   const req = (url: string, headers: Record<string, string> = {}) => new Request(`https://grovbase.com${url}`, { headers });
   const englishCookies = `Cookie policy GrovBase\n\nVersion: 1.0\n\n1. What cookies are\n\n1. A test text, English.`;
   const published: PublishedLegal = { page: PAGE("regulamin"), doc: docWith(regulamin) };
-  const tag = legalVersionTag(regulamin);
+  const tag = legalPdfTag(published.doc!.pl, "pl");
 
   let t0 = process.hrtime.bigint();
   const r1 = await legalPdfResponse(req("/regulamin/pdf"), "regulamin", fixed(published));
@@ -413,7 +413,7 @@ async function sectionQ() {
   check("a failed render is not remembered: the next request renders", retry.status === 200 && renders === before + 1, renders - before);
 
   const en = await legalPdfResponse(req("/polityka-cookies/pdf?lang=en"), "polityka-cookies", fixed({ page: PAGE("polityka-cookies"), doc: docWith(cookies, englishCookies) }));
-  const enTag = legalVersionTag(englishCookies);
+  const enTag = legalPdfTag(docWith(cookies, englishCookies).en, "en");
   check("an active English text → its PDF, _EN file name, ETag \"<tag>-en\"",
     en.status === 200 && en.headers.get("etag") === `"${enTag}-en"`
     && en.headers.get("content-disposition")?.includes("filename=\"Polityka_Cookies_GrovBase_v1.0_EN.pdf\"") === true,
@@ -427,19 +427,42 @@ async function sectionQ() {
     skip("the English PDF's footer text", "pdftotext is not installed");
   }
 
-  // LRU: 8 entries. The Regulamin entry is the oldest after nine more texts.
+  // LRU: every document × language, twice (4 × 3 × 2 = 24). Three PDFs are
+  // cached by now (the Regulamin — the oldest —, the cookie policy in Polish
+  // and in English), so 21 more texts fill it exactly and the Regulamin stays…
   const short = (i: number) => `Dokument ${i}\n\nWersja: 1.0\n\n1. Punkt ${i}.`;
   const startRenders = renders;
-  for (let i = 0; i < 9; i += 1) {
+  for (let i = 0; i < 21; i += 1) {
     await legalPdfResponse(req("/polityka-cookies/pdf"), "polityka-cookies", fixed({ page: PAGE("polityka-cookies"), doc: docWith(short(i)) }));
   }
-  check("nine new texts → nine renders", renders === startRenders + 9, renders - startRenders);
+  const warm = await legalPdfResponse(req("/regulamin/pdf"), "regulamin", fixed(published));
+  check("23 other PDFs later the Regulamin is still warm (room for 4 documents × 3 languages × 2)",
+    warm.status === 200 && renders === startRenders + 21, renders - startRenders);
+  // …until 24 newer texts have pushed it out as the least recently used.
+  for (let i = 21; i < 45; i += 1) {
+    await legalPdfResponse(req("/polityka-cookies/pdf"), "polityka-cookies", fixed({ page: PAGE("polityka-cookies"), doc: docWith(short(i)) }));
+  }
   const evicted = await legalPdfResponse(req("/regulamin/pdf"), "regulamin", fixed(published));
-  check("the LRU holds at most 8 PDFs: the oldest is rendered again", evicted.status === 200 && renders === startRenders + 10, renders - startRenders);
+  check("the LRU holds at most 24 PDFs: the oldest is rendered again", evicted.status === 200 && renders === startRenders + 46, renders - startRenders);
+
+  // Everything the PDF prints is in its tag: a corrected version label or
+  // effective date (same text) is a new ETag and a new ?v=, and a new render.
   const metaChange = docWith(regulamin);
   metaChange.pl = { ...metaChange.pl, version: "1.0.1" };
-  await legalPdfResponse(req("/regulamin/pdf"), "regulamin", fixed({ page: PAGE("regulamin"), doc: metaChange }));
-  check("a changed version label (same text) is a new render, not the cached file", renders === startRenders + 11, renders - startRenders);
+  const rv = await legalPdfResponse(req("/regulamin/pdf"), "regulamin", fixed({ page: PAGE("regulamin"), doc: metaChange }));
+  check("a changed version label (same text) is a new render, not the cached file", renders === startRenders + 47, renders - startRenders);
+  const dateChange = docWith(regulamin);
+  dateChange.pl = { ...dateChange.pl, effective: "2026-11-01" };
+  const rd = await legalPdfResponse(req("/regulamin/pdf"), "regulamin", fixed({ page: PAGE("regulamin"), doc: dateChange }));
+  const etags = [r1.headers.get("etag"), rv.headers.get("etag"), rd.headers.get("etag")];
+  check("…with its own ETag, and so does a changed effective date", new Set(etags).size === 3 && etags.every(Boolean), etags);
+  const oldTagAfterVersion = await legalPdfResponse(req(`/regulamin/pdf?v=${tag}`), "regulamin", fixed({ page: PAGE("regulamin"), doc: metaChange }));
+  check("the old ?v= is no longer immutable once the version label changed",
+    oldTagAfterVersion.headers.get("cache-control") === "public, max-age=0, s-maxage=60, must-revalidate");
+  const stale = await legalPdfResponse(req("/regulamin/pdf", { "If-None-Match": `"${tag}-pl"` }), "regulamin", fixed({ page: PAGE("regulamin"), doc: dateChange }));
+  check("a browser holding the old ETag gets the new file (200), not 304", stale.status === 200);
+  check("the tag differs per language for the same text",
+    legalPdfTag(published.doc!.pl, "pl") !== legalPdfTag(published.doc!.pl, "en"));
 }
 
 async function main() {
