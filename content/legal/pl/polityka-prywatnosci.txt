@@ -1,0 +1,163 @@
+Polityka prywatności GrovBase
+
+Administrator: Marcel Przytulski, prowadzący jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski
+Serwis: https://grovbase.com
+Wersja: 1.0
+Data wejścia w życie: 20 października 2026 r.
+
+Ta polityka wyjaśnia, jakie dane osobowe przetwarzamy w związku z serwisem GrovBase, w jakim celu, na jakiej podstawie, komu je przekazujemy, jak długo je przechowujemy i jakie prawa Ci przysługują. Realizuje obowiązki informacyjne z art. 13 i 14 rozporządzenia (UE) 2016/679 („RODO”) oraz - w zakresie wskazanym w pkt 15 - przepisów innych państw. Pojęcia pisane wielką literą mają znaczenie nadane im w Regulaminie GrovBase.
+
+1. Kto jest administratorem danych
+
+1. Administratorem Twoich danych osobowych jest Marcel Przytulski, prowadzący jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski, Chojnik 104, 14-300 Morąg, NIP 7412157329, REGON 386451456 („Administrator”, „my”). GrovBase jest marką usług Administratora, a nie odrębnym podmiotem.
+2. W sprawach ochrony danych osobowych możesz pisać na adres: contact@grovbase.com albo na adres pocztowy wskazany w ust. 1.
+3. Nie wyznaczyliśmy inspektora ochrony danych, ponieważ nie mamy takiego obowiązku (art. 37 RODO). Wszystkie sprawy obsługuje Administrator pod adresem z ust. 2.
+
+2. Kiedy jesteśmy administratorem, a kiedy przetwarzamy dane w imieniu klienta
+
+1. Jesteśmy administratorem danych, które dotyczą Ciebie jako osoby odwiedzającej Serwis, zapisującej się na listę oczekujących lub newsletter, Użytkownika, osoby kontaktującej się z nami lub zgłaszającej treść. Jesteśmy też administratorem danych osób widocznych w Materiałach przesłanych przez Użytkowników, którzy nie korzystają z Serwisu jako Użytkownicy Biznesowi.
+2. Przetwarzamy dane w imieniu klienta (jako podmiot przetwarzający), gdy Użytkownik korzysta z Serwisu w związku ze swoją działalnością gospodarczą lub zawodową (jako Użytkownik Biznesowy - Przedsiębiorca albo Przedsiębiorca na prawach konsumenta) i przesyła Materiały zawierające dane osobowe innych osób, np. zdjęcia modelek, pracowników lub klientów. Administratorem tych danych jest Użytkownik Biznesowy (albo jego klient, jeżeli Użytkownik Biznesowy jest np. agencją), a my przetwarzamy je wyłącznie na jego polecenie, na podstawie Umowy powierzenia przetwarzania danych osobowych (Załącznik nr 2 do Regulaminu). Osoby widoczne na takich zdjęciach powinny kierować żądania do tego administratora; pomożemy mu je zrealizować.
+3. Nawet gdy działamy jako podmiot przetwarzający, w zakresie niezbędnym do rozpatrywania zgłoszeń treści nielegalnych, zapewnienia bezpieczeństwa Serwisu i przeciwdziałania nadużyciom oraz ustalenia, dochodzenia lub obrony roszczeń przetwarzamy dane zawarte w Materiałach jako odrębny administrator, na podstawie art. 6 ust. 1 lit. c i f RODO.
+
+3. Jakie dane przetwarzamy, w jakim celu i na jakiej podstawie
+
+- Cel: Założenie i prowadzenie Konta, świadczenie Usług; Dane: Imię, nazwisko, adres e-mail, hasło (w postaci skrótu kryptograficznego), oświadczenie o wieku, status Użytkownika Biznesowego, język, ustawienia, Workspace, data i wersja zaakceptowanych dokumentów; Podstawa prawna: Art. 6 ust. 1 lit. b RODO (umowa); Jak długo: Do usunięcia Konta. Po usunięciu Konta przechowujemy wyłącznie dane identyfikujące Konto, historię akceptacji dokumentów oraz historię transakcji i Kredytów - do upływu terminu przedawnienia roszczeń (pkt 8 ust. 6)
+- Cel: Uwierzytelnianie i bezpieczeństwo logowania; Dane: Skrót (HMAC) adresu IP, identyfikator i opis urządzenia, jednorazowe kody, historia logowań i weryfikacji; Podstawa prawna: Art. 6 ust. 1 lit. b i f RODO (umowa; nasz uzasadniony interes w ochronie Kont); Jak długo: Do 12 miesięcy od zdarzenia; identyfikator zaufanego urządzenia: do 400 dni (zgodnie z Polityką cookies)
+- Cel: Korzystanie z Narzędzi; Dane: Materiały (zdjęcia, Polecenia, ustawienia), Wyniki, historia operacji, informacje techniczne o operacji (model, rozdzielczość, koszt w Kredytach, wynik automatycznej kontroli wierności); Podstawa prawna: Art. 6 ust. 1 lit. b RODO; Jak długo: Do usunięcia przez Ciebie albo do usunięcia Konta i upływu terminu z pkt 8 ust. 3
+- Cel: Doskonalenie szablonów Poleceń; Dane: Oceny Wyników i komentarze, które dobrowolnie przekazujesz (np. „podoba mi się / nie podoba mi się”), wraz z ustawieniami operacji; Podstawa prawna: Art. 6 ust. 1 lit. f RODO (nasz uzasadniony interes w poprawie jakości Usług); Jak długo: Do usunięcia Konta, nie dłużej niż 3 lata od przekazania oceny
+- Cel: Rozliczenia, Kredyty i płatności; Dane: Saldo i historia Kredytów, dane transakcji, Plan, identyfikatory klienta i płatności w Stripe, dane do faktury (firma, NIP, adres), treść oświadczeń złożonych przy zakupie; Podstawa prawna: Art. 6 ust. 1 lit. b i c RODO (umowa; obowiązki podatkowe i rachunkowe); Jak długo: Dokumenty księgowe i podatkowe: 5 lat od końca roku kalendarzowego, w którym upłynął termin płatności podatku (art. 70 § 1 i art. 86 § 1 Ordynacji podatkowej). Pozostałe: jak dane Konta
+- Cel: Dowód zgody na automatyczne odnowienie; Dane: Treść wyświetlonej informacji, data, wersja, identyfikator Konta; Podstawa prawna: Art. 6 ust. 1 lit. c i f RODO; Jak długo: 3 lata od wyrażenia zgody albo rok od rozwiązania umowy, w zależności od tego, który okres jest dłuższy
+- Cel: Reklamacje, wsparcie i kontakt; Dane: Treść wiadomości, adres e-mail, dane Konta, a w formularzu kontaktowym także informacja o przeglądarce i stronie, z której wysłano wiadomość; Podstawa prawna: Art. 6 ust. 1 lit. b, c i f RODO; Jak długo: Do upływu terminu przedawnienia roszczeń związanych ze sprawą
+- Cel: Lista oczekujących; Dane: Imię, nazwisko, e-mail, język, źródło zapisu; Podstawa prawna: Art. 6 ust. 1 lit. b RODO (działanie na Twoje żądanie przed zawarciem umowy). Wiadomość o uruchomieniu Serwisu wysyłamy na Twoje wyraźne żądanie wyrażone przy zapisie; nie zawiera ona treści promocyjnych; Jak długo: Do uruchomienia rejestracji i przez 30 dni po nim albo do wcześniejszej rezygnacji
+- Cel: Newsletter i informacje handlowe; Dane: E-mail, imię, nazwisko, język, źródło, data, sposób i wersja zgody; za odrębną zgodą - informacje o otwarciu wiadomości i kliknięciu w link; Podstawa prawna: Art. 6 ust. 1 lit. a RODO oraz art. 398 Prawa komunikacji elektronicznej (zgoda na informacje handlowe); śledzenie otwarć i kliknięć - odrębna zgoda (art. 399 Prawa komunikacji elektronicznej); Jak długo: Do wycofania zgody. Po wypisaniu przechowujemy adres na liście wyłączeń, aby nie wysyłać więcej wiadomości (art. 6 ust. 1 lit. f)
+- Cel: GrovNews; Dane: E-mail, status subskrypcji, informacje o dostarczeniu wydań; Podstawa prawna: Art. 6 ust. 1 lit. b RODO (umowa); Jak długo: Jak dane Konta
+- Cel: Wiadomości systemowe; Dane: E-mail, treść powiadomienia (np. potwierdzenie zakupu, kod logowania, zmiana Regulaminu); Podstawa prawna: Art. 6 ust. 1 lit. b i c RODO; Jak długo: Jak dane Konta
+- Cel: Ankieta i Kredyty za ankietę; Dane: Odpowiedzi w ankiecie (np. kanał sprzedaży, źródło informacji o GrovBase); Podstawa prawna: Art. 6 ust. 1 lit. b RODO (przyznanie Kredytów) i lit. f (rozwój Serwisu); Jak długo: Do usunięcia Konta; zbiorcze wyniki ankiet, niepowiązane z Kontem, mogą być przechowywane dłużej
+- Cel: Statystyka odwiedzin (Google Analytics 4); Dane: Identyfikatory plików cookies, informacje o odwiedzanych stronach, urządzeniu, przybliżonej lokalizacji; Podstawa prawna: Art. 6 ust. 1 lit. a RODO i art. 399 Prawa komunikacji elektronicznej (zgoda); Jak długo: Dane w Google Analytics: 14 miesięcy od zebrania; pliki cookies: zgodnie z Polityką cookies
+- Cel: Źródło wejścia (atrybucja); Dane: Parametry UTM, domena strony odsyłającej, strona wejścia; Podstawa prawna: Zgoda (jak wyżej); Jak długo: Plik cookie: 90 dni
+- Cel: Zapobieganie nadużyciom; Dane: Skrót adresu IP przy rejestracji, e-mail, liczba Kont z jednego adresu IP, informacje o naruszeniach; Podstawa prawna: Art. 6 ust. 1 lit. f RODO (ochrona przed nadużyciami Kredytów Promocyjnych i atakami); Jak długo: Skrót adresu IP i liczba Kont: 12 miesięcy od rejestracji; informacje o naruszeniach: do upływu terminu przedawnienia roszczeń
+- Cel: Zgłoszenia treści i decyzje moderacyjne; Dane: Dane zgłaszającego, treść zgłoszenia, decyzja i jej uzasadnienie; Podstawa prawna: Art. 6 ust. 1 lit. c RODO (obowiązki z aktu o usługach cyfrowych) i lit. f; Jak długo: Do upływu terminu przedawnienia roszczeń związanych ze sprawą
+- Cel: Logi serwerów; Dane: Adres IP, data i godzina żądania, adres strony, informacja o przeglądarce; Podstawa prawna: Art. 6 ust. 1 lit. f RODO (bezpieczeństwo i diagnostyka); Jak długo: Do 30 dni, a w razie incydentu bezpieczeństwa - do czasu jego wyjaśnienia
+- Cel: Ustalenie, dochodzenie i obrona roszczeń; Dane: Dane potrzebne w danej sprawie; Podstawa prawna: Art. 6 ust. 1 lit. f RODO; Jak długo: Do upływu terminu przedawnienia roszczeń
+
+Podanie danych przy rejestracji, zakupie i reklamacji jest dobrowolne, ale niezbędne do zawarcia i wykonania umowy. Podanie danych do faktury jest niezbędne, jeżeli chcesz otrzymać fakturę. Zgody na newsletter, statystykę i pliki cookies inne niż niezbędne są dobrowolne i możesz je wycofać w każdej chwili, bez wpływu na zgodność z prawem przetwarzania przed wycofaniem.
+
+4. Prawo sprzeciwu
+
+W każdej chwili możesz wnieść sprzeciw - z przyczyn związanych z Twoją szczególną sytuacją - wobec przetwarzania Twoich danych na podstawie naszego uzasadnionego interesu (art. 6 ust. 1 lit. f RODO), w szczególności w celach: bezpieczeństwa logowania, zapobiegania nadużyciom, doskonalenia szablonów Poleceń, analizy odpowiedzi z ankiety, logów serwerów i roszczeń. Przestaniemy przetwarzać dane w tych celach, chyba że wykażemy ważne, prawnie uzasadnione podstawy nadrzędne wobec Twoich interesów, praw i wolności albo podstawy do ustalenia, dochodzenia lub obrony roszczeń. Wobec przetwarzania na potrzeby marketingu bezpośredniego sprzeciw jest skuteczny zawsze i nie wymaga uzasadnienia. Sprzeciw możesz zgłosić na adres z pkt 1 ust. 2.
+
+5. Zdjęcia, Polecenia i wizerunek
+
+1. Przesyłane zdjęcia i Polecenia przechowujemy w prywatnych zasobach przypisanych do Twojego Workspace. Dostęp do nich mają tylko osoby uprawnione w Workspace oraz - w niezbędnym zakresie - Administrator, np. w celu obsługi reklamacji, wsparcia, bezpieczeństwa lub rozpatrzenia zgłoszenia naruszenia. Każdy dostęp Administratora do Materiałów jest rejestrowany.
+2. Nie wykorzystujemy Twoich Materiałów ani Wyników do celów marketingowych, w Inspiracjach ani do trenowania własnych modeli sztucznej inteligencji, chyba że wyrazisz na to odrębną zgodę.
+3. Zdjęcia mogą przedstawiać osoby. Obecnie dostępne Narzędzia nie służą identyfikacji osób: nie tworzymy szablonów ani wektorów cech twarzy i nie wyciągamy z wizerunku wniosków o cechach osób. Zdjęcie może przypadkowo ujawniać takie cechy (np. pochodzenie lub stan zdrowia); nie przetwarzamy go w celu ich ustalenia. Przed udostępnieniem narzędzi zmieniających twarz lub postać zaktualizujemy tę politykę, opublikujemy zasady przechowywania i usuwania danych dotyczących twarzy i uzyskamy zgody wymagane prawem, w tym - gdy wymagają tego przepisy stanów USA - pisemną zgodę osoby przedstawionej na zdjęciu.
+4. Przesyłając zdjęcie innej osoby, odpowiadasz za posiadanie jej zgody na wykorzystanie i modyfikację wizerunku oraz za podstawę prawną przetwarzania jej danych. Jeżeli nie korzystasz z Serwisu jako Użytkownik Biznesowy, przetwarzamy dane takich osób jako administrator na podstawie art. 6 ust. 1 lit. f RODO (nasz uzasadniony interes w świadczeniu Usługi, o którą prosisz). Dane tych osób (wizerunek i inne informacje widoczne na zdjęciu) pozyskujemy od Użytkownika, który przesłał zdjęcie. Ze względu na to, że nie znamy tych osób, przekazanie im informacji bezpośrednio wymagałoby niewspółmiernie dużego wysiłku (art. 14 ust. 5 lit. b RODO); ta polityka jest publicznie dostępna. Osobom tym przysługują prawa z pkt 10, w tym prawo sprzeciwu; mogą też zgłosić treść zgodnie z § 14 Regulaminu.
+
+6. Przetwarzanie przez dostawców sztucznej inteligencji
+
+1. Gdy uruchamiasz operację w Narzędziu AI, nasz serwer przesyła Materiały potrzebne do tej operacji (zdjęcia i Polecenie) do wybranego dostawcy sztucznej inteligencji i odbiera Wynik. Przesłanie następuje wyłącznie z naszego serwera. Nie przekazujemy dostawcom Twojego imienia, nazwiska, adresu e-mail ani identyfikatora Konta. Dostawca otrzymuje jednak zawartość zdjęć, które mogą przedstawiać osoby lub zawierać inne dane.
+2. Aktualnie korzystamy z następujących dostawców:
+
+- Dostawca: Google (Gemini API), Google LLC i Google Ireland Ltd; Rola: Podmiot przetwarzający; Przechowywanie po stronie dostawcy: Polecenia, przesłane zdjęcia i wygenerowane obrazy mogą być przechowywane przez Google do 55 dni wyłącznie w celu wykrywania naruszeń zasad korzystania z usługi i zapobiegania im; w tym celu mogą mieć do nich dostęp upoważnieni pracownicy Google. W funkcji Retusz dodatkowo wyłączamy zapisywanie historii operacji po stronie Google, co nie wyłącza przechowywania w celu wykrywania nadużyć; Trenowanie modeli: Według warunków płatnego API Google nie wykorzystuje tych danych do ulepszania swoich produktów; Lokalizacja i zabezpieczenie transferu: USA i inne państwa; Data Privacy Framework (Google LLC)
+- Dostawca: OpenAI, OpenAI Ireland Ltd i OpenAI L.L.C.; Rola: Podmiot przetwarzający; Przechowywanie po stronie dostawcy: Do 30 dni w celu wykrywania nadużyć, chyba że dłuższe przechowywanie nakazuje prawo; obrazy oznaczone przez systemy wykrywania treści przedstawiających wykorzystywanie seksualne dzieci są zatrzymywane do przeglądu przez człowieka; Trenowanie modeli: Według warunków API OpenAI nie wykorzystuje tych danych do trenowania modeli; Lokalizacja i zabezpieczenie transferu: USA; standardowe klauzule umowne
+
+3. Informacje o przechowywaniu i trenowaniu pochodzą z warunków udostępnionych przez dostawców według stanu na 17 października 2026 r. Nie mamy wpływu na zmianę tych warunków; o istotnych zmianach poinformujemy przez aktualizację tej polityki. Nowego dostawcę dodajemy do tej polityki przed przekazaniem mu danych.
+4. Dostawcy stosują własne zasady bezpieczeństwa i mogą automatycznie analizować przesyłane treści w celu wykrywania nadużyć, w tym treści nielegalnych.
+
+7. Komu przekazujemy dane
+
+1. Dane przekazujemy podmiotom, które pomagają nam świadczyć Usługi i przetwarzają dane na nasze polecenie (podmioty przetwarzające), w szczególności:
+
+- Odbiorca: Supabase Pte. Ltd. (Singapur) i podmioty powiązane; Zakres: Baza danych, uwierzytelnianie, przechowywanie plików; Lokalizacja i transfer: Dane w regionie Frankfurt (UE). Obsługa konta, wsparcie, telemetria i CDN mogą wymagać przetwarzania poza UE (m.in. Singapur, USA). Singapur nie ma decyzji stwierdzającej odpowiedni stopień ochrony; stosujemy standardowe klauzule umowne (moduły 2 i 3) z umowy powierzenia Supabase
+- Odbiorca: Vercel Inc.; Zakres: Hosting aplikacji (region Frankfurt), logi; Lokalizacja i transfer: USA i UE; Data Privacy Framework oraz standardowe klauzule umowne
+- Odbiorca: Dostawcy sztucznej inteligencji; Zakres: Zgodnie z pkt 6; Lokalizacja i transfer: Zgodnie z pkt 6
+- Odbiorca: Cloudflare, Inc.; Zakres: Ochrona formularza rejestracji przed botami (Turnstile). W zakresie doskonalenia wykrywania botów Cloudflare działa jako odrębny administrator; Lokalizacja i transfer: USA; Data Privacy Framework
+- Odbiorca: Hostido.pl Gałązka spółka jawna, ul. Kartuska 5, 80-103 Gdańsk; Zakres: Serwer poczty wychodzącej (SMTP) i skrzynka; Lokalizacja i transfer: Polska
+- Odbiorca: Plus Five Five, Inc. (Resend); Zakres: Zapasowa wysyłka e-maili; Lokalizacja i transfer: USA; standardowe klauzule umowne zawarte w umowie powierzenia dostawcy
+- Odbiorca: Google Ireland Ltd i Google LLC (Google Analytics 4); Zakres: Statystyka - tylko po wyrażeniu zgody; Lokalizacja i transfer: USA; Data Privacy Framework
+- Odbiorca: Biuro rachunkowe; Zakres: Księgowość; Lokalizacja i transfer: Polska
+
+2. Stripe (Stripe Payments Europe, Limited, Irlandia, i podmioty powiązane) obsługuje płatności. W zakresie realizacji płatności działa jako nasz podmiot przetwarzający, a w zakresie zapobiegania oszustwom, przeciwdziałania praniu pieniędzy i obowiązków regulacyjnych - jako odrębny administrator, na zasadach swojej polityki prywatności (https://stripe.com/privacy). Transfer do USA: Data Privacy Framework i standardowe klauzule umowne.
+3. Dane możemy przekazać organom publicznym, sądom i innym uprawnionym podmiotom, jeżeli wymagają tego przepisy prawa, a także doradcom prawnym w związku z dochodzeniem lub obroną roszczeń.
+4. Powiadomienia wewnętrzne Administratora (np. o nowej rejestracji) zawierają wyłącznie techniczny identyfikator Konta i rodzaj zdarzenia. Nie zawierają imienia, adresu e-mail, adresu IP ani odpowiedzi z ankiety.
+5. Nie sprzedajemy danych osobowych i nie udostępniamy ich podmiotom trzecim w celach reklamowych.
+
+8. Jak długo przechowujemy dane i jak je usuwamy
+
+1. Okresy przechowywania dla poszczególnych celów wskazuje tabela w pkt 3.
+2. Materiały i Wyniki przechowujemy do czasu ich usunięcia przez Ciebie albo do usunięcia Konta. Możesz w każdej chwili usunąć Wyniki z Biblioteki oraz przesłane zdjęcia referencyjne; usunięcie Wyniku usuwa także powiązane Polecenie.
+3. Usunięcie Konta powoduje usunięcie danych Konta, Materiałów, Wyników i historii operacji po upływie 30 dni na pobranie danych (§ 29 ust. 5 Regulaminu). Zachowujemy wyłącznie dane wskazane w tabeli w pkt 3 dla okresu po usunięciu Konta.
+4. Kopie zapasowe bazy danych są tworzone automatycznie przez dostawcę bazy danych i nadpisywane w cyklu nie dłuższym niż 30 dni. Dane usunięte z Serwisu mogą pozostać w kopiach zapasowych do końca tego cyklu; w tym czasie nie są wykorzystywane.
+5. Przechowywanie danych po stronie dostawców sztucznej inteligencji opisuje pkt 6.
+6. Termin przedawnienia roszczeń wynosi zasadniczo 6 lat, a dla roszczeń o świadczenia okresowe i roszczeń związanych z prowadzeniem działalności gospodarczej - 3 lata; koniec terminu przedawnienia przypada na ostatni dzień roku kalendarzowego, chyba że termin przedawnienia jest krótszy niż dwa lata (art. 118 Kodeksu cywilnego).
+
+9. Przekazywanie danych poza Europejski Obszar Gospodarczy
+
+1. Niektórzy odbiorcy przetwarzają dane poza EOG, w szczególności w Stanach Zjednoczonych i w Singapurze. Przekazujemy dane tylko wtedy, gdy zapewniony jest odpowiedni stopień ochrony:
+    1. na podstawie decyzji Komisji Europejskiej stwierdzającej odpowiedni stopień ochrony, w tym decyzji dotyczącej EU-US Data Privacy Framework - wobec odbiorców certyfikowanych w tym programie; albo
+    2. na podstawie standardowych klauzul umownych przyjętych przez Komisję Europejską (decyzja wykonawcza (UE) 2021/914), stosowanych także jako zabezpieczenie zapasowe tam, gdzie dostawca to umożliwia.
+2. Kopię zabezpieczeń możesz uzyskać, pisząc na adres z pkt 1 ust. 2.
+
+10. Twoje prawa
+
+1. Masz prawo do:
+    1. dostępu do danych i otrzymania ich kopii (art. 15 RODO);
+    2. sprostowania danych (art. 16);
+    3. usunięcia danych (art. 17);
+    4. ograniczenia przetwarzania (art. 18);
+    5. przenoszenia danych przetwarzanych na podstawie umowy lub zgody w sposób zautomatyzowany (art. 20);
+    6. sprzeciwu - zgodnie z pkt 4 (art. 21);
+    7. wycofania zgody w dowolnym momencie (art. 7 ust. 3);
+    8. wniesienia skargi do Prezesa Urzędu Ochrony Danych Osobowych (ul. Stawki 2, 00-193 Warszawa, https://uodo.gov.pl) lub do organu nadzorczego w państwie Twojego miejsca zwykłego pobytu, miejsca pracy lub miejsca popełnienia naruszenia.
+2. Żądanie możesz zgłosić e-mailem na adres z pkt 1 ust. 2. Jeżeli wysyłasz je z adresu e-mail przypisanego do Konta, zwykle nie będziemy potrzebować dodatkowej weryfikacji. W innych przypadkach możemy poprosić o informacje pozwalające potwierdzić Twoją tożsamość.
+3. Odpowiadamy bez zbędnej zwłoki, nie później niż w ciągu miesiąca od otrzymania żądania. W razie potrzeby, ze względu na złożoność lub liczbę żądań, termin ten możemy przedłużyć o kolejne dwa miesiące, informując Cię o tym.
+4. Część danych możesz samodzielnie przeglądać, zmieniać, eksportować i usuwać w Koncie.
+
+11. Zautomatyzowane podejmowanie decyzji i profilowanie
+
+1. Nie podejmujemy wobec Ciebie decyzji opartych wyłącznie na zautomatyzowanym przetwarzaniu, które wywołują skutki prawne lub w podobny sposób istotnie na Ciebie wpływają (art. 22 RODO). Generowanie obrazów przez Narzędzia AI ani automatyczna kontrola wierności Wyniku nie są takimi decyzjami.
+2. Stosujemy automatyczne zabezpieczenia, takie jak limity liczby żądań, limit liczby Kont zakładanych z jednego adresu IP oraz filtry bezpieczeństwa dostawców sztucznej inteligencji. Jeżeli takie zabezpieczenie zablokuje Ci dostęp do Serwisu, możesz zwrócić się o weryfikację przez człowieka. Decyzji o zablokowaniu Konta nie podejmujemy wyłącznie automatycznie.
+3. Za Twoją zgodą korzystamy z Google Analytics 4 do analizy ruchu. Nie profilujemy Cię w celach reklamowych.
+
+12. Bezpieczeństwo danych
+
+1. Stosujemy środki techniczne i organizacyjne odpowiednie do ryzyka, w szczególności: szyfrowanie transmisji (HTTPS, HSTS), szyfrowanie danych w spoczynku po stronie dostawcy bazy danych, dodatkowe szyfrowanie wybranych danych (np. kluczy dostępowych i szablonów Poleceń), separację danych poszczególnych Workspace na poziomie bazy danych, kontrolę dostępu opartą na rolach, rejestrowanie operacji administracyjnych, przechowywanie adresów IP w bazie danych w postaci skrótów oraz weryfikację logowania z nowych urządzeń.
+2. W razie naruszenia ochrony danych zawiadamiamy Prezesa UODO, a jeżeli naruszenie może powodować wysokie ryzyko dla Twoich praw - także Ciebie, zgodnie z art. 33 i 34 RODO.
+
+13. Dzieci
+
+Serwis jest przeznaczony dla osób, które ukończyły 18 lat. Świadomie nie zbieramy danych dzieci. Jeżeli dowiemy się, że Konto założyła osoba niepełnoletnia, usuniemy je wraz z danymi.
+
+14. Pliki cookies
+
+Zasady korzystania z plików cookies i podobnych technologii opisuje Polityka cookies GrovBase. Zgody na pliki cookies inne niż niezbędne możesz w każdej chwili zmienić w ustawieniach dostępnych w stopce Serwisu („Ustawienia cookies”).
+
+15. Informacje dla osób spoza Unii Europejskiej
+
+15.1. Wielka Brytania
+
+Stosujemy UK GDPR i Data Protection Act 2018. Skargę możesz złożyć najpierw do nas (adres z pkt 1 ust. 2); potwierdzimy jej otrzymanie w ciągu 30 dni i bez zbędnej zwłoki poinformujemy o wyniku. Możesz też złożyć skargę do Information Commissioner's Office (https://ico.org.uk). Transfery danych z Wielkiej Brytanii opieramy na brytyjskich decyzjach o adekwatności (w tym UK Extension do Data Privacy Framework) albo na International Data Transfer Agreement lub UK Addendum do standardowych klauzul umownych.
+
+15.2. Stany Zjednoczone
+
+1. Informacje w tym punkcie przekazujemy dobrowolnie; nie oznaczają one, że podlegamy przepisom konkretnego stanu o prywatności konsumentów.
+2. Przetwarzamy: identyfikatory (imię, nazwisko, e-mail, identyfikatory urządzenia, skróty adresów IP, identyfikatory plików cookies - te ostatnie za zgodą); dane handlowe (Plany, Pakiety, Kredyty); dane o aktywności w Serwisie; dane wizualne (przesłane zdjęcia, których nie używamy do identyfikacji osób); dane logowania do Konta, tj. e-mail w połączeniu z hasłem przechowywanym wyłącznie jako skrót kryptograficzny. Źródła, cele, odbiorców i okresy przechowywania opisują pkt 3-8.
+3. Dane logowania wykorzystujemy wyłącznie do świadczenia Usług, uwierzytelniania i bezpieczeństwa, a nie do wnioskowania o cechach osób.
+4. Nie sprzedajemy danych osobowych i nie udostępniamy ich w celu reklamy behawioralnej opartej na aktywności w różnych serwisach.
+5. Możesz zwrócić się o dostęp, poprawienie lub usunięcie danych na zasadach pkt 10, w zakresie dopuszczalnym przez przepisy i nasze obowiązki prawne. Nie traktujemy gorzej osób korzystających z tych możliwości.
+6. Serwis nie jest skierowany do dzieci poniżej 13 lat; dane takiego dziecka, o których się dowiemy, usuniemy.
+
+15.3. Kanada
+
+1. Wobec osób w Kanadzie przetwarzamy dane zgodnie z Personal Information Protection and Electronic Documents Act (PIPEDA). Osobą odpowiedzialną za ochronę danych jest Marcel Przytulski (contact@grovbase.com).
+2. Dane są przechowywane i przetwarzane poza Kanadą (w UE, w USA i w innych państwach wskazanych w pkt 6-7) i mogą być dostępne dla sądów, organów ścigania i organów bezpieczeństwa tych państw.
+3. Na żądanie dostępu odpowiadamy w ciągu 30 dni. O naruszeniu stwarzającym realne ryzyko poważnej szkody zawiadamiamy Office of the Privacy Commissioner of Canada (https://www.priv.gc.ca) i osoby, których naruszenie dotyczy; ewidencję naruszeń prowadzimy przez 24 miesiące. Zgodę możesz wycofać z zastrzeżeniem ograniczeń prawnych lub umownych.
+4. Nie kierujemy oferty do mieszkańców prowincji Quebec.
+
+16. Zmiany polityki
+
+Politykę aktualizujemy, gdy zmieniają się przepisy, nasze Usługi lub dostawcy. O istotnych zmianach poinformujemy w Serwisie, a Użytkowników posiadających Konto - także e-mailem, przed ich wejściem w życie. Poprzednie wersje są dostępne w Serwisie.
+
+Historia wersji
+
+- Wersja: 1.0; Data: 20 października 2026 r.; Zmiany: Pierwsza wersja polityki.

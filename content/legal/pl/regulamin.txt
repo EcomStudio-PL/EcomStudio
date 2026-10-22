@@ -1,0 +1,480 @@
+Regulamin świadczenia usług GrovBase
+
+Usługodawca (Operator): Marcel Przytulski, prowadzący jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski
+Marka usługi: GrovBase
+Wersja: 1.0
+Data wejścia w życie: 20 października 2026 r.
+
+Rozdział I. Postanowienia ogólne
+
+§ 1. Operator i zakres Regulaminu
+
+1. Niniejszy regulamin („Regulamin”) określa zasady korzystania z serwisu internetowego GrovBase dostępnego pod adresem https://grovbase.com wraz z jego podstronami i aplikacją internetową („Serwis”) oraz zasady świadczenia usług drogą elektroniczną za jego pośrednictwem.
+2. Usługi świadczy Marcel Przytulski, prowadzący jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski, wpisany do Centralnej Ewidencji i Informacji o Działalności Gospodarczej, adres wykonywania działalności: Chojnik 104, 14-300 Morąg, Polska, NIP: 7412157329, REGON: 386451456 („Operator”).
+3. Kontakt z Operatorem:
+    1. sprawy ogólne, rezygnacja i odstąpienie od umowy: contact@grovbase.com;
+    2. reklamacje: contact@grovbase.com;
+    3. ochrona danych osobowych: contact@grovbase.com;
+    4. punkt kontaktowy dla zgłoszeń treści nielegalnych, odwołań oraz dla organów państw członkowskich, Komisji Europejskiej i Europejskiej Rady ds. Usług Cyfrowych: contact@grovbase.com;
+    5. telefon: +48 795 587 715 (w dni robocze, 9:00-17:00 czasu polskiego; opłata według taryfy operatora telekomunikacyjnego Użytkownika);
+    6. adres korespondencyjny: jak w ust. 2.
+4. „GrovBase” jest oznaczeniem (marką) usług świadczonych przez Operatora. GrovBase nie jest odrębną osobą prawną ani spółką. Stroną każdej umowy zawieranej za pośrednictwem Serwisu jest Operator.
+5. Regulamin jest regulaminem, o którym mowa w art. 8 ustawy z dnia 18 lipca 2002 r. o świadczeniu usług drogą elektroniczną. Regulamin jest udostępniany nieodpłatnie przed zawarciem umowy, w Serwisie i w formacie PDF, w sposób umożliwiający jego pozyskanie, odtwarzanie i utrwalanie.
+6. Integralną część umowy stanowią także Cennik, a wobec Użytkowników Biznesowych - Umowa powierzenia przetwarzania danych osobowych (Załącznik nr 2). Polityka prywatności i Polityka cookies mają charakter informacyjny i nie są częścią umowy. Załącznik nr 1 zawiera wzór formularza odstąpienia od umowy.
+
+§ 2. Definicje
+
+Użyte w Regulaminie pojęcia oznaczają:
+
+1. Użytkownik - osoba fizyczna, osoba prawna albo jednostka organizacyjna nieposiadająca osobowości prawnej, której ustawa przyznaje zdolność prawną, korzystająca z Serwisu.
+2. Konsument - Użytkownik będący osobą fizyczną, który zawiera umowę z Operatorem niezwiązaną bezpośrednio z jego działalnością gospodarczą lub zawodową. Użytkownika, który nie złożył w Serwisie oświadczenia, że zawiera umowę jako Przedsiębiorca albo Przedsiębiorca na prawach konsumenta, traktuje się jak Konsumenta.
+3. Przedsiębiorca na prawach konsumenta - Użytkownik będący osobą fizyczną, który zawiera umowę bezpośrednio związaną z jego działalnością gospodarczą, gdy z treści umowy wynika, że nie posiada ona dla niego charakteru zawodowego, wynikającego w szczególności z przedmiotu wykonywanej przez niego działalności gospodarczej, udostępnionego na podstawie przepisów o Centralnej Ewidencji i Informacji o Działalności Gospodarczej.
+4. Przedsiębiorca - Użytkownik niebędący Konsumentem ani Przedsiębiorcą na prawach konsumenta.
+5. Użytkownik Biznesowy - Przedsiębiorca albo Przedsiębiorca na prawach konsumenta, który oświadczył w Serwisie, że korzysta z niego w związku ze swoją działalnością gospodarczą lub zawodową.
+6. Konto - indywidualny, chroniony hasłem zbiór zasobów i ustawień Użytkownika w Serwisie.
+7. Workspace - przestrzeń robocza przypisana do Konta, w której gromadzone są Materiały, Wyniki, saldo Kredytów i ustawienia rozliczeń. Właścicielem Workspace jest Użytkownik, który go utworzył.
+8. Usługi - usługi świadczone przez Operatora drogą elektroniczną na podstawie Regulaminu, opisane w § 3.
+9. Narzędzia - funkcje Serwisu służące do tworzenia i przetwarzania obrazów; Narzędzia AI - Narzędzia, które działają przy użyciu modeli sztucznej inteligencji, w tym modeli dostarczanych przez Dostawców AI.
+10. Dostawca AI - podmiot trzeci udostępniający Operatorowi model lub usługę sztucznej inteligencji, z której Operator korzysta przy świadczeniu Usług. Aktualną listę Dostawców AI zawiera Polityka prywatności.
+11. Materiały - treści przesyłane lub wprowadzane przez Użytkownika do Serwisu, w szczególności zdjęcia, inne pliki graficzne, opisy, polecenia tekstowe („Polecenia”, ang. prompty) i ustawienia narzędzi.
+12. Wyniki - obrazy i inne treści wygenerowane, przetworzone lub zmodyfikowane w Serwisie na podstawie Materiałów.
+13. Kredyty - wewnętrzne jednostki rozliczeniowe Serwisu, uprawniające do skorzystania z odpłatnych funkcji Narzędzi, opisane w § 16.
+14. Plan - wariant dostępu do Usług opisany w Cenniku: bezpłatny („Plan Free”) albo płatny, rozliczany cyklicznie („Plan płatny” lub „Subskrypcja”).
+15. Okres rozliczeniowy - okres, za który pobierana jest opłata za Plan płatny lub GrovNews; w dniu wejścia w życie Regulaminu jest to jeden miesiąc liczony od dnia rozpoczęcia Subskrypcji.
+16. Pakiet - jednorazowo nabywana liczba Kredytów, w tym liczba Kredytów wybrana przez Użytkownika w ramach progów dostępnych w Serwisie („kwota własna”).
+17. GrovNews - odpłatny serwis redakcyjny z informacjami dla sprzedawców internetowych, opisany w § 22.
+18. Cennik - aktualny wykaz Planów, Pakietów, GrovNews, cen oraz kosztów operacji w Kredytach, opublikowany w Serwisie pod adresem https://grovbase.com/plany oraz - w odniesieniu do kosztu poszczególnych operacji - wyświetlany w Narzędziu przed jej uruchomieniem.
+19. Treści niedozwolone - treści niezgodne z prawem lub z § 13.
+20. Trwały nośnik - materiał lub narzędzie umożliwiające przechowywanie informacji kierowanych osobiście do Użytkownika w sposób umożliwiający dostęp do nich w przyszłości przez okres odpowiedni do celów, jakim te informacje służą, i pozwalający na odtworzenie ich w niezmienionej postaci, w szczególności wiadomość e-mail lub plik PDF.
+
+§ 3. Rodzaje i zakres Usług
+
+1. Operator świadczy za pośrednictwem Serwisu następujące Usługi:
+    1. Konto - prowadzenie Konta i Workspace (usługa nieodpłatna);
+    2. Narzędzia, w tym Narzędzia AI, w szczególności:
+        1. generator obrazów produktowych (Grovshot), który na podstawie zdjęć referencyjnych produktu i Poleceń tworzy obrazy produktowe, w tym w trybie własnego Polecenia;
+        2. retusz zdjęć;
+        3. edycję obrazu, w tym usuwanie tła, białe tło, generowanie tła i cienia;
+        4. zmianę rozmiaru i kompresję plików;
+    3. Bibliotekę - przechowywanie Wyników i historii operacji oraz pobieranie Wyników;
+    4. Inspiracje - przykładowe Polecenia i układy przygotowane przez Operatora;
+    5. GrovNews - odpłatny serwis redakcyjny (§ 22);
+    6. wsparcie - komunikacja z Operatorem za pomocą czatu wsparcia w Koncie, formularza kontaktowego i poczty e-mail, w dni robocze; zakres wsparcia w poszczególnych Planach wskazuje Cennik; Operator nie gwarantuje określonego czasu odpowiedzi, z wyjątkiem terminów wynikających z Regulaminu i przepisów prawa;
+    7. newsletter - na podstawie odrębnej zgody, na zasadach opisanych w Polityce prywatności.
+2. Aktualny zakres i stan funkcji jest widoczny w Serwisie. Funkcje oznaczone jako „Wkrótce”, „Niedostępne” lub w podobny sposób (w dniu wejścia w życie Regulaminu m.in. generowanie wideo, narzędzia z kategorii „Moda” oraz funkcje zespołowe) nie są przedmiotem umowy do chwili ich udostępnienia, a cena Planu ich nie obejmuje; ich późniejsze udostępnienie nie zmienia ceny bieżącego Okresu rozliczeniowego. Narzędzia przetwarzające twarz lub sylwetkę osób zostaną udostępnione dopiero po aktualizacji Regulaminu i Polityki prywatności i mogą być niedostępne w państwach lub stanach wymagających szczególnych zgód na przetwarzanie danych biometrycznych (np. Illinois, Teksas, Waszyngton, Kolorado).
+3. Funkcje oznaczone jako „Beta” są udostępniane w celu testów, mogą działać niestabilnie i mogą zostać zmienione lub wycofane. Operator informuje o koszcie operacji w Kredytach także w przypadku funkcji „Beta”.
+4. Usługi nieodpłatne to: Konto, Plan Free wraz z Kredytami Promocyjnymi, Inspiracje, wsparcie i newsletter. Odpłatne są: Plany płatne, Pakiety i GrovNews oraz - przez pobranie Kredytów - operacje w Narzędziach.
+5. Operator nie świadczy usług doradztwa prawnego, podatkowego, marketingowego ani fotograficznego. Wyniki i treści GrovNews nie stanowią porady.
+
+§ 4. Wymagania techniczne, limity i zagrożenia
+
+1. Do korzystania z Serwisu niezbędne są:
+    1. urządzenie z dostępem do Internetu;
+    2. aktualna wersja przeglądarki internetowej obsługującej JavaScript i pliki cookies niezbędne do działania Serwisu (w szczególności Chrome, Firefox, Safari lub Edge);
+    3. aktywny adres e-mail;
+    4. do zakupów - instrument płatniczy obsługiwany przez operatora płatności.
+2. Obsługiwane formaty plików (w dniu wejścia w życie Regulaminu: JPEG, PNG, WEBP i AVIF), maksymalny rozmiar pliku i maksymalna liczba zdjęć referencyjnych są wskazane w Serwisie przy danym Narzędziu. Operator może w każdej chwili zwiększyć te limity; ich zmniejszenie następuje na zasadach § 27.
+3. Operator może stosować techniczne limity liczby jednoczesnych operacji i żądań, służące stabilności Serwisu i ochronie przed nadużyciami, oraz udostępniać wybrane operacje bez pobierania Kredytów w limicie wskazanym w Serwisie. Limit operacji bez Kredytów nie ma wartości pieniężnej i nie przechodzi na kolejne okresy.
+4. Korzystanie z usług świadczonych drogą elektroniczną wiąże się z typowymi zagrożeniami, takimi jak złośliwe oprogramowanie, próby wyłudzenia danych logowania (phishing), przechwycenie danych przesyłanych przez niezabezpieczone sieci oraz nieuprawniony dostęp do urządzenia. Operator stosuje środki bezpieczeństwa opisane w Polityce prywatności. Użytkownik powinien stosować aktualne oprogramowanie antywirusowe, nie udostępniać danych logowania i logować się wyłącznie na stronie grovbase.com.
+
+§ 5. Dostępność geograficzna i sankcje
+
+1. Serwis jest dostępny w języku polskim, angielskim i niemieckim. Ceny są wyrażone w złotych polskich (PLN).
+2. Operator kieruje ofertę w szczególności do Użytkowników z Polski, pozostałych państw Europejskiego Obszaru Gospodarczego oraz Stanów Zjednoczonych. Z Serwisu mogą korzystać również Użytkownicy z innych państw, z zastrzeżeniem ust. 3 i 4 oraz postanowień regionalnych (Rozdział IX).
+3. Operator może ograniczyć dostępność Serwisu lub niektórych Usług w określonych państwach, jeżeli wymagają tego przepisy prawa, w tym przepisy o sankcjach i kontroli eksportu, lub jeżeli świadczenie Usług w danym państwie wymagałoby spełnienia wymogów, których Operator nie spełnia. Ograniczenie nie dotyczy Usług już opłaconych, chyba że wymaga tego prawo; w takim przypadku Operator zwraca proporcjonalną część zapłaconej ceny w zakresie dozwolonym przez prawo.
+4. Z Serwisu nie mogą korzystać:
+    1. osoby i podmioty wpisane na listy sankcyjne Unii Europejskiej, Organizacji Narodów Zjednoczonych, Wielkiej Brytanii lub Stanów Zjednoczonych (w tym listę SDN), podmioty przez nie kontrolowane oraz osoby działające w ich imieniu;
+    2. osoby z Rosji, Białorusi, Iranu, Korei Północnej, Kuby, Krymu i Sewastopola oraz niekontrolowanych przez rząd Ukrainy części obwodów donieckiego, ługańskiego, chersońskiego i zaporoskiego, a także z państw, w których Dostawcy AI nie świadczą usług.
+   Użytkownik składa oświadczenie w tym zakresie przy rejestracji i zakupie. Operator może je weryfikować, także za pośrednictwem operatora płatności, i zablokować Konto, gdy wymagają tego przepisy sankcyjne. Zwroty i inne płatności są dokonywane wyłącznie w zakresie dozwolonym przez te przepisy.
+
+Rozdział II. Konto
+
+§ 6. Rejestracja i zawarcie umowy o prowadzenie Konta
+
+1. Założenie Konta wymaga wypełnienia formularza rejestracyjnego (imię, nazwisko, adres e-mail, hasło), oświadczenia o ukończeniu wymaganego wieku, zaakceptowania Regulaminu, odrębnego zaakceptowania cech Wyników opisanych w § 9 ust. 3, zapoznania się z Polityką prywatności oraz potwierdzenia adresu e-mail przez kliknięcie w link aktywacyjny. Jeżeli Serwis udostępnia logowanie za pośrednictwem zewnętrznego dostawcy tożsamości (np. Google lub Apple), te same oświadczenia są składane w Serwisie przed utworzeniem Konta.
+2. Umowa o prowadzenie Konta zostaje zawarta z chwilą potwierdzenia adresu e-mail. Umowa jest zawierana na czas nieoznaczony i jest nieodpłatna.
+3. Operator zapisuje datę akceptacji oraz wersję zaakceptowanego Regulaminu i treści, o której mowa w § 9 ust. 3.
+4. Operator może czasowo wstrzymać przyjmowanie nowych rejestracji, w szczególności w okresie przedpremierowym, i prowadzić listę oczekujących. Zapis na listę oczekujących nie jest zawarciem umowy o prowadzenie Konta.
+5. Konto może założyć wyłącznie osoba, która ukończyła 18 lat i ma pełną zdolność do czynności prawnych.
+6. Osoba zakładająca Konto w imieniu Przedsiębiorcy oświadcza, że jest umocowana do jego reprezentowania. Przedsiębiorca odpowiada za działania osób, którym umożliwił korzystanie z Konta lub Workspace.
+7. Użytkownik podaje dane prawdziwe i aktualne oraz aktualizuje je w razie zmiany. Status Użytkownika Biznesowego oraz dane do faktury Użytkownik podaje w ustawieniach Konta (sekcja „Dane firmy”) lub przy zakupie. Złożenie przez osobę fizyczną prowadzącą działalność gospodarczą oświadczenia, czy umowa ma dla niej charakter zawodowy, jest dobrowolne i nie jest warunkiem zawarcia umowy.
+8. Kredyty Promocyjne przyznawane z tytułu założenia Konta lub udziału w akcji przysługują każdej osobie tylko raz, niezależnie od liczby założonych Kont.
+
+§ 7. Workspace i korzystanie przez zespoły
+
+1. Każde Konto ma przypisany Workspace. Kredyty, Materiały, Wyniki i ustawienia rozliczeń są przypisane do Workspace.
+2. Funkcje zapraszania innych osób do Workspace są oznaczone w Serwisie jako „Wkrótce”. Po ich udostępnieniu:
+    1. stroną umowy pozostaje właściciel Workspace;
+    2. właściciel Workspace odpowiada za nadawanie i odbieranie uprawnień oraz za działania członków Workspace jak za działania własne;
+    3. Materiały i Wyniki zapisane w Workspace są dostępne dla członków zgodnie z nadanymi rolami.
+3. Na zgodny wniosek dotychczasowego i nowego właściciela, złożony e-mailem, Operator może przenieść Workspace wraz z saldem Kredytów na inne Konto. Postanowienie § 16 ust. 1 w zakresie zakazu przenoszenia Kredytów nie ma wówczas zastosowania.
+
+§ 8. Bezpieczeństwo Konta
+
+1. Użytkownik zachowuje w poufności dane logowania i nie udostępnia ich osobom nieuprawnionym. Hasło musi spełniać wymagania wskazane w formularzu.
+2. Przy logowaniu z nowego urządzenia Serwis może wymagać podania jednorazowego kodu przesłanego na adres e-mail Konta.
+3. Użytkownik niezwłocznie zawiadamia Operatora o podejrzeniu nieuprawnionego dostępu do Konta. Operator może wówczas czasowo zablokować Konto w celu ochrony Użytkownika.
+4. Użytkownik odpowiada za działania wykonane z użyciem jego danych logowania, chyba że nie ponosi winy za ich ujawnienie albo nieuprawniony dostęp wynika z okoliczności, za które odpowiada Operator.
+
+Rozdział III. Narzędzia AI, Materiały i Wyniki
+
+§ 9. Jak działają Narzędzia AI
+
+1. Wyniki powstają automatycznie, w drodze przetwarzania Materiałów przez modele sztucznej inteligencji, w tym modele Dostawców AI. Operator przygotowuje szablony Poleceń i zasady przekazywania Materiałów do modeli. Polecenia wpisane przez Użytkownika w trybie własnego Polecenia są przekazywane do modelu w niezmienionym brzmieniu.
+2. Modele sztucznej inteligencji działają probabilistycznie. Ten sam zestaw Materiałów może prowadzić do różnych Wyników. Operator stosuje rozwiązania ograniczające rozbieżności między produktem na zdjęciu referencyjnym a Wynikiem, ale nie są one w stanie ich całkowicie wyeliminować.
+3. Cechy Wyników. Wynik wygenerowany lub zmieniony przez Narzędzie AI może odbiegać od produktu przedstawionego na zdjęciach referencyjnych w następującym zakresie:
+    1. kształtu, proporcji i skali produktu;
+    2. koloru, faktury i materiału;
+    3. liczby sztuk produktu w zestawie;
+    4. elementów funkcjonalnych i akcesoriów, np. przycisków, portów, uchwytów, które mogą zostać dodane, usunięte lub zmienione;
+    5. napisów, etykiet, oznaczeń, znaków towarowych, certyfikatów, oznakowania CE i składu;
+    6. elementów tła i otoczenia, w tym przedmiotów, osób i elementów wnętrza, które nie istnieją w rzeczywistości;
+    7. zgodności z wymaganiami regulaminów platform sprzedażowych (np. Allegro, Amazon) dotyczącymi zdjęć produktów.
+4. Konsument i Przedsiębiorca na prawach konsumenta są wyraźnie informowani o cechach opisanych w ust. 3 najpóźniej w chwili zawarcia umowy - przy rejestracji oraz przed zawarciem każdej umowy o Plan płatny lub Pakiet - i wyraźnie, odrębnie je akceptują, zaznaczając niezaznaczone domyślnie pole: „Rozumiem i akceptuję, że Wyniki AI mogą odbiegać od mojego produktu w zakresie opisanym w § 9 ust. 3 Regulaminu, m.in. zmieniać kształt, proporcje, kolor, liczbę sztuk, przyciski, porty, etykiety i napisy”. Operator zapisuje akceptację z datą i wersją tekstu i potwierdza ją na Trwałym nośniku.
+5. Cechy opisane w ust. 3, o których Użytkownik został poinformowany i które zaakceptował, nie stanowią same w sobie niezgodności Usługi z umową, o ile Narzędzie AI działało zgodnie z opisem w Serwisie (§ 25 ust. 7).
+6. Przed publikacją lub innym komercyjnym wykorzystaniem Wyniku Użytkownik jest zobowiązany sprawdzić jego zgodność z rzeczywistym produktem oraz z przepisami prawa i regulaminami platform, na których zamierza go opublikować. Użytkownik nie może wykorzystywać Wyniku, który przedstawia produkt inaczej niż w rzeczywistości, w sposób mogący wprowadzić odbiorców w błąd.
+7. Oceny i komunikaty o zgodności Wyniku z produktem (kontrola wierności) są generowane automatycznie, mają charakter pomocniczy i mogą być błędne. Nie stanowią zapewnienia, że Wynik wiernie przedstawia produkt, i nie zastępują sprawdzenia, o którym mowa w ust. 6. Informacja o cechach z ust. 3 jest wyświetlana także w Narzędziu AI przed uruchomieniem operacji.
+8. Rozdzielczość. W narzędziu Retusz wybór jakości 2K albo 4K określa wymiary pliku wynikowego: obraz jest tworzony przez model w jego rozdzielczości natywnej, a następnie powiększany algorytmicznie, bez użycia sztucznej inteligencji. Ta sama informacja jest widoczna przy wyborze jakości w Narzędziu.
+9. Czas wykonania operacji zależy od obciążenia Serwisu i Dostawców AI. Operator nie gwarantuje określonego czasu wykonania, z zastrzeżeniem § 16 ust. 9.
+10. Dostawcy AI stosują własne mechanizmy bezpieczeństwa i mogą odmówić wykonania operacji, np. gdy uznają Polecenie lub Materiał za niezgodny z ich zasadami. W takim przypadku Kredyty są zwracane zgodnie z § 16 ust. 9.
+11. Modele. Jeżeli wybrany model jest chwilowo niedostępny, Serwis może wykonać operację innym modelem, który obsługuje zamówioną jakość, format i rozdzielczość, bez pobierania dodatkowych Kredytów. Model, który wykonał operację, jest widoczny w historii operacji. Zmiany modeli i Dostawców AI na stałe następują na zasadach § 27.
+
+§ 10. Materiały - prawa i obowiązki Użytkownika
+
+1. Użytkownik oświadcza i zapewnia, że przysługują mu wszelkie prawa i zgody niezbędne do przesłania Materiałów do Serwisu i ich przetworzenia w Narzędziach, w szczególności:
+    1. autorskie prawa majątkowe lub licencja do zdjęć i grafik;
+    2. prawo do używania znaków towarowych, logotypów i oznaczeń widocznych na Materiałach;
+    3. zezwolenia osób, których wizerunek jest widoczny na Materiałach, obejmujące także jego modyfikację przy użyciu sztucznej inteligencji i rozpowszechnianie Wyników, a w przypadku osób małoletnich - zgodę przedstawiciela ustawowego;
+    4. podstawę prawną do przetwarzania danych osobowych zawartych w Materiałach.
+2. Użytkownik udziela Operatorowi niewyłącznej, nieodpłatnej licencji na korzystanie z Materiałów i Wyników, bez ograniczeń terytorialnych, wyłącznie w zakresie niezbędnym do świadczenia Usług na rzecz tego Użytkownika, na następujących polach eksploatacji: przechowywanie i zwielokrotnianie w pamięci systemów informatycznych, przetwarzanie i modyfikowanie przez Narzędzia, przesyłanie Dostawcom AI i innym podwykonawcom technicznym wymienionym w Polityce prywatności oraz wyświetlanie w Koncie. Licencja obejmuje prawo udzielania dalszych licencji tym podwykonawcom wyłącznie w tym samym celu. Licencja wygasa z chwilą usunięcia Materiału lub Wyniku z Serwisu, z uwzględnieniem okresu usuwania danych z kopii zapasowych i u podwykonawców wskazanego w Polityce prywatności.
+3. Operator nie wykorzystuje Materiałów ani Wyników Użytkownika do celów marketingowych, w portfolio, w Inspiracjach ani do trenowania własnych modeli sztucznej inteligencji, chyba że Użytkownik udzieli na to odrębnej, dobrowolnej zgody. Oceny Wyników i komentarze, które Użytkownik dobrowolnie przekazuje w Serwisie (np. „podoba mi się / nie podoba mi się”), Operator wykorzystuje do doskonalenia szablonów Poleceń. Zasady wykorzystywania danych przez Dostawców AI, w tym ich przechowywania na potrzeby wykrywania nadużyć, opisuje Polityka prywatności.
+4. Operator nie weryfikuje z góry praw do Materiałów ani zgodności Materiałów z prawem i nie ma ogólnego obowiązku ich monitorowania. Operator reaguje na zgłoszenia i uzyskane wiadomości zgodnie z § 14 i § 15.
+5. Użytkownik ponosi odpowiedzialność za Materiały na zasadach ogólnych. Przedsiębiorca dodatkowo zwalnia Operatora z odpowiedzialności zgodnie z § 26 ust. 7.
+
+§ 11. Wyniki - prawa i korzystanie
+
+1. Operator nie rości sobie żadnych praw do Wyników wobec Użytkownika, który je wygenerował. W zakresie, w jakim Operatorowi przysługiwałyby jakiekolwiek prawa do Wyników, Operator:
+    1. udziela Użytkownikowi z chwilą wygenerowania Wyniku nieodpłatnej, niewyłącznej licencji, bez ograniczeń terytorialnych, na czas trwania tych praw, na następujących polach eksploatacji: utrwalanie i zwielokrotnianie dowolną techniką, w tym drukarską i cyfrową; wprowadzanie do pamięci komputera i do sieci; obrót oryginałem albo egzemplarzami; publiczne wystawienie, wyświetlenie, odtworzenie, nadawanie i reemitowanie oraz publiczne udostępnianie w taki sposób, aby każdy mógł mieć do Wyniku dostęp w miejscu i w czasie przez siebie wybranym, w tym w sklepach internetowych, na platformach sprzedażowych, w mediach społecznościowych i w reklamie; modyfikowanie, łączenie z innymi treściami i wykonywanie praw zależnych - wraz z prawem udzielania dalszych licencji w tym samym zakresie. Operator nie wypowie tej licencji, chyba że uprawnienie to wynika z bezwzględnie obowiązujących przepisów;
+    2. zobowiązuje się nie wykonywać tych praw wobec Użytkownika i jego następców prawnych, a w razie zbycia praw - zobowiązać nabywcę do przestrzegania licencji i niniejszego zobowiązania.
+2. Na wniosek Przedsiębiorcy Operator zawrze z nim umowę przeniesienia autorskich praw majątkowych do wskazanych Wyników na polach eksploatacji wskazanych w ust. 1 pkt 1, w formie pisemnej albo elektronicznej z kwalifikowanym podpisem elektronicznym, jeżeli i w zakresie, w jakim takie prawa przysługują Operatorowi.
+3. Operator nie gwarantuje, że Wynik stanowi utwór chroniony prawem autorskim ani że Użytkownikowi przysługują do niego prawa wyłączne. Według przeważającej wykładni przepisów w Polsce i w Unii Europejskiej oraz stanowiska organów i sądów w Stanach Zjednoczonych treści wygenerowane wyłącznie przez system sztucznej inteligencji, bez twórczego wkładu człowieka, nie korzystają z ochrony prawnoautorskiej. Wynik może zawierać elementy chronione prawem, które pochodzą z Materiałów Użytkownika.
+4. Z uwagi na sposób działania modeli Wynik może być podobny do wyników uzyskanych przez innych użytkowników albo do istniejących utworów, wzorów, znaków towarowych lub wizerunków osób trzecich. Przed komercyjnym wykorzystaniem Wyniku Użytkownik sprawdza, czy nie narusza on praw osób trzecich, w szczególności czy nie zawiera cudzych znaków towarowych, logotypów lub rozpoznawalnych osób.
+5. Użytkownik może wykorzystywać Wyniki z Planu płatnego komercyjnie, w tym w ofertach na platformach sprzedażowych, w sklepach internetowych i w reklamie, z zastrzeżeniem przepisów prawa, praw osób trzecich, § 13 oraz zasad korzystania udostępnionych przez Dostawców AI. Wyniki uzyskane w Planie Free nie są przeznaczone do wykorzystania komercyjnego.
+6. Użytkownik wykorzystujący Wyniki w ramach działalności gospodarczej lub zawodowej jest podmiotem stosującym w rozumieniu rozporządzenia (UE) 2024/1689 (AI Act) i odpowiada za ujawnienie, że Wynik został wygenerowany lub zmanipulowany przez sztuczną inteligencję, jeżeli stanowi on treść typu deepfake (art. 50 ust. 4 w związku z art. 3 pkt 60 AI Act), w szczególności gdy realistycznie przedstawia istniejący produkt, osobę lub miejsce w sposób odmienny od rzeczywistości. Ujawnienie powinno być wyraźne i widoczne najpóźniej przy pierwszym kontakcie odbiorcy z treścią. Oznaczenie nie zwalnia z zakazu wprowadzania odbiorców w błąd co do cech produktu (§ 13 ust. 1 pkt 6).
+7. Operator oznacza Wyniki wygenerowane lub istotnie zmienione przez Narzędzia AI (w szczególności generowanie scen i tła, uzupełnianie lub zmianę fragmentów obrazu, zmianę osób lub twarzy) w formacie odczytywalnym maszynowo, umożliwiającym wykrycie, że zostały wygenerowane lub zmanipulowane przez sztuczną inteligencję (art. 50 ust. 2 AI Act), w szczególności za pomocą metadanych o pochodzeniu treści i znaków wodnych, w tym stosowanych przez Dostawców AI. Narzędzia Serwisu zachowują te oznaczenia. Oznaczeniem nie są objęte operacje standardowej edycji, które nie zmieniają istotnie Materiału (np. zmiana rozmiaru, kompresja, usunięcie tła). Użytkownik nie usuwa, nie ukrywa ani nie modyfikuje tych oznaczeń, chyba że przepisy prawa wyraźnie na to pozwalają.
+
+§ 12. Prawa Operatora
+
+1. Serwis, jego oprogramowanie, interfejs, bazy danych, szablony Poleceń, Inspiracje, treści GrovNews, oznaczenie GrovBase oraz inne elementy przygotowane przez Operatora są chronione prawem. Korzystanie z Serwisu nie przenosi na Użytkownika praw do tych elementów.
+2. Szablony Poleceń i zasady przetwarzania Materiałów stosowane przez Operatora stanowią tajemnicę przedsiębiorstwa Operatora.
+
+Rozdział IV. Zasady korzystania, treści niedozwolone i moderacja
+
+§ 13. Zakazane sposoby korzystania
+
+1. Zakazane jest korzystanie z Serwisu w sposób sprzeczny z prawem, dobrymi obyczajami lub Regulaminem, a także przesyłanie do Serwisu Treści niedozwolonych oraz celowe generowanie, publikowanie lub inne wykorzystywanie Wyników, które stanowią Treści niedozwolone, w szczególności:
+    1. treści przedstawiających wykorzystywanie seksualne małoletnich lub seksualizujących małoletnich, w jakiejkolwiek formie;
+    2. treści o charakterze intymnym lub seksualnym przedstawiających rozpoznawalną osobę bez jej wyraźnej zgody, a także wszelkich treści pornograficznych;
+    3. realistycznych wizerunków istniejących, rozpoznawalnych osób bez ich zgody, w tym osób publicznych, oraz treści służących podszywaniu się pod inne osoby;
+    4. modyfikowania przy użyciu Narzędzi AI twarzy lub sylwetki osób małoletnich;
+    5. treści naruszających prawa autorskie, prawa do znaków towarowych, wzorów, dobra osobiste lub prawo do wizerunku osób trzecich, w tym używania cudzych logotypów i znaków bez uprawnienia oraz usuwania znaków wodnych lub informacji o prawach;
+    6. obrazów produktów, które wprowadzają lub mogą wprowadzić odbiorców w błąd co do cech produktu, w szczególności przedstawiają cechy, elementy, akcesoria, liczbę sztuk lub jakość, których produkt nie ma;
+    7. fałszywych lub podrabianych oznaczeń, takich jak oznakowanie CE, znaki bezpieczeństwa, certyfikaty, etykiety energetyczne, oznaczenia składu lub pochodzenia;
+    8. obrazów udających zdjęcia od klientów, opinie lub recenzje, których nie wykonali rzeczywiści klienci, oraz innych materiałów służących tworzeniu fałszywych opinii;
+    9. obrazów podrabianych produktów lub produktów, których sprzedaż jest zakazana;
+    10. treści nawołujących do przemocy, nienawiści lub dyskryminacji, propagujących terroryzm albo pochwalających przestępstwa;
+    11. treści naruszających przepisy o ochronie danych osobowych, w tym przesyłania danych osób trzecich bez podstawy prawnej.
+2. Zakazane jest również:
+    1. obchodzenie lub próby obchodzenia naliczania Kredytów, płatności, limitów i zabezpieczeń Serwisu, a także wykorzystywanie błędów systemu rozliczeń; wykryty błąd należy zgłosić Operatorowi;
+    2. zakładanie wielu Kont lub posługiwanie się cudzymi danymi albo instrumentami płatniczymi w celu uzyskania Kredytów Promocyjnych lub innych korzyści;
+    3. korzystanie z Serwisu za pomocą skryptów, botów, scraperów lub innych zautomatyzowanych narzędzi, poza interfejsami udostępnionymi w tym celu przez Operatora;
+    4. dekompilacja, inżynieria wsteczna, testy penetracyjne i obciążeniowe bez pisemnej zgody Operatora, a także działania zakłócające pracę Serwisu lub infrastruktury Dostawców AI;
+    5. próby uzyskania szablonów Poleceń Operatora, w tym przez manipulowanie Poleceniami (ang. prompt injection);
+    6. wykorzystywanie Serwisu do budowy usługi konkurencyjnej lub do trenowania modeli sztucznej inteligencji na Wynikach w sposób zakazany przez zasady Dostawców AI;
+    7. odsprzedaż lub udostępnianie dostępu do Konta osobom trzecim bez zgody Operatora, z zastrzeżeniem funkcji Workspace;
+    8. przesyłanie złośliwego oprogramowania;
+    9. naruszanie zasad korzystania z usług Dostawców AI, w szczególności Generative AI Prohibited Use Policy Google (https://policies.google.com/terms/generative-ai/use-policy) i Usage Policies OpenAI (https://openai.com/policies/usage-policies/).
+3. Operator stosuje techniczne środki zapobiegające generowaniu treści, o których mowa w ust. 1 pkt 1, 2 i 4, w tym filtry bezpieczeństwa Dostawców AI, a po zgłoszeniu zgodnie z § 14 niezwłocznie usuwa takie treści i wzmacnia zabezpieczenia. Przed udostępnieniem narzędzi przetwarzających twarz lub sylwetkę Operator wdroży dodatkowe filtry Poleceń i Wyników. Zgłoszenia osób przedstawionych w treściach intymnych są rozpatrywane priorytetowo.
+
+§ 14. Zgłaszanie treści nielegalnych i naruszeń
+
+1. Każda osoba może zgłosić Operatorowi informacje lub treści, które uważa za nielegalne lub naruszające Regulamin, w tym naruszające jej prawa autorskie lub prawo do wizerunku. Zgłoszenie należy przesłać na adres wskazany w § 1 ust. 3 pkt 4 lub przez formularz zgłoszeń w Serwisie.
+2. Adres wskazany w § 1 ust. 3 pkt 4 stanowi punkt kontaktowy dla organów państw członkowskich, Komisji Europejskiej i Europejskiej Rady ds. Usług Cyfrowych oraz dla odbiorców usługi w rozumieniu art. 11 i 12 rozporządzenia (UE) 2022/2065 (akt o usługach cyfrowych, „DSA”). Komunikacja z punktem kontaktowym jest możliwa w języku polskim i angielskim.
+3. Zgłoszenie powinno zawierać:
+    1. wystarczająco uzasadnione wyjaśnienie, dlaczego treść jest nielegalna lub narusza Regulamin;
+    2. informacje pozwalające zidentyfikować treść (np. identyfikator, adres URL, opis);
+    3. imię i nazwisko lub nazwę oraz adres e-mail zgłaszającego, chyba że zgłoszenie dotyczy treści przedstawiających wykorzystywanie seksualne dzieci;
+    4. oświadczenie, że zgłaszający w dobrej wierze uważa, iż informacje w zgłoszeniu są prawidłowe i kompletne.
+4. Operator potwierdza otrzymanie zgłoszenia, rozpatruje je bez zbędnej zwłoki, w sposób obiektywny i staranny, oraz informuje zgłaszającego o podjętej decyzji i dostępnych środkach odwoławczych, a także o tym, czy przy rozpatrywaniu zgłoszenia wykorzystano środki zautomatyzowane.
+5. Jeżeli Operator poweźmie informację o treści, która może świadczyć o popełnieniu przestępstwa zagrażającego życiu lub bezpieczeństwu osób, niezwłocznie zawiadamia właściwe organy ścigania.
+6. Operator może nie rozpatrywać zgłoszeń, które są w oczywisty sposób bezzasadne, a wobec osób, które często dokonują takich zgłoszeń, może po uprzednim ostrzeżeniu czasowo wstrzymać ich rozpatrywanie.
+7. Postanowienia dotyczące zgłoszeń naruszeń praw autorskich z USA zawiera § 32 ust. 5.
+
+§ 15. Moderacja i środki wobec naruszeń
+
+1. Moderacja w Serwisie obejmuje: automatyczne filtry bezpieczeństwa Dostawców AI, które mogą odrzucić Polecenie lub Materiał; automatyczne limity liczby żądań i zakładanych Kont; weryfikację zgłoszeń przez Operatora. Decyzje o usunięciu Materiału lub Wyniku oraz o zawieszeniu lub zablokowaniu Konta podejmuje człowiek.
+2. W przypadku uzasadnionego podejrzenia naruszenia prawa lub Regulaminu Operator może, proporcjonalnie do wagi naruszenia:
+    1. wezwać Użytkownika do zaprzestania naruszeń;
+    2. usunąć lub zablokować dostęp do określonego Materiału lub Wyniku;
+    3. czasowo ograniczyć dostęp do wybranych funkcji, w tym do Narzędzi AI;
+    4. czasowo zawiesić Konto;
+    5. wypowiedzieć umowę zgodnie z § 29.
+3. Operator informuje Użytkownika o zastosowanym ograniczeniu najpóźniej z chwilą jego zastosowania, podając uzasadnienie zawierające: rodzaj, zakres terytorialny i czas trwania ograniczenia; informację, czy działanie podjęto na podstawie zgłoszenia, czy z własnej inicjatywy; fakty i okoliczności, na których oparto decyzję; informację, czy przy podejmowaniu decyzji wykorzystano środki zautomatyzowane; wskazanie podstawy prawnej lub postanowienia Regulaminu oraz informację o środkach odwoławczych (art. 17 DSA). Obowiązek ten nie dotyczy przypadków, w których przekazanie informacji jest zakazane przez prawo lub nakaz organu.
+4. Użytkownik i zgłaszający mogą w terminie 6 miesięcy od otrzymania decyzji złożyć odwołanie na adres wskazany w § 1 ust. 3 pkt 4. Odwołanie rozpatruje, jeżeli jest to możliwe, osoba, która nie podejmowała decyzji pierwotnej, w terminie 14 dni. Niezależnie od tego Użytkownik może dochodzić roszczeń przed sądem powszechnym oraz złożyć skargę do koordynatora ds. usług cyfrowych (w Polsce - Prezesa Urzędu Komunikacji Elektronicznej).
+5. W przypadku treści, o których mowa w § 13 ust. 1 pkt 1 i 2, oraz ataków na Serwis Operator może zastosować środki niezwłocznie, bez uprzedniego wezwania.
+6. Kredyty uzyskane z naruszeniem § 13 ust. 2 pkt 1 lub 2 Operator może anulować po uprzednim poinformowaniu Użytkownika i umożliwieniu mu zajęcia stanowiska. Rozliczenie Kredytów odpłatnych po wypowiedzeniu umowy z powodu naruszenia określa § 29 ust. 7.
+
+Rozdział V. Kredyty, Plany i płatności
+
+§ 16. Kredyty
+
+1. Kredyt jest wewnętrzną jednostką rozliczeniową Serwisu. Kredyt nie jest pieniądzem, pieniądzem elektronicznym ani instrumentem płatniczym, nie podlega wymianie na środki pieniężne (z zastrzeżeniem zwrotów przewidzianych w Regulaminie i w przepisach prawa) i nie może być przeniesiony na inne Konto ani Workspace, z zastrzeżeniem § 7 ust. 3.
+2. Użytkownik może uzyskać Kredyty:
+    1. jako Kredyty Planu - po opłaceniu każdego Okresu rozliczeniowego Planu płatnego, w liczbie wskazanej w Cenniku;
+    2. jako Kredyty Pakietu - po zakupie Pakietu, w liczbie wskazanej w Cenniku, w tym Kredyty dodatkowe przewidziane w ofercie Pakietu;
+    3. jako Kredyty Promocyjne - nieodpłatnie, w szczególności Kredyty powitalne przyznawane po założeniu Konta oraz Kredyty za udział w ankiecie lub innej akcji, na warunkach wskazanych w Serwisie w chwili przyznania;
+    4. w drodze korekty dokonanej przez Operatora zgodnie z ust. 10.
+3. Kredyty są zapisywane na jednym saldzie Workspace. Saldo i historia operacji są widoczne w Koncie.
+4. Każda płatna operacja w Narzędziach pobiera liczbę Kredytów wynikającą z Cennika. Koszt zależy w szczególności od narzędzia, modelu, rozdzielczości i liczby Wyników. Koszt operacji w Kredytach jest wyświetlany przed jej uruchomieniem i wiąże Operatora; Serwis nie pobierze więcej Kredytów, niż wyświetlił. Kredyty są pobierane w chwili uruchomienia operacji.
+5. Zmiana kosztu operacji. Podwyższenie liczby Kredytów pobieranych za operację o tych samych parametrach, dostępną w dniu nabycia Kredytów, jest dopuszczalne wyłącznie z przyczyn wskazanych w § 27 ust. 1, z co najmniej 30-dniowym uprzedzeniem przekazanym e-mailem i w Serwisie. W tym czasie Konsument i Przedsiębiorca na prawach konsumenta mogą rozwiązać umowę o prowadzenie Konta i otrzymać zwrot zgodnie z § 29 ust. 6. Nowe modele i Narzędzia oferowane obok dotychczasowych mogą mieć odrębny koszt; nie stanowi to zmiany kosztu.
+6. Ważność. Kredyty nie wygasają, dopóki trwa umowa o prowadzenie Konta, także po zakończeniu Planu płatnego. Zasady rozliczenia Kredytów po rozwiązaniu umowy określa § 29.
+7. Wartość i kolejność rozliczeniowa. Na potrzeby rozliczeń przewidzianych w Regulaminie (odstąpienie, zwrot, rozwiązanie umowy) przyjmuje się, że Użytkownik wykorzystuje najpierw Kredyty Promocyjne, a następnie Kredyty Planu i Kredyty Pakietu w kolejności ich uzyskania. Wartość jednego Kredytu Planu lub Kredytu Pakietu odpowiada cenie brutto zapłaconej za dany Plan lub Pakiet podzielonej przez łączną liczbę Kredytów uzyskanych w ramach tego zakupu. Historia salda w Koncie wskazuje źródło Kredytów.
+8. Kredyty Promocyjne nie mają wartości pieniężnej i nie podlegają zwrotowi. Warunki ich przyznania (np. termin na odebranie bonusu) są wskazywane w Serwisie przed ich przyznaniem. Operator może uzależnić przyznanie Kredytów Promocyjnych od weryfikacji i odmówić ich przyznania, jeżeli to samo urządzenie, instrument płatniczy lub dane posłużyły już do ich uzyskania.
+9. Nieudane operacje. Jeżeli operacja nie zostanie wykonana z przyczyn technicznych, w szczególności z powodu błędu Serwisu lub Dostawcy AI, odmowy wykonania przez mechanizmy bezpieczeństwa Dostawcy AI, niedostarczenia części zamówionych Wyników, dostarczenia Wyniku pustego, uszkodzonego lub zastąpionego przez filtr Dostawcy AI albo zawieszenia operacji na ponad 30 minut, pobrane Kredyty za niewykonaną część operacji są automatycznie zwracane na saldo. Jeżeli zwrot nie nastąpi automatycznie, Użytkownik może złożyć reklamację zgodnie z § 25. Zwrot nie przysługuje, a Operator może zastosować § 15, jeżeli odmowa wynika z celowego, powtarzającego się przesyłania Treści niedozwolonych.
+10. Korekty. Operator może zmniejszyć saldo Kredytów wyłącznie w przypadku błędu w rozliczeniu (np. podwójnego zaksięgowania), zwrotu płatności lub obciążenia zwrotnego (§ 20 ust. 6) albo w przypadkach określonych w § 15 ust. 6. Operator informuje Użytkownika e-mailem o każdej korekcie wraz z uzasadnieniem. Użytkownik może zakwestionować korektę w trybie reklamacji.
+
+§ 17. Plan Free
+
+1. Plan Free jest bezpłatny i przysługuje każdemu Kontu, które nie ma aktywnego Planu płatnego.
+2. W Planie Free Użytkownik może korzystać z Narzędzi dostępnych w tym Planie w ramach całego salda Kredytów, w tym Kredytów Planu i Kredytów Pakietu uzyskanych wcześniej. Plan Free nie obejmuje cyklicznie przyznawanych Kredytów ani możliwości zakupu Pakietów, chyba że Cennik stanowi inaczej.
+3. Operator może określić w Cenniku limit miejsca na Wyniki w poszczególnych Planach. Wyniki z Kont w Planie Free, do których nikt nie logował się przez 365 dni, mogą zostać usunięte po uprzedzeniu Użytkownika e-mailem z co najmniej 30-dniowym wyprzedzeniem.
+
+§ 18. Plany płatne (Subskrypcje)
+
+1. Plany płatne, ich ceny, liczba Kredytów Planu i zakres funkcji są określone w Cenniku. W dniu wejścia w życie Regulaminu Plany płatne są rozliczane miesięcznie. Plany roczne będą dostępne tylko wtedy, gdy zostaną opublikowane w Cenniku.
+2. Zawarcie umowy. Przed zamówieniem i przed podaniem danych instrumentu płatniczego Operator wyświetla obok przycisku zamówienia: nazwę Planu, cenę brutto i częstotliwość obciążeń, liczbę Kredytów Planu, informację, że Subskrypcja odnawia się automatycznie do czasu rezygnacji, oraz sposób rezygnacji. Zamówienie wymaga zaznaczenia niezaznaczonego domyślnie pola potwierdzającego zgodę na automatyczne odnowienie. Umowa o Plan płatny zostaje zawarta z chwilą złożenia zamówienia przyciskiem oznaczonym „Zamawiam z obowiązkiem zapłaty” (lub równoważnym, jednoznacznym sformułowaniem) i skutecznej autoryzacji płatności.
+3. Potwierdzenie. Po zamówieniu Operator przesyła e-mailem potwierdzenie zawarcia umowy, zawierające warunki automatycznego odnowienia, zasady rezygnacji z bezpośrednim linkiem do rezygnacji, treść złożonych oświadczeń, Regulamin w formacie PDF i wzór formularza odstąpienia. Co najmniej raz w roku Operator przypomina o Subskrypcji, jej cenie, częstotliwości obciążeń i sposobie rezygnacji. Dowód zgody na automatyczne odnowienie (treść informacji, data, wersja) Operator przechowuje przez 3 lata od jej wyrażenia albo przez rok od rozwiązania umowy, w zależności od tego, który okres jest dłuższy.
+4. Automatyczne odnowienie. Plan płatny odnawia się automatycznie na kolejne Okresy rozliczeniowe, a opłata za każdy kolejny okres jest pobierana z instrumentu płatniczego Użytkownika na początku tego okresu, do czasu rezygnacji. Odnowienie Subskrypcji nie jest zawarciem nowej umowy.
+5. Rezygnacja. Użytkownik może zrezygnować z Planu płatnego w każdej chwili, bez podania przyczyny:
+    1. w Koncie, przyciskiem „Anuluj subskrypcję” dostępnym w ustawieniach (Ustawienia → Subskrypcje → Zarządzaj płatnościami);
+    2. przez formularz „Wypowiedz umowę tutaj”, dostępny w Serwisie bez logowania;
+    3. wysyłając wiadomość na adres wskazany w § 1 ust. 3 pkt 1.
+   Rezygnacja wywołuje skutek na koniec bieżącego Okresu rozliczeniowego. Do tego dnia Użytkownik zachowuje dostęp do funkcji Planu, a po nim nie są pobierane kolejne opłaty. Jeżeli w trakcie rezygnacji Operator przedstawia ofertę lub informację o jej skutkach, przycisk natychmiastowego dokończenia rezygnacji jest wyświetlany jednocześnie. Operator niezwłocznie potwierdza rezygnację e-mailem. Rezygnacja nie wpływa na prawo odstąpienia od umowy (§ 24) ani na uprawnienia z tytułu niezgodności Usługi z umową (§ 25).
+6. Kredyty Planu przyznane przed rezygnacją pozostają na saldzie zgodnie z § 16 ust. 6.
+7. Zmiana Planu. Zmiana Planu następuje z początkiem kolejnego Okresu rozliczeniowego. Od tego dnia pobierana jest cena nowego Planu i przyznawane są Kredyty nowego Planu. W bieżącym okresie nie pobiera się dopłat ani nie zwraca różnicy, chyba że Operator zaproponuje inne rozliczenie, a Użytkownik je zaakceptuje przed zmianą. Do czasu udostępnienia zmiany Planu w Koncie wniosek można złożyć na adres wskazany w § 1 ust. 3 pkt 1.
+8. Brak płatności. Jeżeli opłata za kolejny Okres rozliczeniowy nie zostanie pobrana, operator płatności może ponawiać próby obciążenia. Do czasu skutecznej płatności nie są przyznawane Kredyty Planu za nowy okres, a zakup Pakietów jest niedostępny. Jeżeli płatność nie zostanie uregulowana w terminie 24 godzin od pierwszej nieudanej próby obciążenia, Subskrypcja wygasa, a Konto przechodzi na Plan Free. Wcześniej uzyskane Kredyty pozostają na saldzie.
+9. Zmiana ceny Planu. Operator może podwyższyć cenę Planu płatnego dla trwających Subskrypcji nie częściej niż raz na 12 miesięcy, wyłącznie z następujących przyczyn i w stopniu odpowiadającym ich wpływowi na koszt świadczenia Planu:
+    1. wzrost cen jednostkowych Dostawców AI lub dostawców infrastruktury;
+    2. zmiana stawki VAT lub wprowadzenie nowych danin publicznych;
+    3. wzrost wskaźnika cen towarów i usług konsumpcyjnych ogłoszonego przez Prezesa GUS za poprzedni rok - nie więcej niż o ten wskaźnik;
+    4. zmiana średniego kursu NBP USD/PLN o więcej niż 10% względem dnia ostatniej zmiany ceny.
+   Operator informuje Użytkownika o podwyżce e-mailem i w Koncie na 30 dni przed jej wejściem w życie, podając nową cenę, przyczynę, datę zmiany i sposób rezygnacji. Wobec Konsumenta i Przedsiębiorcy na prawach konsumenta nowa cena obowiązuje tylko wtedy, gdy Użytkownik ją zaakceptuje w Koncie lub w wiadomości e-mail; brak akceptacji przed rozpoczęciem pierwszego Okresu rozliczeniowego objętego nową ceną oznacza, że Subskrypcja nie odnowi się i wygaśnie z końcem bieżącego okresu, bez żadnych kosztów. Milczenie nie jest akceptacją. Wobec Przedsiębiorcy nowa cena obowiązuje od pierwszego Okresu rozliczeniowego rozpoczynającego się po upływie terminu powiadomienia, chyba że Przedsiębiorca zrezygnuje z Planu przed tą datą. Jeżeli przyczyna podwyżki ustanie, Operator obniża cenę w odpowiednim stopniu od kolejnego Okresu rozliczeniowego.
+10. Subskrypcje zawarte w ofercie z gwarancją ceny zachowują tę cenę do rezygnacji lub zmiany Planu; Operator może ją zmienić wyłącznie z powodu zmiany stawki VAT lub innych przepisów.
+11. W danym Workspace może być aktywny tylko jeden Plan płatny.
+
+§ 19. Pakiety Kredytów
+
+1. Pakiety, ich ceny i liczba Kredytów są określone w Cenniku. Cena Pakietu w ramach kwoty własnej jest wyliczana w Serwisie i wyświetlana przed złożeniem zamówienia.
+2. Umowa o Pakiet zostaje zawarta z chwilą złożenia zamówienia przyciskiem oznaczonym „Zamawiam z obowiązkiem zapłaty” (lub równoważnym) i skutecznej autoryzacji płatności. Kredyty Pakietu są dopisywane do salda po potwierdzeniu płatności przez operatora płatności, zwykle niezwłocznie.
+3. Pakiet jest jednorazowy i nie odnawia się automatycznie.
+4. Zakup Pakietu jest dostępny wyłącznie dla Użytkowników z aktywnym Planem płatnym, chyba że Cennik stanowi inaczej.
+
+§ 20. Ceny, płatności, podatki i faktury
+
+1. Ceny w Cenniku są cenami brutto, zawierającymi podatek od towarów i usług (VAT). Wobec Konsumentów z innych państw Unii Europejskiej cena brutto może uwzględniać stawkę VAT właściwą dla państwa Konsumenta, jeżeli wymagają tego przepisy; łączna cena brutto jest zawsze wyświetlana przed złożeniem zamówienia.
+2. Płatności obsługuje Stripe Payments Europe, Limited z siedzibą w Dublinie (Irlandia). Dostępne metody płatności są wskazane w formularzu płatności. Dane instrumentu płatniczego przetwarza Stripe; Operator nie ma dostępu do pełnych danych karty.
+3. Cena jest pobierana w złotych polskich. Ewentualne przewalutowanie i jego koszty wynikają z warunków dostawcy instrumentu płatniczego Użytkownika.
+4. Operator wystawia faktury VAT:
+    1. Przedsiębiorcom z polskim numerem NIP - w Krajowym Systemie e-Faktur (KSeF), gdy wymagają tego przepisy; faktura jest otrzymana z chwilą nadania jej numeru w KSeF, a Operator dodatkowo przesyła jej wizualizację na adres e-mail Konta;
+    2. pozostałym Użytkownikom - na żądanie zgłoszone w terminie przewidzianym w ustawie o podatku od towarów i usług, w postaci elektronicznej (PDF) przesyłanej na adres e-mail Konta, na co Użytkownik wyraża zgodę.
+5. Przed złożeniem zamówienia Użytkownik może zapoznać się z łączną ceną, okresem rozliczeniowym, liczbą Kredytów i zasadami odnowienia.
+6. Zwrot płatności i obciążenie zwrotne (chargeback). Użytkownik może składać reklamacje płatności u dostawcy swojego instrumentu płatniczego zgodnie z przysługującymi mu prawami. Operator zachęca, aby najpierw zgłosić sprawę w trybie § 25. Po otrzymaniu informacji o zwrocie płatności lub obciążeniu zwrotnym, innym niż zwrot wynikający z odstąpienia od umowy albo z uznanej reklamacji, Operator może:
+    1. odjąć z salda Kredyty uzyskane w ramach zwróconej płatności, a jeżeli saldo nie wystarcza - wstrzymać możliwość wykonywania płatnych operacji do czasu dopłaty różnicy, najdłużej na 60 dni, informując o tym Użytkownika z uzasadnieniem;
+    2. wstrzymać Plan płatny lub GrovNews objęte zwróconą płatnością;
+    3. przekazać operatorowi płatności dowody wykonania Usługi (historię operacji, Wyniki, daty logowań, treść złożonych oświadczeń).
+   Po rozstrzygnięciu sporu na korzyść Użytkownika Operator niezwłocznie przywraca Kredyty i Plan. Przedsiębiorca pokrywa opłaty operatora płatności związane z obciążeniem zwrotnym, które okazało się nieuzasadnione. Obciążenie zwrotne dokonane w złej wierze po wykorzystaniu Kredytów stanowi rażące naruszenie Regulaminu w rozumieniu § 29 ust. 3.
+7. Oczywista omyłka. Jeżeli w Cenniku lub w kasie pojawi się oczywista omyłka w cenie, Operator przed realizacją zamówienia albo niezwłocznie po jej wykryciu proponuje Użytkownikowi realizację po prawidłowej cenie albo pełny zwrot zapłaconej kwoty, według wyboru Użytkownika.
+
+§ 21. Promocje
+
+1. Operator może organizować promocje, w tym przyznawać Kredyty Promocyjne, rabaty i kody rabatowe. Szczegółowe warunki promocji (czas trwania, uprawnione osoby, sposób skorzystania) są wskazywane w Serwisie lub w odrębnym regulaminie promocji przed skorzystaniem z promocji.
+2. Promocji nie można łączyć, chyba że ich warunki stanowią inaczej.
+3. Informując o obniżce ceny, Operator podaje także najniższą cenę z okresu 30 dni przed wprowadzeniem obniżki. Informacja o oszczędności liczonej względem ceny innego Pakietu nie jest obniżką ceny i jest odpowiednio opisana.
+
+§ 22. GrovNews
+
+1. GrovNews jest odpłatnym serwisem redakcyjnym zawierającym informacje i analizy dla sprzedawców internetowych, udostępnianym w Koncie oraz w postaci wydań przesyłanych e-mailem do osób z aktywną subskrypcją GrovNews, niezależnie od zgody na newsletter. Wydania zawierają link pozwalający zrezygnować z wysyłki e-mail bez wpływu na dostęp w Koncie.
+2. GrovNews jest rozliczany w formie miesięcznej Subskrypcji, odnawianej automatycznie, w cenie wskazanej w Cenniku. GrovNews nie obejmuje Kredytów. Do GrovNews stosuje się odpowiednio § 18 ust. 2-5, 8 i 9. Rezygnacja jest możliwa także w ustawieniach GrovNews w Koncie; dostęp trwa do końca opłaconego okresu.
+3. Operator może udostępniać GrovNews nieodpłatnie w ramach promocji, na warunkach wskazanych w Serwisie.
+4. Treści GrovNews mają charakter wyłącznie informacyjny i nie stanowią porady prawnej, podatkowej ani biznesowej. Wydania są przygotowywane z wykorzystaniem narzędzi sztucznej inteligencji i źródeł zewnętrznych i mogą być publikowane automatycznie, bez indywidualnego przeglądu redakcyjnego przez człowieka. Operator dokłada należytej staranności, aby treści były rzetelne i aktualne w dniu publikacji, wskazuje ich źródła i koryguje zgłoszone błędy.
+5. Użytkownik może korzystać z treści GrovNews na własny użytek, w tym na wewnętrzne potrzeby swojej działalności. Dalsze rozpowszechnianie treści GrovNews wymaga zgody Operatora, z wyjątkiem dozwolonego użytku, w tym prawa cytatu.
+
+Rozdział VI. Prawa konsumenta i reklamacje
+
+§ 23. Zakres stosowania postanowień konsumenckich
+
+1. Postanowienia Regulaminu dotyczące Konsumentów stosuje się do Przedsiębiorców na prawach konsumenta w zakresie przewidzianym w art. 385⁵ Kodeksu cywilnego i art. 7aa ustawy z dnia 30 maja 2014 r. o prawach konsumenta, w szczególności w zakresie niedozwolonych postanowień umownych, prawa odstąpienia od umowy oraz zgodności treści cyfrowych i usług cyfrowych z umową.
+2. Żadne postanowienie Regulaminu nie wyłącza ani nie ogranicza praw, które przysługują Konsumentowi na podstawie bezwzględnie obowiązujących przepisów prawa. W razie wątpliwości postanowienia Regulaminu interpretuje się na korzyść Konsumenta.
+
+§ 24. Prawo odstąpienia od umowy
+
+1. Konsument może odstąpić od umowy zawartej na odległość, bez podania przyczyny, w terminie 14 dni od dnia jej zawarcia. Do zachowania terminu wystarczy wysłanie oświadczenia przed jego upływem.
+2. Prawo odstąpienia przysługuje w szczególności od umowy o Plan płatny, umowy o Pakiet i umowy o GrovNews. Automatyczne odnowienie Subskrypcji nie jest zawarciem nowej umowy i nie otwiera nowego terminu na odstąpienie, z zastrzeżeniem przepisów, które przewidują inaczej (§ 33 ust. 4).
+3. Oświadczenie o odstąpieniu można złożyć:
+    1. za pomocą funkcji odstąpienia dostępnej w Koncie i w stopce Serwisu („Odstąp od umowy tutaj”) przez cały okres, w którym przysługuje prawo odstąpienia; funkcja pozwala podać imię i nazwisko, wskazać umowę lub jej część oraz adres e-mail do potwierdzenia i złożyć oświadczenie przyciskiem „Potwierdź odstąpienie od umowy”;
+    2. e-mailem na adres wskazany w § 1 ust. 3 pkt 1;
+    3. pisemnie na adres Operatora.
+   Konsument może skorzystać z wzoru formularza stanowiącego Załącznik nr 1, ale nie jest to obowiązkowe. Operator niezwłocznie przesyła na Trwałym nośniku potwierdzenie otrzymania oświadczenia, zawierające jego treść oraz datę i godzinę otrzymania.
+4. Rozpoczęcie świadczenia przed upływem terminu. Plan płatny, Pakiet i GrovNews są udostępniane niezwłocznie po zakupie, jeżeli Konsument wyraźnie tego zażąda przed upływem terminu na odstąpienie, zaznaczając niezaznaczone domyślnie pole: „Żądam rozpoczęcia świadczenia przed upływem 14 dni na odstąpienie od umowy. Wiem, że w razie odstąpienia zapłacę za świadczenia spełnione do tej chwili, a po wykorzystaniu wszystkich Kredytów Pakietu utracę prawo odstąpienia”. Treść żądania Operator potwierdza na Trwałym nośniku.
+5. Jeżeli Konsument, który zażądał rozpoczęcia świadczenia przed upływem terminu na odstąpienie, odstąpi od umowy, Operator zwraca zapłaconą cenę pomniejszoną o kwotę proporcjonalną do zakresu świadczeń spełnionych do chwili odstąpienia. Za świadczenia spełnione uważa się:
+    1. przy Pakiecie - wykorzystane Kredyty Pakietu, rozliczone według § 16 ust. 7;
+    2. przy Planie płatnym - wykorzystane Kredyty Planu, rozliczone według § 16 ust. 7; cena Planu płatnego stanowi w całości wynagrodzenie za Kredyty Planu, a dostęp do funkcji Planu nie jest odrębnie wyceniany;
+    3. przy GrovNews - okres dostępu do chwili odstąpienia, proporcjonalnie do długości Okresu rozliczeniowego.
+   Jeżeli cena jest nadmierna, kwotę proporcjonalną oblicza się na podstawie wartości rynkowej spełnionego świadczenia.
+6. Prawo odstąpienia nie przysługuje w odniesieniu do umowy, którą Operator wykonał w pełni za wyraźną i uprzednią zgodą Konsumenta, który został poinformowany przed rozpoczęciem świadczenia, że po jego spełnieniu utraci prawo odstąpienia od umowy, i przyjął to do wiadomości. W praktyce dotyczy to Pakietu, którego wszystkie Kredyty zostały wykorzystane przed upływem terminu na odstąpienie. Sam zakup Kredytów nie powoduje utraty prawa odstąpienia.
+7. Operator zwraca płatność niezwłocznie, nie później niż w terminie 14 dni od otrzymania oświadczenia o odstąpieniu, przy użyciu takiego samego sposobu płatności, jakiego użył Konsument, chyba że Konsument zgodził się na inny sposób, który nie wiąże się dla niego z kosztami.
+8. Z chwilą odstąpienia od umowy o Pakiet lub Plan płatny Operator odejmuje z salda niewykorzystane Kredyty uzyskane w ramach tej umowy. Wyniki wygenerowane przed odstąpieniem pozostają w Bibliotece Konsumenta.
+9. Przedsiębiorcy, który nie jest Przedsiębiorcą na prawach konsumenta, prawo odstąpienia nie przysługuje.
+
+§ 25. Reklamacje i zgodność Usług z umową
+
+1. Operator odpowiada wobec Konsumenta za zgodność Usług, w tym usług cyfrowych i treści cyfrowych, z umową na zasadach określonych w rozdziale 5b ustawy o prawach konsumenta. W przypadku Usług świadczonych w sposób ciągły (Plan płatny, GrovNews, Konto) Operator odpowiada za brak zgodności, który wystąpił lub ujawnił się w czasie, w którym zgodnie z umową miały być świadczone.
+2. Reklamację można złożyć:
+    1. e-mailem na adres wskazany w § 1 ust. 3 pkt 2;
+    2. przez czat wsparcia w Koncie, wybierając kategorię „Reklamacja”;
+    3. pisemnie na adres Operatora.
+3. Reklamacja powinna zawierać dane pozwalające zidentyfikować Użytkownika (adres e-mail Konta), opis problemu, w miarę możliwości identyfikator operacji lub Wyniku, oraz żądanie Użytkownika. Brak tych elementów nie powoduje odrzucenia reklamacji; Operator może poprosić o uzupełnienie.
+4. Operator odpowiada na reklamację w terminie 14 dni od jej otrzymania, na Trwałym nośniku. Jeżeli Operator nie odpowie na reklamację Konsumenta w tym terminie, uważa się, że uznał ją za uzasadnioną.
+5. W przypadku braku zgodności Usługi z umową Konsument może żądać doprowadzenia jej do zgodności z umową. Operator może odmówić, jeżeli doprowadzenie do zgodności jest niemożliwe albo wymagałoby nadmiernych kosztów. Konsument może złożyć oświadczenie o obniżeniu ceny albo o odstąpieniu od umowy, jeżeli: Operator odmówił doprowadzenia Usługi do zgodności; Operator nie doprowadził jej do zgodności w rozsądnym czasie od poinformowania go o braku zgodności i bez nadmiernych niedogodności dla Konsumenta; brak zgodności występuje nadal, mimo że Operator próbował doprowadzić Usługę do zgodności; brak zgodności jest tak istotny, że uzasadnia obniżenie ceny albo odstąpienie bez wcześniejszego skorzystania z doprowadzenia do zgodności; albo z oświadczenia Operatora lub okoliczności wyraźnie wynika, że nie doprowadzi on Usługi do zgodności w rozsądnym czasie lub bez nadmiernych niedogodności. Odstąpienie od umowy nie przysługuje, gdy Usługa jest świadczona w zamian za zapłatę ceny, a brak zgodności jest nieistotny; ciężar dowodu spoczywa na Operatorze.
+6. W odniesieniu do pojedynczej operacji w Narzędziach doprowadzenie do zgodności polega w szczególności na ponownym wykonaniu operacji bez pobrania Kredytów albo na zwrocie Kredytów pobranych za wadliwą operację. Po złożeniu przez Konsumenta oświadczenia o obniżeniu ceny lub o odstąpieniu od umowy Operator zwraca należną kwotę w pieniądzu, niezwłocznie, nie później niż w terminie 14 dni, przy użyciu sposobu płatności użytego przez Konsumenta.
+7. Wynik, który zawiera cechy opisane w § 9 ust. 3, nie stanowi sam w sobie niezgodności Usługi z umową, jeżeli Konsument został o nich poinformowany i odrębnie je zaakceptował najpóźniej w chwili zawarcia umowy, zgodnie z § 9 ust. 4, a Narzędzie AI działało zgodnie z opisem. Nie wyłącza to odpowiedzialności Operatora za wady działania samego Narzędzia (np. błąd uniemożliwiający uzyskanie Wyniku, uszkodzony plik, Wynik w innej rozdzielczości niż zamówiona, pobranie zawyżonej liczby Kredytów).
+8. Operator dostarcza aktualizacje niezbędne do zachowania zgodności Usług z umową.
+9. Reklamacje Przedsiębiorców Operator rozpatruje w terminie 14 dni. Wobec Przedsiębiorców odpowiedzialność Operatora za niezgodność Usług z umową ogranicza się do ponownego wykonania operacji lub zwrotu Kredytów pobranych za wadliwą operację, a w przypadku dłuższej niedostępności Usług - do proporcjonalnego obniżenia opłaty za Plan płatny, z zastrzeżeniem § 26.
+10. Pozasądowe rozwiązywanie sporów. Konsument może skorzystać z pozasądowych sposobów rozpatrywania reklamacji i dochodzenia roszczeń, w szczególności z pomocy miejskiego lub powiatowego rzecznika konsumentów, wojewódzkiego inspektora Inspekcji Handlowej oraz organizacji konsumenckich. Informacje o tych sposobach i o podmiotach uprawnionych do prowadzenia postępowań są dostępne na stronie Urzędu Ochrony Konkurencji i Konsumentów: https://polubowne.uokik.gov.pl. Konsumenci z innych państw Unii Europejskiej mogą skorzystać z pomocy Europejskiego Centrum Konsumenckiego. Jeżeli reklamacja Konsumenta nie zostanie uwzględniona, Operator w odpowiedzi oświadcza na Trwałym nośniku, czy wyraża zgodę na udział w postępowaniu w sprawie pozasądowego rozwiązania sporu, a w przypadku zgody wskazuje właściwy podmiot. Unijna platforma ODR została zlikwidowana z dniem 20 lipca 2025 r.
+
+Rozdział VII. Odpowiedzialność
+
+§ 26. Odpowiedzialność Operatora i Użytkownika
+
+1. Operator świadczy Usługi z należytą starannością, przy uwzględnieniu zawodowego charakteru prowadzonej działalności.
+2. Wobec Konsumentów Operator odpowiada na zasadach ogólnych. Postanowienia Regulaminu nie wyłączają ani nie ograniczają odpowiedzialności Operatora wobec Konsumenta za niewykonanie lub nienależyte wykonanie umowy, w tym za niezgodność Usług z umową, ani za szkody na osobie. Operator nie odpowiada wobec Konsumenta za szkody, które wynikają wyłącznie z:
+    1. wykorzystania przez Konsumenta Wyniku bez sprawdzenia, o którym mowa w § 9 ust. 6, w zakresie cech, o których Konsument został poinformowany i które zaakceptował;
+    2. naruszenia przez Konsumenta prawa lub Regulaminu;
+    3. działania siły wyższej, czyli zdarzenia zewnętrznego, nadzwyczajnego i niemożliwego do zapobieżenia przy zachowaniu należytej staranności.
+3. Wobec Przedsiębiorców, w najszerszym zakresie dopuszczalnym przez prawo:
+    1. Operator nie odpowiada za utracone korzyści, w tym utracony obrót, zysk, klientów lub reputację, ani za szkody pośrednie;
+    2. Operator nie odpowiada za decyzje biznesowe podjęte na podstawie Wyników lub treści GrovNews ani za skutki publikacji Wyników bez sprawdzenia, o którym mowa w § 9 ust. 6;
+    3. Operator nie odpowiada za przerwy i ograniczenia wynikające z działania Dostawców AI, operatorów infrastruktury i operatorów płatności, o ile dołożył należytej staranności w ich wyborze;
+    4. łączna odpowiedzialność Operatora z tytułu umowy jest ograniczona do kwoty wynagrodzenia zapłaconego przez Przedsiębiorcę Operatorowi w okresie 12 miesięcy poprzedzających zdarzenie wywołujące szkodę, a jeżeli Przedsiębiorca nie dokonał płatności - do kwoty 500 zł.
+4. Ograniczenia, o których mowa w ust. 3, nie dotyczą szkód wyrządzonych umyślnie lub wskutek rażącego niedbalstwa ani innych przypadków, w których ograniczenie odpowiedzialności jest niedopuszczalne z mocy prawa.
+5. Dostępność Serwisu. Operator dąży do zapewnienia ciągłej dostępności Serwisu, ale nie gwarantuje jej w określonym procencie. Operator może przeprowadzać prace techniczne; o planowanych pracach, które mogą spowodować dłuższą niedostępność, oraz o istotnych awariach informuje w Serwisie, z wyprzedzeniem, gdy jest to możliwe. Wobec Konsumentów dłuższa niedostępność Usług płatnych może stanowić niezgodność Usługi z umową (§ 25).
+6. Użytkownik odpowiada za Materiały, za sposób wykorzystania Wyników, w tym za ich zgodność z rzeczywistym produktem i przepisami o ochronie konsumentów, reklamie, znakach towarowych i ochronie wizerunku, oraz za oznaczenia wymagane przez prawo.
+7. Przedsiębiorca zwalnia Operatora z odpowiedzialności wobec osób trzecich i pokrywa uzasadnione koszty, w tym koszty pomocy prawnej i zasądzone odszkodowania, wynikające z roszczeń osób trzecich związanych z Materiałami Przedsiębiorcy lub wykorzystaniem przez niego Wyników z naruszeniem prawa lub Regulaminu, pod warunkiem że Operator niezwłocznie powiadomi Przedsiębiorcę o roszczeniu, umożliwi mu udział w obronie i nie uzna roszczenia bez jego zgody.
+
+Rozdział VIII. Zmiany, rozwiązanie umowy, postanowienia końcowe
+
+§ 27. Zmiany Usług
+
+1. Operator może zmieniać funkcje Usług, w tym zmieniać lub wycofywać modele i Dostawców AI oraz zmniejszać limity, o których mowa w § 4 ust. 2, wyłącznie z następujących przyczyn:
+    1. wycofanie modelu lub zmiana warunków przez Dostawcę AI albo zakończenie przez niego działalności;
+    2. usunięcie zagrożenia bezpieczeństwa Serwisu lub Użytkowników albo przeciwdziałanie nadużyciom;
+    3. zmiana przepisów prawa, orzeczenie sądu lub decyzja organu;
+    4. zastąpienie modelu lub funkcji rozwiązaniem o co najmniej porównywalnej funkcjonalności.
+   Operator może także wprowadzać nowe funkcje i modele. Zmiany nie dotyczą Wyników już dostarczonych.
+2. Wobec Konsumentów zmiana usługi cyfrowej, która nie jest niezbędna do zachowania jej zgodności z umową, nie może wiązać się z kosztami dla Konsumenta. Operator informuje Konsumenta o zmianie w jasny i zrozumiały sposób. Jeżeli zmiana istotnie i negatywnie wpływa na dostęp do Usługi lub korzystanie z niej, Operator informuje Konsumenta z rozsądnym wyprzedzeniem na Trwałym nośniku o charakterze i terminie zmiany oraz o prawie do rozwiązania umowy. Konsument może wówczas rozwiązać umowę w terminie 30 dni od zmiany albo od otrzymania informacji, jeżeli jest późniejsza, i otrzymać zwrot proporcjonalnej części ceny za okres po zmianie oraz zwrot wartości niewykorzystanych Kredytów Planu i Kredytów Pakietu.
+
+§ 28. Zmiany Regulaminu
+
+1. Operator może zmienić Regulamin z ważnych przyczyn, którymi są:
+    1. zmiana przepisów prawa lub ich wykładni wynikającej z orzeczeń sądów lub decyzji organów, wpływająca na treść Regulaminu;
+    2. zmiana Usług na zasadach § 27 lub wprowadzenie nowych Usług;
+    3. zmiana warunków Dostawców AI, operatorów płatności lub infrastruktury wpływająca na Usługi;
+    4. konieczność zapewnienia bezpieczeństwa Serwisu lub przeciwdziałania nadużyciom;
+    5. zmiana danych Operatora;
+    6. poprawa czytelności Regulaminu lub usunięcie niejasności i omyłek.
+2. Operator informuje Użytkowników o zmianie Regulaminu e-mailem i w Serwisie co najmniej 14 dni przed jej wejściem w życie, a w przypadku zmiany ceny - w terminie z § 18 ust. 9. Zmiana korzystna dla Użytkowników lub wymagana przepisami prawa w krótszym terminie może wejść w życie wcześniej.
+3. Użytkownik, który nie akceptuje zmian, może przed ich wejściem w życie wypowiedzieć umowę o prowadzenie Konta ze skutkiem natychmiastowym albo z dniem wejścia zmian w życie. W takim przypadku stosuje się § 29 ust. 6.
+4. Zmiany nie naruszają praw nabytych przed ich wejściem w życie. W szczególności Kredyty uzyskane przed zmianą zachowują ważność, a opłacony Okres rozliczeniowy jest wykonywany na dotychczasowych zasadach.
+5. Archiwalne wersje Regulaminu są dostępne w Serwisie.
+
+§ 29. Rozwiązanie umowy
+
+1. Użytkownik może w każdej chwili wypowiedzieć umowę o prowadzenie Konta, usuwając Konto w ustawieniach Konta lub wysyłając oświadczenie na adres wskazany w § 1 ust. 3 pkt 1. Przed usunięciem Konta Operator anuluje ze skutkiem natychmiastowym aktywne Subskrypcje (Plan płatny i GrovNews) i rozlicza Kredyty zgodnie z ust. 6.
+2. Operator może wypowiedzieć umowę o prowadzenie Konta z zachowaniem 30-dniowego okresu wypowiedzenia z ważnych przyczyn, którymi są: trwałe zakończenie świadczenia Usług lub działalności Serwisu, zmiana przepisów uniemożliwiająca świadczenie Usług, utrata możliwości świadczenia Usług z powodu decyzji organu lub Dostawcy AI, albo brak logowania do Konta w Planie Free przez 365 dni, poprzedzony przypomnieniem e-mailowym.
+3. Operator może wypowiedzieć umowę ze skutkiem natychmiastowym, jeżeli Użytkownik rażąco lub uporczywie narusza prawo lub Regulamin, w szczególności § 13, a w przypadkach innych niż określone w § 15 ust. 5 - po bezskutecznym wezwaniu do zaprzestania naruszeń.
+4. Rozwiązanie umowy o prowadzenie Konta oznacza także rozwiązanie umów o Plan płatny i GrovNews.
+5. Eksport danych i zmiana dostawcy. W każdym czasie trwania umowy Użytkownik może pobrać Wyniki z Biblioteki oraz zażądać nieodpłatnego eksportu Materiałów, Wyników i podstawowych metadanych operacji w powszechnie używanym formacie odczytywalnym maszynowo (np. archiwum ZIP z plikami i plikiem JSON). Operator realizuje eksport bez zbędnej zwłoki, nie później niż w terminie 30 dni. Po rozwiązaniu umowy Użytkownik może przez 30 dni pobrać swoje dane lub zażądać ich eksportu; po tym terminie dane są usuwane zgodnie z ust. 8. Operator nie pobiera opłat za eksport ani za zmianę dostawcy. Postanowienie to realizuje także obowiązki wynikające z art. 43o ustawy o prawach konsumenta oraz - w zakresie, w jakim ma zastosowanie - z rozdziału VI rozporządzenia (UE) 2023/2854 (Data Act).
+6. Rozliczenie po rozwiązaniu umowy. Jeżeli umowa zostaje rozwiązana przez Konsumenta lub Przedsiębiorcę na prawach konsumenta, a także przez Operatora z przyczyn określonych w ust. 2, Operator zwraca wartość niewykorzystanych Kredytów Pakietu i Kredytów Planu, obliczoną zgodnie z § 16 ust. 7, w terminie 14 dni, na instrument płatniczy użyty do zakupu, a gdy nie jest to możliwe - przelewem na rachunek wskazany przez Użytkownika. Kredyty Promocyjne wygasają.
+7. Jeżeli Operator wypowiada umowę z powodu naruszenia, o którym mowa w ust. 3, zwraca wartość niewykorzystanych Kredytów Pakietu i Kredytów Planu obliczoną zgodnie z § 16 ust. 7, pomniejszoną o wymagalne należności Operatora wobec Użytkownika uznane przez Użytkownika lub stwierdzone prawomocnym orzeczeniem. Kredyty uzyskane z naruszeniem Regulaminu nie podlegają zwrotowi.
+8. Po upływie terminu z ust. 5 Operator usuwa Materiały i Wyniki zgodnie z Polityką prywatności. Operator może przechowywać dane w zakresie wymaganym przepisami prawa, w szczególności podatkowymi, lub niezbędnym do ustalenia, dochodzenia lub obrony roszczeń.
+
+§ 30. Prawo właściwe i spory
+
+1. Do umów zawieranych na podstawie Regulaminu stosuje się prawo polskie.
+2. Wybór prawa polskiego nie pozbawia Konsumenta ochrony przyznanej mu na podstawie przepisów, których nie można wyłączyć w drodze umowy, na mocy prawa państwa, w którym Konsument ma miejsce zwykłego pobytu.
+3. Spory z Konsumentami rozstrzygają sądy właściwe według przepisów ogólnych. Konsument może wytoczyć powództwo przed sądem państwa, w którym ma miejsce zamieszkania, jeżeli przewidują to przepisy prawa. Operator może wytoczyć powództwo przeciwko Konsumentowi z państwa członkowskiego Unii Europejskiej wyłącznie przed sądem państwa jego miejsca zamieszkania.
+4. Spory z Przedsiębiorcami, którzy nie są Przedsiębiorcami na prawach konsumenta, rozstrzyga sąd powszechny właściwy dla miejsca wykonywania działalności przez Operatora.
+5. Przed skierowaniem sprawy do sądu strony podejmą próbę polubownego rozwiązania sporu, w szczególności przez reklamację. Dla Konsumentów próba ta jest dobrowolna i nie ogranicza ich prawa do sądu.
+
+§ 31. Postanowienia końcowe
+
+1. Komunikacja z Użytkownikiem odbywa się drogą elektroniczną, na adres e-mail Konta oraz w Serwisie, chyba że przepisy wymagają innej formy.
+2. Przeniesienie praw i obowiązków Operatora wobec Konsumenta wymaga jego zgody, z wyjątkiem następstwa prawnego z mocy prawa, w szczególności przekształcenia przedsiębiorcy w spółkę (art. 551 § 5 Kodeksu spółek handlowych), o którym Operator informuje z 30-dniowym wyprzedzeniem; Konsument może wówczas wypowiedzieć umowę ze skutkiem natychmiastowym i otrzymać rozliczenie zgodnie z § 29 ust. 6. Wobec Przedsiębiorców przeniesienie praw i obowiązków na nabywcę przedsiębiorstwa lub jego zorganizowanej części nie wymaga zgody.
+3. Regulamin jest udostępniany w języku polskim, angielskim i niemieckim. Wobec Konsumenta wiążąca jest wersja językowa, w której zawarł umowę. Wobec Przedsiębiorców w razie rozbieżności rozstrzyga wersja polska.
+4. Nieważność lub bezskuteczność jednego z postanowień Regulaminu nie wpływa na ważność pozostałych postanowień.
+5. Regulamin wchodzi w życie dnia 20 października 2026 r.
+
+Rozdział IX. Postanowienia regionalne
+
+§ 32. Stany Zjednoczone
+
+1. Automatyczne odnowienie. Do Użytkowników z USA stosuje się § 18 ust. 2-5 i 9, w szczególności: informację o warunkach odnowienia przed podaniem danych instrumentu płatniczego, odrębne potwierdzenie zgody na automatyczne odnowienie, e-mail potwierdzający z bezpośrednim linkiem do rezygnacji, coroczne przypomnienie, rezygnację online oraz przechowywanie dowodu zgody.
+2. Zmiana ceny. O zmianie ceny Operator informuje e-mailem na 30 dni przed jej wejściem w życie, wraz z informacją o sposobie rezygnacji. Użytkownik, który nie potwierdził nowej ceny i został obciążony według niej, może w ciągu 14 dni od pierwszego takiego obciążenia zrezygnować i otrzymać zwrot proporcjonalnej części tej opłaty.
+3. Informacja dla mieszkańców Kalifornii (Cal. Civ. Code § 1789.3). Usługodawca: Marcel Przytulski, prowadzący jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski, Chojnik 104, 14-300 Morąg, Polska, e-mail: contact@grovbase.com. Opłaty: zgodnie z Cennikiem. Reklamacje: § 25. Skargi można kierować do Complaint Assistance Unit of the Division of Consumer Services, California Department of Consumer Affairs, 1625 North Market Blvd., Suite N 112, Sacramento, CA 95834, tel. (800) 952-5210.
+4. Wyłączenie gwarancji wobec przedsiębiorców z USA. Jeżeli do umowy z Przedsiębiorcą z USA mają zastosowanie przepisy prawa stanu USA, w najszerszym dopuszczalnym przez nie zakresie Usługi i Wyniki są udostępniane „AS IS” i „AS AVAILABLE”, bez dorozumianych gwarancji przydatności handlowej (merchantability), przydatności do określonego celu i nienaruszania praw. Postanowienie nie dotyczy Konsumentów; ich prawa określają § 23, § 25, § 26 ust. 2 i bezwzględnie obowiązujące przepisy stanu ich zamieszkania.
+5. Zgłoszenia naruszeń praw autorskich z USA. Osoby z USA mogą zgłaszać naruszenia praw autorskich na adres wskazany w § 1 ust. 3 pkt 4. Zgłoszenia są rozpatrywane zgodnie z § 14 i powinny zawierać, oprócz informacji z § 14 ust. 3, wskazanie utworu, którego naruszenie dotyczy. Użytkownik, którego materiał został usunięty, może złożyć odwołanie zgodnie z § 15 ust. 4. Operator wypowiada umowę (§ 29 ust. 3) Użytkownikowi, który uporczywie narusza prawa autorskie, w szczególności gdy w ciągu 12 miesięcy uwzględniono wobec niego trzy zgłoszenia.
+6. Sankcje. Stosuje się § 5 ust. 4.
+7. Dla Użytkowników z USA nie przewiduje się obowiązkowego arbitrażu ani zrzeczenia się udziału w postępowaniu grupowym.
+
+§ 33. Wielka Brytania
+
+1. Użytkownikom będącym konsumentami w Wielkiej Brytanii przysługują prawa wynikające z Consumer Rights Act 2015 oraz Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013. Regulamin nie ogranicza tych praw. § 9 ust. 3-5, § 25 ust. 7 i § 26 nie ograniczają uprawnień ani odpowiedzialności, których nie można wyłączyć na podstawie art. 31, 47 i 57 Consumer Rights Act 2015.
+2. Potwierdzenie zamówienia na Trwałym nośniku zawiera treść żądania konsumenta z Wielkiej Brytanii rozpoczęcia świadczenia przed upływem terminu na odstąpienie oraz jego potwierdzenie, że przyjął do wiadomości skutki dla prawa odstąpienia.
+3. Ceny dla konsumentów z Wielkiej Brytanii obejmują wszystkie obowiązkowe podatki i opłaty.
+4. Od dnia stosowania przepisów Digital Markets, Competition and Consumers Act 2024 o umowach subskrypcyjnych Operator przesyła przypomnienia przed odnowieniem w wymaganych odstępach, zapewnia rezygnację online jednym oświadczeniem, potwierdza zakończenie umowy na Trwałym nośniku i informuje o okresie na odstąpienie po odnowieniu, jeżeli przysługuje.
+
+§ 34. Kanada i inne państwa
+
+1. Użytkownikom z Kanady i innych państw przysługują prawa wynikające z bezwzględnie obowiązujących przepisów tych państw, których Regulamin nie ogranicza.
+2. Operator nie zawiera umów odpłatnych z konsumentami zamieszkałymi w prowincji Quebec. Użytkownik z Kanady podaje przy zamówieniu prowincję, a zamówienia z adresem rozliczeniowym w Quebecu są blokowane. Jeżeli umowa mimo to zostanie zawarta, konsumentowi przysługują prawa z bezwzględnie obowiązujących przepisów Quebecu, a Operator na jego żądanie rozwiąże umowę i zwróci niewykorzystaną część ceny.
+3. W Australii i innych państwach, w których przepisy przyznają konsumentom niewyłączalne gwarancje ustawowe, Regulamin ich nie wyłącza.
+
+Załącznik nr 1. Wzór formularza odstąpienia od umowy
+
+(formularz należy wypełnić i odesłać tylko w przypadku chęci odstąpienia od umowy)
+
+Adresat: Marcel Przytulski, Divahouse Marcel Przytulski, Chojnik 104, 14-300 Morąg, e-mail: contact@grovbase.com
+
+Ja/My(*) niniejszym informuję/informujemy(*) o moim/naszym odstąpieniu od umowy o świadczenie następującej usługi / dostarczenie następującej treści cyfrowej(*): ……………………………………
+
+Data zawarcia umowy: ……………………………
+
+Imię i nazwisko konsumenta(-ów): ……………………………
+
+Adres e-mail Konta: ……………………………
+
+Adres konsumenta(-ów): ……………………………
+
+Podpis konsumenta(-ów) (tylko jeżeli formularz jest przesyłany w wersji papierowej): ……………………………
+
+Data: ……………………………
+
+(*) Niepotrzebne skreślić.
+
+Załącznik nr 2. Umowa powierzenia przetwarzania danych osobowych
+
+Treść umowy powierzenia, mającej zastosowanie do Użytkowników Biznesowych, stanowi odrębny dokument: „Umowa powierzenia przetwarzania danych osobowych GrovBase”.
+
+Historia wersji
+
+- Wersja: 1.0; Data: 20 października 2026 r.; Zmiany: Pierwsza wersja Regulaminu.

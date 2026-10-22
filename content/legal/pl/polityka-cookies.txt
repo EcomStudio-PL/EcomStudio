@@ -1,0 +1,88 @@
+Polityka cookies GrovBase
+
+Administrator: Marcel Przytulski, prowadzący jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski, Chojnik 104, 14-300 Morąg, NIP 7412157329
+Serwis: https://grovbase.com
+Wersja: 1.0
+Data wejścia w życie: 20 października 2026 r.
+
+1. Czym są pliki cookies i podobne technologie
+
+1. Pliki cookies to niewielkie pliki tekstowe zapisywane w przeglądarce, które serwis może odczytać przy kolejnych wizytach.
+2. Podobnie działają inne technologie zapisu i odczytu informacji w urządzeniu, w szczególności pamięć lokalna przeglądarki (localStorage i sessionStorage), skrypty zewnętrzne zbierające informacje o urządzeniu oraz piksele śledzące w wiadomościach e-mail. W tej polityce wszystkie te technologie nazywamy łącznie „cookies”.
+3. Cookies mogą być własne (zapisywane przez domenę grovbase.com) albo zewnętrzne (zapisywane przez domeny innych podmiotów), a także sesyjne (usuwane po zamknięciu przeglądarki) albo trwałe (przechowywane przez określony czas).
+
+2. Kiedy potrzebujemy Twojej zgody
+
+1. Zgodnie z art. 399 ustawy z dnia 12 lipca 2024 r. - Prawo komunikacji elektronicznej zapisywanie i odczytywanie informacji w Twoim urządzeniu wymaga Twojej zgody, chyba że jest bezwzględnie niezbędne do przesłania komunikatu albo do świadczenia usługi, której wyraźnie żądasz.
+2. Bez zgody stosujemy wyłącznie cookies niezbędne: do logowania i utrzymania sesji, bezpieczeństwa (np. rozpoznanie zaufanego urządzenia, ochrona przed botami i oszustwami płatniczymi) oraz zapamiętania wyborów, których dokonujesz (np. język, motyw, ustawienia cookies).
+3. Za Twoją zgodą stosujemy cookies analityczne i marketingowe. Do czasu wyrażenia zgody nie są one zapisywane, a skrypty, które je wykorzystują, nie są ładowane.
+4. Nie uznajemy ustawień przeglądarki za wyrażenie zgody.
+
+3. Jakie cookies stosujemy
+
+3.1. Niezbędne (bez zgody)
+
+- Nazwa: sb-…-auth-token (może być podzielony na części.0,.1); Dostawca: GrovBase (usługa uwierzytelniania Supabase), grovbase.com; Cel: Utrzymanie zalogowania; Czas przechowywania: 1 rok, jeżeli zaznaczysz „Nie wylogowuj mnie”; w przeciwnym razie do zamknięcia przeglądarki
+- Nazwa: ecs_persist; Dostawca: GrovBase; Cel: Zapamiętanie wyboru „Nie wylogowuj mnie”; Czas przechowywania: Jak wyżej
+- Nazwa: grovbase_device; Dostawca: GrovBase; Cel: Rozpoznanie urządzenia, które zostało zweryfikowane kodem przy logowaniu; Czas przechowywania: 400 dni
+- Nazwa: Ustawienia zgody cookies; Dostawca: GrovBase; Cel: Zapamiętanie Twoich wyborów w banerze; Czas przechowywania: 12 miesięcy
+- Nazwa: gb_ice, gb_ice_e_…, grovbase_client_preview; Dostawca: GrovBase; Cel: Funkcje administracyjne; zapisywane wyłącznie w przeglądarce administratora; Czas przechowywania: 30 dni / sesja / 8 godzin
+- Nazwa: Cookies i sygnały Stripe; Dostawca: Stripe, wyłącznie na stronie płatności; Cel: Zapobieganie oszustwom płatniczym i bezpieczna obsługa płatności; Stripe może korzystać z hCaptcha; Czas przechowywania: Zgodnie z konfiguracją usługi i polityką cookies Stripe
+- Nazwa: Cookies Cloudflare Turnstile; Dostawca: Cloudflare, w formularzu rejestracji; Cel: Ochrona przed automatycznymi rejestracjami; Czas przechowywania: Zgodnie z konfiguracją usługi i zasadami dostawcy
+
+3.2. Funkcjonalne - Twoje wybory (bez zgody)
+
+- Nazwa: ecs_locale; Dostawca: GrovBase; Cel: Wybrany język Serwisu; Czas przechowywania: 1 rok
+- Nazwa: theme (localStorage); Dostawca: GrovBase; Cel: Motyw: jasny, ciemny lub systemowy; Czas przechowywania: Do usunięcia z przeglądarki
+- Nazwa: ecs-rail-collapsed, grovbase.gallery.density (localStorage); Dostawca: GrovBase; Cel: Układ interfejsu; Czas przechowywania: Do usunięcia z przeglądarki
+- Nazwa: ecs_recent_search (localStorage); Dostawca: GrovBase; Cel: Ostatnie wyszukiwania w Serwisie, wyświetlane wyłącznie Tobie; możesz je wyczyścić przyciskiem „Wyczyść” w wyszukiwarce; Czas przechowywania: Do usunięcia z przeglądarki
+- Nazwa: grovbase_bonus_seen (sessionStorage); Dostawca: GrovBase; Cel: Informacja, że wyświetliliśmy Ci komunikat o bonusie; Czas przechowywania: Do zamknięcia karty
+
+3.3. Analityczne (za zgodą)
+
+- Nazwa: _ga; Dostawca: Google Analytics 4 (Google Ireland Ltd / Google LLC), plik własny grovbase.com; Cel: Rozróżnianie użytkowników na potrzeby statystyki; Czas przechowywania: 2 lata
+- Nazwa: _ga_<identyfikator>; Dostawca: Jak wyżej; Cel: Utrzymanie stanu sesji na potrzeby statystyki; Czas przechowywania: 2 lata
+- Nazwa: ecs_first_touch; Dostawca: GrovBase; Cel: Zapamiętanie źródła pierwszej wizyty (parametry UTM, domena strony odsyłającej, strona wejścia); Czas przechowywania: 90 dni
+
+Korzystamy z Google Analytics 4 w trybie, w którym przed wyrażeniem zgody skrypt Google nie jest ładowany. Nie łączymy Google Analytics z usługami reklamowymi Google.
+
+3.4. Marketingowe i treści zewnętrzne (za zgodą)
+
+- Nazwa: Cookies YouTube lub Vimeo; Dostawca: Google (YouTube), Vimeo; Cel: Odtwarzanie filmów osadzonych na niektórych stronach Serwisu; dostawca może wykorzystywać cookies do własnych celów, w tym reklamowych; Czas przechowywania: Według polityk dostawców. Do czasu zgody film nie jest ładowany
+
+W dniu sporządzenia tej polityki nie stosujemy pikseli reklamowych (np. Meta, TikTok) ani narzędzi remarketingu. Jeżeli je wprowadzimy, zaktualizujemy tę politykę i poprosimy o zgodę.
+
+3.5. Wiadomości e-mail
+
+Nasze wiadomości z newslettera mogą zawierać niewidoczny obraz (piksel) i linki pozwalające sprawdzić, czy wiadomość została otwarta i czy kliknięto link. Stosujemy je tylko wtedy, gdy wyrazisz na to zgodę. Wiadomości systemowe (np. potwierdzenia zakupów) nie zawierają pikseli śledzących.
+
+4. Jak wyrazić, odmówić i wycofać zgodę
+
+1. Przy pierwszej wizycie wyświetlamy baner, w którym możesz:
+    1. zaakceptować wszystkie cookies;
+    2. odrzucić wszystkie cookies poza niezbędnymi - przycisk „Odrzuć wszystkie” jest tak samo widoczny jak przycisk akceptacji;
+    3. wybrać kategorie w ustawieniach.
+2. Pola wyboru kategorii nie są zaznaczone domyślnie. Odmowa zgody nie ogranicza dostępu do Serwisu.
+3. Zgodę możesz w każdej chwili zmienić lub wycofać, klikając link „Ustawienia cookies” w stopce Serwisu. Wycofanie zgody jest tak samo łatwe jak jej wyrażenie i nie wpływa na zgodność z prawem przetwarzania dokonanego przed wycofaniem.
+4. Zapisujemy datę, wersję banera i zakres Twoich wyborów, aby móc wykazać udzielenie zgody.
+5. Możesz także usunąć cookies w ustawieniach przeglądarki. Usunięcie cookies niezbędnych może spowodować wylogowanie i konieczność ponownego wyboru ustawień.
+
+5. Podstawy prawne
+
+1. Zapisywanie i odczytywanie cookies niezbędnych odbywa się na podstawie art. 399 ust. 3 Prawa komunikacji elektronicznej, a związane z tym przetwarzanie danych - na podstawie art. 6 ust. 1 lit. b RODO (świadczenie usługi) i lit. f (bezpieczeństwo).
+2. Cookies analityczne i marketingowe stosujemy na podstawie Twojej zgody (art. 399 ust. 1 Prawa komunikacji elektronicznej oraz art. 6 ust. 1 lit. a RODO).
+3. Szczegółowe informacje o przetwarzaniu danych, odbiorcach, przekazywaniu danych poza EOG i Twoich prawach zawiera Polityka prywatności.
+
+6. Różnice regionalne
+
+1. Unia Europejska i EOG: stosujemy zasady opisane powyżej.
+2. Wielka Brytania: od 5 lutego 2026 r. przepisy PECR, zmienione przez Data (Use and Access) Act 2025, dopuszczają stosowanie cookies wyłącznie statystycznych bez zgody, pod warunkiem przekazania informacji i zapewnienia możliwości sprzeciwu. W Serwisie stosujemy jednak jednolite zasady i pytamy o zgodę także użytkowników z Wielkiej Brytanii.
+3. Stany Zjednoczone: stosujemy ten sam baner. Uwzględniamy sygnał Global Privacy Control jako odmowę zgody na cookies analityczne i marketingowe. Nie sprzedajemy danych zebranych za pomocą cookies.
+
+7. Zmiany polityki
+
+Politykę aktualizujemy przy każdej zmianie stosowanych cookies. Jeżeli zmiana wymaga nowej zgody, wyświetlimy baner ponownie.
+
+Historia wersji
+
+- Wersja: 1.0; Data: 20 października 2026 r.; Zmiany: Pierwsza wersja polityki.

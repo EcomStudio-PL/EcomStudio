@@ -1,0 +1,102 @@
+Umowa powierzenia przetwarzania danych osobowych GrovBase
+
+Załącznik nr 2 do Regulaminu świadczenia usług GrovBase
+
+Wersja: 1.0
+Data wejścia w życie: 20 października 2026 r.
+
+§ 1. Strony i zawarcie umowy
+
+1. Umowa jest zawierana między:
+    1. Użytkownikiem Biznesowym, czyli Użytkownikiem korzystającym z Serwisu GrovBase w związku ze swoją działalnością gospodarczą lub zawodową (Przedsiębiorcą albo Przedsiębiorcą na prawach konsumenta), który przesyła do Serwisu Materiały zawierające dane osobowe jako administrator albo jako podmiot przetwarzający działający w imieniu innego administratora („Administrator”); w tym drugim przypadku Administrator oświadcza, że jego administrator zezwolił na dalsze powierzenie przetwarzania Podmiotowi przetwarzającemu na warunkach niniejszej umowy; oraz
+    2. Marcelem Przytulskim, prowadzącym jednoosobową działalność gospodarczą pod firmą Divahouse Marcel Przytulski, Chojnik 104, 14-300 Morąg, NIP 7412157329, REGON 386451456, operatorem Serwisu GrovBase („Podmiot przetwarzający”).
+2. Umowa zostaje zawarta z chwilą złożenia przez Użytkownika w Serwisie oświadczenia o korzystaniu z niego jako Użytkownik Biznesowy i stanowi integralną część umowy o prowadzenie Konta. Umowa ma zastosowanie wyłącznie w zakresie, w jakim Podmiot przetwarzający przetwarza dane osobowe w imieniu Administratora.
+3. Umowa nie dotyczy danych, które Podmiot przetwarzający przetwarza jako administrator (dane Konta, rozliczeń, komunikacji, bezpieczeństwa). Zasady ich przetwarzania określa Polityka prywatności.
+4. Pojęcia niezdefiniowane w umowie mają znaczenie nadane im w Regulaminie albo w rozporządzeniu (UE) 2016/679 („RODO”).
+
+§ 2. Przedmiot, charakter i cel przetwarzania
+
+1. Administrator powierza Podmiotowi przetwarzającemu przetwarzanie danych osobowych zawartych w Materiałach i Wynikach, w zakresie i celu niezbędnym do świadczenia Usług określonych w Regulaminie.
+2. Charakter przetwarzania obejmuje: przechowywanie, zwielokrotnianie w pamięci systemów, przetwarzanie i modyfikowanie obrazów przez Narzędzia, przesyłanie do podprocesorów (w tym Dostawców AI), udostępnianie Administratorowi i uprawnionym członkom Workspace, pobieranie, eksport i usuwanie.
+3. Rodzaje danych: wizerunek osób widocznych na zdjęciach oraz inne dane zawarte w Materiałach (np. imiona, nazwiska lub inne informacje widoczne na produktach, opakowaniach lub dokumentach), a także dane zawarte w Poleceniach.
+4. Kategorie osób: modele i modelki, pracownicy i współpracownicy Administratora, klienci Administratora, osoby małoletnie widoczne na Materiałach oraz inne osoby widoczne na Materiałach.
+5. Celem przetwarzania nie jest przetwarzanie szczególnych kategorii danych ani identyfikacja osób. Administrator nie przesyła Materiałów w celu przetwarzania danych, o których mowa w art. 9 i 10 RODO, w szczególności dokumentacji medycznej ani dokumentów tożsamości. Wizerunek może przypadkowo ujawniać takie dane; Podmiot przetwarzający nie przetwarza ich w celu ich ustalenia i nie tworzy szablonów biometrycznych.
+6. Czas przetwarzania: okres obowiązywania umowy o prowadzenie Konta, z uwzględnieniem § 9.
+
+§ 3. Obowiązki Administratora
+
+1. Administrator oświadcza, że ma podstawę prawną do przetwarzania danych zawartych w Materiałach i do ich powierzenia, w szczególności zezwolenia osób na wykorzystanie i modyfikację wizerunku przy użyciu sztucznej inteligencji, oraz że wypełnił wobec tych osób obowiązki informacyjne, w tym poinformował je o przetwarzaniu przez Podmiot przetwarzający i jego podprocesorów.
+2. Administrator odpowiada za ocenę, czy przetwarzanie wymaga oceny skutków dla ochrony danych (art. 35 RODO). Podmiot przetwarzający udziela mu w tym zakresie niezbędnych informacji.
+
+§ 4. Obowiązki Podmiotu przetwarzającego
+
+1. Podmiot przetwarzający:
+    1. przetwarza dane wyłącznie na udokumentowane polecenie Administratora, także w zakresie przekazywania danych do państwa trzeciego, chyba że obowiązek przetwarzania nakłada na niego prawo Unii lub prawo państwa członkowskiego; w takim przypadku przed rozpoczęciem przetwarzania informuje Administratora o tym obowiązku, o ile prawo to nie zabrania udzielenia takiej informacji. Poleceniem jest w szczególności korzystanie przez Administratora z funkcji Serwisu, w tym uruchamianie operacji w Narzędziach AI, a także niniejsza umowa i Regulamin. Jeżeli polecenie narusza w ocenie Podmiotu przetwarzającego przepisy o ochronie danych, Podmiot przetwarzający niezwłocznie informuje o tym Administratora;
+    2. nie wykorzystuje danych do celów własnych, w tym marketingowych ani do trenowania modeli sztucznej inteligencji, z zastrzeżeniem ust. 3;
+    3. zapewnia, aby osoby upoważnione do przetwarzania danych zobowiązały się do zachowania tajemnicy;
+    4. stosuje środki bezpieczeństwa, o których mowa w art. 32 RODO, opisane w Załączniku A;
+    5. przestrzega warunków korzystania z usług podprocesorów (§ 5);
+    6. w miarę możliwości pomaga Administratorowi, za pomocą odpowiednich środków technicznych i organizacyjnych, wywiązać się z obowiązku odpowiadania na żądania osób, których dane dotyczą. Żądanie skierowane bezpośrednio do Podmiotu przetwarzającego przekazuje Administratorowi bez zbędnej zwłoki i nie odpowiada na nie samodzielnie, chyba że Administrator go do tego upoważni;
+    7. pomaga Administratorowi wywiązać się z obowiązków z art. 32-36 RODO, uwzględniając charakter przetwarzania i dostępne informacje;
+    8. udostępnia Administratorowi informacje niezbędne do wykazania spełnienia obowiązków z art. 28 RODO i umożliwia audyty na zasadach § 7.
+2. Podmiot przetwarzający prowadzi rejestr kategorii czynności przetwarzania dokonywanych w imieniu administratorów (art. 30 ust. 2 RODO).
+3. Podmiot przetwarzający przetwarza dane zawarte w Materiałach i Wynikach jako odrębny administrator wyłącznie w zakresie niezbędnym do: rozpatrywania zgłoszeń i stosowania środków na podstawie rozporządzenia (UE) 2022/2065, zapewnienia bezpieczeństwa Serwisu i przeciwdziałania nadużyciom oraz ustalenia, dochodzenia lub obrony roszczeń. Każdy dostęp do Materiałów w tych celach jest rejestrowany.
+
+§ 5. Podprocesorzy
+
+1. Administrator udziela Podmiotowi przetwarzającemu ogólnej zgody na korzystanie z usług podprocesorów. Aktualną listę podprocesorów zawiera Załącznik B, publikowany w Serwisie.
+2. Podmiot przetwarzający informuje Administratora o zamiarze dodania lub zastąpienia podprocesora e-mailem lub w Serwisie co najmniej 14 dni przed zmianą, a jeżeli podprocesor zawiadomi Podmiot przetwarzający w krótszym terminie - niezwłocznie po otrzymaniu zawiadomienia. W razie awarii lub nagłego zakończenia usług podprocesora Podmiot przetwarzający może skorzystać z podprocesora zapasowego wymienionego w Załączniku B, informując Administratora niezwłocznie po zmianie. Administrator może zgłosić uzasadniony sprzeciw. Jeżeli strony nie uzgodnią rozwiązania, Administrator może wypowiedzieć umowę o prowadzenie Konta ze skutkiem natychmiastowym; Podmiot przetwarzający zwraca wówczas wartość niewykorzystanych Kredytów Planu i Kredytów Pakietu obliczoną zgodnie z § 16 ust. 7 Regulaminu.
+3. Podmiot przetwarzający nakłada na każdego podprocesora, w drodze umowy, te same obowiązki ochrony danych co w niniejszej umowie, w szczególności obowiązek zapewnienia wystarczających gwarancji wdrożenia odpowiednich środków technicznych i organizacyjnych. Wynikające ze standardowych warunków podprocesorów zasady przechowywania danych w celu wykrywania nadużyć są wskazane w Załączniku B i stanowią udokumentowane polecenie Administratora.
+4. Podmiot przetwarzający odpowiada wobec Administratora za wykonanie obowiązków przez podprocesora.
+
+§ 6. Naruszenia ochrony danych
+
+1. Podmiot przetwarzający zawiadamia Administratora o stwierdzeniu naruszenia ochrony danych osobowych bez zbędnej zwłoki, nie później niż w ciągu 48 godzin od jego stwierdzenia, na adres e-mail Konta.
+2. Zawiadomienie zawiera, w miarę dostępności, informacje wymienione w art. 33 ust. 3 RODO. Informacje niedostępne w chwili zawiadomienia Podmiot przetwarzający przekazuje niezwłocznie po ich uzyskaniu.
+
+§ 7. Audyt i informacje
+
+1. Administrator może weryfikować przestrzeganie umowy przede wszystkim przez żądanie informacji i dokumentacji, na które Podmiot przetwarzający odpowiada w terminie 14 dni.
+2. Jeżeli informacje nie są wystarczające, Administrator może przeprowadzić audyt w siedzibie Podmiotu przetwarzającego lub zdalnie, po uprzedzeniu z co najmniej 30-dniowym wyprzedzeniem, nie częściej niż raz w roku (z wyjątkiem audytu po naruszeniu ochrony danych), w godzinach pracy i w sposób nieutrudniający działalności. Audytor jest zobowiązany do zachowania poufności. Koszty audytu ponosi Administrator.
+3. Audyt nie obejmuje systemów podprocesorów. W tym zakresie Podmiot przetwarzający udostępnia dostępne raporty i certyfikaty podprocesorów.
+
+§ 8. Przekazywanie danych poza EOG
+
+1. Administrator wyraża zgodę na przekazywanie danych do państw trzecich w zakresie wynikającym z Załącznika B, pod warunkiem zastosowania zabezpieczeń z rozdziału V RODO, w szczególności decyzji stwierdzającej odpowiedni stopień ochrony (w tym EU-US Data Privacy Framework) albo standardowych klauzul umownych.
+2. Na żądanie Administratora Podmiot przetwarzający udostępnia informacje o zastosowanych zabezpieczeniach.
+
+§ 9. Zakończenie przetwarzania
+
+1. Według wyboru Administratora, zgłoszonego przed rozwiązaniem umowy o prowadzenie Konta lub w terminie 30 dni po jej rozwiązaniu, Podmiot przetwarzający zwraca dane w formie eksportu albo je usuwa. Po upływie tego terminu Podmiot przetwarzający usuwa dane objęte umową, chyba że prawo Unii lub państwa członkowskiego nakazuje ich dalsze przechowywanie.
+2. Dane w kopiach zapasowych są usuwane w cyklu ich nadpisywania wskazanym w Polityce prywatności. Dane przechowywane przez podprocesorów są usuwane zgodnie z ich warunkami opisanymi w Załączniku B.
+3. Na żądanie Administratora Podmiot przetwarzający potwierdza usunięcie danych.
+
+§ 10. Odpowiedzialność i postanowienia końcowe
+
+1. Odpowiedzialność stron z tytułu niniejszej umowy podlega zasadom i ograniczeniom określonym w § 26 Regulaminu, z zastrzeżeniem przepisów RODO, których nie można wyłączyć. Ograniczenie nie dotyczy odpowiedzialności wobec osób, których dane dotyczą (art. 82 RODO).
+2. W sprawach nieuregulowanych stosuje się Regulamin oraz przepisy RODO i prawa polskiego.
+3. Zmiany umowy wprowadza się na zasadach przewidzianych dla zmian Regulaminu.
+4. W razie sprzeczności między niniejszą umową a Regulaminem w zakresie ochrony danych osobowych pierwszeństwo ma niniejsza umowa.
+
+Załącznik A. Środki techniczne i organizacyjne
+
+1. Szyfrowanie transmisji danych (HTTPS z HSTS) między przeglądarką, Serwisem i podprocesorami.
+2. Szyfrowanie danych w spoczynku po stronie dostawcy bazy danych i magazynu plików; dodatkowe szyfrowanie wybranych danych (np. kluczy dostępowych, szablonów Poleceń).
+3. Separacja danych poszczególnych Workspace przez zasady bezpieczeństwa na poziomie wierszy bazy danych (Row Level Security) i ścieżki magazynu plików.
+4. Prywatne zasoby plików; dostęp do plików wyłącznie przez podpisane, czasowo ograniczone odnośniki.
+5. Przesyłanie danych do Dostawców AI wyłącznie z serwera, bez identyfikatorów Konta.
+6. Kontrola dostępu oparta na rolach, z ochroną przed samodzielnym podniesieniem uprawnień; rejestrowanie operacji administracyjnych oraz odczytu Materiałów przez Podmiot przetwarzający.
+7. Weryfikacja logowania z nowych urządzeń jednorazowym kodem; limity liczby żądań.
+8. Przechowywanie adresów IP w bazie danych w postaci skrótów kryptograficznych.
+9. Kopie zapasowe bazy danych prowadzone przez dostawcę bazy danych.
+10. Procedura obsługi naruszeń ochrony danych.
+11. Przetwarzanie danych w regionie Frankfurt (UE) w zakresie bazy danych, magazynu plików i funkcji serwerowych, z zastrzeżeniem Załącznika B.
+
+Załącznik B. Lista podprocesorów
+
+- Podprocesor i adres: Supabase Pte. Ltd. i podmioty powiązane, 65 Chulia Street #38-02/03, OCBC Centre, Singapur 049513; Zakres: Baza danych, magazyn plików, uwierzytelnianie; Lokalizacja: UE (Frankfurt); obsługa, telemetria, CDN - także poza UE; Zabezpieczenie transferu: Standardowe klauzule umowne (moduły 2 i 3); Przechowywanie danych: Do usunięcia przez Podmiot przetwarzający; kopie zapasowe
+- Podprocesor i adres: Vercel Inc., 440 N Barranca Ave #4133, Covina, CA 91723, USA; Zakres: Hosting i funkcje serwerowe (region Frankfurt); Lokalizacja: UE, USA; Zabezpieczenie transferu: Data Privacy Framework, standardowe klauzule umowne; Przechowywanie danych: Logi zgodnie z ustawieniami
+- Podprocesor i adres: Google LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA, i Google Ireland Ltd, Gordon House, Barrow Street, Dublin 4, Irlandia (Gemini API); Zakres: Generowanie i edycja obrazów; Lokalizacja: USA i inne; Zabezpieczenie transferu: Data Privacy Framework; Przechowywanie danych: Do 55 dni w celu wykrywania nadużyć (dotyczy także funkcji Retusz)
+- Podprocesor i adres: OpenAI Ireland Ltd, 1st Floor, The Liffey Trust Centre, 117-126 Sheriff Street Upper, Dublin 1, D01 YC43, Irlandia, i OpenAI, L.L.C., 1455 3rd Street, San Francisco, CA 94158, USA; Zakres: Generowanie obrazów i analiza zdjęć; Lokalizacja: USA; Zabezpieczenie transferu: Standardowe klauzule umowne; Przechowywanie danych: Do 30 dni w celu wykrywania nadużyć; obrazy oznaczone przez systemy wykrywania treści przedstawiających wykorzystywanie seksualne dzieci są zatrzymywane do przeglądu
+
+Dostawcy AI wymienieni powyżej mogą być wykorzystywani zamiennie jako dostawcy zapasowi w rozumieniu § 5 ust. 2.
