@@ -5066,6 +5066,8 @@ export type Database = {
           ip_hash: string | null
           form_variant: string | null
           locale: string | null
+          referrer: string | null
+          first_name: string | null
         }
         Insert: {
           id?: string
@@ -5081,6 +5083,8 @@ export type Database = {
           ip_hash?: string | null
           form_variant?: string | null
           locale?: string | null
+          referrer?: string | null
+          first_name?: string | null
         }
         Update: {
           id?: string
@@ -5096,8 +5100,17 @@ export type Database = {
           ip_hash?: string | null
           form_variant?: string | null
           locale?: string | null
+          referrer?: string | null
+          first_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "prelaunch_optin_tokens_referrer_fkey"
+            columns: ["referrer"]
+            isOneToOne: false
+            referencedRelation: "prelaunch_signups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "prelaunch_optin_tokens_signup_id_fkey"
             columns: ["signup_id"]
@@ -5160,13 +5173,39 @@ export type Database = {
           },
         ]
       }
+      prelaunch_referral_aliases: {
+        Row: {
+          code: string
+          signup_id: string
+          created_at: string
+        }
+        Insert: {
+          code: string
+          signup_id: string
+          created_at?: string
+        }
+        Update: {
+          code?: string
+          signup_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prelaunch_referral_aliases_signup_id_fkey"
+            columns: ["signup_id"]
+            isOneToOne: false
+            referencedRelation: "prelaunch_signups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prelaunch_reward_claims: {
         Row: {
           id: string
           user_id: string
           kind: string
           source_signup: string
-          canonical_email: string | null
+          mailbox_hash: string | null
           amount: number
           credit_transaction_id: string | null
           campaign: string
@@ -5177,7 +5216,7 @@ export type Database = {
           user_id: string
           kind: string
           source_signup: string
-          canonical_email?: string | null
+          mailbox_hash?: string | null
           amount?: number
           credit_transaction_id?: string | null
           campaign: string
@@ -5188,7 +5227,7 @@ export type Database = {
           user_id?: string
           kind?: string
           source_signup?: string
-          canonical_email?: string | null
+          mailbox_hash?: string | null
           amount?: number
           credit_transaction_id?: string | null
           campaign?: string

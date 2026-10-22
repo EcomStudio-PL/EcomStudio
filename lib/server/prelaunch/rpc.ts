@@ -38,7 +38,8 @@ export type SignupAnswer =
       signupId: string | null;
       email: string | null;
       locale: string;
-      /** Only when the signup was CREATED by this call (S7). */
+      /** The row's own code when this call CREATED the signup; a fresh alias
+       *  of it for a repeat submit (review S1); null when nothing was stored. */
       referralCode: string | null;
       throttled: boolean;
     };
@@ -157,7 +158,7 @@ export async function rpcForgetContact(supabase: Client, contactId: string): Pro
  *   by_source: [{utm_source, utm_medium, utm_campaign, signups, confirmed}],
  *   by_referrer_host: [{host, signups, confirmed}],
  *   by_channel: [{channel, count}],
- *   referrals: { counted, rejected: [{reason, count}], top: [{signup_id, email, counted}] },
+ *   referrals: { counted, rejected: [{reason, count}], top: [{signup_id, email, contact_id, counted}] },
  *   rewards: { signup_claims, signup_credits, referral_claims, referral_credits } }
  * Range: signups whose created_at is in [from, to).
  */
@@ -169,7 +170,7 @@ export async function rpcAdminSummary(supabase: Client, from: string, to: string
 /**
  * Admin: one contact's pre-launch profile, or null.
  * Shape: { signup: { status, created_at, confirmed_at, form_variant, seller_channel, referral_code,
- *            referred_by_email, referrals_counted, referral_rejected, locale,
+ *            referred_by_email, referred_by_contact_id, referrals_counted, referral_rejected, locale,
  *            attribution: { utm_source, utm_medium, utm_campaign, utm_content, utm_term, referrer_host, landing_path } },
  *          consents: [{ consent_key, consent_version, consent_text, locale, form_variant, accepted_at, confirmed_at, doc_versions }] }
  */

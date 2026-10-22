@@ -100,7 +100,8 @@ section("1. THE PUBLIC PAGE, /start, /dashboard, THE HEADER AND THE SHELL ARE UN
 // them and nothing about /home — app/page.tsx renders the long launch page
 // (campaign values, galleries, consents) in its `kind = launch` branch only;
 // app/(app)/layout.tsx gained one awaited call, ensurePrelaunchRewards (a
-// no-op while the campaign's rewards are off).
+// no-op while the campaign's rewards are off), and re-reads the wallet only
+// when that call granted credits, so the shell shows the new balance.
 const FROZEN: readonly [string, string][] = [
   ["app/page.tsx", "0217353e237b5c2bc5938b78ce04f9e26a6e89e49f93417867601957e87d5e6f"],
   ["app/[slug]/page.tsx", "acc6b04382426e2df0aa75198da1dd4ce9ba9585c59db4a8a9d672eaeaf95cdb"],
@@ -118,7 +119,7 @@ const FROZEN: readonly [string, string][] = [
   ["app/(app)/dashboard/page.tsx", "200419c0840054885847a2cfca17918bd524644630b63c3be324e798b12c7eb2"],
   ["app/(app)/dashboard/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
   ["app/(app)/home/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
-  ["app/(app)/layout.tsx", "7f1f75642959af636de84337f02036bfe5156ec0e73d07c35cd33d36806ece9f"],
+  ["app/(app)/layout.tsx", "c0e5d3e91f45d46fec1e4fb7672b7b0e18a776588389f66baa1e756f6f4fb325"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   ["components/feedback/feedback-cta.tsx", "d2406baf43ee849094e94fe01cc9a1620c1e01a354cd62a6049832cc2c1690a2"],

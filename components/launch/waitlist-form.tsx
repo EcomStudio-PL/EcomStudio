@@ -5,6 +5,7 @@ import { Check, Loader2, Lock, MailCheck, RotateCw, Send } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { ConsentPart, SellerChannel } from "@/lib/launch/fields";
+import { isLaunchEmail } from "@/lib/launch/email";
 import { ChannelQuestion } from "./channel-question";
 import { ReferralShare } from "./referral-share";
 import { launchTrack } from "./launch-analytics";
@@ -54,8 +55,6 @@ const FIELD_CLASS = cn(
 );
 const FIELD_INVALID = "border-[rgb(var(--danger)/0.75)] bg-[rgb(var(--danger)/0.08)]";
 
-/** Roughly what the route's own regex accepts — the server decides. */
-const EMAIL_SHAPE = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
 
 /** How long "Wyślij ponownie" rests after a mail went out. The server has its
  *  own, durable limits; this only stops a nervous double press. */
@@ -145,7 +144,7 @@ export function WaitlistForm({
     e.preventDefault();
     if (inFlight.current) return;
     const wrong = new Set<Field>();
-    if (!EMAIL_SHAPE.test(email.trim())) wrong.add("email");
+    if (!isLaunchEmail(email)) wrong.add("email");
     if (!terms) wrong.add("terms");
     if (!marketing) wrong.add("marketing");
     setInvalid(wrong);

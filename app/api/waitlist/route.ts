@@ -1,14 +1,10 @@
 import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
-import { deliver, deliverHtml, type SmtpConfig } from "@/lib/server/mailer";
 import { notify } from "@/lib/server/notify";
 import { collectEventContext } from "@/lib/server/event-context";
 import { waitlistSignupNotice } from "@/lib/server/prelaunch/attribution";
-import { dispatchToken, readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
-import {
-  defaultTemplate, lookupPublishedTemplate, renderTemplateEmail,
-} from "@/lib/server/message-templates";
+import { EMAIL_RE } from "@/lib/launch/email";
 
 export const dynamic = "force-dynamic";
 
@@ -22,18 +18,26 @@ export const dynamic = "force-dynamic";
  * it beyond the answer they get for their own submission.
  *
  * The reply is the same for a new address and a known one — `created` both
- * times. It used to say "exists" for a known address, on the reasoning that the
- * customer had just typed it themselves; but so can anybody else, and "is this
- * address on the list" is exactly the question a public form must not answer
- * (Landing V2, audit A1). A known address still sends nothing and announces
- * nothing: the confirmation and the operator ping below stay new-row only.
+ * times, and since 0144 the function itself cannot tell them apart either:
+ * "is this address on the list" is exactly the question a public form must
+ * not answer (Landing V2, audit A1, review S5), and the function is reachable
+ * with the public key without this route in front of it.
+ *
+ * NO MAIL FROM THIS DOOR ANY MORE (review S5). It used to send the "Jesteś na
+ * liście" welcome to whatever address was typed — a mail with no proof that
+ * the address belongs to the person typing it, which is what the pre-launch
+ * double opt-in replaced; the same studio switch now governs the welcome AFTER
+ * a confirmed DOI only. waitlist_subscribe answers `confirmation: false`
+ * always; the address is still recorded (bare, no consent, no name) and the
+ * operator still hears about it (deduplicated per address).
  *
  * The Landing V2 page itself no longer posts here — it uses the double opt-in
  * endpoints under /api/public/prelaunch/. This route stays as the target of the
  * CMS newsletter form's forwarder (app/api/public/newsletter/route.ts).
  */
 
-const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
+/** The pre-launch address rule (strict, review S6), the same the SQL applies. */
+const EMAIL = EMAIL_RE;
 
 /** Optional free-text field off the body: trimmed and capped to the same width
  *  `waitlist_subscribe` stores it at, so nothing is silently truncated later
@@ -106,74 +110,9 @@ export async function POST(request: Request) {
   if (result.status === "invalid") {
     return NextResponse.json({ ok: false, error: "invalid_email" }, { status: 400 });
   }
-  if (result.status === "exists") {
-    return NextResponse.json({ ok: true, status: "created" });
-  }
-
-  // The confirmation, when the admin turned it on. Best-effort by design: a
-  // mail server that is down must not lose the signup that already succeeded.
-  //
-  // WHAT IT SAYS comes from the template studio (waitlist.confirmation:email)
-  // like every other message GrovBase sends; WHETHER it is sent, and what it is
-  // sent THROUGH, still comes from waitlist_subscribe — that function is the
-  // security boundary and it hands back a payload only when confirmation is
-  // switched on. The old email_settings copy is the last fallback, so a
-  // deployment whose template lookup is unavailable still sends what it always
-  // sent rather than nothing.
-  // THE MAILBOX IS A SECOND CALL NOW. waitlist_subscribe is granted to anon so
-  // a visitor can join; it used to answer with the SMTP identity and the
-  // sealed password as well, and the grant — not the caller — is what defines
-  // that exposure. It now says only WHETHER a confirmation is due, and the
-  // payload is fetched behind the proof-of-server token (migration 0106).
-  const confirmation = result.confirmation
-    ? (await supabase.rpc("waitlist_confirmation_payload", { p_token: dispatchToken() })).data as {
-        from_name: string; from_email: string; reply_to: string;
-        subject: string; body: string; smtp: SmtpConfig;
-      } | null
-    : null;
-  if (confirmation) {
-    const { from_name, from_email, reply_to, subject, body, smtp } = confirmation;
-    const identity = { from_name, from_email, reply_to };
-    // THE PASSWORD, PREFERABLY FROM THE VAULT. waitlist_subscribe hands back
-    // the email_settings copy, which is AES ciphertext sealed with
-    // APP_ENCRYPTION_KEY — the exact thing an operator is no longer expected to
-    // maintain. What the admin last typed into Komunikacja → Kanały lives in
-    // Supabase Vault instead, so that is tried first and the ciphertext stays
-    // as the fallback for a deployment that has not re-saved yet.
-    //
-    // This is an anonymous request with no admin to authorise it, so the read
-    // is authorised by the proof-of-server token (secret_read → server_call_ok).
-    const mailSecrets = await readIntegrationSecrets<MailConfig>(supabase, "mail");
-    const vaultPassword = mailSecrets.secrets.smtp_password
-      ?? (mailSecrets.config.smtp_same_as_imap ? mailSecrets.secrets.imap_password : undefined);
-    if (vaultPassword) smtp.password = vaultPassword;
-    const now = new Date();
-    const data = {
-      first_name: firstName,
-      name: `${firstName} ${lastName}`.trim(),
-      email,
-      date: now.toLocaleDateString("pl-PL", { timeZone: "Europe/Warsaw" }),
-      time: now.toLocaleTimeString("pl-PL", { timeZone: "Europe/Warsaw", hour: "2-digit", minute: "2-digit" }),
-    };
-    const token = dispatchToken();
-    const def = (token
-      ? await lookupPublishedTemplate(supabase, token, "waitlist.confirmation", "email")
-      : null) ?? defaultTemplate("waitlist.confirmation:email");
-    if (def?.channel === "email") {
-      const rendered = renderTemplateEmail(def.email, data, {});
-      await deliverHtml(
-        { to: email, subject: rendered.subject, text: rendered.text, html: rendered.html },
-        identity, smtp,
-      ).catch(() => null);
-    } else {
-      await deliver({ to: email, subject, text: body }, identity, smtp).catch(() => null);
-    }
-  }
-
-  // Only a genuinely NEW row gets announced: the honeypot answered at the top
-  // and "exists" returned above, so a bot and a customer re-typing their
-  // address never reach this line. The e-mail doubles as the dedupe key, which
-  // keeps the ping unique even if the row is ever deleted and re-added.
+  // The operator ping. A new and a known address look the same from here now,
+  // so the e-mail doubles as the dedupe key: an address is announced once,
+  // however often it is typed. The honeypot answered at the top.
   //
   // Read on the request, not inside after(): headers and cookies are
   // request-scoped state. The locale the visitor is reading the page in beats

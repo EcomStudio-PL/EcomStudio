@@ -28,7 +28,8 @@ export const dynamic = "force-dynamic";
  *     first, and a failure here fails the request — a confirmation e-mail for a
  *     signup that was never stored is the worst of both.
  *   · the forward to /api/waitlist is kept EXACTLY as it was, because it is
- *     what sends the confirmation message and the admin notification, and
+ *     what sends the admin notification (and, until 0144, a "you are on the
+ *     list" mail — the pre-launch double opt-in replaced that one), and
  *     because that route is the one the brief says not to disturb. Its failure
  *     is not this request's failure: the consent is already recorded, and a
  *     mail server that is down must not discard it.

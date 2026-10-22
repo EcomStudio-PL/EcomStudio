@@ -31,11 +31,14 @@ export const dynamic = "force-dynamic";
  * and everything that differs between them happens AFTER the response, in
  * `after()` — the double opt-in mail only when the database issued a token,
  * the operator ping only for a genuinely new, mailed signup. The response time
- * therefore says nothing either. The referral code and the answer handle are
- * real only when THIS submission created the signup (S7); otherwise they are
- * random decoys of the same shape, so typing a stranger's address reveals
- * neither their code nor a handle that could rewrite their answers. The real
- * code is always on the confirmation page, behind the mailbox.
+ * therefore says nothing either. The answer handle is real only when THIS
+ * submission created the signup (S7), a random decoy otherwise. The referral
+ * code is the address's own only then; a repeat submit gets a fresh alias of
+ * it (review S1) — a working link for that address that never equals its
+ * public code — and a submit that stored nothing gets a decoy. So typing a
+ * stranger's address reveals neither their code nor a handle that could
+ * rewrite their answers. The real code is always on the confirmation page,
+ * behind the mailbox.
  *
  * THE CONSENTS ARE THE SERVER'S WORDS. The two sentences are resolved from the
  * published page (getLaunchConsents — the same resolver the page renders the
@@ -111,7 +114,11 @@ export async function POST(request: Request) {
   if (!("created" in result)) return failure(400, result.status === "invalid" ? "invalid_email" : "consent_required");
 
   const created = result.created;
-  const code = created && result.referralCode && REFERRAL_CODE_RE.test(result.referralCode)
+  // The address's own code when this call created the signup; for a repeat
+  // submit the database hands a fresh ALIAS of it (review S1), so the link the
+  // visitor shares earns for that address without ever being the public code.
+  // Nothing stored (throttled before any write, alias cap) → an unstored decoy.
+  const code = result.referralCode && REFERRAL_CODE_RE.test(result.referralCode)
     ? result.referralCode
     : decoyReferralCode();
   const handle = created ? answer.raw : decoyAnswerHandle();

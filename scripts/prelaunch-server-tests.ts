@@ -225,6 +225,11 @@ function sectionA() {
   check("A9 e-mail: trimmed, lower-cased, shaped, ≤ 254",
     cleanEmail("  Ola@Example.COM ") === "ola@example.com" && cleanEmail("nope") === null
     && cleanEmail(`${"a".repeat(250)}@x.pl`) === null && cleanEmail(42) === null);
+  check("A9b the strict address (review S6): the shapes the mailer would re-parse into another inbox are refused, ordinary ones kept",
+    ["a(1)victim@gmail.com", "x,victim@gmail.com", "x;victim@gmail.com", "x:victim@gmail.com;", "\"q\"@example.com",
+      "x <victim@example.com>", "x@[1.2.3.4]", "x@-bad.example.com", "x@example"].every((e) => cleanEmail(e) === null)
+    && ["jan.kowalski@example.com", "o'brien+shop@mail.example.co.uk", "x_y-z@sub.example.travel"]
+      .every((e) => cleanEmail(e) === e));
 }
 
 /* ── B ─────────────────────────────────────────────────────────────────── */
@@ -316,10 +321,12 @@ async function sectionD() {
   // The five outcomes the database can have, one response.
   const outcomes: [string, SignupAnswerRow][] = [
     ["created", { status: "pending", created: true, send: true, token_id: "t-1", email: "nowa.osoba@example.com", locale: "pl", referral_code: "ABCD2345" }],
-    ["existing", { status: "pending", created: false, send: true, token_id: "t-2", email: "nowa.osoba@example.com", locale: "pl", referral_code: "REALREAL" }],
+    // A repeat submit of a stored address gets a fresh ALIAS from the database
+    // (review S1); a submit that stored nothing (throttled) gets no code.
+    ["existing", { status: "pending", created: false, send: true, token_id: "t-2", email: "nowa.osoba@example.com", locale: "pl", referral_code: "ALZASXY2" }],
     ["confirmed", { status: "confirmed", created: false, send: false, token_id: null, locale: "pl", referral_code: "ZZZZ2345" }],
     ["throttled", { status: "pending", created: false, send: false, token_id: null, locale: "pl", throttled: true }],
-    ["suppressed", { status: "pending", created: false, send: false, token_id: null, locale: "pl" }],
+    ["suppressed", { status: "pending", created: false, send: false, token_id: null, locale: "pl", referral_code: "SPRSD234" }],
   ];
   const shapes: string[] = [];
   const bodies: Record<string, Record<string, unknown>> = {};
@@ -339,9 +346,12 @@ async function sectionD() {
     if (name === "created") {
       check("D4 created: the REAL code, and the handle whose hash the database stored",
         referral.code === "ABCD2345" && sha(out.answer as string) === args.p_answer_hash);
+    } else if (row.referral_code) {
+      check(`D5 ${name}: the code the database handed (its alias — a link that earns, review S1) and a DECOY handle (S7)`,
+        referral.code === row.referral_code && sha(out.answer as string) !== args.p_answer_hash);
     } else {
-      check(`D5 ${name}: a DECOY code and handle — never the database's code, never the stored handle (S7)`,
-        referral.code !== row.referral_code && sha(out.answer as string) !== args.p_answer_hash);
+      check(`D5 ${name}: nothing stored → a DECOY code and a DECOY handle`,
+        REFERRAL_CODE_RE.test(referral.code) && sha(out.answer as string) !== args.p_answer_hash);
     }
     await flushAfter();
     const mailed = state.mails.length;
@@ -662,11 +672,23 @@ async function sectionH() {
   const created = await (await waitlistPOST(request("/api/waitlist", body))).text();
   await flushAfter();
   const ping = session.rpcs("enqueue_notification")[0]?.args?.p_payload as { rows?: [string, string][] } | undefined;
+  const firstKey = session.rpcs("enqueue_notification")[0]?.args?.p_dedupe;
+  // Since 0144 the function answers alike for new and known addresses; an old
+  // 'exists' (a function from before 0144) must still read as 'created'.
   install({ waitlist: { data: { status: "exists" }, error: null } });
   const exists = await (await waitlistPOST(request("/api/waitlist", body))).text();
   await flushAfter();
   check("H1 a known address answers byte-for-byte like a new one (no enumeration)", created === exists && exists === '{"ok":true,"status":"created"}', { created, exists });
-  check("H2 …and still announces nothing", session.rpcs("enqueue_notification").length === 0);
+  check("H2 …and is announced under the SAME per-address dedupe key (once in the outbox, however often typed)",
+    typeof firstKey === "string" && session.rpcs("enqueue_notification")[0]?.args?.p_dedupe === firstKey);
+  // No mail from this door any more (review S5): not even if a function from
+  // before 0144 still said a confirmation was due.
+  install({ waitlist: { data: { status: "created", confirmation: true }, error: null } });
+  const mailsBefore = state.mails.length;
+  await waitlistPOST(request("/api/waitlist", { ...body, email: "nowy.legacy@example.com" }));
+  await flushAfter();
+  check("H2b the legacy door sends no mail: no payload read, no delivery",
+    state.mails.length === mailsBefore && session.rpcs("waitlist_confirmation_payload").length === 0);
   check("H3 the shared ping builder keeps this door's rows, the IP included",
     Boolean(ping) && ping!.rows!.some(([l]) => l === "📍 IP") && ping!.rows!.some(([l, v]) => l === "👤 Użytkownik" && v === "Ewa Nowak"));
 }

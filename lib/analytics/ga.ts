@@ -195,6 +195,8 @@ export type TrackerOptions = {
   /** Injected so the rule can be tested without waiting. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
+  /** The address an event happens on; injected for the tests. */
+  currentHref?: () => string | null;
 };
 
 /**
@@ -220,6 +222,8 @@ export function createTracker(
     ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   const clearTimer = options.clearTimer
     ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+  const currentHref = options.currentHref
+    ?? (() => (typeof window === "undefined" ? null : window.location.href));
 
   let started = false;
   let lastUrl: string | null = null;
@@ -238,7 +242,15 @@ export function createTracker(
     event(name, params) {
       if (!gaEnabled(id) || !isPrelaunchEvent(name)) return;
       init();
-      gtag("event", name, eventParams(params));
+      // THE ADDRESS, SANITISED, ON EVERY EVENT (review S9). An event without a
+      // page_location is not an event without an address: gtag.js fills it in
+      // from document.location — the raw one, ?ref_code= and all. Naming it
+      // explicitly is the only way the sanitiser applies to events too.
+      const href = currentHref();
+      gtag("event", name, {
+        ...eventParams(params),
+        ...(href ? { page_location: sanitizePageLocation(href) } : {}),
+      });
     },
     pageView(href, title) {
       if (!gaEnabled(id)) return;

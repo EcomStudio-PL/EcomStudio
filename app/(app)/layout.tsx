@@ -189,8 +189,11 @@ export default async function AppLayout({ children, searchParams }: {
   const bonusView = bonusOffer ? toView(bonusOffer) : null;
   // PRE-LAUNCH REWARDS: what a confirmed waitlist signup (and its confirmed
   // referrals) earned, paid the first time the verified account with that
-  // address opens the app. A no-op while rewards are off; never throws.
-  await ensurePrelaunchRewards(supabase, workspace.id);
+  // address opens the app. A no-op while rewards are off; never throws. The
+  // wallet above was read before the grant: when this call paid something,
+  // the balance is read again so the first page already shows it.
+  const prelaunchGranted = await ensurePrelaunchRewards(supabase, workspace.id);
+  const shownWallet = prelaunchGranted > 0 ? await getWallet(supabase, workspace.id) : wallet;
   const bonusCopy = copyFor(bonusConfig, false);
   if (bonusView?.status === "ELIGIBLE") {
     const values = { credits: bonusView.amount, hours: Math.ceil(bonusView.secondsLeft / 3600) };
@@ -218,7 +221,7 @@ export default async function AppLayout({ children, searchParams }: {
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
       <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
-        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
+        <MegaTopbar name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone
@@ -237,7 +240,7 @@ export default async function AppLayout({ children, searchParams }: {
           <FeedbackCTA />
         </main>
         <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
-        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
         {bonusView?.status === "ELIGIBLE" && (
           <WelcomeBonusMount
             offer={bonusView}

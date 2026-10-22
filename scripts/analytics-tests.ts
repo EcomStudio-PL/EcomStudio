@@ -60,9 +60,9 @@ function fakeClock() {
 }
 
 /** A tracker whose clock this test controls. */
-function tracked(dl: unknown[], id: string): { ga: Tracker; clock: ReturnType<typeof fakeClock> } {
+function tracked(dl: unknown[], id: string, href: string | null = null): { ga: Tracker; clock: ReturnType<typeof fakeClock> } {
   const clock = fakeClock();
-  return { ga: createTracker(dl, id, clock.options), clock };
+  return { ga: createTracker(dl, id, { ...clock.options, currentHref: () => href }), clock };
 }
 
 let failures = 0;
@@ -542,7 +542,7 @@ async function main() {
         JSON.stringify(sent));
       check("no queued command anywhere holds the address or the token",
         !JSON.stringify(dl).includes("@") && !JSON.stringify(dl).includes("SECRETTOKEN"), JSON.stringify(dl));
-      check("an event never carries a page_location", !JSON.stringify(sent).includes("page_location"));
+      check("without a document there is no address to name", !JSON.stringify(sent).includes("page_location"));
 
       ga.event("prelaunch_before_after_interaction", { section: "thumbs", pair_index: 0 });
       ga.event("prelaunch_before_after_interaction", { section: "thumbs", pair_index: 0 });
@@ -550,6 +550,18 @@ async function main() {
       // which tiles it reported); the tracker does not guess at intent.
       check("the tracker does not swallow repeats — once-per-tile is the caller's rule",
         events(dl).length === 3);
+    }
+    {
+      // gtag.js fills a missing page_location from document.location — the RAW
+      // address. So every event names the sanitised one itself (review S9).
+      const dl: unknown[] = [];
+      const { ga } = tracked(dl, ID, "https://grovbase.com/?ref_code=ABCD2345&utm_source=fb#t=SECRETTOKEN");
+      ga.event("prelaunch_page_view", { traffic_source: "facebook" });
+      const sent = events(dl)[0] as [string, string, Record<string, unknown>] | undefined;
+      check("an event carries the SANITISED page_location: the referral code and the fragment never reach GA",
+        sent?.[2].page_location === "https://grovbase.com/?utm_source=fb"
+          && !JSON.stringify(dl).includes("ABCD2345") && !JSON.stringify(dl).includes("SECRETTOKEN"),
+        JSON.stringify(sent));
     }
   }
 

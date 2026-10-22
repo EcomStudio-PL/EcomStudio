@@ -1,4 +1,5 @@
 import "server-only";
+import { isLaunchEmail } from "@/lib/launch/email";
 import { createHash, randomBytes } from "crypto";
 
 /**
@@ -55,14 +56,13 @@ export function decoyAnswerHandle(): string {
   return randomBytes(16).toString("base64url");
 }
 
-/** The address rule every public form here uses, mirrored by the SQL. */
-export const EMAIL_RE = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
+/** The address rule (lib/launch/email.ts), mirrored by the SQL. */
+export { EMAIL_RE } from "@/lib/launch/email";
 
 /** Trimmed, lower-cased, ≤ 254 and shaped like an address — or null. */
 export function cleanEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  return email.length > 0 && email.length <= 254 && EMAIL_RE.test(email) ? email : null;
+  return isLaunchEmail(value) ? value.trim().toLowerCase() : null;
 }
 
 /**

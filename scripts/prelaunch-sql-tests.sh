@@ -416,6 +416,11 @@ begin
              sends_window_at = sends_window_at - make_interval(secs => $2),
              last_submit_at = last_submit_at - make_interval(secs => $2) where lower(email) = lower($1)'
     using p_email, p_seconds;
+  -- The address's links age with it: the per-mailbox limits read token times.
+  execute 'update public.prelaunch_optin_tokens set created_at = created_at - make_interval(secs => $2),
+             expires_at = expires_at - make_interval(secs => $2)
+           where signup_id in (select id from public.prelaunch_signups where lower(email) = lower($1))'
+    using p_email, p_seconds;
 end $$;
 -- A confirmed signup in one step.
 create function public.t_confirmed(p_label text, p_email text, p_ip text default null, p_ref text default null,
@@ -588,8 +593,8 @@ select public.t_true('M3  the second apply changed nothing: functions (body, ACL
   select public.t_schema_print() = public.t_var('schema_after_1') $q$);
 select public.t_true('M4  … and no data: the settings row, the groups, contacts and sources are as the first apply left them', 'postgres', $q$
   select public.t_data_print() = public.t_var('data_after_1') $q$);
-select public.t_true('M5  22 prelaunch_* functions: the 11 entry points are SECURITY DEFINER, the 11 helpers are not; every one pins search_path = public, extensions', 'postgres', $q$
-  select count(*) = 22
+select public.t_true('M5  25 prelaunch_* functions: the 11 entry points are SECURITY DEFINER, the 14 helpers are not; every one pins search_path = public, extensions', 'postgres', $q$
+  select count(*) = 25
      and bool_and(p.prosecdef = (p.proname in ('prelaunch_public_config', 'prelaunch_signup', 'prelaunch_resend',
            'prelaunch_confirm', 'prelaunch_set_channel', 'prelaunch_mail_payload', 'prelaunch_mark_sent',
            'prelaunch_reward_ensure', 'prelaunch_forget_contact', 'prelaunch_admin_summary', 'prelaunch_admin_contact')))
@@ -613,7 +618,8 @@ select public.t_true('M7  app_setting_is_private: 0143''s six keys + prelaunch; 
          = public.t_var('private_acl_before') $q$);
 select public.t_true('M8  RLS on for the four tables; policies exactly: admin SELECT on each + owner SELECT on claims, all TO authenticated', 'postgres', $q$
   select (select bool_and(relrowsecurity) from pg_class where oid in ('public.prelaunch_signups'::regclass,
-            'public.prelaunch_optin_tokens'::regclass, 'public.prelaunch_consents'::regclass, 'public.prelaunch_reward_claims'::regclass))
+            'public.prelaunch_optin_tokens'::regclass, 'public.prelaunch_consents'::regclass, 'public.prelaunch_reward_claims'::regclass,
+            'public.prelaunch_referral_aliases'::regclass))
      and (select array_agg(tablename || ':' || policyname || ':' || cmd || ':' || roles::text order by tablename, policyname)
             from pg_policies where schemaname = 'public' and tablename like 'prelaunch\_%')
          = array['prelaunch_consents:prelaunch_consents_admin_select:SELECT:{authenticated}',
@@ -622,11 +628,14 @@ select public.t_true('M8  RLS on for the four tables; policies exactly: admin SE
                  'prelaunch_reward_claims:prelaunch_reward_claims_owner_select:SELECT:{authenticated}',
                  'prelaunch_signups:prelaunch_signups_admin_select:SELECT:{authenticated}'] $q$);
 select public.t_true('M9  table privileges: anon nothing; authenticated SELECT only (no insert/update on any of the four)', 'postgres', $q$
-  select bool_and(not has_table_privilege('anon', t, 'select') and not has_table_privilege('anon', t, 'insert')
+  select (select bool_and(not has_table_privilege('anon', t, 'select') and not has_table_privilege('anon', t, 'insert')
                   and has_table_privilege('authenticated', t, 'select') and not has_table_privilege('authenticated', t, 'insert')
                   and not has_table_privilege('authenticated', t, 'update'))
     from unnest(array['public.prelaunch_signups', 'public.prelaunch_optin_tokens', 'public.prelaunch_consents',
-                      'public.prelaunch_reward_claims']) t $q$);
+                      'public.prelaunch_reward_claims']) t)
+     and not has_table_privilege('anon', 'public.prelaunch_referral_aliases', 'select')
+     and not has_table_privilege('authenticated', 'public.prelaunch_referral_aliases', 'select')
+     and not has_table_privilege('authenticated', 'public.prelaunch_referral_aliases', 'insert') $q$);
 select public.t_true('M10 newsletter group prelaunch exists, static (membership only through the DOI)', 'postgres', $q$
   select is_dynamic = false from public.newsletter_groups where key = 'prelaunch' $q$);
 select public.t_eq('M11 newsletter_contact_sources gained the 9 attribution columns', 'postgres', $q$
@@ -635,10 +644,12 @@ select public.t_eq('M11 newsletter_contact_sources gained the 9 attribution colu
      and column_name in ('utm_source','utm_medium','utm_campaign','utm_content','utm_term','referrer_host',
                          'landing_path','form_variant','attributed_at') $q$,
   'attributed_at,form_variant,landing_path,referrer_host,utm_campaign,utm_content,utm_medium,utm_source,utm_term');
-select public.t_true('M12 waitlist_subscribe: same signature, and its body is 0106''s character for character except p_consent := false', 'postgres', $q$
-  select replace(public.t_var('waitlist_src_before'), 'p_consent := v_consent,', 'p_consent := false,')
-         = (select prosrc from pg_proc where oid = 'public.waitlist_subscribe(text,text,text,jsonb)'::regprocedure)
-     and public.t_var('waitlist_src_before') like '%p_consent := v_consent,%' $q$);
+select public.t_true('M12 waitlist_subscribe: same signature; consent never granted, no name to the contact, the strict address check, one answer for new and known, never a welcome', 'postgres', $q$
+  select src like '%p_consent := false,%' and src not like '%p_first_name%' and src not like '%p_last_name%'
+     and src like '%prelaunch_email_ok(v_email)%' and src not like '%''exists''%'
+     and src like '%''status'', ''created'', ''confirmation'', false%'
+     and public.t_var('waitlist_src_before') like '%p_consent := v_consent,%'
+    from (select prosrc as src from pg_proc where oid = 'public.waitlist_subscribe(text,text,text,jsonb)'::regprocedure) x $q$);
 SQL
 }
 
@@ -886,9 +897,13 @@ select public.t_eq('S14 first-touch attribution on (contact, waitlist): the five
 -- the same address again, seconds later
 select public.t_set('s15', (public.t_submit('s15', 'anna.nowak+promo@example.com', 'net-other', p_first := 'Hacker',
   p_attr := '{"utm_source":"google"}', p_form := 'hero'))::text);
-select public.t_true('S15 a repeat within 60 s: not created, no mail, NO referral code, flagged throttled', 'postgres', $q$
+select public.t_true('S15 a repeat within 60 s: not created, no mail, flagged throttled — and a fresh ALIAS of the address''s code, never the code itself (review S1)', 'postgres', $q$
   select r->>'status' = 'pending' and not (r->>'created')::boolean and not (r->>'send')::boolean
-     and r->>'referral_code' is null and r->>'token_id' is null and (r->>'throttled')::boolean
+     and r->>'token_id' is null and (r->>'throttled')::boolean
+     and r->>'referral_code' ~ '^[A-HJ-NP-Z2-9]{8}$'
+     and r->>'referral_code' <> (public.t_s('anna.nowak+promo@example.com'))->>'referral_code'
+     and (select a.signup_id from public.prelaunch_referral_aliases a where a.code = r->>'referral_code')
+         = ((public.t_s('anna.nowak+promo@example.com'))->>'id')::uuid
     from (select public.t_var('s15')::jsonb as r) x $q$);
 select public.t_true('S16 … wrote no consent set, no token, did not bind its answer handle, did not change the name, and attribution stayed first-touch', 'postgres', $q$
   select public.t_sets('anna.nowak+promo@example.com') = 1 and public.t_tokens('anna.nowak+promo@example.com') = 1
@@ -899,10 +914,12 @@ select public.t_true('S16 … wrote no consent set, no token, did not bind its a
     from (select public.t_s('anna.nowak+promo@example.com') as s) x $q$);
 select public.t_age('anna.nowak+promo@example.com', 61);
 select public.t_set('s17', (public.t_submit('s17', 'anna.nowak+promo@example.com', 'net-other', p_first := 'Anka'))::text);
-select public.t_true('S17 61 s later: a second mail with its own consent set; the name of the MAILED submission is kept', 'postgres', $q$
-  select (r->>'send')::boolean and not (r->>'created')::boolean and r->>'referral_code' is null
+select public.t_true('S17 61 s later: a second mail with its own consent set; its name rides on ITS link, the row is not renamed (review S8); another alias', 'postgres', $q$
+  select (r->>'send')::boolean and not (r->>'created')::boolean
+     and r->>'referral_code' ~ '^[A-HJ-NP-Z2-9]{8}$' and r->>'referral_code' <> public.t_var('s15')::jsonb->>'referral_code'
      and public.t_sets('anna.nowak+promo@example.com') = 2 and public.t_tokens('anna.nowak+promo@example.com') = 2
-     and (public.t_s('anna.nowak+promo@example.com'))->>'first_name' = 'Anka'
+     and (public.t_s('anna.nowak+promo@example.com'))->>'first_name' = 'Anna'
+     and (select first_name from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:s17')) = 'Anka'
      and ((public.t_s('anna.nowak+promo@example.com'))->>'sends_24h')::int = 2
     from (select public.t_var('s17')::jsonb as r) x $q$);
 -- 5 mails in the rolling day
@@ -1014,13 +1031,12 @@ confirm_checks() {
 select public.t_be('anon');
 select public.t_true('D0  while pending the contact is not mailable', 'postgres', $q$
   select not ((public.t_c('anna.nowak+promo@example.com'))->>'marketing_consent')::boolean $q$);
--- The first link (s9). The signup carries the name and language of its LATEST
--- mailed submission: s17 sent 'Anka' with the default locale pl (s18/s19 sent
--- no name, which never overwrites one).
+-- The first link (s9). The click applies the name and language of THAT
+-- submission ('Anna', de) — not s17's 'Anka' in pl (review S8).
 select public.t_set('d1', (public.t_confirm('s9'))::text);
-select public.t_true('D1  the click confirms: status, welcome, the latest mailed name and language, the referral code — and the address for the welcome mail (server only)', 'postgres', $q$
-  select r->>'status' = 'confirmed' and (r->>'welcome')::boolean and r->>'first_name' = 'Anka'
-     and r->>'email' = 'anna.nowak+promo@example.com' and r->>'locale' = 'pl' and r->>'referral_code' ~ '^[A-HJ-NP-Z2-9]{8}$'
+select public.t_true('D1  the click confirms: status, welcome, the clicked link''s name and language, the referral code — and the address for the welcome mail (server only)', 'postgres', $q$
+  select r->>'status' = 'confirmed' and (r->>'welcome')::boolean and r->>'first_name' = 'Anna'
+     and r->>'email' = 'anna.nowak+promo@example.com' and r->>'locale' = 'de' and r->>'referral_code' ~ '^[A-HJ-NP-Z2-9]{8}$'
      and not (r->>'referral_counted')::boolean
     from (select public.t_var('d1')::jsonb as r) x $q$);
 select public.t_true('D2  the signup is confirmed; ONLY the consent set of the clicked link is stamped (2 of 10 rows)', 'postgres', $q$
@@ -1033,7 +1049,7 @@ select public.t_true('D2  the signup is confirmed; ONLY the consent set of the c
     from (select public.t_s('anna.nowak+promo@example.com') as s) x $q$);
 select public.t_true('D3  the contact: marketing consent from the DOI (source waitlist_doi, the marketing row''s version), the name, in group prelaunch', 'postgres', $q$
   select (c->>'marketing_consent')::boolean and c->>'consent_source' = 'waitlist_doi'
-     and c->>'consent_version' = 'marketing_email@bbbbbbbbbbbb' and c->>'first_name' = 'Anka' and c->>'consent_at' is not null
+     and c->>'consent_version' = 'marketing_email@bbbbbbbbbbbb' and c->>'first_name' = 'Anna' and c->>'consent_at' is not null
      and exists (select 1 from public.newsletter_group_members m join public.newsletter_groups g on g.id = m.group_id
                   where g.key = 'prelaunch' and m.contact_id = (c->>'id')::uuid)
     from (select public.t_c('anna.nowak+promo@example.com') as c) x $q$);
@@ -1184,8 +1200,19 @@ select public.t_eq('W1  AFTER 0144, anon waitlist_subscribe with consent:true st
 select public.t_true('W2  … but the contact is NOT marketing-consented: no consent date, source or version (S1 closed)', 'postgres', $q$
   select not (c->>'marketing_consent')::boolean and c->>'consent_at' is null and c->>'consent_source' is null
     from (select public.t_c('legacy-door@example.com') as c) x $q$);
-select public.t_eq('W3  a repeat → exists…', 'anon',
-  $q$ select (public.waitlist_subscribe('legacy-door@example.com', 'hero', 'pl', '{"consent":true}'::jsonb))->>'status' $q$, 'exists');
+select public.t_eq('W3  a repeat → the SAME answer as a new address, and never a welcome (review S5: no membership oracle, no mail without DOI)', 'anon',
+  $q$ select (public.waitlist_subscribe('legacy-door@example.com', 'hero', 'pl', '{"consent":true}'::jsonb))::text $q$,
+  '{"status": "created", "confirmation": false}');
+select public.t_eq('W3c a name typed at the legacy door never reaches the contact (review S8)', 'postgres', $q$
+  select coalesce((public.waitlist_subscribe('legacy-name@example.com', 'hero', 'pl',
+            '{"first_name":"Odbierz nagrode na evil.example","last_name":"x"}'::jsonb))->>'status', '?') || ','
+      || coalesce((select first_name from public.newsletter_contacts where email = 'legacy-name@example.com'), 'null') $q$,
+  'created,null');
+select public.t_eq('W3d the strict address check: comment, comma, semicolon, colon, quote, bracket and a bad label are invalid (review S6)', 'anon', $q$
+  select string_agg((public.waitlist_subscribe(e, 'hero', 'pl', '{}'::jsonb))->>'status', ',' order by e)
+    from unnest(array['a(1)victim@example.com', 'x,victim@example.com', 'x;victim@example.com', 'x:victim@example.com',
+                      '"q"@example.com', 'x@[1.2.3.4]', 'x@-bad.example.com', 'x@example']) e $q$,
+  'invalid,invalid,invalid,invalid,invalid,invalid,invalid,invalid');
 select public.t_eq('W3b … still no consent', 'postgres',
   $q$ select marketing_consent::text from public.newsletter_contacts where email = 'legacy-door@example.com' $q$, 'false');
 SQL
@@ -1213,11 +1240,12 @@ select public.t_true('F3  decided once: another click changes nothing', 'postgre
      and (public.t_s('friend.one@example.com'))->>'referral_rejected' is null $q$);
 select public.t_submit('f4', 'expiring@example.com', 'f4-net', p_ref := public.t_var('code_r1'));
 select public.t_submit('f4b', 'badcode@example.com', 'f4b-net', p_ref := 'IO01IO01');
-select public.t_true('F4  a code on an EXISTING signup never changes its referrer; a malformed code is ignored', 'postgres', $q$
+select public.t_true('F4  a code on an EXISTING signup does not change the row at submit (it rides on that link); a malformed code is ignored', 'postgres', $q$
   select (public.t_s('expiring@example.com'))->>'referred_by' is null
      and (public.t_s('badcode@example.com'))->>'referred_by' is null $q$);
 -- self: the same mailbox through a Gmail alias
 select public.t_confirmed('self0', 'self.person+a@gmail.com', 'net-S1');
+select public.t_age('self.person+a@gmail.com', 61);
 select public.t_set('code_self', (public.t_s('self.person+a@gmail.com'))->>'referral_code');
 select public.t_submit('self1', 'selfperson+b@googlemail.com', 'net-S2', p_ref := public.t_var('code_self'));
 select public.t_set('f5', (public.t_confirm('self1'))::text);
@@ -1232,6 +1260,7 @@ select public.t_eq('F6  the referred person''s first IP equals the referrer''s �
   'false,same_network');
 -- duplicate mailbox for the same referrer
 select public.t_submit('du1', 'dup.box+1@example.com', 'net-D1', p_ref := public.t_var('code_r1'));
+select public.t_age('dup.box+1@example.com', 61);
 select public.t_submit('du2', 'dup.box+2@example.com', 'net-D2', p_ref := public.t_var('code_r1'));
 select public.t_set('f7a', (public.t_confirm('du1'))::text);
 select public.t_set('f7b', (public.t_confirm('du2'))::text);
@@ -1275,29 +1304,93 @@ do $$ begin
     perform public.t_set('f11_' || i, (public.t_confirm('cp' || i))::text);
   end loop;
 end $$;
-select public.t_eq('F11 referral_cap 3: three count, the 4th → rejected cap', 'postgres', $q$
+select public.t_eq('F11 referral_cap 3: all four COUNT — the cap limits what is paid, not what is counted (review S2)', 'postgres', $q$
   select string_agg(public.t_var('f11_' || i)::jsonb->>'referral_counted', ',' order by i) || ','
-      || ((public.t_s('capped4@example.com'))->>'referral_rejected')
-    from generate_series(1, 4) i $q$, 'true,true,true,false,cap');
--- the cap under concurrency: counted = cap - 1, two confirm at the same moment
+      || coalesce((public.t_s('capped4@example.com'))->>'referral_rejected', '-')
+    from generate_series(1, 4) i $q$, 'true,true,true,true,-');
+-- the referrer lock under concurrency: two spellings of ONE mailbox, referred
+-- by one referrer, confirm at the same moment
 select public.t_confirmed('r4', 'referrer.four@example.com', 'net-R4');
 select public.t_set('code_r4', (public.t_s('referrer.four@example.com'))->>'referral_code');
 do $$ begin
-  for i in 1..4 loop
-    perform public.t_submit('cc' || i, 'conc' || i || '@example.com', 'net-conc-' || i, p_ref := public.t_var('code_r4'));
-  end loop;
-  perform public.t_confirm('cc1'); perform public.t_confirm('cc2');
+  perform public.t_submit('cc3', 'conc.box+3@example.com', 'net-conc-3', p_ref := public.t_var('code_r4'));
+  perform public.t_age('conc.box+3@example.com', 61);
+  perform public.t_submit('cc4', 'conc.box+4@example.com', 'net-conc-4', p_ref := public.t_var('code_r4'));
 end $$;
 SQL
   race "begin; set local role anon; select public.t_confirm('cc3'); select pg_sleep(1); commit;" \
        "begin; set local role anon; select public.t_confirm('cc4'); select pg_sleep(1); commit;"
   q >/dev/null <<'SQL'
-select public.t_eq('F12 cap 3 with two counted; two referred people confirm AT THE SAME MOMENT → exactly 3 counted, one rejected cap (referrer row lock)', 'postgres', $q$
+select public.t_eq('F12 two spellings of one mailbox confirm AT THE SAME MOMENT for one referrer → exactly one counted, the other duplicate (referrer row lock)', 'postgres', $q$
   select (select count(*) from public.prelaunch_signups s where s.referred_by = ((public.t_s('referrer.four@example.com'))->>'id')::uuid
             and s.referral_counted_at is not null)::text || ','
       || (select string_agg(coalesce(s.referral_rejected, '-'), ',' order by s.referral_rejected nulls first)
-            from public.prelaunch_signups s where s.email in ('conc3@example.com', 'conc4@example.com')) $q$, '3,-,cap');
+            from public.prelaunch_signups s where s.email in ('conc.box+3@example.com', 'conc.box+4@example.com')) $q$, '1,-,duplicate');
 select public.t_cfg('{"referral_cap":10}');
+-- ALIASES (review S1): a repeat submit's link earns for the address
+select public.t_set('f13r', (public.t_submit('f13r', 'referrer.one@example.com', 'net-A'))::text);
+select public.t_submit('f13', 'via.alias@example.com', 'net-F13', p_ref := public.t_var('f13r')::jsonb->>'referral_code');
+select public.t_set('f13c', (public.t_confirm('f13'))::text);
+select public.t_true('F13 the alias handed to a CONFIRMED address''s repeat submit links a new person to that address and counts at their DOI', 'postgres', $q$
+  select public.t_var('f13r')::jsonb->>'referral_code' <> (public.t_s('referrer.one@example.com'))->>'referral_code'
+     and (public.t_s('via.alias@example.com'))->>'referred_by' = (public.t_s('referrer.one@example.com'))->>'id'
+     and (public.t_var('f13c')::jsonb->>'referral_counted')::boolean $q$);
+do $$ begin
+  for i in 1..52 loop perform public.t_submit('f14_' || i, 'many.repeats@example.com', 'net-F14'); end loop;
+end $$;
+select public.t_eq('F14 at most 50 aliases per signup; past that the answer carries no code (the route sends an unstored decoy)', 'postgres', $q$
+  select (select count(*) from public.prelaunch_referral_aliases a join public.prelaunch_signups s on s.id = a.signup_id
+           where s.email = 'many.repeats@example.com')::text || ','
+      || coalesce(public.t_submit('f14_x', 'many.repeats@example.com', 'net-F14')->>'referral_code', 'null') $q$, '50,null');
+-- THE CLICKED LINK DECIDES THE REFERRER AND THE NAME (review S3/S8)
+select public.t_confirmed('mal', 'mallory@example.com', 'net-mal');
+select public.t_confirmed('fri', 'honest.friend@example.com', 'net-fri');
+select public.t_submit('v_m', 'victim.v@example.com', 'net-mal2', p_ref := (public.t_s('mallory@example.com'))->>'referral_code',
+  p_first := 'Zablokowane');
+select public.t_age('victim.v@example.com', 61);
+select public.t_submit('v_f', 'victim.v@example.com', 'net-vic', p_ref := (public.t_s('honest.friend@example.com'))->>'referral_code',
+  p_first := 'Wiktoria');
+select public.t_set('f15', (public.t_confirm('v_f'))::text);
+select public.t_true('F15 a stranger typed the address first with their code and a name; the owner confirms THEIR link → the friend is the referrer and the owner''s name is used', 'postgres', $q$
+  select (public.t_s('victim.v@example.com'))->>'referred_by' = (public.t_s('honest.friend@example.com'))->>'id'
+     and (public.t_var('f15')::jsonb->>'referral_counted')::boolean
+     and public.t_var('f15')::jsonb->>'first_name' = 'Wiktoria'
+     and (public.t_s('victim.v@example.com'))->>'first_name' = 'Wiktoria'
+     and (public.t_c('victim.v@example.com'))->>'first_name' = 'Wiktoria' $q$);
+select public.t_submit('v2_m', 'victim.two@example.com', 'net-mal3', p_ref := (public.t_s('mallory@example.com'))->>'referral_code');
+select public.t_age('victim.two@example.com', 61);
+select public.t_submit('v2_n', 'victim.two@example.com', 'net-vic2');
+select public.t_age('victim.two@example.com', 61);
+select public.t_resend_link('v2_r', 'v2_m');
+select public.t_true('F16 a resend from an old link carries THAT link''s referrer; a link without one leaves the row''s', 'postgres', $q$
+  select (select referrer from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:v2_r'))
+         = ((public.t_s('mallory@example.com'))->>'id')::uuid
+     and (select referrer from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:v2_n')) is null $q$);
+-- THE STRICT ADDRESS AND THE MAILBOX LIMITS (review S6)
+select public.t_eq('F17 prelaunch_signup refuses addresses the mailer would re-parse into another mailbox', 'anon', $q$
+  select string_agg(public.t_submit('bad' || i, e, 'net-bad')->>'status', ',' order by i)
+    from unnest(array['a(1)victim@example.com', 'x,victim@example.com', 'x;victim@example.com', 'x:victim@example.com;',
+                      '"q"@example.com', 'x <victim@example.com>']) with ordinality as u(e, i) $q$,
+  'invalid,invalid,invalid,invalid,invalid,invalid');
+select public.t_eq('F17b … and keeps the ordinary ones (dots, plus tags, apostrophes, subdomains, long TLDs)', 'anon', $q$
+  select string_agg(coalesce(public.t_submit('ok' || i, e, 'net-ok-' || i)->>'status', '?'), ',' order by i)
+    from unnest(array['jan.kowalski@example.com', 'o''brien+shop@mail.example.co.uk', 'x_y-z@sub.example.travel'])
+         with ordinality as u(e, i) $q$, 'pending,pending,pending');
+insert into public.newsletter_suppressions (email, reason) values ('suppressed.box@gmail.com', 'complained');
+select public.t_true('F18 a complained mailbox is not mailed through another spelling of it (plus tag, dots)', 'anon', $q$
+  select not (public.t_submit('sup1', 'suppressed.box+new@gmail.com', 'net-sup1')->>'send')::boolean
+     and not (public.t_submit('sup2', 'suppressedbox@gmail.com', 'net-sup2')->>'send')::boolean $q$);
+do $$ begin
+  for i in 1..5 loop
+    perform public.t_age('mbox+' || (i - 1) || '@example.com', 61);
+    if not (public.t_submit('mb' || i, 'mbox+' || i || '@example.com', 'net-mb-' || i)->>'send')::boolean then
+      raise exception 'mailbox mail % not sent', i; end if;
+  end loop;
+  for i in 1..5 loop perform public.t_age('mbox+' || i || '@example.com', 61); end loop;
+end $$;
+select public.t_true('F19 five DOI mails in 24 h to ONE mailbox across five spellings, then the sixth spelling gets none', 'anon', $q$
+  select not (r->>'send')::boolean and (r->>'throttled')::boolean
+    from (select public.t_submit('mb6', 'mbox+6@example.com', 'net-mb-6') as r) x $q$);
 SQL
 }
 
@@ -1382,6 +1475,8 @@ update auth.users set email = 'main.user@example.com' where id = public.t_uid('m
 select public.t_eq('E15 the account changes its e-mail to ANOTHER confirmed address → no second signup reward (one per account)', 'postgres', $q$
   select public.t_var('e15') || ',' || public.t_claims('main', 'signup')::text || ',' || public.t_balance('main')::text $q$, '0,1,100');
 select public.t_confirmed('e_al1', 'alias.person+1@gmail.com', 'net-al1');
+-- One mailbox gets one DOI mail a minute, whichever spelling (review S6).
+select public.t_age('alias.person+1@gmail.com', 61);
 select public.t_confirmed('e_al2', 'aliasperson+2@gmail.com', 'net-al2');
 select public.t_user('alias1', 'alias.person+1@gmail.com');
 select public.t_user('alias2', 'aliasperson+2@gmail.com');
@@ -1427,6 +1522,27 @@ select public.t_eq('E20 all five are verified accounts now: paid up to the cap o
   select public.t_var('e20') || ',' || public.t_claims('refowner', 'referral')::text || ',' || public.t_balance('refowner')::text $q$,
   '40,3,160');
 select public.t_eq('E21 and stays there', 'postgres', $q$ select public.t_ensure('refowner')->>'granted' $q$, '0');
+-- the cap is a PAYOUT rule (review S2): referrals that never become accounts
+-- do not use it up
+select public.t_confirmed('e_cap0', 'cap.owner@example.com', 'net-cap0');
+select public.t_user('capowner', 'cap.owner@example.com');
+select public.t_set('code_cap', (public.t_s('cap.owner@example.com'))->>'referral_code');
+do $$ begin
+  for i in 1..4 loop
+    perform public.t_submit('cr' || i, 'capref' || i || '@example.com', 'net-cr-' || i, p_ref := public.t_var('code_cap'));
+    perform public.t_confirm('cr' || i);
+  end loop;
+end $$;
+select public.t_user('cr4', 'capref4@example.com');
+select public.t_eq('E21b cap 3: four counted, only the 4th became an account → it IS paid (the three that never will do not fill the cap)', 'postgres', $q$
+  select (select count(*) from public.prelaunch_signups where referral_counted_at is not null
+            and referred_by = ((public.t_s('cap.owner@example.com'))->>'id')::uuid)::text
+      || ',' || (public.t_ensure('capowner')->>'referrals') $q$, '4,20');
+select public.t_true('E21c a claim keeps the mailbox as a sha256, never an address (review S7)', 'postgres', $q$
+  select bool_and(mailbox_hash ~ '^[0-9a-f]{64}$') and bool_and(position('@' in mailbox_hash) = 0)
+     and bool_and(mailbox_hash = public.prelaunch_mailbox_hash(s.canonical_email))
+    from public.prelaunch_reward_claims c join public.prelaunch_signups s on s.id = c.source_signup
+   where c.kind = 'signup' $q$);
 
 -- the cap is per ACCOUNT, not per referrer address (S2)
 select public.t_cfg('{"referral_cap":10}');
@@ -1542,7 +1658,9 @@ select public.t_true('H1  prelaunch_admin_summary: every KPI key of the contract
      and exists (select 1 from jsonb_array_elements(s->'by_source') e where e->>'utm_source' = 'facebook')
      and exists (select 1 from jsonb_array_elements(s->'by_referrer_host') e where e->>'host' = 'm.facebook.com')
      and exists (select 1 from jsonb_array_elements(s->'by_form') e where e->>'form' = 'final')
-     and exists (select 1 from jsonb_array_elements(s->'referrals'->'rejected') e where e->>'reason' = 'cap')
+     and exists (select 1 from jsonb_array_elements(s->'referrals'->'rejected') e where e->>'reason' = 'cluster')
+     and not exists (select 1 from jsonb_array_elements(s->'referrals'->'rejected') e where e->>'reason' = 'cap')
+     and (s->'referrals'->'top'->0) ?& array['signup_id', 'email', 'contact_id', 'counted']
      and jsonb_array_length(s->'referrals'->'top') between 1 and 20
     -- 30 days back: D7 moved the one link marked sent 11 days into the past.
     from (select public.prelaunch_admin_summary(now() - interval '30 days', now() + interval '1 minute') as s) x $q$);
@@ -1556,9 +1674,12 @@ select public.t_true('H3  prelaunch_admin_contact: status, attribution, channel,
     from (select public.prelaunch_admin_contact((select id from public.newsletter_contacts where email = 'anna.nowak+promo@example.com')) as c) x $q$);
 select public.t_true('H4  … a referrer''s view counts its referrals; a referred view names its referrer; no signup → null', 'authenticated', $q$
   select (public.prelaunch_admin_contact((select id from public.newsletter_contacts where email = 'referrer.three@example.com'))
-            ->'signup'->>'referrals_counted')::int = 3
+            ->'signup'->>'referrals_counted')::int = 4
      and public.prelaunch_admin_contact((select id from public.newsletter_contacts where email = 'capped1@example.com'))
             ->'signup'->>'referred_by_email' = 'referrer.three@example.com'
+     and public.prelaunch_admin_contact((select id from public.newsletter_contacts where email = 'capped1@example.com'))
+            ->'signup'->>'referred_by_contact_id'
+         = (select id::text from public.newsletter_contacts where email = 'referrer.three@example.com')
      and public.prelaunch_admin_contact(gen_random_uuid()) is null $q$);
 SQL
 }
@@ -1675,7 +1796,7 @@ run_suite "$DB_MAIN" "$MIGRATION"
 # ── Z. MUTATION TESTS — THE SUITE MUST GO RED ON A BROKEN 0144 ──────────────
 #   1. the DOI claim without "used_at is null"   → D5 (a spent link is claimed again)
 #   2. the reward ensure granted to anon         → G3 A8
-#   3. no referrer lock before counting          → F12 (the cap races)
+#   3. no referrer lock before counting          → F12 (the duplicate rule races)
 mutate() {  # $1 = n, $2 = perl program → path of the mutant
   local out="$WORK/0144_mutant_$1.sql"
   perl -0777 -pe "$2" "$MIGRATION" > "$out"

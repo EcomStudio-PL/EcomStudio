@@ -31,13 +31,16 @@ import { rpcRewardEnsure } from "./rpc";
  * prelaunch_reward_claims and credit_transactions, which is what the admin
  * stats read. No bell notification yet (D17, optional): it needs copy of its
  * own and is left for a follow-up.
+ *
+ * Returns the credits granted by THIS call (0 on every no-op or failure), so
+ * the layout can re-read the balance it is about to show (review S4).
  */
-export async function ensurePrelaunchRewards(supabase: Client, workspaceId: string): Promise<void> {
+export async function ensurePrelaunchRewards(supabase: Client, workspaceId: string): Promise<number> {
   try {
     const config = await getPrelaunchPublicConfig();
-    if (!config.rewardsActive) return;
+    if (!config.rewardsActive) return 0;
     const result = await rpcRewardEnsure(supabase);
-    if (!result || result.granted <= 0) return;
+    if (!result || result.granted <= 0) return 0;
     await supabase.rpc("log_activity", {
       p_workspace_id: workspaceId,
       p_action: "prelaunch_reward.granted",
@@ -45,7 +48,9 @@ export async function ensurePrelaunchRewards(supabase: Client, workspaceId: stri
       p_entity_id: workspaceId,
       p_metadata: { granted: result.granted, signup: result.signup, referrals: result.referrals },
     });
+    return result.granted;
   } catch (e) {
     console.error("[prelaunch] reward", safeError(e));
+    return 0;
   }
 }
