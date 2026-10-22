@@ -25,6 +25,9 @@
  *      state, validation refusals, compare-and-set, publish refusals and the
  *      launch-draft confirmation, discard / history / restore by gallery KEY,
  *      and the launch copy's token rule in cmsSave
+ *   L  the legal documents (lib/legal/docs.ts) are refused by every way into
+ *      the editor — launcher list, edit session, page map, history, a save by
+ *      block id, the markers, the admin list — even when published
  *
  * Mocks only — no network, no database (scripts/stubs/ice-*.ts).
  * Optional: I18N_FRAGMENT=<path to an i18n-*.json fragment> checks the new
@@ -65,6 +68,9 @@ import { blockFields, isUuid, markBlocks, markPublishedPage, markText, valueAt, 
 import * as actions from "@/lib/server/ice/actions";
 import * as wrappers from "@/app/actions/ice";
 import { iceGateData } from "@/lib/server/ice/gate";
+import { cmsPageAt, iceRefusesPath } from "@/lib/server/ice/core";
+import { iceAdminOverview } from "@/lib/server/ice/admin";
+import { LEGAL_DOCS } from "@/lib/legal/docs";
 import { CMS_TAG } from "@/lib/server/public-site";
 import { MEDIA_SLOT_TAG } from "@/lib/server/media-slots";
 import { iceState, resetIceState } from "./stubs/ice-state";
@@ -1989,6 +1995,141 @@ function sectionJ() {
   check("J6c the editor reaches the server only through app/actions/ice (never lib/server/ice/actions directly)", directActions.length === 0, short(directActions));
 }
 
+/* ══ L. LEGAL DOCUMENTS ════════════════════════════════════════════════════
+ *
+ * The Regulamin, the policies and the DPA are edited whole in Strony WWW and
+ * stored byte for byte (lib/legal/content.ts). The registry has always LISTED
+ * them as "not in the editor" (ICE_UNSUPPORTED); A12 only proves the registry
+ * itself cannot open them. Published CMS pages are another way in — these
+ * prove every door the server has refuses them: the launcher's list, the edit
+ * session, the page map, the history, a save by block id, the markers and
+ * the admin list.
+ */
+
+const P_REG = "bbbbbbbb-0000-4000-8000-0000000000a1";
+const P_COOK = "bbbbbbbb-0000-4000-8000-0000000000a2";
+const P_PRIV = "bbbbbbbb-0000-4000-8000-0000000000a3";
+const P_DPA = "bbbbbbbb-0000-4000-8000-0000000000a4";
+const B_REG_TEXT = "cccccccc-0000-4000-8000-0000000000a1";
+const B_REG_LEGAL = "cccccccc-0000-4000-8000-0000000000a2";
+
+const legalSnapshot = (blockId: string, legalId: string) => [
+  // A `text` block, which the CMS field list DOES make editable on any other
+  // page — so a refusal here is the legal rule, not a page with nothing on it.
+  { id: blockId, type: "text", sort_order: 0, visible: true, content: { title: { pl: "Regulamin GrovBase" }, description: { pl: "Wstęp\n\nDruga część" } } },
+  { id: legalId, type: "legal", sort_order: 1, visible: true, content: { doc: { pl: { status: "active", text: "§ 1. Postanowienia\n", version: "1.0", effective: "2026-10-20" } } } },
+];
+
+/** freshDb() plus the four legal pages, all PUBLISHED. */
+function legalDb(): FakeDb {
+  const db = freshDb();
+  const page = (id: string, slug: string, blockId: string, legalId: string) => ({
+    id, slug, title: slug, kind: "standard", status: "published", is_homepage: false, published_snapshot: legalSnapshot(blockId, legalId),
+  });
+  db.tables.cms_pages.push(
+    page(P_REG, "regulamin", B_REG_TEXT, B_REG_LEGAL),
+    page(P_COOK, "polityka-cookies", "cccccccc-0000-4000-8000-0000000000b1", "cccccccc-0000-4000-8000-0000000000b2"),
+    page(P_PRIV, "polityka-prywatnosci", "cccccccc-0000-4000-8000-0000000000c1", "cccccccc-0000-4000-8000-0000000000c2"),
+    page(P_DPA, "umowa-powierzenia-danych", "cccccccc-0000-4000-8000-0000000000d1", "cccccccc-0000-4000-8000-0000000000d2"),
+  );
+  db.tables.cms_blocks.push(
+    { id: B_REG_TEXT, page_id: P_REG, updated_at: "2026-10-20T10:00:00.000Z" },
+    { id: B_REG_LEGAL, page_id: P_REG, updated_at: "2026-10-20T10:00:01.000Z" },
+  );
+  return db;
+}
+
+const LEGAL_PATHS = LEGAL_DOCS.map((d) => `/${d.slug}`);
+
+async function sectionL() {
+  console.log("\nL. LEGAL DOCUMENTS — never opened, listed, saved or marked by the visual editor");
+
+  const legalEntry = ICE_UNSUPPORTED.filter((u) => u.reason === "legal").flatMap((u) => u.path.split(/,\s*/));
+  check("L1 ICE_UNSUPPORTED's legal entry names exactly the four LEGAL_DOCS paths",
+    same([...legalEntry].sort(), [...LEGAL_PATHS].sort()), legalEntry.join(", "));
+  check("L1b iceRefusesPath: every legal path (with or without a trailing slash) — and nothing else",
+    LEGAL_PATHS.every((p) => iceRefusesPath(p) && iceRefusesPath(`${p}/`))
+    && ["/", "/home", "/oferta", "/regulamin-promocji", "/polityka", "/regulamin/x"].every((p) => !iceRefusesPath(p)));
+
+  {
+    const db = legalDb();
+    const paths = await actions.iceSupportedPaths(db.client() as never);
+    const leaked = paths.filter((p) => LEGAL_PATHS.includes(p));
+    check("L2 iceSupportedPaths: the launcher is never offered on a legal page, even though all four are published (an ordinary page still is)",
+      leaked.length === 0 && paths.includes("/oferta") && paths.includes("/"), short(leaked));
+    db.tables.cms_pages = db.tables.cms_pages.map((p) => (p.slug === "regulamin" ? { ...p, is_homepage: true } : { ...p, is_homepage: false }));
+    const asHome = await actions.iceSupportedPaths(db.client() as never);
+    check("L2b … nor at \"/\" when a legal page is made the homepage", !asHome.includes("/") && !asHome.includes("/regulamin"));
+  }
+  {
+    legalDb(); iceState.cookies.set(ICE_HINT_COOKIE, "1");
+    const g = await iceGateData();
+    check("L2c the gate hands the launcher the same list (no legal path)", g !== null && LEGAL_PATHS.every((p) => !g.supported.includes(p)) && g.supported.includes("/oferta"));
+  }
+  {
+    const db = legalDb();
+    const rows = await Promise.all(LEGAL_PATHS.map((p) => cmsPageAt(db.client() as never, p)));
+    const ok = await cmsPageAt(db.client() as never, "/oferta");
+    check("L3 cmsPageAt: null for every published legal page (an ordinary page is still found)", rows.every((r) => r === null) && ok?.slug === "oferta");
+    db.tables.cms_pages = db.tables.cms_pages.map((p) => (p.slug === "regulamin" ? { ...p, is_homepage: true } : { ...p, is_homepage: false }));
+    check("L3b … and null at \"/\" when the homepage is a legal page", (await cmsPageAt(db.client() as never, "/")) === null);
+  }
+  {
+    const bad: string[] = [];
+    for (const p of [...LEGAL_PATHS, "/regulamin/", "/polityka-cookies//"]) {
+      const db = legalDb();
+      const r = await actions.setEdit(true, p);
+      if (r.ok || r.error !== "unsupported" || iceState.cookieWrites.length > 0 || db.tablesTouched().includes("cms_pages")) bad.push(p);
+    }
+    check("L4 setEdit(true) on a legal page → unsupported, no cookie, refused before the database is asked", bad.length === 0, short(bad));
+    legalDb();
+    const off = await actions.setEdit(false, "/regulamin");
+    check("L4b … while switching OFF still clears a (stale) cookie there", off.ok && iceState.cookieWrites.length === 1 && iceState.cookieWrites[0].opts.maxAge === 0);
+  }
+  {
+    legalDb();
+    const infos = await Promise.all(LEGAL_PATHS.map((p) => actions.pageInfo(p)));
+    const maps = await Promise.all(LEGAL_PATHS.map((p) => actions.cmsMap(p)));
+    const hist = await Promise.all(LEGAL_PATHS.map((p) => actions.pageHistory(p)));
+    check("L5 pageInfo / cmsMap / pageHistory of a legal page → unsupported",
+      [...infos, ...maps, ...hist].every((r) => !r.ok && r.error === "unsupported"));
+  }
+  {
+    const db = legalDb();
+    const r = await actions.cmsSave({ blockId: B_REG_TEXT, path: ["title"], locale: "pl", value: "Nowy tytuł", expected: "Regulamin GrovBase", base: null });
+    const r2 = await actions.cmsSave({ blockId: B_REG_TEXT, path: ["description"], locale: "pl", value: "x", expected: "Wstęp\n\nDruga część", base: null });
+    check("L6 cmsSave by block id on a legal page → unsupported; cms_inline_patch never called, no audit, nothing revalidated",
+      !r.ok && r.error === "unsupported" && !r2.ok && r2.error === "unsupported" && db.rpcCalls("cms_inline_patch").length === 0
+      && iceState.audits.length === 0 && iceState.revalidated.length === 0, JSON.stringify([r, r2]));
+  }
+  {
+    const page = deepFreeze({ slug: "regulamin", title: "Regulamin", blocks: legalSnapshot(B_REG_TEXT, B_REG_LEGAL) as CmsBlockLike[] });
+    let asked = 0;
+    const ask = { locale: async (): Promise<IceLocale> => { asked++; return "pl"; }, homeSlug: async () => { asked++; return "regulamin"; } };
+    freshDb(); setSession("/regulamin");
+    const m1 = await markPublishedPage(page, ask);
+    freshDb(); setSession("/");
+    const m2 = await markPublishedPage(page, ask);
+    check("L7 markPublishedPage: a legal page comes back as the very same object even with a (stale) edit cookie for it or for \"/\" — locale/homeSlug never asked",
+      m1 === page && m2 === page && asked === 0);
+    const other = deepFreeze({ slug: "oferta", title: "Oferta", blocks: legalSnapshot(B_REG_TEXT, B_REG_LEGAL) as CmsBlockLike[] });
+    freshDb(); setSession("/oferta");
+    const m3 = await markPublishedPage(other, ask);
+    check("L7b … while the same blocks on an ordinary page ARE marked (the rule is the slug, not the content)",
+      m3 !== other && stegaRead((m3.blocks[0].content as { title: { pl: string } }).title.pl).length === 1);
+  }
+  {
+    const db = legalDb();
+    const overview = await iceAdminOverview(db.client() as never);
+    const listed = overview.pages.filter((p) => LEGAL_PATHS.includes(p.path));
+    check("L8 Admin → Edytor wizualny lists no legal page (the same set the launcher gets); ordinary CMS pages still listed",
+      listed.length === 0 && overview.pages.some((p) => p.path === "/oferta"), short(listed.map((p) => p.path)));
+    check("L8b … and still shows the 'not here' entry that names them", overview.unsupported.some((u) => u.reason === "legal" && LEGAL_PATHS.every((p) => u.path.includes(p))));
+  }
+  check("L9 the 2000-character inline limit is still there (short texts only — documents are not edited inline)",
+    /value\.length > 2000\) throw new IceRefusal\("text_too_long"\)/.test(readFileSync("lib/server/ice/actions.ts", "utf8")));
+}
+
 /* ══ main ══════════════════════════════════════════════════════════════════ */
 
 async function main() {
@@ -2004,6 +2145,7 @@ async function main() {
   await sectionH();
   await sectionI();
   await sectionK();
+  await sectionL();
   sectionJ();
   check("Z the shipped dictionaries were never mutated by anything in this run", LOCALES.every((l, i) => JSON.stringify(DICTS[l]) === SHIPPED_JSON[i]));
   globalThis.fetch = realFetch;

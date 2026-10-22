@@ -4,7 +4,9 @@ import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { CmsNav } from "@/components/admin/cms/cms-nav";
 import { PageList } from "@/components/admin/cms/page-list";
+import { LegalDocsPanel } from "@/components/admin/cms/legal-docs-panel";
 import { listPages } from "@/lib/services/cms";
+import { legalOverview } from "@/lib/server/legal/admin";
 
 /**
  * CMS → STRONY — every public page in one list.
@@ -21,7 +23,13 @@ export default async function AdminWww() {
   // Which page is the homepage travels ON the rows now — one boolean the
   // database lets exactly one of them carry — so the list needs no second
   // query and no second opinion about it.
-  const pages = await listPages(supabase);
+  //
+  // The legal documents' overview is read alongside. It is a summary, not the
+  // list: if it cannot be read, the panel is left out and the pages still show.
+  const [pages, legal] = await Promise.all([
+    listPages(supabase),
+    legalOverview(supabase).catch(() => []),
+  ]);
 
   // "Autor zmian" is a name, not a uuid. One query for every editor on the
   // list rather than one per row.
@@ -47,6 +55,8 @@ export default async function AdminWww() {
       <CmsNav />
 
       <PageList pages={pages} editors={editors} locale={locale} />
+
+      <LegalDocsPanel rows={legal} t={t} locale={locale} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
@@ -7,6 +7,8 @@ import { ArrowLeft, RotateCcw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { rollbackPageAction } from "@/app/actions/cms";
 import type { VersionRow } from "@/lib/services/cms";
+import type { LegalVersionFacts } from "@/lib/server/legal/admin";
+import { LEGAL_LOCALES } from "@/lib/legal/docs";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
@@ -21,17 +23,25 @@ import { formatDate } from "@/lib/utils";
  * first, so a rollback is itself reversible and nothing is ever lost.
  *
  * That guarantee is why the legal documents live here: superseded terms have
- * to remain readable long after they stop being current.
+ * to remain readable long after they stop being current. For a version that
+ * holds one, the row says WHICH document it was — its version label, length
+ * and digest per language ("PL v1.0 · 75 255 znaków · sha 151b56da0c3e…") —
+ * so the right one is restored without opening each.
  */
-export function VersionHistory({ pageId, slug, title, versions, authors, locale }: {
+export function VersionHistory({ pageId, slug, title, versions, authors, locale, docs = {} }: {
   pageId: string;
   slug: string;
   title: string;
   versions: VersionRow[];
   authors: Record<string, string>;
   locale: string;
+  /** Per version id: the legal document its snapshot holds, if any
+   *  (lib/server/legal/admin.ts legalVersionFacts). */
+  docs?: Record<string, LegalVersionFacts>;
 }) {
   const { t } = useI18n();
+  const nf = useMemo(() => new Intl.NumberFormat(locale === "pl" ? "pl-PL" : locale === "de" ? "de-DE" : "en-GB"), [locale]);
+  const plurals = useMemo(() => new Intl.PluralRules(locale === "pl" ? "pl-PL" : locale === "de" ? "de-DE" : "en-GB"), [locale]);
   const router = useRouter();
   const [pending, start] = useTransition();
   const [restoring, setRestoring] = useState<VersionRow | null>(null);
@@ -76,6 +86,21 @@ export function VersionHistory({ pageId, slug, title, versions, authors, locale 
                   {v.createdBy && authors[v.createdBy] ? ` · ${authors[v.createdBy]}` : ""}
                   {v.label ? ` · ${v.label}` : ""}
                 </span>
+                {docs[v.id] && LEGAL_LOCALES.map((l) => {
+                  const f = docs[v.id]?.[l];
+                  if (!f) return null;
+                  return (
+                    <span key={l} className="block text-[11.5px] tabular-nums text-muted" data-version-doc={l}
+                      data-version-doc-sha={f.sha256 ?? ""}>
+                      {t("cms.legalPanel.versionDoc", {
+                        lang: l.toUpperCase(),
+                        version: f.version || "—",
+                        chars: t(`cms.legalDoc.chars.${plurals.select(f.chars)}`, { n: nf.format(f.chars) }),
+                        sha: (f.sha256 ?? "").slice(0, 12),
+                      })}
+                    </span>
+                  );
+                })}
               </span>
               <Button size="sm" variant="secondary" disabled={pending} onClick={() => setRestoring(v)}>
                 <RotateCcw size={13} aria-hidden />{t("cms.restore")}
