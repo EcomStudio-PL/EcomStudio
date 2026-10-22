@@ -3769,6 +3769,33 @@ export type Database = {
           },
         ]
       }
+      legal_document_sources: {
+        Row: {
+          body: string
+          created_at: string
+          doc_key: string
+          doc_version: string
+          locale: string
+          part: number
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          doc_key: string
+          doc_version: string
+          locale: string
+          part: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          doc_key?: string
+          doc_version?: string
+          locale?: string
+          part?: number
+        }
+        Relationships: []
+      }
       login_security_challenges: {
         Row: {
           attempts: number
@@ -8360,6 +8387,19 @@ export type Database = {
       prelaunch_forget_contact: { Args: { p_contact: string }; Returns: Json }
       prelaunch_admin_summary: { Args: { p_from: string; p_to: string }; Returns: Json }
       prelaunch_admin_contact: { Args: { p_contact: string }; Returns: Json }
+      legal_document_import: {
+        Args: {
+          p_slug: string
+          p_locale: string
+          p_version: string
+          p_effective: string | null
+          p_title: string
+          p_parts: number
+          p_chars: number
+          p_sha256: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       asset_type: "image" | "video" | "text"
