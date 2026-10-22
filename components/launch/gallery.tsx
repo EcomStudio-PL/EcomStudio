@@ -116,7 +116,11 @@ export function LaunchGallery({ galleryKey, eyebrow, title, tiles, labels, cta }
                   before={tile.before} after={tile.after}
                   labels={{
                     before: labels.before, after: labels.after,
-                    slider: t("prelaunchUi.gallery.slider", { name: tile.caption || title }),
+                    // An uncaptioned tile is named by the gallery AND its place in
+                    // it, so two sliders are never announced the same way.
+                    slider: tile.caption
+                      ? t("prelaunchUi.gallery.slider", { name: tile.caption })
+                      : t("prelaunchUi.gallery.sliderNumbered", { name: title, n: tile.index, total: tiles.length }),
                     emptyBefore: "", emptyAfter: "", hint: "",
                   }} />
               </div>

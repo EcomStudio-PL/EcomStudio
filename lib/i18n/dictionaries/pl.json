@@ -10877,7 +10877,8 @@
       "hint": "Uzupełnij ją w „Edytuj stronę”.",
       "next": "Następne",
       "prev": "Poprzednie",
-      "slider": "Porównaj przed i po: {name}"
+      "slider": "Porównaj przed i po: {name}",
+      "sliderNumbered": "Porównaj przed i po: {name}, zdjęcie {n} z {total}"
     },
     "needMarketing": "Zaznacz zgodę na wiadomości e-mail, aby zapisać się na listę.",
     "needTerms": "Zaznacz akceptację Regulaminu i Polityki prywatności.",

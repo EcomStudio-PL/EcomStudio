@@ -10877,7 +10877,8 @@
       "hint": "Ergänze sie über „Seite bearbeiten“.",
       "next": "Weiter",
       "prev": "Zurück",
-      "slider": "Vorher und nachher vergleichen: {name}"
+      "slider": "Vorher und nachher vergleichen: {name}",
+      "sliderNumbered": "Vorher und nachher vergleichen: {name}, Bild {n} von {total}"
     },
     "needMarketing": "Bitte stimme den E-Mails zu, um dich einzutragen.",
     "needTerms": "Bitte akzeptiere die AGB und die Datenschutzerklärung.",

@@ -10877,7 +10877,8 @@
       "hint": "Fill it in via “Edit page”.",
       "next": "Next",
       "prev": "Previous",
-      "slider": "Compare before and after: {name}"
+      "slider": "Compare before and after: {name}",
+      "sliderNumbered": "Compare before and after: {name}, photo {n} of {total}"
     },
     "needMarketing": "Please tick the e-mail consent to join the list.",
     "needTerms": "Please accept the Terms of Service and the Privacy Policy.",

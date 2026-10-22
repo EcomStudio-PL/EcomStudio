@@ -85,8 +85,13 @@ function galleryOf(key: GalleryKey, draft: DraftRow | null, live: CmsBlock | nul
   const draftItems = draft ? readGalleryContent(draft.content)?.items ?? [] : [];
   const publishedItems = live ? readGalleryContent(live.content)?.items ?? [] : [];
   const visible = draft ? draft.visible : true;
-  const diverged = Boolean(draft) !== Boolean(live)
-    || Boolean(draft && live && galleryIdentity(visible, draftItems) !== galleryIdentity(live.visible, publishedItems));
+  // With a block on only ONE side, it differs only if that side has pairs: an
+  // empty gallery is hidden from visitors whether its block exists or not, so
+  // the empty draft "Odrzuć szkic" leaves on a never-published gallery is not
+  // a difference.
+  const diverged = draft && live
+    ? galleryIdentity(visible, draftItems) !== galleryIdentity(live.visible, publishedItems)
+    : (draft ? draftItems.length > 0 : false) !== (live ? publishedItems.length > 0 : false);
   return {
     key,
     blockId: draft?.id ?? null,

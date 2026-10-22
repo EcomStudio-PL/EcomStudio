@@ -5,6 +5,9 @@ import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { remainingParts, unitKey, type CountdownUnit } from "./countdown-math";
 
+/** The launch moment this tab already refreshed for (shared by every countdown). */
+let refreshedFor: number | null = null;
+
 /**
  * DO PREMIERY ZOSTAŁO — days, hours, minutes to the approved launch moment.
  *
@@ -55,10 +58,14 @@ export function LaunchCountdown({ launchAtMs, serverNow, iso, label, dateLabel, 
   // The launch moment passing in an OPEN tab: the countdown removes itself,
   // and the server copy around it — the offer line that names the date — is
   // rendered again, so the page never announces a date already past.
+  // ONE refresh per tab: the page carries two countdowns (hero card and final
+  // call to action) and both reach zero in the same second.
   const ended = minutesLeft <= 0 && launchAtMs > serverNow;
   useEffect(() => {
-    if (ended) router.refresh();
-  }, [ended, router]);
+    if (!ended || refreshedFor === launchAtMs) return;
+    refreshedFor = launchAtMs;
+    router.refresh();
+  }, [ended, launchAtMs, router]);
 
   if (minutesLeft <= 0) return null;
   const parts = remainingParts(minutesLeft * 60_000);
