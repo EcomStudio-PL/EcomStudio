@@ -32,6 +32,20 @@ import { launchTrack } from "./launch-analytics";
  * Styled with the theme's own tokens, so it reads correctly inside the always-
  * dark landing page and on the confirmation page in either theme.
  */
+/**
+ * Opens a share target through an anchor that is never attached to the page:
+ * the browser treats it as the visitor's own click (no popup blocker), and the
+ * document-level listeners — GA's outbound-click capture among them — never
+ * see the URL with the personal code in it (review S9).
+ */
+function openDetached(href: string, target: "_blank" | "_self") {
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = target;
+  a.rel = "noopener noreferrer";
+  a.click();
+}
+
 export function ReferralShare({ url, title, body, copyLabel, rewardNote }: {
   url: string;
   /** "Zaproś innego sprzedawcę." */
@@ -116,8 +130,7 @@ export function ReferralShare({ url, title, body, copyLabel, rewardNote }: {
             aria-label={t("prelaunchUi.shareOn", { network: name })}
             onClick={() => {
               launchTrack("prelaunch_referral_shared", { method });
-              if (method === "messenger") window.location.href = href;
-              else window.open(href, "_blank", "noopener,noreferrer");
+              openDetached(href, method === "messenger" ? "_self" : "_blank");
             }}
             className={cn(button, "w-10 px-0")}>
             <Icon size={16} />
