@@ -278,7 +278,9 @@ async function main() {
       ["lib/server/billing.ts", "836b6f2b9df42c9d5e594622d1dad5f07d776607a4e601338228f3eb5b20e55d"],
       ["lib/server/pricing-offer.ts", "d9f9a176fee0e4942d1ea65ded19942400e064db5babd7ac60c8dfdcbb64eedf"],
       ["lib/server/stripe-migrate.ts", "96eb6003a8409745870ee1ef72df2b7aee3acfcbb154504b1cf6c2286e59e4d7"],
-      ["components/checkout/checkout-view.tsx", "9e8b67cd334f00f87a9fa037d434baec82c37eab3a28b137d5fc05cf37543e88"],
+      // + Legal documents V1: the legal line under "Zapłać" links Regulamin and
+      //   Polityka prywatności (presentation only; was 9e8b67cd… before).
+      ["components/checkout/checkout-view.tsx", "f33bf81712d621b3b057a6d3ab5150933cc09151825d25d7b67d9c76319f3a1a"],
       ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],
     ];
     for (const [file, digest] of REPINNED) check(`${file} is the reviewed version`, sha(file) === digest, `sha256 ${sha(file)}`);
