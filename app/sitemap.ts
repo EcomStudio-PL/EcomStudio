@@ -22,6 +22,9 @@ const PUBLIC_ROUTES = [
   { path: "/plany", priority: 0.8, changeFrequency: "weekly" as const },
   { path: "/polityka-prywatnosci", priority: 0.3, changeFrequency: "yearly" as const },
   { path: "/regulamin", priority: 0.3, changeFrequency: "yearly" as const },
+  { path: "/polityka-cookies", priority: 0.3, changeFrequency: "yearly" as const },
+  // Załącznik nr 2 to the Regulamin (lib/legal/docs.ts), public like it.
+  { path: "/umowa-powierzenia-danych", priority: 0.3, changeFrequency: "yearly" as const },
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -83,7 +86,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }]
     : [];
 
-  // The fixed list wins on collisions (home and the two legal pages).
+  // The fixed list wins on collisions (home and the four legal documents).
   const seen = new Set(fixed.map((e) => e.url));
   return [...fixed, ...managed.filter((e) => !seen.has(e.url)), ...blogIndex, ...articles];
 }

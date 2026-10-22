@@ -13,6 +13,12 @@ import { ChevronDown } from "lucide-react";
  * The ids come from the sanitised markup itself (see anchorHeadings in
  * blocks.tsx), so a clause added in the editor appears here without anybody
  * maintaining a second list.
+ *
+ * This is the LEGACY table of contents (sections with authored markup). A
+ * document stored as text (lib/legal/content.ts) gets its own, built from
+ * the text's headings: components/legal/legal-toc.tsx. `order-first` below
+ * only works because the caller lays the two out as a flex column on a
+ * phone — in a plain block it does nothing and the list lands under the text.
  */
 export function TableOfContents({ items, label }: {
   items: { id: string; text: string }[];
@@ -24,7 +30,7 @@ export function TableOfContents({ items, label }: {
   return (
     <>
       {/* PHONE: a disclosure above the document. */}
-      <nav aria-label={label} className="order-first mb-6 lg:hidden">
+      <nav aria-label={label} className="order-first lg:hidden">
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
           className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left text-[13.5px] font-semibold">
           {label}
