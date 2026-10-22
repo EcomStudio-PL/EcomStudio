@@ -8,6 +8,7 @@ Strona główna grovbase.com (CMS `premiera`, `kind = launch`, `is_homepage`) je
 | Deployment produkcyjny | `dpl_AUkVJitsCD8v2MJyF5YqUs3ZvWJ4` (ecomstudio-prod) → grovbase.com, www.grovbase.com |
 | Migracje na PROD | `20261022115700` 0144 part1, `20261022115821` 0144 part2, `20261022115934` 0144 part3, `20261022120705` 0145 |
 | Punkt powrotu | commit `efec08f`, deployment `dpl_5Lu9Eotm41Gq6PbgChHi7KcgU8iA` + wersja 2 strony `premiera` w Historii |
+| Notion | jedna próba dodania wpisu do „GrovBase — Update Log” odrzucona: workspace wyczerpał limit darmowych bloków (`entitlement_required`). Nie ponawiano. Ten plik jest dokumentacją wdrożenia. |
 
 ## Oś czasu (UTC)
 
@@ -189,7 +190,33 @@ Zgody są edytowalne w CMS. Każda zmiana treści tworzy nową wersję, a zapis 
 
 ### Weryfikacja produkcji (grovbase.com, tylko odczyt)
 
-<!-- PROD-VERIFY -->
+Wykonało 5 niezależnych agentów i krytyk kompletności, 12:08–12:35 UTC, wyłącznie GET i SELECT. Wynik: **60 sprawdzeń: 56 PASS, 0 FAIL, 4 NOT TESTED.**
+
+| Obszar | Wynik |
+|---|---|
+| Treść 0145 na żywo (po oknie cache CMS ≤ 5 min: 12:08:52 jeszcze stara, od 12:09:28 nowa i stabilna) | PASS |
+| `<title>` „GrovBase — Zdjęcia AI dla sprzedawców \| Premiera wkrótce”, opis, OG (obraz 1200×630 serwowany, etag = plik z repo), Twitter, canonical, `lang="pl"` | PASS |
+| Hero (badge, jedno H1, podtytuł, 3 chipy, linia oferty w wariancie „bez wartości”, obraz `fetchpriority=high`) | PASS |
+| Formularze hero i końcowy: e-mail wymagany, imię opcjonalne (tylko hero), honeypot, 2 niezaznaczone wymagane zgody z linkami, wersje zgód zgodne z resolverem (`terms_privacy@45653b33e741`, `marketing_email@b7436e75da7d`) | PASS |
+| Brak surowych znaczników, `undefined`, `NaN` i `null` w widocznym tekście | PASS |
+| Ukryte zgodnie z projektem: odliczanie, korzyści, 3 puste galerie, koszty, „Kto za tym stoi”; brak starych obietnic („Darmowe kredyty”, „Zniżka…”, „wideo”…) | PASS |
+| CTA końcowe, CTA przyklejone, stopka, przełącznik języka; podstawy dostępności z HTML; brak UI admina dla anonimowego odwiedzającego | PASS |
+| EN/DE: wartości w opublikowanym bloku, brak nietkniętych starych domyślnych, `hero.image` jako obiekt, szkic = opublikowane | PASS |
+| EN/DE na żywo | NOT TESTED — język ustawia tylko akcja serwera (POST) przez cookie `ecs_locale`; narzędzie GET nie wysyła cookie |
+| `/potwierdz-zapis`: stan „potwierdź”, przycisk, brak auto-potwierdzenia, `noindex` (meta + nagłówek `X-Robots-Tag`), opis, zoom; token tylko we fragmencie; poza sitemap | PASS |
+| API: GET na signup/resend/confirm/channel/`/api/waitlist` → 405, bez danych | PASS |
+| Baza PROD: uprawnienia tabel i funkcji dla anon/authenticated, RLS na 5 tabelach, `prelaunch` prywatne i nic niezatwierdzone, stara ścieżka zapisu bez zgody, 0 wierszy testowych, polityka `app_settings` | PASS |
+| 0144 (3 części razem) i 0145 bajtowo identyczne z plikami w repo (md5 połączonych instrukcji) | PASS |
+| Warunki wysyłki maila DOI (klucz serwera w env produkcji, weryfikator w bazie, SMTP, szablony) | PASS |
+| Doradca bezpieczeństwa Supabase: brak błędów; dla nowych obiektów tylko zamierzone INFO (`prelaunch_referral_aliases` bez polityk) i stare WARN `app_setting_is_private` bez `search_path` (od 0107, czysty literał) | PASS |
+| Regresja innych stron: `/plany`, `/regulamin`, `/polityka-prywatnosci`, `/blog`, `/login`, rejestracja nadal zablokowana (`allow_signup = false`), `/admin` i `/admin/login`, `/wypisz-sie`, `/podglad`, `/r/…` | PASS |
+| Błędy runtime Vercel od 12:03 UTC | PASS (0) |
+| Komunikat o zamkniętej rejestracji w oknie logowania; dokładne liczniki 5xx | NOT TESTED — wymaga POST / API obserwowalności niedostępnego dla zespołu (pośrednio: 0 błędów, żaden GET nie zwrócił 5xx) |
+
+**Ustalenie z weryfikacji (najważniejsze):** strona **`polityka-prywatnosci` na PROD jest szkicem** (`published_at = null`). Pod `/polityka-prywatnosci` jest zastępczy tekst „Pracujemy nad ostateczną treścią…”, a obie zgody „Akceptuję Regulamin i Politykę prywatności” do niej linkują. Zapis zgody uczciwie przechowuje wtedy `polityka_prywatnosci: null`.
+- Tak było już przed wdrożeniem: stary landing miał tę samą zgodę i ten sam link.
+- To nie jest błąd kodu, tylko treść prawna, której nie wolno mi publikować bez zatwierdzenia.
+- **Przed promowaniem zapisów** trzeba opublikować politykę prywatności i zrobić jeden prawdziwy test DOI własną skrzynką (pkt 8).
 
 ## 8. Czy potwierdzono prawdziwy przepływ double opt-in i poleceń
 
@@ -215,6 +242,10 @@ Zgody są edytowalne w CMS. Każda zmiana treści tworzy nową wersję, a zapis 
 
 ## 11. Otwarte problemy
 
+**Do zrobienia przed promowaniem zapisów (treść, nie kod):**
+- **Polityka prywatności nieopublikowana** (szkic w CMS): zgody linkują do strony zastępczej. Wpływ jest wysoki (RODO art. 13), ale stan istniał przed wdrożeniem.
+- **Jeden prawdziwy test DOI** własną skrzynką na grovbase.com.
+
 **Decyzje właściciela i prawnika (blokują obietnice, nie stronę):**
 1. **Wartości:** DATA, X, Y, wartość standardowa i polityka bonusu 150 za ankietę (dziś sumuje się z X).
 2. **Mechanizm nagród:** kto dostaje X i kiedy wypłacać Y.
@@ -239,3 +270,13 @@ Zgody są edytowalne w CMS. Każda zmiana treści tworzy nową wersję, a zapis 
 - **Licznik kredytów w szufladzie:** po wypłacie X > 25 pokazuje „Pozostało: 50 / 25 · 100%”. To logika `lib/credit-usage.ts` sprzed tej zmiany i dotyczy też doładowań. Ujawni się po zatwierdzeniu X > 25.
 - **Język kontaktu:** jeśli adres trafił najpierw przez stary formularz newslettera, `newsletter_contacts.locale` zostaje z tego pierwszego zapisu (język zapisu i maila jest poprawny).
 - **Testy:** test wyścigu F12 bywa wrażliwy przy bardzo dużym obciążeniu; `test:tilebytes` pada już na `efec08f`.
+- **Wersje EN/DE** nie mają własnych adresów URL (język jest tylko w cookie). Wyszukiwarki i podglądy linków widzą wyłącznie PL, a strona nie ma `hreflang`.
+- **Okno cache CMS ≤ 5 min po zmianie treści:** ktoś, kto ma otwartą starą stronę, przy wysyłce dostaje „zgody się zmieniły — odśwież”. Tak to zaprojektowano.
+- **Obraz w hero** ma pusty `alt`. Jest dekoracyjny, w kontenerze `aria-hidden`.
+- **Region powiadomień (sonner)** ma etykietę „Notifications alt+T” po angielsku.
+- **Stara ścieżka zapisu** (`waitlist_subscribers`) nadal zapisuje imię, nazwisko, telefon i metadane z formularza newslettera. Tabela jest tylko dla admina; to kwestia minimalizacji danych.
+- **Poza zakresem, zauważone na PROD:**
+  - Literówka „Regulanin” w opublikowanym Regulaminie.
+  - Sześć etykiet `sellerHome` zmienionych w edytorze wizualnym wygląda na przesunięte (np. „Zwierzęta” → „Moda”). Do potwierdzenia przez właściciela.
+  - Goły `/wypisz-sie` zwraca domyślne 404 Next.js.
+  - GA ładuje się globalnie bez banera zgody (stan sprzed wdrożenia).
