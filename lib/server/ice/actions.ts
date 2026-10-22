@@ -17,6 +17,7 @@ import { altProblem, normaliseText, textProblem } from "@/lib/ice/validate";
 import { hasInvisible } from "@/lib/ice/stega";
 import { isIceMime, kindOf, maxBytesFor, safeName, sniff } from "@/lib/ice/sniff";
 import { disallowedTokens } from "@/lib/launch/fields";
+import { isLegalSlug } from "@/lib/legal/docs";
 import {
   ICE_LOCALES,
   type IceAsset, type IceCmsPage, type IceCrop, type IceLocale, type IcePageInfo, type IceResult,
@@ -26,8 +27,8 @@ import { CONTENT_TAG } from "./overrides";
 import { blockFields, isUuid, valueAt } from "./cms";
 import { ICE_HINT_COOKIE, editCookieName, editCookieValue, newNonce } from "./session";
 import {
-  ASSET_COLUMNS, IceRefusal, authorNames, checkAsset, cleanPath, cmsPageAt, dbCode, isLocale, requireIceAdmin, run, toAsset,
-  type AssetFacts, type AssetRow, type Client, type CmsPageRow,
+  ASSET_COLUMNS, IceRefusal, authorNames, checkAsset, cleanPath, cmsPageAt, dbCode, iceRefusesPath, isLocale, requireIceAdmin, run,
+  toAsset, type AssetFacts, type AssetRow, type Client, type CmsPageRow,
 } from "./core";
 
 // The launch page's PRZED/PO galleries (draft → publish) have their own
@@ -54,16 +55,17 @@ const SHIPPED: Record<IceLocale, Dict> = { pl: pl as Dict, en: en as Dict, de: d
 /* ── pages ───────────────────────────────────────────────────────────────── */
 
 /** Every path the editor can open: the registry's pages and the published
- *  CMS pages. For the launcher, so the button shows only where it works. */
+ *  CMS pages — never a legal document (core.ts iceRefusesPath). For the
+ *  launcher, so the button shows only where it works. */
 export async function iceSupportedPaths(supabase: Client): Promise<string[]> {
   const out = new Set<string>(ICE_PAGES.map((p) => p.path));
   out.add("/plan");
   const { data } = await supabase.from("cms_pages").select("slug, kind, status, is_homepage").eq("status", "published");
   for (const p of data ?? []) {
-    if (p.kind === "app") continue;
+    if (p.kind === "app" || isLegalSlug(p.slug)) continue;
     out.add(p.is_homepage ? "/" : `/${p.slug}`);
   }
-  return [...out].sort();
+  return [...out].filter((path) => !iceRefusesPath(path)).sort();
 }
 
 async function cmsPageInfo(supabase: Client, row: CmsPageRow, path: string): Promise<IceCmsPage> {
@@ -104,6 +106,9 @@ export function setEdit(on: boolean, rawPath: string): Promise<IceResult<{ nonce
       store.set(name, "", { path, maxAge: 0, httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
       return { nonce: null };
     }
+    // Before anything else is asked: a legal document gets no edit session,
+    // whatever the registry or the CMS would say about its path.
+    if (iceRefusesPath(path)) throw new IceRefusal("unsupported");
     if (!(await iceDbReady(supabase))) throw new IceRefusal("unavailable");
     if (!icePageFor(path) && !(await cmsPageAt(supabase, path))) throw new IceRefusal("unsupported");
     const nonce = newNonce();
@@ -624,6 +629,9 @@ export function cmsSave(input: {
     const { data: page } = await supabase.from("cms_pages")
       .select("id, slug, title, kind, status, is_homepage, published_snapshot").eq("id", block.page_id).maybeSingle();
     if (!page || page.status !== "published" || page.kind === "app") throw new IceRefusal("not_published");
+    // A block id is a way in that names no path: a legal document's sections
+    // are refused here too, not only at the edit session (core.ts).
+    if (isLegalSlug(page.slug)) throw new IceRefusal("unsupported");
     const live = toBlocks(page.published_snapshot).find((b) => b.id === input.blockId);
     if (!live) throw new IceRefusal("not_in_snapshot");
     const field = blockFields(live, null).find((f) => f.path.join("|") === input.path.join("|"));

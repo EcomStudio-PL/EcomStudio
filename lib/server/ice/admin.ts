@@ -3,6 +3,7 @@ import type { Client } from "@/lib/services/workspace";
 import { lookup } from "@/lib/i18n/t";
 import pl from "@/lib/i18n/dictionaries/pl.json";
 import { ICE_PAGES, ICE_UNSUPPORTED, icePageFor } from "@/lib/ice/registry";
+import { isLegalSlug } from "@/lib/legal/docs";
 import type { IceElementKind, IcePage, IcePageType } from "@/lib/ice/types";
 import { UPLOAD_TOOLS } from "@/lib/seller-home-config";
 import { toBlocks } from "@/lib/server/public-site";
@@ -113,7 +114,9 @@ async function publishedCmsPages(supabase: Client): Promise<CmsRow[]> {
     console.warn("ice admin: cms pages unavailable", error.message);
     return [];
   }
-  return (data ?? []) as CmsRow[];
+  // The same set iceSupportedPaths offers: a legal document is edited in
+  // Strony WWW, never listed here as something the visual editor opens.
+  return ((data ?? []) as CmsRow[]).filter((p) => !isLegalSlug(p.slug));
 }
 
 type Owned = { id: string; texts: string[]; slots: string[] };

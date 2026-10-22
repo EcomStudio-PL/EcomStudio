@@ -12,6 +12,7 @@ import { TEMPLATE_KEYS, templateBlocks } from "@/lib/cms-templates";
 import { normalizePath, normalizeTarget, sourceIsProtected } from "@/lib/server/redirects";
 import { LAUNCH_FIELDS } from "@/lib/server/launch-page";
 import { GALLERY_BLOCK_TYPE } from "@/lib/launch/gallery";
+import { legalSectionForSave } from "@/lib/server/legal/admin";
 import type { CmsBlockContent, CmsCode, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
 import { isChromeMode } from "@/lib/cms";
 
@@ -641,6 +642,22 @@ export async function saveBlockAction(input: {
           detail: `${token.key} (${token.locale}): ${token.tokens.map((x) => `{${x}}`).join(", ")}`,
         };
       }
+    }
+    /*
+      A LEGAL DOCUMENT IS STORED EXACTLY AS GIVEN — and checked first.
+
+      The text keeps every character (only line endings and a leading BOM are
+      normalised, lib/legal/content.ts); a status, a version or a date that is
+      not one is refused with the language it is in. Each language's sha256
+      and length are computed HERE, so the digests the admin compares with the
+      source file describe the stored text, never a value a browser sent.
+    */
+    if (input.type === "legal") {
+      const legal = legalSectionForSave(content);
+      if (!legal.ok) {
+        return { ok: false, error: legal.error, ...(legal.locale ? { detail: legal.locale.toUpperCase() } : {}) };
+      }
+      content = legal.content;
     }
 
     const row = {

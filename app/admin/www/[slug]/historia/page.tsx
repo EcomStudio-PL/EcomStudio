@@ -5,6 +5,7 @@ import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { VersionHistory } from "@/components/admin/cms/version-history";
 import { getPage, listVersions } from "@/lib/services/cms";
+import { legalVersionFacts } from "@/lib/server/legal/admin";
 
 /**
  * HISTORIA — every version this page has ever had.
@@ -25,6 +26,8 @@ export default async function HistoryRoute({ params }: { params: Promise<{ slug:
     listVersions(supabase, page.id),
   ]);
   const t = makeT(dict);
+  // Which legal document each version carried (none on an ordinary page).
+  const docs = await legalVersionFacts(supabase, page, versions.map((v) => v.id));
 
   const authorIds = [...new Set(versions.map((v) => v.createdBy).filter((id): id is string => !!id))];
   const authors: Record<string, string> = {};
@@ -37,7 +40,7 @@ export default async function HistoryRoute({ params }: { params: Promise<{ slug:
     <div>
       <PageHeader overline={page.title} title={t("cms.history")} sub={t("cms.historySub")} />
       <VersionHistory pageId={page.id} slug={page.slug} title={page.title}
-        versions={versions} authors={authors} locale={locale} />
+        versions={versions} authors={authors} locale={locale} docs={docs} />
     </div>
   );
 }

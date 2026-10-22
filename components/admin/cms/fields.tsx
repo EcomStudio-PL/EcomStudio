@@ -13,6 +13,7 @@ import type { LinkTarget } from "@/lib/cms-links";
 import type { CmsBlockContent, CmsItem, LocaleText } from "@/lib/cms";
 import { isCompletePair, readGalleryContent } from "@/lib/launch/gallery";
 import { IceEditButton } from "./visual-editor";
+import { LegalDocField } from "./legal-doc-field";
 
 /**
  * THE CONTENT INPUTS.
@@ -78,6 +79,11 @@ export function Field({ def, locale, content, onChange, onChangeWith, visible }:
 
   if (def.kind === "items") {
     return <ItemsField label={label} hint={hint} locale={locale} content={content} onChange={onChange} />;
+  }
+
+  // A whole legal document (the language on the tab), with its own editor.
+  if (def.kind === "legaldoc") {
+    return <LegalDocField label={label} hint={hint} locale={locale} content={content} onChange={onChange} />;
   }
 
   // A group heading of a long form (the launch page). It stores nothing; it

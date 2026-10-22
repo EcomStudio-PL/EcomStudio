@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { ICE_IMAGE_MIMES, ICE_MAX_SAMPLE_BYTES, ICE_VIDEO_MIMES, maxBytesFor } from "@/lib/ice/sniff";
+import { isLegalSlug } from "@/lib/legal/docs";
 import type { IceAsset, IceLocale, IceResult } from "@/lib/ice/types";
 
 /**
@@ -79,8 +80,24 @@ export type CmsPageRow = {
   published_snapshot: unknown; published_at?: string | null;
 };
 
-/** The published CMS page a path shows ("/" = the homepage), or null. */
+/**
+ * A LEGAL DOCUMENT IS NEVER OPENED IN THE VISUAL EDITOR.
+ *
+ * The Regulamin, the policies and the DPA are edited whole in Strony WWW
+ * (one `legal` section, its text stored exactly as given — lib/legal/content.ts),
+ * never a line at a time on the live page, where the editor's own rules
+ * (2000 characters, folded whitespace) would rewrite them. Every way into the
+ * editor asks this: the launcher's list, the edit session, the page map, a
+ * save and the markers.
+ */
+export function iceRefusesPath(path: string): boolean {
+  return path !== "/" && isLegalSlug(path.replace(/^\/+/, "").replace(/\/+$/, ""));
+}
+
+/** The published CMS page a path shows ("/" = the homepage), or null —
+ *  null for a legal document too, wherever it is served. */
 export async function cmsPageAt(supabase: Client, path: string): Promise<CmsPageRow | null> {
+  if (iceRefusesPath(path)) return null;
   const query = supabase.from("cms_pages").select("id, slug, title, kind, status, is_homepage, published_snapshot");
   let row: CmsPageRow | null = null;
   if (path === "/") {
@@ -95,6 +112,8 @@ export async function cmsPageAt(supabase: Client, path: string): Promise<CmsPage
     if (row?.is_homepage) return null;
   }
   if (!row || row.status !== "published" || row.kind === "app") return null;
+  // "/" serving a legal document (it can be made the homepage) is refused too.
+  if (isLegalSlug(row.slug)) return null;
   return row;
 }
 

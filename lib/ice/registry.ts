@@ -499,7 +499,10 @@ export const ICE_UNSUPPORTED: readonly { path: string; reason: string }[] = [
   { path: "/checkout, /credits", reason: "money" },
   { path: "/library, /settings, /support", reason: "userData" },
   { path: "/blog, /grovnews", reason: "ownEditor" },
-  { path: "/regulamin, /polityka-prywatnosci", reason: "legal" },
+  // Enforced, not only listed: lib/server/ice (cmsPageAt, setEdit, cmsSave,
+  // iceSupportedPaths, markPublishedPage) refuses every LEGAL_DOCS slug — a
+  // legal document is edited whole in Strony WWW (lib/legal/docs.ts).
+  { path: "/regulamin, /polityka-prywatnosci, /polityka-cookies, /umowa-powierzenia-danych", reason: "legal" },
   { path: "/login, /register, /auth/…", reason: "security" },
   { path: "/admin/…", reason: "admin" },
   { path: "/wideo, /inspirations", reason: "later" },

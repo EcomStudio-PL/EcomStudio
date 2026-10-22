@@ -16,7 +16,7 @@ import { SECTION_DEFAULT_SHOWN, sectionKey, type LaunchSection } from "./launch/
 export type FieldKind =
   | "text"      // one localized line
   | "textarea"  // localized paragraph
-  | "richtext"  // localized markup, sanitized on render (legal documents)
+  | "richtext"  // localized markup, sanitized on render (a long rich_text section)
   | "url"       // a plain link, not localized
   | "media"     // an image/video URL, offered with the media picker
   | "align"     // left / right
@@ -27,7 +27,9 @@ export type FieldKind =
   // ── added with the long launch page (Landing V2) ──
   | "toggle"    // a section switch: "1" shown / "0" hidden, one value for every language
   | "heading"   // a group heading in a long form — draws a title, stores NOTHING
-  | "gallery";  // a PRZED/PO gallery: a read-only summary and the way into the inline editor
+  | "gallery"   // a PRZED/PO gallery: a read-only summary and the way into the inline editor
+  // ── added with the legal documents (Legal documents V1) ──
+  | "legaldoc"; // a whole legal document per language — status, version, date, text (lib/legal/content.ts)
 
 export type FieldDef = {
   /** A key of CmsBlockContent, or — for `launch` — a key inside content.fields. */
@@ -95,7 +97,13 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
   text_image: [HEADING, BODY, ...CTA, ...IMAGE, f("alignment", "align", "imageSide")],
   cta: [HEADING, ...CTA],
   faq: [HEADING, f("items", "items", "questions")],
-  legal: [HEADING, f("description", "textarea", "legalBody")],
+  // ONE SECTION, ONE DOCUMENT. The Regulamin, the policies and the DPA are
+  // stored in `content.doc` — per language its status, text, version and date
+  // (lib/legal/content.ts), written exactly as given and checked on save
+  // (app/actions/cms.ts). The old heading + paragraph pair is gone: the
+  // document carries its own title, and a second heading above it would be a
+  // title the PDF does not have.
+  legal: [f("doc", "legaldoc", "legalDoc", "legalDocHint")],
   contact: [HEADING, BODY, f("items", "items", "contactItems")],
   logo_cloud: [f("items", "items", "logos")],
 
@@ -364,6 +372,8 @@ const EXTRA_QUICK: Record<string, string[]> = {
   newsletter: ["formHandler"],
   // The wand: what it shows is the whole configuration.
   tools_grid: ["filter"],
+  // A legal section is its document and nothing else.
+  legal: ["doc"],
   // A video's poster is the only thing visible before a click.
   video: ["posterUrl"],
 };
@@ -399,8 +409,11 @@ const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler", "dat
 /** Kinds that draw something but are not a stored value: a group heading, a
  *  gallery's summary. Reading one gives "", writing one changes nothing — an
  *  unknown kind falling through to the text branch would otherwise write a
- *  `{pl: …}` object over whatever key it names (for a gallery, its pairs). */
-const NOT_STORED = new Set<FieldKind>(["heading", "gallery"]);
+ *  `{pl: …}` object over whatever key it names (for a gallery, its pairs).
+ *  A legal document is here too: it IS stored, but not as one string per
+ *  language — its own editor (components/admin/cms/legal-doc-field.tsx) reads
+ *  and writes `content.doc` whole, and the generic path must never touch it. */
+const NOT_STORED = new Set<FieldKind>(["heading", "gallery", "legaldoc"]);
 
 /** A section switch as it reads: "1" on, "0" off, nothing stored → the
  *  section's own default. */

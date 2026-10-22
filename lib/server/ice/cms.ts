@@ -2,6 +2,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { CMS_FIELDS, CMS_MULTILINE, LAUNCH_TEXT_FIELDS } from "@/lib/ice/registry";
 import { stegaMark, stegaStrip } from "@/lib/ice/stega";
+import { isLegalSlug } from "@/lib/legal/docs";
 import type { IceCmsField, IceLocale } from "@/lib/ice/types";
 import { iceEditSessions } from "./session";
 
@@ -157,6 +158,10 @@ export async function markPublishedPage<P extends { slug: string; blocks: CmsBlo
   page: P,
   ask: { locale: () => Promise<IceLocale>; homeSlug: () => Promise<string | null> },
 ): Promise<P> {
+  // A legal document is never marked: no edit session can be opened on one
+  // (core.ts iceRefusesPath), and a stale cookie must not put invisible
+  // characters into a text that has to stay byte for byte as published.
+  if (isLegalSlug(page.slug)) return page;
   try {
     const sessions = await iceEditSessions();
     if (sessions.length === 0) return page;
