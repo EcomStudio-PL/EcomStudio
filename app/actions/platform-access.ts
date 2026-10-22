@@ -7,7 +7,7 @@ import {
   getLaunchStore, launchDefaultsFrom, launchFieldsFromBlocks, resolveLaunchContent,
 } from "@/lib/server/launch-page";
 import { getPrelaunchPublicConfig, launchPageSlug } from "@/lib/server/prelaunch/public";
-import { launchOptionsFromBlocks, launchPerks, safeLaunchCopy } from "@/lib/server/prelaunch/landing";
+import { launchCampaign, launchOptionsFromBlocks, launchPerks, safeLaunchCopy } from "@/lib/server/prelaunch/landing";
 import { accessCopyFor, blockedReasonFor, type AccessCopy, type BlockedReason } from "@/lib/platform-access";
 
 /**
@@ -61,7 +61,13 @@ async function waitlistPerks(supabase: Awaited<ReturnType<typeof createClient>>)
       store, locale, defaults, "published",
       launchFieldsFromBlocks(page?.blocks, locale),
     ), defaults);
-    return launchPerks(c, config, locale, Date.now()).map(({ t, b }) => ({ t, b }));
+    const now = Date.now();
+    // Credits arrive with an ACCOUNT on the same address — said with the
+    // number, here as on the page (D6).
+    const note = launchCampaign(c, config, locale, now).rewardNote;
+    return launchPerks(c, config, locale, now).map(({ key, t, b }) => ({
+      t, b: key === "credits" && note ? [b, note].filter(Boolean).join(" ") : b,
+    }));
   } catch {
     return [];
   }

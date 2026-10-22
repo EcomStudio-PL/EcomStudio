@@ -108,6 +108,10 @@ export function LaunchPage({
     { t: c["feature.3t"], b: c["feature.3b"] },
   ].filter((f) => f.t || f.b);
   const perks = shown.benefits ? campaign.perks : [];
+  // The reward condition goes wherever a credits number is on the page: on the
+  // credits card when the island shows one, otherwise under the offer line.
+  const noteInIsland = perks.some((p) => p.key === "credits") ? campaign.rewardNote : null;
+  const noteUnderOffer = !noteInIsland && campaign.offerShowsCredits ? campaign.rewardNote : null;
   const countdown = shown.countdown ? campaign.countdown : null;
   // Only profiles the admin actually configured. A social button that goes
   // nowhere is worse than a shorter row.
@@ -265,6 +269,12 @@ export function LaunchPage({
                     {campaign.offer}
                   </p>
                 )}
+                {campaign.offer && noteUnderOffer && (
+                  <p data-launch-reward-note
+                    className="mt-1 max-w-md text-[11.5px] leading-relaxed text-muted lg:max-w-[44ch] lg:text-[clamp(11.5px,min(0.85vw,1.2vh),13.5px)]">
+                    {noteUnderOffer}
+                  </p>
+                )}
 
                 {/* Three across at EVERY width — a grid, never a wrapping flex
                     row, so a longer chip name wraps inside its own cell instead
@@ -364,9 +374,9 @@ export function LaunchPage({
                     </ul>
                     {/* Credits arrive with an ACCOUNT on the same address, not
                         with the e-mail — said wherever a number is promised. */}
-                    {campaign.rewardNote && (
+                    {noteInIsland && (
                       <p data-launch-reward-note className="mt-3 text-center text-[11.5px] leading-relaxed text-muted lg:text-[clamp(11.5px,min(0.85vw,1.2vh),13.5px)]">
-                        {campaign.rewardNote}
+                        {noteInIsland}
                       </p>
                     )}
                   </div>

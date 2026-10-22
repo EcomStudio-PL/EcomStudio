@@ -9,7 +9,7 @@ import { isLaunchEmail } from "@/lib/launch/email";
 import { ChannelQuestion } from "./channel-question";
 import { ReferralShare } from "./referral-share";
 import { launchTrack } from "./launch-analytics";
-import { browserStore, refCodeFromSearch, storedRef } from "./referral";
+import { browserStore, pageRef, refCodeFromSearch, storedRef } from "./referral";
 
 /**
  * ZAPIS NA PREMIERĘ — the pre-launch signup, in one component, used twice.
@@ -77,7 +77,13 @@ export type WaitlistSuccessCopy = {
 
 type Field = "email" | "terms" | "marketing";
 type ServerProblem = "" | "invalid" | "consent_changed" | "rate_limited" | "generic";
-type Done = { email: string; answer: string | null; referralUrl: string | null };
+/** What this browser submitted — "Wyślij ponownie" sends it again, so the new
+ *  link carries THIS submission's referrer, name and language, never another
+ *  submission's (review S3/S8). */
+type Done = {
+  email: string; answer: string | null; referralUrl: string | null;
+  firstName: string; locale: string; refCode: string | null;
+};
 
 type SignupResponse = {
   ok?: boolean;
@@ -158,7 +164,7 @@ export function WaitlistForm({
 
     inFlight.current = true;
     setBusy(true);
-    const refCode = storedRef(browserStore()) ?? refCodeFromSearch(window.location.search);
+    const refCode = storedRef(browserStore()) ?? pageRef() ?? refCodeFromSearch(window.location.search);
     const name = firstNameLabel ? firstName.trim().slice(0, 40) : "";
     try {
       const res = await fetch("/api/public/prelaunch/signup", {
@@ -183,6 +189,7 @@ export function WaitlistForm({
           email: email.trim(),
           answer: typeof json.answer === "string" && json.answer ? json.answer : null,
           referralUrl: typeof json.referral?.url === "string" && json.referral.url ? json.referral.url : null,
+          firstName: name, locale, refCode: refCode ?? null,
         });
         return;
       }
@@ -367,7 +374,12 @@ function SuccessState({ done, success }: { done: Done; success: WaitlistSuccessC
       const res = await fetch("/api/public/prelaunch/resend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: done.email }),
+        body: JSON.stringify({
+          email: done.email,
+          ...(done.firstName ? { first_name: done.firstName } : {}),
+          locale: done.locale,
+          ...(done.refCode ? { ref_code: done.refCode } : {}),
+        }),
       });
       setNote(res.ok ? "sent" : res.status === 429 ? "rate_limited" : "generic");
       if (res.ok || res.status === 429) setCooldown(RESEND_COOLDOWN_S);

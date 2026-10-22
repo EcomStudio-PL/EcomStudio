@@ -6,7 +6,8 @@ import { rpcResend } from "@/lib/server/prelaunch/rpc";
 import { failure, guardRequest, reply, trapped } from "@/lib/server/prelaunch/http";
 import { prelaunchIpHash } from "@/lib/server/prelaunch/ip";
 import { sendOptinMail } from "@/lib/server/prelaunch/mail";
-import { DOI_TOKEN_RE, cleanEmail, newDoiToken, sha256Hex } from "@/lib/server/prelaunch/handles";
+import { DOI_TOKEN_RE, cleanEmail, cleanFirstName, cleanLocale, newDoiToken, sha256Hex } from "@/lib/server/prelaunch/handles";
+import { REFERRAL_CODE_RE } from "@/lib/launch/fields";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,11 @@ export const dynamic = "force-dynamic";
  * "WYŚLIJ PONOWNIE" — POST {email} from the success card, or {token} from an
  * expired link (the old token proves which signup it was; its hash is all the
  * database needs to find it).
+ *
+ * The success card also sends what ITS submission said — the ref code this
+ * browser holds, the first name it typed, its page language — so the new link
+ * carries those and never another submission's (review S3/S8). A link from an
+ * old token repeats that token's own values; these fields are ignored then.
  *
  * ALWAYS `200 {ok:true}` for a well-formed request — sent, throttled, already
  * confirmed, suppressed, unknown: the button cannot be used to ask whether an
@@ -39,9 +45,16 @@ export async function POST(request: Request) {
   if (hasEmail === hasToken) return failure(400, "bad_request");
   let email: string | null = null;
   let oldHash: string | null = null;
+  let refCode: string | null = null;
+  let firstName: string | null = null;
+  let locale: string | null = null;
   if (hasEmail) {
     email = cleanEmail(body.email);
     if (!email) return failure(400, "invalid_email");
+    const wanted = typeof body.ref_code === "string" ? body.ref_code.trim().toUpperCase() : "";
+    refCode = REFERRAL_CODE_RE.test(wanted) ? wanted : null;
+    firstName = cleanFirstName(body.first_name);
+    locale = body.locale === undefined ? null : cleanLocale(body.locale);
   } else {
     if (typeof body.token !== "string" || !DOI_TOKEN_RE.test(body.token)) return failure(400, "bad_request");
     oldHash = sha256Hex(body.token);
@@ -58,7 +71,9 @@ export async function POST(request: Request) {
   if (!token) return failure(500, "generic");
   const supabase = await createClient();
   const doi = newDoiToken();
-  const result = await rpcResend(supabase, token, { email, oldHash, ipHash: prelaunchIpHash(ip), optinHash: doi.hash });
+  const result = await rpcResend(supabase, token, {
+    email, oldHash, ipHash: prelaunchIpHash(ip), optinHash: doi.hash, refCode, firstName, locale,
+  });
   if (!result) return failure(500, "generic");
 
   if (result.send && result.tokenId && result.email) {

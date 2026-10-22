@@ -45,6 +45,9 @@ export function ConfirmSignup({ share }: { share: ConfirmShareCopy | null }) {
   const { t, locale } = useI18n();
   const token = useRef<string | null>(null);
   const [status, setStatus] = useState<Status>("loading");
+  const heading = useRef<HTMLHeadingElement>(null);
+  /** The visitor pressed the button: from then on every outcome takes focus. */
+  const answered = useRef(false);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [referral, setReferral] = useState<{ url: string; credits: number | null } | null>(null);
   const [resent, setResent] = useState<"" | "busy" | "sent" | "error">("");
@@ -71,6 +74,7 @@ export function ConfirmSignup({ share }: { share: ConfirmShareCopy | null }) {
   async function confirm(e: React.MouseEvent<HTMLButtonElement>) {
     // A scripted click is not a person agreeing to anything.
     if (!e.isTrusted || !token.current || status === "busy") return;
+    answered.current = true;
     setStatus("busy");
     try {
       const res = await fetch("/api/public/prelaunch/confirm", {
@@ -125,6 +129,13 @@ export function ConfirmSignup({ share }: { share: ConfirmShareCopy | null }) {
               : { title: t("common.error"), body: t("launch.err") };
 
   const good = status === "confirmed" || status === "already";
+  // THE OUTCOME IS ANNOUNCED. The button the visitor pressed disappears with
+  // the answer, so focus would fall to <body> in silence: the heading takes it
+  // (and the result region is polite-live), as the signup form's result does.
+  const settled = !prompt;
+  useEffect(() => {
+    if (settled && answered.current) heading.current?.focus();
+  }, [settled, status]);
   const Icon = prompt ? MailCheck : good ? CheckCircle2 : status === "expired" ? Clock
     : status === "invalid" ? HelpCircle : AlertTriangle;
   const tone = prompt || good ? "bg-accent-soft/60 text-accent"
@@ -140,10 +151,13 @@ export function ConfirmSignup({ share }: { share: ConfirmShareCopy | null }) {
       <span aria-hidden className={cn("inline-flex h-11 w-11 items-center justify-center rounded-xl", tone)}>
         <Icon size={22} />
       </span>
-      <h1 className="mt-5 font-display text-[clamp(1.35rem,4.5vw,1.8rem)] font-semibold leading-tight tracking-tight">
-        {copy.title}
-      </h1>
-      <p className="mt-3 text-[14.5px] leading-relaxed text-muted">{copy.body}</p>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        <h1 ref={heading} tabIndex={-1} data-confirm-title
+          className="mt-5 font-display text-[clamp(1.35rem,4.5vw,1.8rem)] font-semibold leading-tight tracking-tight outline-none">
+          {copy.title}
+        </h1>
+        <p className="mt-3 text-[14.5px] leading-relaxed text-muted">{copy.body}</p>
+      </div>
 
       {prompt && (
         <button type="button" onClick={confirm} disabled={status !== "ready"} data-confirm-button

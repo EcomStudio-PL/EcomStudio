@@ -60,7 +60,7 @@ import { LaunchPage } from "@/components/launch/launch-page";
 import { LaunchCountdown } from "@/components/launch/countdown";
 import { WaitlistForm } from "@/components/launch/waitlist-form";
 import { pluralCategory, remainingParts, unitKey } from "@/components/launch/countdown-math";
-import { REF_STORAGE_KEY, REF_TTL_MS, refCodeFromSearch, rememberRef, storedRef } from "@/components/launch/referral";
+import { REF_STORAGE_KEY, REF_TTL_MS, refCodeFromSearch, rememberRef, storedRef, withoutRefParam, notePageRef, pageRef } from "@/components/launch/referral";
 import { launchAnalyticsMuted } from "@/components/launch/launch-analytics";
 import { SCOPES } from "@/lib/i18n/scopes";
 
@@ -212,6 +212,15 @@ async function main() {
     check("everything approved → cards 1 and 2, never 3", all.perks.map((p) => p.key).join(",") === "credits,priceLock");
     check("the reward note shows when a credits value is shown", Boolean(all.rewardNote));
     check("…and not otherwise", launchCampaign(copy, cfg({ priceLock: true }), "pl", NOW, premiereOn).rewardNote === null);
+    {
+      // The offer line names the credits too: the condition must be on the page
+      // even when the benefits island (and its credits card) is switched off.
+      const offerOnly = launchCampaign(copy, cfg({ signupCredits: 150 }), "pl", NOW, premiereOff);
+      check("an offer line with {credits} → offerShowsCredits and the reward note (benefits island or not)",
+        offerOnly.offerShowsCredits && Boolean(offerOnly.rewardNote) && /150/.test(offerOnly.offer ?? ""));
+      const dateOnly = launchCampaign(copy, cfg({ launchAt: FUTURE }), "pl", NOW, premiereOff);
+      check("…an offer line without credits → no note from the offer", !dateOnly.offerShowsCredits && dateOnly.rewardNote === null);
+    }
     check("referral line: {referral} approved → the credits sentence + the note",
       /20/.test(all.referral.body) && Boolean(all.referral.rewardNote));
     const noRef = launchCampaign(copy, cfg({}), "pl", NOW, premiereOff);
@@ -436,6 +445,12 @@ async function main() {
   section("G. THE REFERRAL PARAMETER");
   {
     check("a valid code is read (case-insensitive)", refCodeFromSearch("?ref_code=abcd2345") === "ABCD2345");
+    check("the code leaves the address bar, every other parameter and the hash stay (review S9)",
+      withoutRefParam("https://grovbase.com/?utm_source=fb&ref_code=ABCD2345&utm_medium=cpc#zapis") === "/?utm_source=fb&utm_medium=cpc#zapis"
+      && withoutRefParam("https://grovbase.com/?ref_code=ABCD2345") === "/"
+      && withoutRefParam("https://grovbase.com/?utm_source=fb") === null);
+    notePageRef("ABCD2345"); notePageRef("nonsense");
+    check("…and is still sent with the form from memory when storage is unavailable", pageRef() === "ABCD2345");
     check("ambiguous letters, wrong length and junk are ignored",
       ["?ref_code=ABCD1234", "?ref_code=ABCDO234", "?ref_code=ABC", "?ref_code=ABCD23456", "?ref=ABCD2345", "?ref_code=%3Cscript%3E"].every((s) => refCodeFromSearch(s) === null));
     const mem = new Map<string, string>();

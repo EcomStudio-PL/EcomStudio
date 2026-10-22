@@ -13,7 +13,7 @@ import {
   copyFor, ensureBonusNotification, ensureOffer, getBonusConfig, getCampaignStart, toView,
 } from "@/lib/server/welcome-bonus";
 import { renderPlaceholders } from "@/lib/welcome-bonus";
-import { ensurePrelaunchRewards } from "@/lib/server/prelaunch/rewards";
+import { ensurePrelaunchRewards, walletAfterGrant } from "@/lib/server/prelaunch/rewards";
 import { WelcomeBonusMount } from "@/components/onboarding/welcome-bonus-mount";
 import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
 import { I18nScope } from "@/lib/i18n/provider";
@@ -191,9 +191,10 @@ export default async function AppLayout({ children, searchParams }: {
   // referrals) earned, paid the first time the verified account with that
   // address opens the app. A no-op while rewards are off; never throws. The
   // wallet above was read before the grant: when this call paid something,
-  // the balance is read again so the first page already shows it.
+  // the balance is read again — uncached, the per-request memo would replay
+  // the pre-grant row — so the first page already shows it.
   const prelaunchGranted = await ensurePrelaunchRewards(supabase, workspace.id);
-  const shownWallet = prelaunchGranted > 0 ? await getWallet(supabase, workspace.id) : wallet;
+  const shownWallet = prelaunchGranted > 0 ? await walletAfterGrant(supabase, workspace.id) : wallet;
   const bonusCopy = copyFor(bonusConfig, false);
   if (bonusView?.status === "ELIGIBLE") {
     const values = { credits: bonusView.amount, hours: Math.ceil(bonusView.secondsLeft / 3600) };

@@ -228,8 +228,9 @@ function sectionA() {
   check("A9b the strict address (review S6): the shapes the mailer would re-parse into another inbox are refused, ordinary ones kept",
     ["a(1)victim@gmail.com", "x,victim@gmail.com", "x;victim@gmail.com", "x:victim@gmail.com;", "\"q\"@example.com",
       "x <victim@example.com>", "x@[1.2.3.4]", "x@-bad.example.com", "x@example"].every((e) => cleanEmail(e) === null)
-    && ["jan.kowalski@example.com", "o'brien+shop@mail.example.co.uk", "x_y-z@sub.example.travel"]
-      .every((e) => cleanEmail(e) === e));
+    && ["jan.kowalski@example.com", "o'brien+shop@mail.example.co.uk", "x_y-z@sub.example.travel", "jan@example.xn--p1ai"]
+      .every((e) => cleanEmail(e) === e)
+    && cleanEmail(" Jan@Żółw.PL ") === "jan@xn--w-uga1v8h.pl");
 }
 
 /* ── B ─────────────────────────────────────────────────────────────────── */

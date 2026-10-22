@@ -70,9 +70,12 @@ export type ResendAnswer = { status: "sent" | "noop"; send: boolean; tokenId: st
 
 export async function rpcResend(supabase: Client, token: string, input: {
   email: string | null; oldHash: string | null; ipHash: string | null; optinHash: string;
+  /** Resend by address only: what the requesting browser's own submission said. */
+  refCode?: string | null; firstName?: string | null; locale?: string | null;
 }): Promise<ResendAnswer | null> {
   const { data, error } = await call(supabase, "prelaunch_resend", {
     p_token: token, p_email: input.email, p_old_hash: input.oldHash, p_ip_hash: input.ipHash, p_optin_hash: input.optinHash,
+    p_ref_code: input.refCode ?? null, p_first_name: input.firstName ?? null, p_locale: input.locale ?? null,
   });
   if (error) return null;
   const r = obj(data);

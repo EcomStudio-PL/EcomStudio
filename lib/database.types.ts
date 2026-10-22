@@ -8340,6 +8340,9 @@ export type Database = {
           p_old_hash?: string | null
           p_ip_hash?: string | null
           p_optin_hash?: string | null
+          p_ref_code?: string | null
+          p_first_name?: string | null
+          p_locale?: string | null
         }
         Returns: Json
       }

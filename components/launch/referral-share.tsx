@@ -108,14 +108,20 @@ export function ReferralShare({ url, title, body, copyLabel, rewardNote }: {
           {copied ? <Check size={15} aria-hidden /> : <Copy size={15} aria-hidden />}
           {copied ? t("prelaunchUi.copied") : copyLabel}
         </button>
+        {/* Buttons, not links: GA's outbound-click capture reads a clicked
+            link's URL, and this one carries the personal code (S9). */}
         {links.map(({ method, name, Icon, href }) => (
-          <a key={method} href={href} target="_blank" rel="noopener noreferrer"
+          <button key={method} type="button"
             data-referral-share={method}
             aria-label={t("prelaunchUi.shareOn", { network: name })}
-            onClick={() => launchTrack("prelaunch_referral_shared", { method })}
+            onClick={() => {
+              launchTrack("prelaunch_referral_shared", { method });
+              if (method === "messenger") window.location.href = href;
+              else window.open(href, "_blank", "noopener,noreferrer");
+            }}
             className={cn(button, "w-10 px-0")}>
             <Icon size={16} />
-          </a>
+          </button>
         ))}
         {native && (
           <button type="button" onClick={share} data-referral-share="native" className={button}>

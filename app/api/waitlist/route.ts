@@ -4,7 +4,7 @@ import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { notify } from "@/lib/server/notify";
 import { collectEventContext } from "@/lib/server/event-context";
 import { waitlistSignupNotice } from "@/lib/server/prelaunch/attribution";
-import { EMAIL_RE } from "@/lib/launch/email";
+import { EMAIL_RE, asciiEmail } from "@/lib/launch/email";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     // Still read defensively: a row must never claim an agreement that was not
     // in the request that created it.
     consent = typeof body.consent === "boolean" ? body.consent : undefined;
-    email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 254) : "";
+    email = typeof body.email === "string" ? asciiEmail(body.email).slice(0, 254) : "";
     locale = typeof body.locale === "string" && /^[a-z]{2}$/.test(body.locale) ? body.locale : "pl";
     source = typeof body.source === "string" ? body.source.slice(0, 40) : "landing";
     firstName = optionalText(body.first_name, 80);

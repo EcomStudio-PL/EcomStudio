@@ -119,7 +119,7 @@ const FROZEN: readonly [string, string][] = [
   ["app/(app)/dashboard/page.tsx", "200419c0840054885847a2cfca17918bd524644630b63c3be324e798b12c7eb2"],
   ["app/(app)/dashboard/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
   ["app/(app)/home/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
-  ["app/(app)/layout.tsx", "c0e5d3e91f45d46fec1e4fb7672b7b0e18a776588389f66baa1e756f6f4fb325"],
+  ["app/(app)/layout.tsx", "70658a26afb3ff8b9b672e00de244bfeb369c140cc49701d36f95575856a5b9c"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   ["components/feedback/feedback-cta.tsx", "d2406baf43ee849094e94fe01cc9a1620c1e01a354cd62a6049832cc2c1690a2"],

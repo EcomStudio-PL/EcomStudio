@@ -1,5 +1,5 @@
 import "server-only";
-import { isLaunchEmail } from "@/lib/launch/email";
+import { asciiEmail, isLaunchEmail } from "@/lib/launch/email";
 import { createHash, randomBytes } from "crypto";
 
 /**
@@ -62,7 +62,7 @@ export { EMAIL_RE } from "@/lib/launch/email";
 /** Trimmed, lower-cased, ≤ 254 and shaped like an address — or null. */
 export function cleanEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  return isLaunchEmail(value) ? value.trim().toLowerCase() : null;
+  return isLaunchEmail(value) ? asciiEmail(value) : null;
 }
 
 /**

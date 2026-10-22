@@ -43,9 +43,11 @@
 --     Helpers (config parser, code generator, canonical address, throttles)
 --     are plain invoker functions granted to NOBODY: only the definers above
 --     reach them.
---  7. waitlist_subscribe (0106) redefined with the identical signature and
---     body except ONE argument: it can no longer grant marketing consent
---     (p_consent := false). The double opt-in is the only door to consent.
+--  7. waitlist_subscribe (0106) redefined with the identical signature: it can
+--     no longer grant marketing consent (p_consent := false), puts no name on
+--     the contact, applies the strict address rule, and answers every address
+--     alike ({status:'created', confirmation:false}) — no membership oracle and
+--     no "you are on the list" mail without a double opt-in (review S5).
 --
 -- WHAT IT DELIBERATELY DOES NOT DO
 --
@@ -65,15 +67,22 @@
 --  · newsletter_subscribe (the CMS newsletter form, single opt-in by design)
 --    is unchanged — out of scope, reported as an open issue.
 --
--- DEPLOY ORDER: this file first, on its own. It is dormant: nothing calls the
--- new functions until the V2 code ships, rewards_active is false and nothing
--- is approved. The waitlist_subscribe change only stops consent granting,
--- which is safe under the old code. Re-runnable: a second apply changes
--- nothing.
+-- DEPLOY ORDER: this file first, then the V2 code, keeping the gap short.
+-- The new functions are dormant until the V2 code ships (rewards_active is
+-- false, nothing is approved). waitlist_subscribe is NOT dormant: under the
+-- old code (efec08f) the old launch form still records every address, but
+-- without consent, without a name on the contact and without its welcome mail,
+-- and a known address reads 'created'. Signups made in that window ticked the
+-- old consent box (waitlist_subscribers.metadata->>'consent'); list them after
+-- the V2 deploy so they can be invited to the double opt-in. Re-runnable: a
+-- second apply changes nothing.
 --
--- ROLLBACK: revert the code; this file then sits unused. Retiring its objects
--- is a separate, owner-approved migration (the statements that remove objects
--- are not allowed in this file by the PROD connector gate).
+-- ROLLBACK: revert the code; the new tables and functions then sit unused,
+-- but waitlist_subscribe keeps this file's body, so the old landing runs as in
+-- the window above (no consent, no welcome mail). Restoring the 0106 body, or
+-- retiring this file's objects, is a separate, owner-approved migration (the
+-- statements that remove objects are not allowed in this file by the PROD
+-- connector gate).
 
 set local lock_timeout = '3s';
 
@@ -130,7 +139,7 @@ create table if not exists public.prelaunch_signups (
     constraint prelaunch_signups_email_shape check (
       email = lower(btrim(email))
       and length(email) <= 254
-      and (email ~ '^[a-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&''*+/=?^_`{|}~-]+)*@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
+      and (email ~ '^[a-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&''*+/=?^_`{|}~-]+)*@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$'
            or email ~ '^erased:[0-9a-f-]{36}$')),
   contact_id uuid unique references public.newsletter_contacts(id),
   status text not null default 'pending'
@@ -140,15 +149,17 @@ create table if not exists public.prelaunch_signups (
   -- 8 characters, no I, O, 0 or 1: readable aloud and from a screenshot.
   referral_code text not null unique
     constraint prelaunch_signups_code_shape check (referral_code ~ '^[A-HJ-NP-Z2-9]{8}$'),
-  -- From the submit that created the row; at the DOI click it becomes the
-  -- referrer of the submission whose link was clicked (the token's), when that
-  -- submission came through one — never changed after the confirmation.
+  -- From the submit that CREATED the row, never changed. It counts only when
+  -- the confirmed link came through that same referrer (review S3): a
+  -- stranger who typed the address first with their code gains nothing from
+  -- the person's own link, and a stranger's later submit cannot attach one.
   referred_by uuid references public.prelaunch_signups(id),
   -- Set at THIS row's confirmation when its referral counted for referred_by.
   referral_counted_at timestamptz,
   referral_rejected text
     constraint prelaunch_signups_rejected_check check (referral_rejected in (
-      'self', 'same_network', 'cap', 'duplicate', 'existing_contact', 'existing_account', 'cluster')),
+      'self', 'same_network', 'cap', 'duplicate', 'existing_contact', 'existing_account', 'cluster',
+      'other_link')),
   -- lower, +tag stripped everywhere, dots stripped for Gmail (one mailbox).
   canonical_email text not null,
   -- Letters, space, apostrophe, hyphen; ≤ 40. Copied to the contact at DOI.
@@ -192,7 +203,7 @@ create index if not exists prelaunch_signups_answer_idx on public.prelaunch_sign
 -- S7), yet the link it shows must still earn for that address. So it gets a
 -- fresh alias: random like any code, never equal to the public one, resolving
 -- to the same signup. At most 50 per signup; beyond that the route's unstored
--- decoy. Nothing personal in it.
+-- one of the 50 at random. Nothing personal in it.
 create table if not exists public.prelaunch_referral_aliases (
   code text primary key
     constraint prelaunch_referral_aliases_code_shape check (code ~ '^[A-HJ-NP-Z2-9]{8}$'),
@@ -222,8 +233,9 @@ create table if not exists public.prelaunch_optin_tokens (
   form_variant text constraint prelaunch_optin_tokens_form_check check (form_variant in ('hero', 'final')),
   locale text constraint prelaunch_optin_tokens_locale_check check (locale in ('pl', 'en', 'de')),
   -- What THIS submission said: its referrer (the ref link it came through)
-  -- and its first name. The DOI click applies the clicked link's values, so a
-  -- stranger who typed the address first decides neither (review S3/S8).
+  -- and its first name. The DOI click applies the clicked link's name and
+  -- language, and counts the referral only when this referrer is the row's
+  -- (review S3/S8).
   referrer uuid references public.prelaunch_signups(id),
   first_name text constraint prelaunch_optin_tokens_first_name_len check (length(first_name) <= 40)
 );
@@ -500,7 +512,8 @@ end $$;
 -- LDH labels — no comments, quotes, commas, semicolons, colons or brackets.
 -- The looser "anything around an @" let 'a(1)x@gmail.com' or 'y,x@gmail.com'
 -- through, which the mailer re-parses into x@gmail.com: unlimited DOI mails
--- to one mailbox past every per-address limit. The address arrives lowercased.
+-- to one mailbox past every per-address limit. The address arrives lowercased,
+-- an internationalised domain already in its ASCII (punycode) form.
 -- lib/server/prelaunch/handles.ts cleanEmail holds the same pattern.
 create or replace function public.prelaunch_email_ok(p_email text)
 returns boolean
@@ -510,7 +523,7 @@ set search_path = public, extensions
 as $$
   select coalesce(
     length(p_email) <= 254
-    and p_email ~ '^[a-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&''*+/=?^_`{|}~-]+)*@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$',
+    and p_email ~ '^[a-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[a-z0-9!#$%&''*+/=?^_`{|}~-]+)*@([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,63}|xn--[a-z0-9-]{1,59})$',
     false);
 $$;
 
@@ -909,11 +922,16 @@ begin
   -- otherwise a fresh alias of it (review S1), so the link shown after a
   -- repeat submit earns for the address while staying useless as an oracle —
   -- it never equals the public code and differs on every call.
+  -- At 50 aliases one of them at random: random codes either way, so nobody
+  -- can tell, and nobody can spend an address's links down to a dead decoy.
   if v_created then
     v_alias := v_row.referral_code;
   elsif (select count(*) from public.prelaunch_referral_aliases where signup_id = v_row.id) < 50 then
     v_alias := public.prelaunch_new_code();
     insert into public.prelaunch_referral_aliases (code, signup_id) values (v_alias, v_row.id);
+  else
+    select code into v_alias from public.prelaunch_referral_aliases
+     where signup_id = v_row.id order by random() limit 1;
   end if;
 
   return jsonb_build_object(
@@ -937,7 +955,10 @@ create or replace function public.prelaunch_resend(
   p_email text default null,
   p_old_hash text default null,
   p_ip_hash text default null,
-  p_optin_hash text default null
+  p_optin_hash text default null,
+  p_ref_code text default null,
+  p_first_name text default null,
+  p_locale text default null
 ) returns jsonb
 language plpgsql
 security definer
@@ -950,6 +971,9 @@ declare
   v_src public.prelaunch_optin_tokens;
   v_origin text;
   v_token uuid;
+  v_referrer uuid;
+  v_first text;
+  v_locale text;
 begin
   if not public.server_call_ok(p_token) then
     raise exception 'forbidden';
@@ -985,21 +1009,29 @@ begin
     return jsonb_build_object('status', 'noop', 'send', false, 'token_id', null, 'email', null, 'locale', v_row.locale);
   end if;
 
-  -- A resend repeats a submission: the old link's (or the latest one's)
-  -- referrer, name and language carry over to the new link.
+  -- A resend from an old link repeats THAT submission: its referrer, name and
+  -- language carry over. A resend by address carries what the REQUESTING
+  -- browser says (its stored ref code, the name it typed, its page language),
+  -- never another submission's — whoever typed the address last must not
+  -- decide the person's link (review S3/S8, second pass).
   if p_old_hash is not null then
     select * into v_src from public.prelaunch_optin_tokens where token_hash = p_old_hash;
+    v_referrer := v_src.referrer;
+    v_first := v_src.first_name;
+    v_locale := coalesce(v_src.locale, v_row.locale);
   else
-    select * into v_src from public.prelaunch_optin_tokens
-     where signup_id = v_row.id order by created_at desc, id limit 1;
+    v_referrer := public.prelaunch_resolve_code(upper(btrim(coalesce(p_ref_code, ''))));
+    if v_referrer = v_row.id then v_referrer := null; end if;
+    v_first := public.prelaunch_first_name(p_first_name);
+    v_locale := case when lower(btrim(coalesce(p_locale, ''))) in ('pl', 'en', 'de')
+                     then lower(btrim(p_locale)) else v_row.locale end;
   end if;
 
   v_token := public.prelaunch_issue_token(
     v_row.id, p_optin_hash, v_origin, v_ip, coalesce(v_src.consent_set, v_row.consent_set_id),
-    v_row.form_variant, coalesce(v_src.locale, v_row.locale), (v_cfg->>'optin_ttl_hours')::integer,
-    v_src.referrer, v_src.first_name);
+    v_row.form_variant, v_locale, (v_cfg->>'optin_ttl_hours')::integer, v_referrer, v_first);
   return jsonb_build_object('status', 'sent', 'send', true, 'token_id', v_token,
-                            'email', v_row.email, 'locale', coalesce(v_src.locale, v_row.locale));
+                            'email', v_row.email, 'locale', v_locale);
 end $$;
 
 -- CONFIRM (the DOI click). Locks, in this order (S6):
@@ -1091,16 +1123,11 @@ begin
   end if;
 
   v_cfg := public.prelaunch_config();
-  -- THE CLICKED SUBMISSION'S name, language and referrer (review S3/S8): the
-  -- person proved the mailbox for that link, not for whatever another submit
-  -- of the address said. A link without a referrer leaves the row's.
+  -- THE CLICKED SUBMISSION'S name and language (review S8): the person proved
+  -- the mailbox for that link, not for whatever another submit of the address
+  -- said. The referral (below) counts only through its own link (S3).
   v_first := v_tok.first_name;
   v_locale := coalesce(v_tok.locale, v_row.locale);
-  if v_tok.referrer is not null and v_tok.referrer <> v_row.id
-     and v_row.referral_counted_at is null and v_row.referral_rejected is null then
-    v_row.referred_by := v_tok.referrer;
-    update public.prelaunch_signups set referred_by = v_tok.referrer where id = v_row.id;
-  end if;
 
   if v_tok.consent_set is not null then
     select consent_version into v_version from public.prelaunch_consents
@@ -1119,6 +1146,11 @@ begin
     p_consent_source := 'waitlist_doi',
     p_consent_version := case when v_consent then v_version end,
     p_group_keys := array['prelaunch']);
+  -- newsletter_upsert_contact keeps an existing contact's language; the bare
+  -- contact THIS signup created at its first submit takes the confirmed one.
+  if v_contact is not null and not v_row.prior_contact then
+    update public.newsletter_contacts set locale = v_locale where id = v_contact and locale is distinct from v_locale;
+  end if;
 
   if v_consent and v_contact is not null then
     -- D3: the old launch form recorded a terms tick as marketing consent
@@ -1160,11 +1192,14 @@ begin
     raise notice 'prelaunch: legacy waitlist mirror failed: %', sqlerrm;
   end;
 
-  -- THE REFERRAL, decided once, at this confirmation, under the referrer's lock.
+  -- THE REFERRAL, decided once, at this confirmation, under the referrer's lock
+  -- — and only through its own link: the clicked submission came through the
+  -- referrer that created the row ('other_link' otherwise, review S3).
   if v_row.referred_by is not null and v_row.referral_counted_at is null and v_row.referral_rejected is null then
     select * into v_ref from public.prelaunch_signups where id = v_row.referred_by for update;
     if v_ref.id is not null then
       v_reject := case
+        when v_tok.referrer is distinct from v_row.referred_by then 'other_link'
         when v_ref.id = v_row.id or v_ref.canonical_email = v_row.canonical_email then 'self'
         when v_row.prior_account then 'existing_account'
         when v_row.prior_contact then 'existing_contact'
@@ -1754,8 +1789,8 @@ grant execute on function public.prelaunch_public_config() to anon, authenticate
 revoke all on function public.prelaunch_signup(text, text, text, text, text, jsonb, jsonb, jsonb, text, text, text, text)
   from public, anon, authenticated;
 grant execute on function public.prelaunch_signup(text, text, text, text, text, jsonb, jsonb, jsonb, text, text, text, text) to anon, authenticated;
-revoke all on function public.prelaunch_resend(text, text, text, text, text) from public, anon, authenticated;
-grant execute on function public.prelaunch_resend(text, text, text, text, text) to anon, authenticated;
+revoke all on function public.prelaunch_resend(text, text, text, text, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.prelaunch_resend(text, text, text, text, text, text, text, text) to anon, authenticated;
 revoke all on function public.prelaunch_confirm(text, text) from public, anon, authenticated;
 grant execute on function public.prelaunch_confirm(text, text) to anon, authenticated;
 revoke all on function public.prelaunch_set_channel(text, text, text) from public, anon, authenticated;

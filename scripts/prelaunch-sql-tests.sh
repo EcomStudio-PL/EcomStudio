@@ -664,7 +664,7 @@ select public.t_true('G1  prelaunch_public_config: anon and authenticated may ex
 select public.t_true('G2  the six server-token-gated functions: anon + authenticated (EXECUTE precedes the gate), not PUBLIC', 'postgres', $q$
   select bool_and(pg_temp.can('anon', f) and pg_temp.can('authenticated', f) and not pg_temp.can('public', f))
     from unnest(array['public.prelaunch_signup(text,text,text,text,text,jsonb,jsonb,jsonb,text,text,text,text)',
-                      'public.prelaunch_resend(text,text,text,text,text)', 'public.prelaunch_confirm(text,text)',
+                      'public.prelaunch_resend(text,text,text,text,text,text,text,text)', 'public.prelaunch_confirm(text,text)',
                       'public.prelaunch_set_channel(text,text,text)', 'public.prelaunch_mail_payload(text)',
                       'public.prelaunch_mark_sent(text,uuid,boolean)']) f $q$);
 select public.t_true('G3  prelaunch_reward_ensure: authenticated only', 'postgres', $q$
@@ -1338,10 +1338,12 @@ select public.t_true('F13 the alias handed to a CONFIRMED address''s repeat subm
 do $$ begin
   for i in 1..52 loop perform public.t_submit('f14_' || i, 'many.repeats@example.com', 'net-F14'); end loop;
 end $$;
-select public.t_eq('F14 at most 50 aliases per signup; past that the answer carries no code (the route sends an unstored decoy)', 'postgres', $q$
+select public.t_set('f14x', public.t_submit('f14_x', 'many.repeats@example.com', 'net-F14')->>'referral_code');
+select public.t_eq('F14 at most 50 aliases per signup; past that one of THEM at random — still a link that earns, never a dead decoy', 'postgres', $q$
   select (select count(*) from public.prelaunch_referral_aliases a join public.prelaunch_signups s on s.id = a.signup_id
            where s.email = 'many.repeats@example.com')::text || ','
-      || coalesce(public.t_submit('f14_x', 'many.repeats@example.com', 'net-F14')->>'referral_code', 'null') $q$, '50,null');
+      || coalesce((select (a.signup_id = s.id)::text from public.prelaunch_referral_aliases a, public.prelaunch_signups s
+           where s.email = 'many.repeats@example.com' and a.code = public.t_var('f14x')), 'none') $q$, '50,true');
 -- THE CLICKED LINK DECIDES THE REFERRER AND THE NAME (review S3/S8)
 select public.t_confirmed('mal', 'mallory@example.com', 'net-mal');
 select public.t_confirmed('fri', 'honest.friend@example.com', 'net-fri');
@@ -1351,31 +1353,68 @@ select public.t_age('victim.v@example.com', 61);
 select public.t_submit('v_f', 'victim.v@example.com', 'net-vic', p_ref := (public.t_s('honest.friend@example.com'))->>'referral_code',
   p_first := 'Wiktoria');
 select public.t_set('f15', (public.t_confirm('v_f'))::text);
-select public.t_true('F15 a stranger typed the address first with their code and a name; the owner confirms THEIR link → the friend is the referrer and the owner''s name is used', 'postgres', $q$
-  select (public.t_s('victim.v@example.com'))->>'referred_by' = (public.t_s('honest.friend@example.com'))->>'id'
-     and (public.t_var('f15')::jsonb->>'referral_counted')::boolean
+select public.t_true('F15 a stranger typed the address first with their code and a name; the owner confirms THEIR link → the stranger gains nothing (other_link) and the owner''s name is used', 'postgres', $q$
+  select (public.t_s('victim.v@example.com'))->>'referred_by' = (public.t_s('mallory@example.com'))->>'id'
+     and not (public.t_var('f15')::jsonb->>'referral_counted')::boolean
+     and (public.t_s('victim.v@example.com'))->>'referral_rejected' = 'other_link'
+     and (public.t_s('victim.v@example.com'))->>'referral_counted_at' is null
      and public.t_var('f15')::jsonb->>'first_name' = 'Wiktoria'
      and (public.t_s('victim.v@example.com'))->>'first_name' = 'Wiktoria'
      and (public.t_c('victim.v@example.com'))->>'first_name' = 'Wiktoria' $q$);
+-- a stranger's LATER submit with their code cannot attach a referral to an organic signup
+select public.t_submit('v3_own', 'victim.three@example.com', 'net-vic3', p_first := 'Ola', p_locale := 'pl');
+select public.t_age('victim.three@example.com', 61);
+select public.t_submit('v3_m', 'victim.three@example.com', 'net-mal4', p_ref := (public.t_s('mallory@example.com'))->>'referral_code',
+  p_first := 'Obcy', p_locale := 'de');
+select public.t_set('f15b', (public.t_confirm('v3_m'))::text);
+select public.t_true('F15b the person clicks the stranger-triggered (newest) mail of an ORGANIC signup → no referral at all; only the clicked link''s name/language', 'postgres', $q$
+  select (public.t_s('victim.three@example.com'))->>'referred_by' is null
+     and not (public.t_var('f15b')::jsonb->>'referral_counted')::boolean
+     and (public.t_s('victim.three@example.com'))->>'referral_counted_at' is null $q$);
+-- the person's own link through the row's referrer still counts
+select public.t_submit('v4_f', 'victim.four@example.com', 'net-vic4', p_ref := (public.t_s('honest.friend@example.com'))->>'referral_code');
+select public.t_age('victim.four@example.com', 61);
+select public.t_submit('v4_f2', 'victim.four@example.com', 'net-vic4b', p_ref := (public.t_s('honest.friend@example.com'))->>'referral_code');
+select public.t_set('f15c', (public.t_confirm('v4_f2'))::text);
+select public.t_true('F15c a repeat submit through the SAME referrer link, clicked → counts for that referrer', 'postgres', $q$
+  select (public.t_var('f15c')::jsonb->>'referral_counted')::boolean
+     and (public.t_s('victim.four@example.com'))->>'referred_by' = (public.t_s('honest.friend@example.com'))->>'id' $q$);
+-- the contact created by this signup takes the confirmed language
+select public.t_submit('v5_de', 'lang.person@example.com', 'net-l1', p_locale := 'de');
+select public.t_age('lang.person@example.com', 61);
+select public.t_submit('v5_pl', 'lang.person@example.com', 'net-l2', p_first := 'Ola', p_locale := 'pl');
+select public.t_confirm('v5_pl');
+select public.t_eq('F15d the bare contact created at the first (DE) submit takes the CONFIRMED link''s language (PL) and name', 'postgres', $q$
+  select (c->>'locale') || ',' || (c->>'first_name') from (select public.t_c('lang.person@example.com') as c) x $q$, 'pl,Ola');
 select public.t_submit('v2_m', 'victim.two@example.com', 'net-mal3', p_ref := (public.t_s('mallory@example.com'))->>'referral_code');
 select public.t_age('victim.two@example.com', 61);
 select public.t_submit('v2_n', 'victim.two@example.com', 'net-vic2');
 select public.t_age('victim.two@example.com', 61);
 select public.t_resend_link('v2_r', 'v2_m');
-select public.t_true('F16 a resend from an old link carries THAT link''s referrer; a link without one leaves the row''s', 'postgres', $q$
+select public.t_true('F16 a resend from an old link carries THAT link''s referrer; a link without one has none', 'postgres', $q$
   select (select referrer from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:v2_r'))
          = ((public.t_s('mallory@example.com'))->>'id')::uuid
      and (select referrer from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:v2_n')) is null $q$);
+select public.t_age('victim.two@example.com', 61);
+select public.prelaunch_resend(public.t_tok(), 'victim.two@example.com', null, null, public.t_sha('doi:v2_e1'));
+select public.t_age('victim.two@example.com', 61);
+select public.prelaunch_resend(public.t_tok(), 'victim.two@example.com', null, null, public.t_sha('doi:v2_e2'),
+  p_ref_code := (public.t_s('mallory@example.com'))->>'referral_code', p_first_name := 'Wera', p_locale := 'en');
+select public.t_true('F16b a resend by ADDRESS never copies another submission''s referrer or name; it carries what the requesting browser sends', 'postgres', $q$
+  select (select referrer is null and first_name is null from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:v2_e1'))
+     and (select referrer = ((public.t_s('mallory@example.com'))->>'id')::uuid and first_name = 'Wera' and locale = 'en'
+            from public.prelaunch_optin_tokens where token_hash = public.t_sha('doi:v2_e2')) $q$);
 -- THE STRICT ADDRESS AND THE MAILBOX LIMITS (review S6)
 select public.t_eq('F17 prelaunch_signup refuses addresses the mailer would re-parse into another mailbox', 'anon', $q$
   select string_agg(public.t_submit('bad' || i, e, 'net-bad')->>'status', ',' order by i)
     from unnest(array['a(1)victim@example.com', 'x,victim@example.com', 'x;victim@example.com', 'x:victim@example.com;',
                       '"q"@example.com', 'x <victim@example.com>']) with ordinality as u(e, i) $q$,
   'invalid,invalid,invalid,invalid,invalid,invalid');
-select public.t_eq('F17b … and keeps the ordinary ones (dots, plus tags, apostrophes, subdomains, long TLDs)', 'anon', $q$
+select public.t_eq('F17b … and keeps the ordinary ones (dots, plus tags, apostrophes, subdomains, long and punycode TLDs, punycode domains)', 'anon', $q$
   select string_agg(coalesce(public.t_submit('ok' || i, e, 'net-ok-' || i)->>'status', '?'), ',' order by i)
-    from unnest(array['jan.kowalski@example.com', 'o''brien+shop@mail.example.co.uk', 'x_y-z@sub.example.travel'])
-         with ordinality as u(e, i) $q$, 'pending,pending,pending');
+    from unnest(array['jan.kowalski@example.com', 'o''brien+shop@mail.example.co.uk', 'x_y-z@sub.example.travel',
+                      'jan@xn--w-uga1v8h.pl', 'jan@example.xn--p1ai'])
+         with ordinality as u(e, i) $q$, 'pending,pending,pending,pending,pending');
 insert into public.newsletter_suppressions (email, reason) values ('suppressed.box@gmail.com', 'complained');
 select public.t_true('F18 a complained mailbox is not mailed through another spelling of it (plus tag, dots)', 'anon', $q$
   select not (public.t_submit('sup1', 'suppressed.box+new@gmail.com', 'net-sup1')->>'send')::boolean

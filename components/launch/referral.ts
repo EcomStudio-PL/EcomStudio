@@ -52,6 +52,32 @@ export function storedRef(store: Store | null, now: number = Date.now()): string
   }
 }
 
+/** This page load's code, in memory: the address bar no longer carries it
+ *  once read (withoutRefParam), and a browser without storage still has to
+ *  send it with the form. */
+let pageCode: string | null = null;
+export function notePageRef(code: string | null): void {
+  if (code && REFERRAL_CODE_RE.test(code)) pageCode = code;
+}
+export function pageRef(): string | null {
+  return pageCode;
+}
+
+/**
+ * The address without its ref parameter, or null when it has none. A personal
+ * code in the address bar reaches every hit gtag.js sends on its own
+ * (user_engagement, scroll, form and outbound clicks fill page_location from
+ * document.location) and every screenshot or copied link of the page — so it
+ * is read once and taken out (review S9).
+ */
+export function withoutRefParam(href: string): string | null {
+  let url: URL;
+  try { url = new URL(href); } catch { return null; }
+  if (!url.searchParams.has(REFERRAL_PARAM)) return null;
+  url.searchParams.delete(REFERRAL_PARAM);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 /** window.localStorage, or null where touching it throws. */
 export function browserStore(): Store | null {
   try { return typeof window === "undefined" ? null : window.localStorage; } catch { return null; }

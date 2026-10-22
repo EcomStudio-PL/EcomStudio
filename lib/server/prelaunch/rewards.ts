@@ -35,6 +35,21 @@ import { rpcRewardEnsure } from "./rpc";
  * Returns the credits granted by THIS call (0 on every no-op or failure), so
  * the layout can re-read the balance it is about to show (review S4).
  */
+/**
+ * The shown wallet as the database has it NOW. getWallet is a per-request memo
+ * (React cache) and was read before the grant, so asking it again replays the
+ * old balance; this one read runs only when ensurePrelaunchRewards paid
+ * something (review S4). The wallet service itself is not touched.
+ */
+export async function walletAfterGrant(supabase: Client, workspaceId: string) {
+  const { data } = await supabase
+    .from("credit_wallets")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  return data;
+}
+
 export async function ensurePrelaunchRewards(supabase: Client, workspaceId: string): Promise<number> {
   try {
     const config = await getPrelaunchPublicConfig();

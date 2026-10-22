@@ -6,7 +6,7 @@ import { stegaStrip } from "@/lib/ice/stega";
 import {
   EARLY_ACCESS_SUPPORTED, tokenValues, type PrelaunchPublicConfig,
 } from "@/lib/launch/campaign";
-import { formatLaunchDate, pickVariant, resolveLine, type LaunchTokenValues } from "@/lib/launch/tokens";
+import { formatLaunchDate, pickVariant, resolveLine, tokensIn, type LaunchTokenValues } from "@/lib/launch/tokens";
 import {
   ALLOWED_TOKENS, LAUNCH_SECTIONS, isSectionShown, launchPlainFromContent, type LaunchPlain, type LaunchSection,
 } from "@/lib/launch/fields";
@@ -178,13 +178,18 @@ export function launchPerks(
 export const OFFER_VARIANTS = ["hero.offer", "hero.offerDate", "hero.offerCredits", "hero.offerNone"] as const;
 
 export function offerLine(copy: Copy, values: LaunchTokenValues, locale: string): string | null {
+  return offerChoice(copy, values, locale).line;
+}
+
+/** The offer line and the variant it came from (whether it names credits). */
+function offerChoice(copy: Copy, values: LaunchTokenValues, locale: string): { line: string | null; credits: boolean } {
   // pickVariant, variant by variant, so a line the guard refuses falls
   // through to the next one exactly like an unapproved one does.
   for (const key of OFFER_VARIANTS) {
     const line = guarded(pickVariant([copy[key]], values, locale));
-    if (line !== null) return line;
+    if (line !== null) return { line, credits: tokensIn(copy[key] ?? "").includes("credits") };
   }
-  return null;
+  return { line: null, credits: false };
 }
 
 export type LaunchCountdownView = {
@@ -200,8 +205,12 @@ export type LaunchCountdownView = {
 
 export type LaunchCampaignView = {
   offer: string | null;
+  /** The offer line names the signup credits — the reward note must be on the
+   *  page even when the benefits island is switched off. */
+  offerShowsCredits: boolean;
   perks: LaunchPerk[];
-  /** "Kredyty dopiszemy po założeniu konta…" — only while a credits value is shown. */
+  /** "Kredyty dopiszemy po założeniu konta…" — whenever a credits value is
+   *  shown: in the offer line or on the credits card. */
   rewardNote: string | null;
   countdown: LaunchCountdownView | null;
   /** The referral line of the after-submit card: ref.body when {referral}
@@ -225,10 +234,12 @@ export function launchCampaign(
     : null;
 
   const refBody = guarded(resolveLine(copy["ref.body"], values, locale));
+  const offer = offerChoice(copy, values, locale);
   return {
-    offer: offerLine(copy, values, locale),
+    offer: offer.line,
+    offerShowsCredits: offer.credits,
     perks,
-    rewardNote: perks.some((p) => p.key === "credits") ? note : null,
+    rewardNote: perks.some((p) => p.key === "credits") || offer.credits ? note : null,
     countdown,
     referral: {
       body: refBody ?? guarded(copy["ref.bodyNone"]) ?? "",
