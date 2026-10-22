@@ -3,6 +3,7 @@ import path from "path";
 import PDFDocument from "pdfkit";
 import { parseLegalText, splitLinks, nodeText, type LegalNode } from "@/lib/legal/document";
 import type { LegalLocale } from "@/lib/legal/docs";
+import { LEGAL_PDF_ROLE_CHARS, legalPdfCharRole, legalPdfRoleClass } from "@/lib/legal/pdf-coverage";
 
 /**
  * A PUBLISHED LEGAL DOCUMENT AS AN A4 PDF — every character of it, drawn as is.
@@ -18,7 +19,8 @@ import type { LegalLocale } from "@/lib/legal/docs";
  * "9:00-17:00" would print as "9:00-" / "17:00", and a copy of the PDF's text
  * would no longer be the document's text. So every line is measured and cut
  * at a space; nothing is hyphenated, nothing is justified, no character is
- * added or dropped (the space a line breaks at is the only thing not drawn).
+ * added or dropped (the space a line breaks at is the only thing not drawn,
+ * the invisible characters below aside).
  * A single word wider than the column — none of the four documents has one —
  * is cut between characters rather than overflowing the page.
  *
@@ -33,6 +35,20 @@ import type { LegalLocale } from "@/lib/legal/docs";
  * width is exactly the sum of its characters' widths: measuring is adding,
  * not shaping, which is what keeps a 75 000-character Regulamin under a
  * second instead of five.
+ *
+ * A CHARACTER WITH NO GLYPH IS NEVER DRAWN AS AN EMPTY BOX WHERE THE TEXT
+ * MEANS SOMETHING ELSE. Inter has no glyph for a tab, a soft hyphen or a
+ * line separator, and a Word export carries all of them. Where the text is
+ * drawn (never in the stored text) a tab, VT or FF is a breakable space — a
+ * tab TAB_SPACES spaces wide, its first one a real space so a copy of the
+ * text keeps the gap —, U+2028/U+2029 break the line inside the paragraph,
+ * and the soft hyphen and the zero-width characters are not drawn at all
+ * (lib/legal/pdf-coverage.ts lists them). Anything else the fonts lack (☐,
+ * ✔, Word's Symbol bullet) is drawn as what the font has for it, the box:
+ * no substitute glyph is made up, and the admin panel names those
+ * characters (legalPdfUncovered) before anybody downloads the file. (The box
+ * carries no text either — pdfkit maps .notdef to U+0000, which text
+ * extraction drops — so those characters are also missing from a copy.)
  *
  * THE FONT IS INTER, EMBEDDED. The 14 standard PDF fonts cannot encode "ł",
  * "ę" or "⁵", and pdfkit falls back to its built-in Helvetica unless it is
@@ -158,14 +174,34 @@ const TEXT_FEATURES = LEGAL_PDF_FEATURES_OFF as unknown as PDFKit.Mixins.OpenTyp
 /** A cut of a node's text: [start, end) offsets into it. */
 type Span = { start: number; end: number };
 
-const BREAKABLE = /[ \t]+/g;
+/** Where a line may break: a space, a tab, VT or FF (see legalPdfCharRole). */
+const BREAKABLE = new RegExp(`[ ${legalPdfRoleClass(["space", "tab"])}]+`, "gu");
+/** Where a line must break: the line and paragraph separators. */
+const LINE_BREAK = new RegExp(`[${legalPdfRoleClass(["break"])}]`, "gu");
 
 /**
- * Cut `text` into lines no wider than `width`, at spaces only. The spaces a
- * line breaks at are left out of both lines; every other character lands in
+ * Cut `text` into lines no wider than `width`, at spaces only — and at a
+ * U+2028/U+2029, which always ends a line. The space (or separator) a line
+ * breaks at is left out of both lines; every other character lands in
  * exactly one line, in order.
  */
 export function wrapAtSpaces(text: string, width: number, measure: (s: string) => number): Span[] {
+  const out: Span[] = [];
+  let from = 0;
+  const piece = (end: number) => {
+    for (const l of wrapRun(text.slice(from, end), width, measure)) out.push({ start: from + l.start, end: from + l.end });
+  };
+  for (const m of text.matchAll(LINE_BREAK)) {
+    const at = m.index ?? 0;
+    piece(at);
+    from = at + m[0].length;
+  }
+  piece(text.length);
+  return out;
+}
+
+/** wrapAtSpaces for a text with no forced break in it. */
+function wrapRun(text: string, width: number, measure: (s: string) => number): Span[] {
   if (text === "") return [{ start: 0, end: 0 }];
   const words: Span[] = [];
   let last = 0;
@@ -262,16 +298,73 @@ function useStyle(doc: Doc, style: Style): void {
   doc.font(fontPath(LEGAL_PDF_FONT_FILES[style.font])).fontSize(style.size);
 }
 
-/** Width of `s` in the current font and size, laid out as it is drawn. */
+/** Width of `s` in the current font and size, laid out as it is drawn — for
+ *  a string handed to doc.text as it is (drawnWidth for a piece of the text). */
 function widthOf(doc: Doc, s: string): number {
   return doc.widthOfString(s, { features: TEXT_FEATURES });
+}
+
+/** How wide a tab is drawn, in spaces. */
+const TAB_SPACES = 4;
+
+/** The width one character of the text takes on paper (see drawText). */
+function charWidth(doc: Doc, ch: string): number {
+  switch (legalPdfCharRole(ch)) {
+    case "tab": return TAB_SPACES * widthOf(doc, " ");
+    case "space":
+    case "break": return widthOf(doc, " ");
+    case "hidden": return 0;
+    default: return widthOf(doc, ch);
+  }
+}
+
+/** The width a piece of the text takes on paper, drawn with drawText. */
+function drawnWidth(doc: Doc, s: string): number {
+  if (!LEGAL_PDF_ROLE_CHARS.test(s)) return widthOf(doc, s);
+  let total = 0;
+  for (const ch of s) total += charWidth(doc, ch);
+  return total;
+}
+
+type DrawExtra = { link?: string; underline?: boolean };
+
+/**
+ * Draw a piece of the text from (x, top) in the current font, size and
+ * colour: every character as itself, except those legalPdfCharRole names —
+ * a hidden one is left out, a VT or FF (or a separator that reaches the
+ * footer) is a space, and a tab is a space followed by the rest of its
+ * width as empty room. So a glyph the font does not have is never laid out
+ * for any of them, and the PDF's text keeps the gap a tab makes.
+ */
+function drawText(doc: Doc, s: string, x: number, top: number, extra: DrawExtra): void {
+  const options = { lineBreak: false, features: TEXT_FEATURES, ...extra };
+  if (!LEGAL_PDF_ROLE_CHARS.test(s)) {
+    doc.text(s, x, top, options);
+    return;
+  }
+  let at = x;
+  let run = "";
+  for (const ch of s) {
+    const role = legalPdfCharRole(ch);
+    if (role === "hidden") continue;
+    if (role !== "tab") {
+      run += role === null ? ch : " ";
+      continue;
+    }
+    run += " ";
+    doc.text(run, at, top, options);
+    at += widthOf(doc, run) + charWidth(doc, ch) - widthOf(doc, " ");
+    run = "";
+  }
+  if (run !== "") doc.text(run, at, top, options);
 }
 
 /**
  * Measuring for one render. With no feature applied a string's width is the
  * sum of its characters' widths, so each character is measured once per style
  * and a line is a sum — line-breaking measures every candidate line, and
- * laying each one out would be the bulk of the render.
+ * laying each one out would be the bulk of the render. A character is
+ * measured as it is drawn (charWidth: a tab as its gap, a hidden one as 0).
  */
 type Measurer = (style: Style) => (s: string) => number;
 
@@ -284,7 +377,7 @@ function measurer(doc: Doc): Measurer {
       let w = widths.get(key);
       if (w === undefined) {
         useStyle(doc, style);
-        w = widthOf(doc, ch);
+        w = charWidth(doc, ch);
         widths.set(key, w);
       }
       total += w;
@@ -409,12 +502,8 @@ class Writer {
     segs.forEach((seg, k) => {
       useStyle(doc, b.style);
       doc.fillColor(seg.href ? LINK : b.style.color);
-      doc.text(seg.text, x, top, {
-        lineBreak: false,
-        features: TEXT_FEATURES,
-        ...(seg.href ? { link: seg.href, underline: true } : {}),
-      });
-      if (k < segs.length - 1) x += widthOf(doc, seg.text);
+      drawText(doc, seg.text, x, top, seg.href ? { link: seg.href, underline: true } : {});
+      if (k < segs.length - 1) x += drawnWidth(doc, seg.text);
     });
   }
 }
@@ -422,26 +511,23 @@ class Writer {
 function footer(doc: Doc, text: string, sourceUrl: string): void {
   const style = STYLES.footer;
   useStyle(doc, style);
-  const width = widthOf(doc, text);
+  const width = drawnWidth(doc, text);
   doc.save().moveTo(MARGIN.left, FOOTER_Y - 8).lineTo(PAGE_W - MARGIN.right, FOOTER_Y - 8)
     .lineWidth(0.5).strokeColor(LINE).stroke().restore();
-  doc.fillColor(style.color).text(text, MARGIN.left + Math.max(0, (CONTENT_W - width) / 2), FOOTER_Y, {
-    lineBreak: false,
-    features: TEXT_FEATURES,
-    ...(sourceUrl ? { link: sourceUrl } : {}),
-  });
+  doc.fillColor(style.color);
+  drawText(doc, text, MARGIN.left + Math.max(0, (CONTENT_W - width) / 2), FOOTER_Y, sourceUrl ? { link: sourceUrl } : {});
 }
 
 /** The footer's title, shortened with "…" only if the line would not fit. */
 function fittedFooter(doc: Doc, title: string, version: string, page: number, pages: number, locale: LegalLocale): string {
   useStyle(doc, STYLES.footer);
   let text = legalPdfFooterText(title, version, page, pages, locale);
-  if (widthOf(doc, text) <= CONTENT_W) return text;
+  if (drawnWidth(doc, text) <= CONTENT_W) return text;
   const chars = Array.from(title);
   while (chars.length > 1) {
     chars.pop();
     text = legalPdfFooterText(`${chars.join("").trimEnd()}…`, version, page, pages, locale);
-    if (widthOf(doc, text) <= CONTENT_W) break;
+    if (drawnWidth(doc, text) <= CONTENT_W) break;
   }
   return text;
 }

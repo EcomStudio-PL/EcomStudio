@@ -7,8 +7,22 @@
  *   M  the layout the PDF draws with (every OpenType feature off): one glyph
  *      per character, none moved, and a line's width is exactly the sum of
  *      its characters' widths — so the line-breaker's measure is the drawing
+ *   C  what the PDF can draw (lib/legal/pdf-coverage.ts): the coverage table
+ *      is exactly the code points both Inter TTFs have a glyph for, checked
+ *      for all 1 114 112; tab, VT, FF, U+2028/9, the soft hyphen and the
+ *      zero-width characters have their roles; legalPdfUncovered
  *   W  wrapAtSpaces: a line is cut at a space and nowhere else ("9:00-17:00"
- *      and URLs stay whole); every character lands in exactly one line
+ *      and URLs stay whole); every character lands in exactly one line; a
+ *      tab, VT or FF breaks like a space, U+2028/U+2029 always end a line
+ *   N  NO EMPTY BOX: a Word-style text with tabs, VT, FF, line separators, a
+ *      soft hyphen and every zero-width character in Polish sentences (in a
+ *      heading, a point, a link line and the footer's title) — no .notdef
+ *      glyph is drawn, read from the PDF's own page content streams; with ☐ ☑
+ *      ✔ and Word's U+F0B7 added, the only boxes are those five characters
+ *      and legalPdfUncovered names exactly them (and nothing in the four
+ *      documents); the text layer is the source minus the characters not
+ *      drawn; a tab is a wide gap, U+2028 a new line; the admin overview's
+ *      legalPdfGlyphGaps; the panel's warning and its Warsaw-time date
  *   R  each of the four documents renders: %PDF-1.7 … %%EOF, A4 MediaBox on
  *      every page, at least one page, the same bytes twice (deterministic)
  *   T  1:1 — pdftotext -raw of the PDF, footers removed, equals the source
@@ -29,13 +43,22 @@
  * binary a check is reported SKIPPED, never passed. No network, no database.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { inflateSync } from "node:zlib";
+import plDict from "@/lib/i18n/dictionaries/pl.json";
+import enDict from "@/lib/i18n/dictionaries/en.json";
+import deDict from "@/lib/i18n/dictionaries/de.json";
+import { lookup } from "@/lib/i18n/t";
 import { legalHeaderFacts, type LegalDocContent } from "@/lib/legal/content";
 import { LEGAL_DOCS } from "@/lib/legal/docs";
 import { normaliseForCompare, parseLegalText } from "@/lib/legal/document";
+import {
+  legalCodePointLabel, legalPdfCharRole, legalPdfGlyphRanges, legalPdfHasGlyph, legalPdfUncovered,
+} from "@/lib/legal/pdf-coverage";
+import { legalPdfGlyphGaps } from "@/lib/server/legal/admin";
 import {
   LEGAL_PDF_FEATURES_OFF, LEGAL_PDF_FONT_FILES, legalPdfFooterText, renderLegalPdf, wrapAtSpaces,
 } from "@/lib/server/legal/pdf";
@@ -89,6 +112,82 @@ function firstDiff(a: string, b: string): number {
 }
 function around(s: string, at: number): string {
   return JSON.stringify(s.slice(Math.max(0, at - 70), at + 70));
+}
+
+// The characters a Word export brings along — built from code points, so no
+// invisible character is typed into this file.
+const ch = (cp: number) => String.fromCodePoint(cp);
+const TAB = ch(0x09);
+const VT = ch(0x0b);
+const FF = ch(0x0c);
+const LS = ch(0x2028);
+const PS = ch(0x2029);
+const SHY = ch(0x00ad);
+const ZWSP = ch(0x200b);
+const ZWNJ = ch(0x200c);
+const ZWJ = ch(0x200d);
+const WJ = ch(0x2060);
+const ZWNBSP = ch(0xfeff);
+const BOX = ch(0x2610);
+const BOX_CHECKED = ch(0x2611);
+const CHECK = ch(0x2714);
+const SYMBOL_BULLET = ch(0xf0b7);
+const cpLabel = legalCodePointLabel;
+
+/** The source without the characters the PDF does not draw at all. */
+const withoutHidden = (s: string) => Array.from(s).filter((c) => legalPdfCharRole(c) !== "hidden").join("");
+
+/** pdftotext -raw of a PDF, cut into pages, each page's footer line taken
+ *  out (and counted: exactly one is expected per page). */
+function textWithoutFooters(file: string, footer: (page: number) => string): { pages: number; kept: string; footerMisses: number[]; raw: string } {
+  const raw = execFileSync("pdftotext", ["-raw", "-enc", "UTF-8", file, "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const pages = raw.split("\f");
+  if (pages.length > 0 && pages[pages.length - 1].trim() === "") pages.pop();
+  const kept: string[] = [];
+  const footerMisses: number[] = [];
+  pages.forEach((p, i) => {
+    const want = normaliseForCompare(footer(i + 1));
+    const lines = p.split("\n");
+    if (lines.filter((l) => normaliseForCompare(l) === want).length !== 1) footerMisses.push(i + 1);
+    kept.push(...lines.filter((l) => normaliseForCompare(l) !== want));
+  });
+  return { pages: pages.length, kept: kept.join("\n"), footerMisses, raw };
+}
+
+/**
+ * What the pages of a PDF draw, glyph by glyph: every TJ string of every
+ * page content stream, decompressed. pdfkit writes a font's glyphs as 4 hex
+ * digits each (Identity-H, subset ids), and glyph 0 of every subset is the
+ * font's .notdef — the empty box. `fonts` are the resources that drew.
+ */
+function drawnGlyphs(pdf: Buffer): { total: number; notdef: number; fonts: Set<string> } {
+  const s = pdf.toString("latin1");
+  let total = 0;
+  let notdef = 0;
+  const fonts = new Set<string>();
+  for (const m of s.matchAll(/\/Length (\d+)\n(?:\/[^\n]*\n)*>>\nstream\n/g)) {
+    const from = (m.index ?? 0) + m[0].length;
+    let content: string;
+    try {
+      content = inflateSync(pdf.subarray(from, from + Number(m[1]))).toString("latin1");
+    } catch {
+      continue;
+    }
+    // A page's content starts with pdfkit's flip of the coordinate system.
+    if (!content.startsWith("1 0 0 -1 0 ")) continue;
+    let font = "";
+    for (const op of content.matchAll(/\/(F\d+) [\d.]+ Tf|\[((?:<[0-9a-f]*>|[-\d.\s])*)\] TJ/g)) {
+      if (op[1]) { font = op[1]; continue; }
+      for (const hex of op[2].match(/<[0-9a-f]*>/g) ?? []) {
+        for (let i = 1; i + 4 < hex.length; i += 4) {
+          total += 1;
+          if (parseInt(hex.slice(i, i + 4), 16) === 0) notdef += 1;
+        }
+        fonts.add(font);
+      }
+    }
+  }
+  return { total, notdef, fonts };
 }
 
 // ── F ───────────────────────────────────────────────────────────────────────
@@ -158,6 +257,56 @@ function sectionF() {
   }
 }
 
+// ── C ───────────────────────────────────────────────────────────────────────
+function sectionC() {
+  console.log("C. WHAT THE PDF CAN DRAW (lib/legal/pdf-coverage.ts)");
+  const fontkit = createRequire(path.join(ROOT, "package.json"))("fontkit") as FontkitModule;
+  const fonts = Object.values(LEGAL_PDF_FONT_FILES).map((rel) => fontkit.openSync(path.join(ROOT, rel)));
+  // Every code point there is, against both fonts: the table is what they
+  // cover, no more and no less.
+  const fresh: number[] = [];
+  const wrong: string[] = [];
+  let mismatches = 0;
+  for (let cp = 0; cp <= 0x10ffff; cp += 1) {
+    const covered = fonts.every((f) => f.hasGlyphForCodePoint(cp));
+    if (covered !== legalPdfHasGlyph(cp)) {
+      mismatches += 1;
+      if (wrong.length < 5) wrong.push(`${cpLabel(cp)} fonts ${covered} table ${!covered}`);
+    }
+    if (!covered) continue;
+    if (fresh.length > 0 && fresh[fresh.length - 1] === cp - 1) fresh[fresh.length - 1] = cp;
+    else fresh.push(cp, cp);
+  }
+  const table = legalPdfGlyphRanges().flat();
+  const same = mismatches === 0 && JSON.stringify(table) === JSON.stringify(fresh);
+  check(`the coverage table is exactly the code points both Inter TTFs have a glyph for (${fresh.length / 2} ranges, all 1 114 112 code points checked)`,
+    same, { mismatches, first: wrong });
+  if (!same) {
+    // A font file changed: the table to paste into lib/legal/pdf-coverage.ts.
+    const hex = (n: number) => `0x${n.toString(16).padStart(4, "0")}`;
+    const rows: string[] = [];
+    for (let i = 0; i < fresh.length; i += 12) rows.push(`  ${fresh.slice(i, i + 12).map(hex).join(", ")},`);
+    console.log(`    COVERED = [\n${rows.join("\n")}\n    ]`);
+  }
+  // The finding's characters: neither font has a glyph for any of them —
+  // which is why the PDF either gives them a role or names them.
+  for (const cp of [0x09, 0x0b, 0x0c, 0xad, 0x2028, 0x2029, 0x200d, 0x2060, 0xf0b7, 0x2610, 0x2611, 0x2714]) {
+    check(`no glyph for ${cpLabel(cp)} in either font`, fonts.every((f) => !f.hasGlyphForCodePoint(cp)) && !legalPdfHasGlyph(cp));
+  }
+  const roles = { [TAB]: "tab", [VT]: "space", [FF]: "space", [LS]: "break", [PS]: "break", [SHY]: "hidden", [ZWSP]: "hidden", [ZWNJ]: "hidden", [ZWJ]: "hidden", [WJ]: "hidden", [ZWNBSP]: "hidden" };
+  const badRoles = Object.entries(roles).filter(([c, role]) => legalPdfCharRole(c) !== role).map(([c]) => cpLabel(c.codePointAt(0) ?? 0));
+  check("roles: tab → tab, VT/FF → space, U+2028/U+2029 → break, soft hyphen and U+200B/C/D, U+2060, U+FEFF → hidden", badRoles.length === 0, badRoles);
+  check("roles: nothing else has one (a space, a letter, ☐, U+F0B7)",
+    [" ", "a", "ł", BOX, SYMBOL_BULLET, "\n"].every((c) => legalPdfCharRole(c) === null));
+  check("legalPdfUncovered of a text with nothing to report is []", legalPdfUncovered(`Zażółć gęślą jaźń § 385⁵ → „x” …${TAB}${SHY}${LS}\r\n`).length === 0);
+  const found = legalPdfUncovered(`a${CHECK}b${BOX}${CHECK}${ch(0x1f600)}`);
+  check("legalPdfUncovered: each character once, in order of first appearance, with its count (astral code points whole)",
+    JSON.stringify(found) === JSON.stringify([
+      { char: CHECK, codePoint: 0x2714, count: 2 }, { char: BOX, codePoint: 0x2610, count: 1 }, { char: ch(0x1f600), codePoint: 0x1f600, count: 1 },
+    ]), found);
+  check("code point labels: U+0009, U+F0B7, U+1F600", cpLabel(9) === "U+0009" && cpLabel(0xf0b7) === "U+F0B7" && cpLabel(0x1f600) === "U+1F600");
+}
+
 // ── W ───────────────────────────────────────────────────────────────────────
 function sectionW() {
   console.log("W. LINES ARE CUT AT SPACES ONLY");
@@ -186,6 +335,21 @@ function sectionW() {
   check("an empty text is one empty line", JSON.stringify(wrapAtSpaces("", 10, measure)) === JSON.stringify([{ start: 0, end: 0 }]));
   const astral = wrapAtSpaces("𝔸𝔹𝔻", 1, measure);
   check("a code point is never split (surrogate pairs stay together)", astral.length === 3 && astral.every((l) => l.end - l.start === 2), astral);
+
+  const tabbed = `alfa${TAB}beta${VT}gamma${FF}delta`;
+  const lt = join(tabbed, wrapAtSpaces(tabbed, 6, measure));
+  check("a tab, VT and FF are places to break, like a space (and are left out where the line breaks)",
+    JSON.stringify(lt) === JSON.stringify(["alfa", "beta", "gamma", "delta"]), lt);
+  const sep = `pierwszy${LS}drugi${PS}${PS}czwarty`;
+  const ls = join(sep, wrapAtSpaces(sep, 100, measure));
+  check("U+2028 / U+2029 always end a line — two in a row leave an empty one — and are in no line",
+    JSON.stringify(ls) === JSON.stringify(["pierwszy", "drugi", "", "czwarty"]), ls);
+  const sepWrap = `alfa beta${LS}gamma delta`;
+  const lw = join(sepWrap, wrapAtSpaces(sepWrap, 10, measure));
+  check("…and each part between them is wrapped at spaces on its own", JSON.stringify(lw) === JSON.stringify(["alfa beta", "gamma", "delta"]), lw);
+  const soft = `Przetwa${SHY}rzanie danych`;
+  const lsoft = join(soft, wrapAtSpaces(soft, 15, measure));
+  check("a soft hyphen is not a place to break: the word stays whole", JSON.stringify(lsoft) === JSON.stringify([`Przetwa${SHY}rzanie`, "danych"]), lsoft);
   check("a word that fits is never cut", wrapAtSpaces("385⁵ Kodeksu→", 20, measure).length === 1);
 }
 
@@ -235,22 +399,11 @@ function sectionT(docs: Rendered[]) {
   }
   for (const d of docs) {
     const t0 = process.hrtime.bigint();
-    const raw = execFileSync("pdftotext", ["-raw", "-enc", "UTF-8", d.file, "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    const pages = raw.split("\f");
-    if (pages.length > 0 && pages[pages.length - 1].trim() === "") pages.pop();
-    check(`${d.slug}: pdftotext sees ${d.pages} pages`, pages.length === d.pages, pages.length);
-    const kept: string[] = [];
-    const footerMisses: number[] = [];
-    pages.forEach((p, i) => {
-      const footer = normaliseForCompare(legalPdfFooterText(d.title, d.version, i + 1, d.pages, "pl"));
-      const lines = p.split("\n");
-      const at = lines.map((l) => normaliseForCompare(l)).filter((l) => l === footer).length;
-      if (at !== 1) footerMisses.push(i + 1);
-      kept.push(...lines.filter((l) => normaliseForCompare(l) !== footer));
-    });
+    const { pages, kept, footerMisses, raw } = textWithoutFooters(d.file, (page) => legalPdfFooterText(d.title, d.version, page, d.pages, "pl"));
+    check(`${d.slug}: pdftotext sees ${d.pages} pages`, pages === d.pages, pages);
     check(`${d.slug}: every page has exactly one footer "… · Wersja ${d.version} · Strona X z ${d.pages}"`, footerMisses.length === 0, footerMisses);
     check(`${d.slug}: page 1 footer reads "Strona 1 z ${d.pages}"`, raw.includes(`Strona 1 z ${d.pages}`));
-    const got = normaliseForCompare(kept.join("\n"));
+    const got = normaliseForCompare(kept);
     const want = normaliseForCompare(d.text);
     const at = firstDiff(got, want);
     check(`${d.slug}: extracted text equals the source exactly (${want.length} chars after whitespace normalisation) [${ms(t0)}]`,
@@ -298,6 +451,163 @@ function sectionE(docs: Rendered[]) {
     check(`${d.slug}: every font is CID TrueType, embedded, with a Unicode map`,
       parsed.every(({ r, m }) => r.includes("CID TrueType") && m !== null && m[1] === "yes" && m[3] === "yes"), rows);
   }
+}
+
+// ── N ───────────────────────────────────────────────────────────────────────
+
+/** A text as Word exports it: tabs, VT, FF, line and paragraph separators, a
+ *  soft hyphen and every zero-width character, inside Polish sentences — in
+ *  the title (so the footer), a heading (the SemiBold font), points, a
+ *  continuation, a link line and a paragraph long enough to wrap at tabs. */
+const WORD_EXPORT = [
+  `Regulamin${SHY} testowy${TAB}GrovBase`,
+  "",
+  "Wersja: 1.0",
+  "Data wejścia w życie: 20 października 2026 r.",
+  "",
+  `1. Postanowienia${TAB}ogól${SHY}ne`,
+  "",
+  `1.${TAB}Przetwa${SHY}rzanie danych osobowych odbywa się${TAB}zgodnie z RODO.`,
+  `2. Administratorem danych${VT}jest${FF}GrovBase sp. z o.o.${LS}ul. Przykładowa 1${PS}00-001 Warszawa.`,
+  `3. Zgoda${ZWSP} jest${ZWNJ} dobrowolna${ZWJ} i${WJ} może${ZWNBSP} być wycofana w każdej chwili.`,
+  `   Kontynuacja punktu z${TAB}tabulatorem i miękkim łączni${SHY}kiem.`,
+  `${TAB}Akapit zaczynający się od tabulatora, jak w eksporcie z Worda.`,
+  `- Kontakt: https://grovbase.com/regulamin lub kontakt@grovbase.com${TAB}(pn.–pt.).`,
+  "",
+  "2. Długi akapit",
+  "",
+  `${Array.from({ length: 40 }, (_, i) => `słowo${i + 1}`).join(TAB)}.`,
+].join("\n");
+
+/** The same text with characters no font glyph exists for: ☐ ☑ ✔ (twice)
+ *  and Word's Symbol-font bullet U+F0B7. */
+const WITH_BOXES = `${WORD_EXPORT}\n\n${[
+  `${BOX} Wyrażam zgodę na przetwarzanie danych osobowych.`,
+  `${BOX_CHECKED} Akceptuję regulamin${TAB}${CHECK}`,
+  `${SYMBOL_BULLET}${TAB}Punkt listy wklejony z Worda (punktor z czcionki Symbol).`,
+  `Zgoda${CHECK}udzielona.`,
+].join("\n")}`;
+
+async function renderFixture(name: string, text: string): Promise<{ pdf: Buffer; file: string; title: string; pages: number }> {
+  const pdf = await renderLegalPdf({ text, version: "1.0", effective: "2026-10-20", locale: "pl", sourceUrl: "https://grovbase.com/regulamin" });
+  const file = path.join(TMP, `${name}.pdf`);
+  writeFileSync(file, pdf);
+  return { pdf, file, title: parseLegalText(text).title ?? "", pages: pageCount(pdf) };
+}
+
+async function sectionN() {
+  console.log("N. NO EMPTY BOX FOR A TAB, A SEPARATOR, A SOFT HYPHEN (draw-time only)");
+  check("the fixture holds every character with a role",
+    [TAB, VT, FF, LS, PS, SHY, ZWSP, ZWNJ, ZWJ, WJ, ZWNBSP].every((c) => WORD_EXPORT.includes(c)));
+
+  // (3) what the admin is told
+  check("legalPdfUncovered: nothing in the Word-style text (every role is handled, every other character has a glyph)",
+    legalPdfUncovered(WORD_EXPORT).length === 0, legalPdfUncovered(WORD_EXPORT));
+  const uncovered = legalPdfUncovered(WITH_BOXES);
+  check("legalPdfUncovered: exactly ☐ ☑ ✔ U+F0B7, in order, ✔ counted twice",
+    JSON.stringify(uncovered.map((u) => [cpLabel(u.codePoint), u.count])) === JSON.stringify([["U+2610", 1], ["U+2611", 1], ["U+2714", 2], ["U+F0B7", 1]]),
+    uncovered.map((u) => [cpLabel(u.codePoint), u.count]));
+  for (const s of SOURCES) check(`legalPdfUncovered: nothing in ${s}`, legalPdfUncovered(sourceOf(s)).length === 0, legalPdfUncovered(sourceOf(s)));
+
+  // (1) no .notdef drawn — read from what the pages really draw
+  const a = await renderFixture("word-export", WORD_EXPORT);
+  const ga = drawnGlyphs(a.pdf);
+  check(`the Word-style text: ${ga.total} glyphs drawn, none of them a .notdef (glyph 0)`, ga.total > 500 && ga.notdef === 0, ga);
+  check("…in both fonts (the heading is SemiBold)", ga.fonts.size === 2, [...ga.fonts]);
+  const b = await renderFixture("with-boxes", WITH_BOXES);
+  const gb = drawnGlyphs(b.pdf);
+  const boxes = uncovered.reduce((n, u) => n + u.count, 0);
+  check(`with ☐ ☑ ✔ ✔ U+F0B7 added: exactly ${boxes} .notdef glyphs — one per uncovered character, none for anything else`,
+    gb.notdef === boxes, { notdef: gb.notdef, boxes });
+  for (const slug of SOURCES) {
+    const g = drawnGlyphs(readFileSync(path.join(TMP, `${slug}.pdf`)));
+    check(`${slug}: ${g.total} glyphs drawn, no .notdef`, g.total > 1000 && g.notdef === 0, g);
+  }
+
+  if (!HAVE.pdftotext) {
+    skip("the Word-style text's text layer, its line breaks and its tab gaps", "pdftotext is not installed");
+    return;
+  }
+  // (2) the text layer: the source, minus what is not drawn
+  const footer = (title: string, pages: number) => (page: number) => withoutHidden(legalPdfFooterText(title, "1.0", page, pages, "pl"));
+  const ta = textWithoutFooters(a.file, footer(a.title, a.pages));
+  check(`the footer's title is drawn without its soft hyphen, its tab a gap, on each of ${a.pages} page(s)`, ta.footerMisses.length === 0, ta.footerMisses);
+  const gotA = normaliseForCompare(ta.kept);
+  const wantA = normaliseForCompare(withoutHidden(WORD_EXPORT));
+  const atA = firstDiff(gotA, wantA);
+  check(`the Word-style text: pdftotext equals the source minus the not-drawn characters (${wantA.length} chars after whitespace normalisation)`,
+    atA === -1, atA === -1 ? undefined : `first difference at ${atA}: pdf ${around(gotA, atA)} vs source ${around(wantA, atA)}`);
+  check("…\"Przetwarzanie\" and \"łącznikiem\" read whole: the soft hyphen leaves no gap", gotA.includes("Przetwarzanie danych") && gotA.includes("miękkim łącznikiem."));
+  // The boxes carry no text (pdfkit maps .notdef to U+0000, which pdftotext
+  // drops): everything else of the text is there, in order.
+  const tb = textWithoutFooters(b.file, footer(b.title, b.pages));
+  const squash = (s: string) => s.replace(/\s+/g, "");
+  const gotB = squash(tb.kept);
+  const wantB = squash(Array.from(withoutHidden(WITH_BOXES)).filter((c) => !uncovered.some((u) => u.char === c)).join(""));
+  const atB = firstDiff(gotB, wantB);
+  check("with the boxes: every other character of the source is in the text layer, in order", atB === -1,
+    atB === -1 ? undefined : `first difference at ${atB}: pdf ${around(gotB, atB)} vs source ${around(wantB, atB)}`);
+
+  const lines = ta.raw.split("\n").map((l) => l.trim());
+  check("U+2028 and U+2029 end a line: \"…GrovBase sp. z o.o.\" / \"ul. Przykładowa 1\" / \"00-001 Warszawa.\"",
+    lines.some((l) => l.endsWith("jest GrovBase sp. z o.o.")) && lines.includes("ul. Przykładowa 1") && lines.includes("00-001 Warszawa."), lines.slice(0, 20));
+  const words = [...execFileSync("pdftotext", ["-bbox", "-enc", "UTF-8", a.file, "-"], { encoding: "utf8" })
+    .matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="[\d.]+">([^<]*)<\/word>/g)]
+    .map((m) => ({ x0: Number(m[1]), y: Number(m[2]), x1: Number(m[3]), w: m[4] }));
+  const at = words.findIndex((w, i) => w.w === "zgodnie" && words[i - 1]?.w === "się" && words[i - 2]?.w === "odbywa");
+  const spaceGap = at > 1 ? words[at - 1].x0 - words[at - 2].x1 : 0;
+  const tabGap = at > 1 ? words[at].x0 - words[at - 1].x1 : 0;
+  check("a tab is a wide gap: \"się⇥zgodnie\" about four spaces apart, \"odbywa się\" one", at > 1 && tabGap > 3.5 * spaceGap && tabGap < 4.5 * spaceGap,
+    { spaceGap, tabGap });
+  const wrapped = new Set(words.filter((w) => /^słowo\d+\.?$/.test(w.w)).map((w) => w.y));
+  check(`the paragraph of 40 tab-separated words wraps (at tabs) over ${wrapped.size} lines, nothing lost`,
+    wrapped.size >= 3 && words.filter((w) => /^słowo\d+\.?$/.test(w.w)).length === 40, wrapped.size);
+}
+
+function sectionAdmin() {
+  console.log("N. … AND WHAT THE ADMIN SEES (legalPdfGlyphGaps, the panel)");
+  const docOf = (pl: string, en = ""): LegalDocContent => ({
+    pl: { status: "active", text: pl, version: "1.0", effective: "2026-10-20" },
+    en: en ? { status: "active", text: en, version: "1.0", effective: "2026-10-20" } : { status: "soon", text: "", version: "", effective: null },
+    de: { status: "soon", text: "", version: "", effective: null },
+  });
+  const brief = (gaps: ReturnType<typeof legalPdfGlyphGaps>) => gaps.map((g) => `${g.locale}:${g.source}:${g.chars.map((c) => cpLabel(c.codePoint)).join("+")}`);
+  const same = brief(legalPdfGlyphGaps(docOf(WITH_BOXES), docOf(WITH_BOXES)));
+  check("the draft IS the published text → one warning, \"both\"", JSON.stringify(same) === JSON.stringify(["pl:both:U+2610+U+2611+U+2714+U+F0B7"]), same);
+  const draftOnly = brief(legalPdfGlyphGaps(docOf(WITH_BOXES), docOf(WORD_EXPORT)));
+  check("only the draft has them → \"draft\"", JSON.stringify(draftOnly) === JSON.stringify(["pl:draft:U+2610+U+2611+U+2714+U+F0B7"]), draftOnly);
+  const liveOnly = brief(legalPdfGlyphGaps(docOf(WORD_EXPORT), docOf(`${WORD_EXPORT}\n${CHECK}`)));
+  check("only the published text has them → \"published\"", JSON.stringify(liveOnly) === JSON.stringify(["pl:published:U+2714"]), liveOnly);
+  const both = brief(legalPdfGlyphGaps(docOf(`${BOX} szkic`, `${SYMBOL_BULLET} draft`), docOf(`${CHECK} opublikowany`)));
+  check("different characters in each, and per language", JSON.stringify(both) === JSON.stringify(["pl:published:U+2714", "pl:draft:U+2610", "en:draft:U+F0B7"]), both);
+  const unpublishedPage = brief(legalPdfGlyphGaps(docOf(WITH_BOXES), null));
+  check("a page never published: the draft's", JSON.stringify(unpublishedPage) === JSON.stringify(["pl:draft:U+2610+U+2611+U+2714+U+F0B7"]), unpublishedPage);
+  const owner = SOURCES.flatMap((s) => legalPdfGlyphGaps(docOf(sourceOf(s)), docOf(sourceOf(s))));
+  check("the four documents: no warning", owner.length === 0 && legalPdfGlyphGaps(null, null).length === 0, owner.length);
+
+  const panel = read("components/admin/cms/legal-docs-panel.tsx");
+  const code = panel.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  check("panel: \"Opublikowano {date}\" is a moment in Europe/Warsaw (formatInstant), not the server's zone (formatDate)",
+    /t\("cms\.legalPanel\.publishedAt", \{ date: formatInstant\(page\.publishedAt, locale\) \}\)/.test(code) && !/formatDate/.test(code));
+  check("panel: a row with gaps shows the warning, each character with its U+XXXX",
+    /pdfGlyphGaps\.length > 0 && <PdfGlyphWarning gaps=\{pdfGlyphGaps\}/.test(code) && /data-legal-pdf-glyphs\b/.test(code)
+    && /legalCodePointLabel\(c\.codePoint\)/.test(code) && /`\$\{c\.char\} \$\{code\}`/.test(code));
+
+  const keys = ["title", "body", "published", "draft", "both", "times"].map((k) => `cms.legalPanel.pdfGlyphs.${k}`);
+  const fragmentPath = process.env.LEGAL_I18N_FRAGMENT;
+  if (fragmentPath && !existsSync(fragmentPath)) {
+    check(`LEGAL_I18N_FRAGMENT exists (${fragmentPath})`, false);
+    return;
+  }
+  const fragment = fragmentPath ? JSON.parse(readFileSync(fragmentPath, "utf8")) as Record<string, Record<string, unknown>> : null;
+  const dicts: Record<string, Record<string, unknown>> = { pl: plDict, en: enDict, de: deDict };
+  const has = (l: string, k: string) => lookup(dicts[l], k) !== undefined || (fragment?.[l] ? lookup(fragment[l], k) !== undefined : false);
+  if (!fragment && keys.every((k) => ["pl", "en", "de"].every((l) => lookup(dicts[l], k) === undefined))) {
+    skip("the warning's texts in pl/en/de", "not merged into the dictionaries yet — set LEGAL_I18N_FRAGMENT to the fragment");
+    return;
+  }
+  const missing = ["pl", "en", "de"].flatMap((l) => keys.filter((k) => !has(l, k)).map((k) => `${l}:${k}`));
+  check("the warning's texts exist in pl, en and de", missing.length === 0, missing);
 }
 
 // ── H ───────────────────────────────────────────────────────────────────────
@@ -470,11 +780,14 @@ async function main() {
   console.log(`poppler: pdftotext ${HAVE.pdftotext ? "yes" : "NO"}, pdfinfo ${HAVE.pdfinfo ? "yes" : "NO"}, pdffonts ${HAVE.pdffonts ? "yes" : "NO"}`);
   check("the registry lists the four documents this suite renders", JSON.stringify(LEGAL_DOCS.map((d) => d.slug)) === JSON.stringify(SOURCES));
   sectionF();
+  sectionC();
   sectionW();
   const docs = await sectionR();
   sectionT(docs);
   sectionI(docs);
   sectionE(docs);
+  await sectionN();
+  sectionAdmin();
   sectionH();
   await sectionQ();
   console.log(`\n(total ${ms(t0)}; PDFs in ${TMP})`);
