@@ -20,6 +20,10 @@
  *   F  the rendered page: doc mode, ?lang=pl fallback, soon mode, no text
  *   G  the builder preview (BlockRenderer `legal` case)
  *   H  the checkout line, the footers, the routes, the sitemap, the probes
+ *   I  how the page reads: AA contrast of the tokens the legal pages draw
+ *      small text with, no --faint words, no pale --accent text, the ToC in
+ *      the text's language, the honest ?lang=pl notice, Warsaw time, and the
+ *      tab title in the visitor's language
  *
  * Run:
  *   esbuild scripts/legal-render-tests.ts --bundle --platform=node --format=cjs --jsx=automatic \
@@ -56,7 +60,10 @@ import {
   legalTocIds, legalTocTree,
 } from "@/components/legal/legal-view";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
-import type { CmsBlock } from "@/lib/cms";
+import type { CmsBlock, PageSeo } from "@/lib/cms";
+import { formatInstant } from "@/lib/utils";
+import { legalPageMetadata } from "@/lib/server/legal-metadata";
+import type { PublicPage } from "@/lib/server/public-site";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -552,6 +559,228 @@ function main() {
       && !read("components/legal/legal-text.tsx").includes('"use client"'));
     check("today's page is kept for a document that has not been imported yet",
       /<LegacyLegal /.test(legalPage) && /t\("legal\.pendingBody"\)/.test(legalPage));
+  }
+
+  /* ═════════════════════════════════════════════════════════════════════ */
+  section("I. HOW THE PAGE READS: CONTRAST, LANGUAGE, NOTICE, TIME, TITLE");
+  {
+    // THE TOKENS, read from app/globals.css, so a later change of colour is
+    // measured here instead of trusted. Every small informative line on the
+    // legal pages is --muted; magenta text is --accent-strong on light and
+    // --accent on dark. Measured on each surface the page puts text on, and
+    // under the magenta glow the page's ambient light can add.
+    const css = read("app/globals.css");
+    const block = (selector: RegExp) => {
+      const body = selector.exec(css)?.[1] ?? "";
+      const vars: Record<string, number[]> = {};
+      for (const m of body.matchAll(/--([a-z0-9-]+):\s*(\d+)\s+(\d+)\s+(\d+);/g)) vars[m[1]] = [Number(m[2]), Number(m[3]), Number(m[4])];
+      return vars;
+    };
+    const themes = {
+      light: block(/\n:root \{([\s\S]*?)\n\}/),
+      dark: block(/\n\.dark \{([\s\S]*?)\n\}/),
+    };
+    const lin = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    const lum = ([r, g, b]: number[]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    const ratio = (a: number[], b: number[]) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    const over = (top: number[], alpha: number, base: number[]) => top.map((c, i) => c * alpha + base[i] * (1 - alpha));
+    for (const [name, v] of Object.entries(themes)) {
+      const need = ["bg", "sunken", "surface", "muted", "faint", "accent", "accent-strong", "accent-soft"];
+      check(`${name}: the tokens are where this test reads them`, need.every((k) => v[k]?.length === 3),
+        need.filter((k) => !v[k]).join(","));
+      if (!need.every((k) => v[k])) continue;
+      const pages = [v.bg, over(v.accent, name === "dark" ? 0.18 : 0.08, v.bg)];
+      const surfaces = pages.flatMap((bg) => {
+        const meta = over(v.sunken, 0.45, bg);
+        const related = over(v.surface, 0.6, bg);
+        return [
+          { at: "page", c: bg }, { at: "meta bar", c: meta }, { at: "version badge", c: over(v["accent-soft"], 0.5, meta) },
+          { at: "related box", c: related }, { at: "related link", c: over(bg, 0.5, related) },
+          { at: "notice", c: over(v["accent-soft"], 0.35, bg) },
+        ];
+      });
+      const worst = (fg: number[]) => surfaces.reduce((m, s) => {
+        const r = ratio(fg, s.c);
+        return r < m.r ? { r, at: s.at } : m;
+      }, { r: Infinity, at: "" });
+      const muted = worst(v.muted);
+      check(`${name}: --muted small text ≥ 4.5:1 on every legal surface (worst ${muted.r.toFixed(2)} on ${muted.at})`, muted.r >= 4.5);
+      const magenta = worst(name === "dark" ? v.accent : v["accent-strong"]);
+      check(`${name}: magenta text (${name === "dark" ? "--accent" : "--accent-strong"}) ≥ 4.5:1 (worst ${magenta.r.toFixed(2)} on ${magenta.at})`,
+        magenta.r >= 4.5);
+      if (name === "light") {
+        check("light: plain --accent and --faint really are too pale for words (why they are not used for any)",
+          ratio(v.accent, v.bg) < 4.5 && ratio(v.faint, v.bg) < 4.5);
+      }
+    }
+
+    // THE MARKUP: every element drawn in --faint is a decorative glyph
+    // (aria-hidden), and no text is drawn in plain --accent on the light
+    // theme — only aria-hidden icons may be. Magenta text is
+    // `text-accent-strong dark:text-accent`, the pair measured above.
+    const withEn = (slug: string) => docWith(sourceOf(slug), {
+      en: { status: "active", text: sourceOf(slug), version: "1.0", effective: "2026-10-20" },
+    });
+    const views: { name: string; html: string }[] = [
+      { name: "pl", html: page("regulamin", "pl") },
+      { name: "pl DPA", html: page("umowa-powierzenia-danych", "pl") },
+      { name: "en ?lang=pl", html: page("regulamin", "en", true) },
+      { name: "en ?lang=pl, English ready", html: page("regulamin", "en", true, withEn("regulamin")) },
+      { name: "de soon", html: page("regulamin", "de") },
+    ];
+    const tags = (html: string) => [...html.matchAll(/<([a-z][a-z0-9]*)\s[^>]*>/g)].map((m) => ({
+      tag: m[0], classes: (/\sclass="([^"]*)"/.exec(m[0])?.[1] ?? "").split(/\s+/),
+      hidden: /\saria-hidden="true"/.test(m[0]),
+    }));
+    for (const { name, html } of views) {
+      const all = tags(html);
+      const faint = all.filter((e) => e.classes.some((c) => c === "text-faint" || c.startsWith("text-faint/")));
+      check(`${name}: --faint only on aria-hidden glyphs (${faint.length})`, faint.every((e) => e.hidden),
+        faint.filter((e) => !e.hidden).map((e) => e.tag.slice(0, 90)).join(" | "));
+      const pale = all.filter((e) => e.classes.includes("text-accent") && !e.hidden);
+      check(`${name}: no text in plain --accent on the light theme`, pale.length === 0,
+        pale.map((e) => e.tag.slice(0, 90)).join(" | "));
+      const strong = all.filter((e) => e.classes.includes("text-accent-strong"));
+      check(`${name}: every --accent-strong text is --accent again in the dark theme (${strong.length})`,
+        strong.length > 0 && strong.every((e) => e.classes.includes("dark:text-accent")));
+    }
+    {
+      const html = views[0].html;
+      const el = (attr: RegExp) => tags(html).find((e) => attr.test(e.tag));
+      const has = (attr: RegExp, cls: string) => el(attr)?.classes.includes(cls) ?? false;
+      check("'Ostatnia aktualizacja' is --muted", has(/data-legal-updated/, "text-muted"));
+      check("'Powiązane dokumenty' is --muted", has(/id="legal-related"/, "text-muted"));
+      check("the ToC label is --muted",
+        /<p class="[^"]*text-muted[^"]*">Spis treści<\/p>/.test(html) && !/text-faint[^"]*">Spis treści/.test(html));
+      check("'wkrótce' and the EN/DE codes are --muted",
+        count(html, 'text-muted">wkrótce<') === 2 && /<span lang="en" class="font-medium text-muted">EN</.test(html)
+        && /<span lang="de" class="font-medium text-muted">DE</.test(html));
+      const accent = (attr: RegExp) => has(attr, "text-accent-strong") && has(attr, "dark:text-accent");
+      check("the version badge, the back link and the related label are accent-strong / dark accent",
+        accent(/data-legal-version/) && accent(/data-legal-back/)
+        && /<span class="block text-\[12px\] font-medium text-accent-strong dark:text-accent">Załącznik nr 2/.test(html));
+      const docLinks = tags(/<article[^>]*>([\s\S]*?)<\/article>/.exec(html)?.[1] ?? "").filter((e) => /^<a /.test(e.tag));
+      check(`every address in the text is accent-strong / dark accent (${docLinks.length})`,
+        docLinks.length > 0 && docLinks.every((e) => e.classes.includes("text-accent-strong") && e.classes.includes("dark:text-accent")));
+    }
+    {
+      // The page around the legacy sections (LegacyLegal) cannot be rendered
+      // without a server; its source holds the same rule.
+      const src = read("components/cms/legal-page.tsx");
+      check("legal-page.tsx: no --faint text, no plain --accent text",
+        !/\btext-faint\b/.test(src) && !/(^|[\s"'`])text-accent(?=[\s"'`])/m.test(src));
+      check("legal-page.tsx: 'Ostatnia aktualizacja' in Warsaw time", /formatInstant\(page\.publishedAt, locale\)/.test(src) && !/formatDate/.test(src));
+      check("legal-document.tsx: 'Ostatnia aktualizacja' in Warsaw time",
+        /formatInstant\(publishedAt, visitor\)/.test(read("components/legal/legal-document.tsx"))
+        && !/formatDate/.test(read("components/legal/legal-document.tsx")));
+    }
+
+    // THE TABLE OF CONTENTS SPEAKS THE TEXT'S LANGUAGE (WCAG 3.1.2): an
+    // English reader on ?lang=pl gets Polish entries marked as Polish, and the
+    // labels around them in English.
+    {
+      const html = page("regulamin", "en", true);
+      check("en + ?lang=pl: both ToC lists (desktop + phone) carry lang=\"pl\"",
+        count(html, '<ol lang="pl"') === 2 && count(html, "<ol ") === count(html, '<ol lang="pl"') + count(html, "<ol class="),
+        `${count(html, '<ol lang="pl"')} of ${count(html, "<ol")}`);
+      const contents = t("en")("legal.contents");
+      check("…while the navigation's name and the phone summary stay in English",
+        count(html, `aria-label="${contents}"`) === 2 && new RegExp(`<summary[^>]*>${contents}<`).test(html)
+        && new RegExp(`<p class="[^"]*">${contents}</p>`).test(html));
+      const nested = /<ol lang="pl"[\s\S]*?<ol class="mb-1\.5/.test(html);
+      check("…and the nested § lists inherit it (inside the marked <ol>)", nested);
+      const en = page("regulamin", "en", false, withEn("regulamin"));
+      check("an English text gets an English ToC (lang=\"en\")", count(en, '<ol lang="en"') === 2 && !en.includes('<ol lang="pl"'));
+      check("a Polish reader's ToC is Polish", count(page("regulamin", "pl"), '<ol lang="pl"') === 2);
+    }
+
+    // ?lang=pl NOTICE: "available soon" only when it is true.
+    for (const visitor of ["en", "de"] as const) {
+      const tv = t(visitor);
+      const esc = (s: string) => s.replace(/'/g, "&#x27;");
+      const notice = (html: string) => /<p role="note"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
+      const soon = page("regulamin", visitor, true);
+      check(`${visitor} + ?lang=pl, ${visitor} not ready: the notice promises the translation`,
+        /data-legal-fallback-own="soon"/.test(soon) && notice(soon).includes(esc(tv("legal.fallbackNotice")))
+        && !soon.includes("data-legal-own-version"));
+      const ready = page("regulamin", visitor, true, docWith(sourceOf("regulamin"), {
+        [visitor]: { status: "active", text: "Tekst", version: "1.0", effective: "2026-10-20" },
+      }));
+      const n = notice(ready);
+      check(`${visitor} + ?lang=pl, ${visitor} READY: a neutral notice, no "available soon"`,
+        /data-legal-fallback-own="active"/.test(ready) && n.includes(esc(tv("legal.fallbackNoticeOwnReady")))
+        && !n.includes(esc(tv("legal.fallbackNotice"))) && !n.includes(esc(tv("legal.langSoon"))),
+        visibleText(n));
+      check(`${visitor} + ?lang=pl, ${visitor} READY: …with a link back to the ${visitor} text (/regulamin, no ?lang)`,
+        hrefs(ready, "data-legal-own-version").join() === "/regulamin"
+        && n.includes(`>${esc(tv("legal.readOwnVersion"))}</a>`));
+      check(`${visitor}: the two notices are different sentences, both translated`,
+        tv("legal.fallbackNoticeOwnReady") !== tv("legal.fallbackNotice")
+        && tv("legal.fallbackNoticeOwnReady") !== t("pl")("legal.fallbackNoticeOwnReady")
+        && tv("legal.readOwnVersion") !== t("pl")("legal.readOwnVersion"));
+      check(`${visitor} READY: the Polish text is still the file, 1:1, lang="pl"`,
+        normaliseForCompare(visibleText(/<article[^>]*>([\s\S]*?)<\/article>/.exec(ready)?.[1] ?? "")) === normaliseForCompare(sourceOf("regulamin"))
+        && /<div lang="pl" data-legal-text/.test(ready));
+    }
+    check("the ready test's English doc is really what legalLanguages calls active",
+      legalLanguages(withEn("regulamin"), "regulamin", "pl", "en")[1].active);
+
+    // 'OSTATNIA AKTUALIZACJA' IS A MOMENT IN WARSAW, NOT IN THE SERVER'S ZONE:
+    // 22:30 UTC on 21 October is already 00:30 on the 22nd in Poland (CEST).
+    {
+      const iso = "2026-10-21T22:30:00Z";
+      const d = docWith(sourceOf("polityka-cookies"));
+      const view = legalViewFor(d, "pl");
+      const html = view.mode === "doc" ? renderToStaticMarkup(createElement(LegalDocument, {
+        slug: "polityka-cookies", t: t("pl"), visitor: "pl", doc: d, view,
+        outline: parseLegalText(view.entry.text), pdfTag: "0123456789ab", publishedAt: iso,
+      })) : "";
+      const line = visibleText(/<p data-legal-updated[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "");
+      check("'Ostatnia aktualizacja' = formatInstant (Europe/Warsaw)",
+        line === `Ostatnia aktualizacja: ${formatInstant(iso, "pl")}`, line);
+      check("…which is 22 October, 00:30 — not 21 October, 22:30", /22/.test(line) && line.includes("00:30") && !line.includes("22:30"), line);
+    }
+
+    // THE TAB TITLE IN THE VISITOR'S LANGUAGE. The import gives the two new
+    // documents a Polish SEO title only; an English or German visitor gets the
+    // document's name from the dictionary, an admin's own title stays.
+    {
+      const pageOf = (slug: string, seo: PageSeo): PublicPage => ({
+        slug, title: "Polityka cookies", kind: "legal", blocks: [], seo,
+        headerMode: "global", footerMode: "global", promo: undefined,
+        publishedAt: "2026-10-21T10:00:00Z", updatedAt: "2026-10-21T10:00:00Z",
+      });
+      const importSeo: PageSeo = { pl: { title: "Polityka cookies GrovBase" } };
+      const titleOf = (m: ReturnType<typeof legalPageMetadata>) => ({
+        title: m.title, og: m.openGraph?.title, tw: m.twitter?.title, canonical: m.alternates?.canonical,
+      });
+      for (const visitor of ["en", "de"] as const) {
+        const want = t(visitor)("legal.cookiesTitle");
+        const m = titleOf(legalPageMetadata(pageOf("polityka-cookies", importSeo), visitor, "polityka-cookies", want));
+        check(`${visitor}: a page with only a Polish SEO title → "${want}" as <title>, og:title and twitter:title`,
+          m.title === want && m.og === want && m.tw === want && m.canonical === "/polityka-cookies", JSON.stringify(m));
+      }
+      const pl = titleOf(legalPageMetadata(pageOf("polityka-cookies", importSeo), "pl", "polityka-cookies", t("pl")("legal.cookiesTitle")));
+      check("pl: the admin's Polish SEO title is kept", pl.title === "Polityka cookies GrovBase" && pl.og === "Polityka cookies GrovBase");
+      const own = titleOf(legalPageMetadata(pageOf("polityka-cookies", { ...importSeo, en: { title: "Our cookies", ogTitle: "Cookies at GrovBase" } }),
+        "en", "polityka-cookies", t("en")("legal.cookiesTitle")));
+      check("en: a page WITH its own English SEO title keeps it (and its og:title)",
+        own.title === "Our cookies" && own.og === "Cookies at GrovBase", JSON.stringify(own));
+      const ogOnly = titleOf(legalPageMetadata(pageOf("polityka-cookies", { ...importSeo, en: { ogTitle: "Cookies at GrovBase" } }),
+        "en", "polityka-cookies", t("en")("legal.cookiesTitle")));
+      check("en: an English og:title without a title → dictionary <title>, the admin's og:title",
+        ogOnly.title === t("en")("legal.cookiesTitle") && ogOnly.og === "Cookies at GrovBase" && ogOnly.tw === "Cookies at GrovBase", JSON.stringify(ogOnly));
+      const blank = titleOf(legalPageMetadata(pageOf("umowa-powierzenia-danych", { pl: { title: "Umowa" }, de: { title: "   " } }),
+        "de", "umowa-powierzenia-danych", t("de")("legal.dpaTitle")));
+      check("de: a blank German title counts as none", blank.title === t("de")("legal.dpaTitle") && blank.canonical === "/umowa-powierzenia-danych");
+      const described = legalPageMetadata(pageOf("polityka-cookies", { pl: { title: "T", description: "Opis" }, noindex: true }),
+        "en", "polityka-cookies", "X");
+      check("…and everything else is still pageMetadata's (description, robots)",
+        described.description === "Opis" && (described.robots as { index?: boolean } | undefined)?.index === false);
+    }
   }
 
   console.log(failures === 0 ? "\nAll legal render tests passed." : `\n${failures} check(s) failed.`);

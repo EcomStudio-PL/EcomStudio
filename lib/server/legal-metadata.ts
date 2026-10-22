@@ -1,9 +1,10 @@
 import "server-only";
 import type { Metadata } from "next";
+import type { PageSeo, SeoText } from "@/lib/cms";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { getPublishedPage } from "@/lib/server/public-site";
+import { getPublishedPage, type PublicPage } from "@/lib/server/public-site";
 import { pageMetadata } from "@/lib/server/cms-page";
 
 /**
@@ -37,5 +38,36 @@ export async function legalMetadata(slug: string, titleKey: string): Promise<Met
       openGraph: { url: `/${slug}`, title: t(titleKey) },
     };
   }
-  return pageMetadata(page, locale, `/${slug}`);
+  return legalPageMetadata(page, locale, slug, t(titleKey));
+}
+
+/** The SEO text an admin wrote in exactly this language — no Polish fallback. */
+function ownSeoText(seo: PageSeo | null | undefined, locale: string): SeoText {
+  const own = (seo as Record<string, unknown> | null | undefined)?.[locale];
+  return own && typeof own === "object" && !Array.isArray(own) ? (own as SeoText) : {};
+}
+
+/**
+ * A PUBLISHED legal page: everything pageMetadata decides (description,
+ * robots, canonical, image) — except a title nobody wrote in the visitor's
+ * language. pageMetadata falls back to the Polish SEO, which is right for a
+ * marketing page and wrong here: the import gives the two new documents
+ * (Polityka cookies, Umowa powierzenia) a Polish title only, so an English or
+ * German tab and share card would read "Polityka cookies GrovBase". Then the
+ * document's own name in the visitor's language (`title`, the dictionary's
+ * titleKey — the same one the draft fallback above uses) is the title, and
+ * the social cards take it too unless that language has an og:title of its
+ * own. A page with a title in the visitor's language keeps it, untouched.
+ */
+export function legalPageMetadata(page: PublicPage, locale: string, slug: string, title: string): Metadata {
+  const meta = pageMetadata(page, locale, `/${slug}`);
+  const own = ownSeoText(page.seo, locale);
+  if (own.title?.trim()) return meta;
+  const social = own.ogTitle?.trim() || title;
+  return {
+    ...meta,
+    title,
+    openGraph: { ...meta.openGraph, title: social },
+    twitter: { ...meta.twitter, title: social },
+  };
 }

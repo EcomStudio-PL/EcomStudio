@@ -3,11 +3,11 @@ import { ArrowRight, CalendarDays, Download, Languages } from "lucide-react";
 import type { LegalDocContent, LegalLocaleDoc } from "@/lib/legal/content";
 import type { LegalLocale } from "@/lib/legal/docs";
 import type { LegalOutline } from "@/lib/legal/document";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatInstant } from "@/lib/utils";
 import { LegalText } from "./legal-text";
 import { LegalTocAside, LegalTocMobile } from "./legal-toc";
 import {
-  legalDateLabel, legalHref, legalLanguages, legalPdfHref, legalRelated, legalSwitcher, legalTocTree,
+  legalDateLabel, legalHasText, legalHref, legalLanguages, legalPdfHref, legalRelated, legalSwitcher, legalTocTree,
 } from "./legal-view";
 
 /**
@@ -34,9 +34,21 @@ import {
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
+/*
+ * CONTRAST (WCAG AA, 4.5:1 for the small text here). Measured on --bg, the
+ * meta bar, the related box and the notice, with and without the magenta glow:
+ *   --faint   light 2.85–3.24, dark 3.81–4.65 → only for aria-hidden glyphs
+ *             (the • separator, the calendar icon), never for words.
+ *   --muted   light 5.20–6.18, dark 6.84–8.43 → every small informative line.
+ *   --accent  light 3.21–3.65 → too pale for text on the light page, so
+ *             magenta TEXT is --accent-strong there (4.85–5.64) and keeps the
+ *             brighter --accent in the dark theme (4.78–6.11).
+ * scripts/legal-render-tests.ts holds the rendered markup to this.
+ */
+const ACCENT_TEXT = "text-accent-strong dark:text-accent";
 const PILL = "inline-flex items-center rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors";
 const PRIMARY = "cta inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-[14px] font-semibold";
-const SECONDARY = "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-line-strong bg-surface/70 px-5 text-[14px] font-semibold text-ink transition-colors hover:border-accent/50 hover:text-accent";
+const SECONDARY = "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-line-strong bg-surface/70 px-5 text-[14px] font-semibold text-ink transition-colors hover:border-accent/50 hover:text-accent-strong dark:hover:text-accent";
 
 /** The four documents, the current one marked. */
 export function LegalSwitcher({ slug, t, polish = false }: { slug: string; t: T; polish?: boolean }) {
@@ -66,9 +78,9 @@ function LanguageRow({ doc, slug, shown, visitor, t }: {
     <ul aria-label={t("legal.languages")} data-legal-languages className="flex flex-wrap items-center gap-y-1 text-[12.5px]">
       {legalLanguages(doc, slug, shown, visitor).map((lang, i) => {
         const code = lang.locale.toUpperCase();
-        const tone = lang.current
-          ? "font-semibold text-ink"
-          : lang.active ? "font-medium text-muted" : "font-medium text-faint";
+        // A language that is not ready says so in words ("wkrótce"), so its
+        // code needs no paler colour — and a paler one fell under AA.
+        const tone = lang.current ? "font-semibold text-ink" : "font-medium text-muted";
         return (
           <li key={lang.locale} data-legal-lang={lang.locale} data-state={lang.active ? "active" : "soon"}
             className="flex items-center">
@@ -79,7 +91,7 @@ function LanguageRow({ doc, slug, shown, visitor, t }: {
             ) : (
               <span lang={lang.locale} className={tone} {...(lang.current ? { "aria-current": "true" as const } : {})}>{code}</span>
             )}
-            {!lang.active && <span className="ml-1.5 text-[11px] text-faint">{t("legal.langSoon")}</span>}
+            {!lang.active && <span className="ml-1.5 text-[11px] text-muted">{t("legal.langSoon")}</span>}
           </li>
         );
       })}
@@ -93,7 +105,7 @@ function BackLink({ t }: { t: T }) {
   // to go back to, so history.back() would send a reader off the site.
   return (
     <Link href="/" data-legal-back
-      className="tap inline-flex text-sm font-medium text-accent transition-opacity hover:opacity-75">
+      className={cn("tap inline-flex text-sm font-medium transition-opacity hover:opacity-75", ACCENT_TEXT)}>
       ← {t("legal.back")}
     </Link>
   );
@@ -122,6 +134,10 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
   const { entry } = view;
   const toc = legalTocTree(outline.headings);
   const polish = view.fallbackFrom !== null;
+  // The visitor asked for Polish (?lang=pl) although their own language may
+  // be ready too. Only when it is NOT does the notice promise a translation;
+  // otherwise it says which text this is and leads back to theirs.
+  const ownReady = view.fallbackFrom !== null && legalHasText(doc, view.fallbackFrom);
   const related = legalRelated(slug, polish);
   const pdfHref = legalPdfHref(slug, pdfTag, view.locale);
   const hasToc = toc.length > 0;
@@ -131,7 +147,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
       <div className={cn(hasToc && "lg:grid lg:grid-cols-[15.5rem_minmax(0,46rem)] lg:justify-center lg:gap-12 xl:grid-cols-[17rem_minmax(0,46rem)] xl:gap-20")}>
         {hasToc && (
           <aside className="hidden lg:block">
-            <LegalTocAside entries={toc} label={t("legal.contents")} />
+            <LegalTocAside entries={toc} label={t("legal.contents")} lang={view.locale} />
           </aside>
         )}
 
@@ -139,10 +155,20 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
           <LegalSwitcher slug={slug} t={t} polish={polish} />
 
           {view.fallbackFrom && (
-            <p role="note" data-legal-fallback={view.fallbackFrom}
+            <p role="note" data-legal-fallback={view.fallbackFrom} data-legal-fallback-own={ownReady ? "active" : "soon"}
               className="mt-6 flex items-start gap-2.5 rounded-xl border border-accent/25 bg-accent-soft/35 px-4 py-3 text-[13.5px] leading-relaxed text-ink/90">
               <Languages size={16} aria-hidden className="mt-0.5 shrink-0 text-accent" />
-              <span>{t("legal.fallbackNotice")}</span>
+              {ownReady ? (
+                <span>
+                  {t("legal.fallbackNoticeOwnReady")}{" "}
+                  <Link href={legalHref(slug)} data-legal-own-version
+                    className={cn("font-semibold underline decoration-accent/40 underline-offset-2 transition-colors hover:decoration-accent", ACCENT_TEXT)}>
+                    {t("legal.readOwnVersion")}
+                  </Link>
+                </span>
+              ) : (
+                <span>{t("legal.fallbackNotice")}</span>
+              )}
             </p>
           )}
 
@@ -151,7 +177,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 text-[13px] text-muted">
               {entry.version && (
                 <span data-legal-version
-                  className="inline-flex items-center rounded-full border border-accent/30 bg-accent-soft/50 px-2.5 py-0.5 text-[12px] font-semibold text-accent">
+                  className={cn("inline-flex items-center rounded-full border border-accent/30 bg-accent-soft/50 px-2.5 py-0.5 text-[12px] font-semibold", ACCENT_TEXT)}>
                   {t("legal.version", { version: entry.version })}
                 </span>
               )}
@@ -173,7 +199,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
 
           {hasToc && (
             <div className="mt-6 lg:hidden">
-              <LegalTocMobile entries={toc} label={t("legal.contents")} />
+              <LegalTocMobile entries={toc} label={t("legal.contents")} lang={view.locale} />
             </div>
           )}
 
@@ -186,7 +212,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
           {related.length > 0 && (
             <aside aria-labelledby="legal-related" data-legal-related
               className="mt-14 rounded-2xl border border-line bg-surface/60 p-5 sm:p-6">
-              <h2 id="legal-related" className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-faint">
+              <h2 id="legal-related" className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-muted">
                 {t("legal.related")}
               </h2>
               <ul className="mt-3.5 space-y-2.5">
@@ -195,7 +221,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
                     <Link href={r.href} data-legal-related-link={r.relation}
                       className="group flex items-center justify-between gap-4 rounded-xl border border-line bg-bg/50 px-4 py-3.5 transition-colors hover:border-accent/40">
                       <span className="min-w-0">
-                        <span className="block text-[12px] font-medium text-accent">{t(r.labelKey)}</span>
+                        <span className={cn("block text-[12px] font-medium", ACCENT_TEXT)}>{t(r.labelKey)}</span>
                         <span className="mt-0.5 block text-[14.5px] font-semibold leading-snug text-ink">{t(r.titleKey)}</span>
                       </span>
                       <ArrowRight size={16} aria-hidden
@@ -212,7 +238,10 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
             <div className="flex flex-col items-start gap-2">
               <BackLink t={t} />
               {publishedAt && (
-                <p className="text-[12px] text-faint">{t("legal.lastUpdated")}: {formatDate(publishedAt, visitor)}</p>
+                // A moment, not a calendar date: shown in Warsaw time, which a
+                // UTC server would otherwise move back by one or two hours —
+                // and, around midnight, to the day before.
+                <p data-legal-updated className="text-[12px] text-muted">{t("legal.lastUpdated")}: {formatInstant(publishedAt, visitor)}</p>
               )}
             </div>
             <a href={pdfHref} data-legal-pdf="bottom" className={SECONDARY}>

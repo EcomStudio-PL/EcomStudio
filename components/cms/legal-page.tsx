@@ -10,7 +10,7 @@ import { getPublishedLegal, legalPdfTag } from "@/lib/server/legal/published";
 import { getPlatformAccess } from "@/lib/server/platform-access";
 import { legalViewFor } from "@/lib/legal/content";
 import { parseLegalText } from "@/lib/legal/document";
-import { formatDate } from "@/lib/utils";
+import { formatInstant } from "@/lib/utils";
 import { TableOfContents } from "./table-of-contents";
 
 /**
@@ -131,9 +131,11 @@ function LegacyLegal({ page, titleKey, locale, t, signedIn }: {
       <h1 className="font-display text-[clamp(1.6rem,4vw,2.5rem)] font-semibold tracking-tight">
         {t(titleKey)}
       </h1>
+      {/* Readable small text (--muted, not --faint) and the moment in Warsaw
+          time, as on the imported documents (LegalDocument). */}
       {page?.publishedAt && (
-        <p className="mt-2 text-[12.5px] text-faint">
-          {t("legal.lastUpdated")}: {formatDate(page.publishedAt, locale)}
+        <p className="mt-2 text-[12.5px] text-muted">
+          {t("legal.lastUpdated")}: {formatInstant(page.publishedAt, locale)}
         </p>
       )}
 
@@ -159,7 +161,7 @@ function LegacyLegal({ page, titleKey, locale, t, signedIn }: {
           {signedIn && (
             <p className="mt-3 text-sm text-muted">
               {t("legal.contactPre")}{" "}
-              <Link href="/support" className="font-medium text-accent">{t("nav.help")}</Link>.
+              <Link href="/support" className="font-medium text-accent-strong dark:text-accent">{t("nav.help")}</Link>.
             </p>
           )}
         </>
@@ -170,7 +172,7 @@ function LegacyLegal({ page, titleKey, locale, t, signedIn }: {
           there is nothing to go back to, so history.back() would send a
           reader off the site entirely. */}
       <Link href="/" data-legal-back
-        className="tap mt-10 inline-flex text-sm font-medium text-accent transition-opacity hover:opacity-75">
+        className="tap mt-10 inline-flex text-sm font-medium text-accent-strong transition-opacity hover:opacity-75 dark:text-accent">
         ← {t("legal.back")}
       </Link>
     </div>
