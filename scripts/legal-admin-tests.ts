@@ -22,6 +22,17 @@
  *      box, the counter, the languages, the links, an old section
  *   J  the /admin/www overview panel rendered: digests, links, the
  *      "zmiany nieopublikowane" marker, a draft page, a missing page
+ *   K  Publish after a refused save: the builder's save tracker (a refused,
+ *      in-flight or earlier-refused save stops Publish; a stale one does not)
+ *      and the wiring of publish() / flush() / persist()
+ *   L  the full-screen editor: one render tree (no remount), a labelled
+ *      modal dialog, focus in and back, caret and scroll kept
+ *   M  "Pobierz zapisany tekst": only for a language whose SAVED text exists,
+ *      a `download` link, a plain-text 404 from the route
+ *   N  the admin preview (BlockRenderer with ctx.admin): an EN/DE admin sees
+ *      the Polish draft with a note; the public rendering is unchanged
+ *   O  an old `legal` section: the notice, legacyLegalText (tags stripped,
+ *      entities decoded, not one word rewritten) and the move to PL
  *
  * Mocks only — no network, no database (scripts/stubs/ice-*.ts).
  * Optional: I18N_FRAGMENT=<path to i18n-admin.json> also checks the Polish
@@ -34,8 +45,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import plDict from "@/lib/i18n/dictionaries/pl.json";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { makeT } from "@/lib/i18n/t";
-import { LegalDocField } from "@/components/admin/cms/legal-doc-field";
+import {
+  LegalDocField, SavedSectionContent, legacyLegalText, withLegacyPolishDraft,
+} from "@/components/admin/cms/legal-doc-field";
 import { LegalDocsPanel } from "@/components/admin/cms/legal-docs-panel";
+import { createSaveTracker } from "@/components/admin/cms/builder";
+import { BlockRenderer, renderContext } from "@/components/cms/blocks";
 import {
   MAX_LEGAL_CHARS, cleanLegalDocInput, legalCharCount, normalizeLegalText, readLegalDoc, type LegalDocContent,
 } from "@/lib/legal/content";
@@ -46,6 +61,7 @@ import {
   legalVersionFacts, localeFacts, parseLegalLocaleParam, parseLegalSourceParam, withLegalDigests,
 } from "@/lib/server/legal/admin";
 import { SECTION_FIELDS, fieldsFor, readField, splitFields, writeField } from "@/lib/cms-schema";
+import { SEED_PAGES } from "@/lib/cms-seed";
 import { ICE_UNSUPPORTED } from "@/lib/ice/registry";
 import { saveBlockAction } from "@/app/actions/cms";
 import { GET as downloadRoute } from "@/app/admin/www/[slug]/dokument/route";
@@ -331,6 +347,11 @@ async function sectionE() {
     const bad = await call("..%2Fadmin", "?locale=pl");
     check("E7 404 for a language with no text, an unknown page, a page with no legal section, a malformed slug",
       en.status === 404 && none.status === 404 && hero.status === 404 && bad.status === 404);
+    const bodies = await Promise.all([en, none, hero, bad].map((r) => r.text()));
+    check("E7b … every 404 is PLAIN TEXT, never a JSON page (it would replace the builder), and never cached",
+      [en, none, hero, bad].every((r) => r.headers.get("content-type") === "text/plain; charset=utf-8"
+        && r.headers.get("cache-control") === "private, no-store" && r.headers.get("x-content-type-options") === "nosniff")
+      && bodies.every((b) => b === "Not Found"), bodies.join(" | "));
   }
   {
     freshDb();
@@ -503,10 +524,14 @@ function polishDict(): Record<string, unknown> {
 
 const unescapeHtml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
 
-function render(content: unknown, locale: "pl" | "en" | "de"): string {
+/** The editor as the builder draws it; `saved` is what the builder says is
+ *  stored (SavedSectionContent) — left out, the editor has no provider. */
+function render(content: unknown, locale: "pl" | "en" | "de", saved?: unknown): string {
+  const field = createElement(LegalDocField, { label: "Dokument prawny", locale, content: content as CmsBlockContent, onChange: () => undefined });
   return renderToStaticMarkup(createElement(I18nProvider, {
     locale: "pl", dict: polishDict(),
-    children: createElement(LegalDocField, { label: "Dokument prawny", locale, content: content as CmsBlockContent, onChange: () => undefined }),
+    children: saved === undefined ? field
+      : createElement(SavedSectionContent.Provider, { value: saved as CmsBlockContent | null, children: field }),
   }));
 }
 
@@ -532,8 +557,9 @@ function sectionI() {
   check("I7 the version and the date fields hold the PL entry's",
     /<input[^>]*id="cms-legal-pl-version"[^>]*value="1\.0"/.test(html) && /<input[^>]*id="cms-legal-pl-effective"[^>]*value="2026-10-20"/.test(html));
   const en = render({ doc: regDoc() }, "en");
-  check("I8 the EN tab edits the EN entry: an empty box, 0 characters, its download link", /<textarea[^>]*data-legal-doc-text[^>]*><\/textarea>/.test(en)
-    && /data-chars="0"/.test(en) && en.includes("dokument?locale=en"));
+  check("I8 the EN tab edits the EN entry: an empty box, 0 characters — and NO download link (EN has no saved text; it would only 404)",
+    /<textarea[^>]*data-legal-doc-text[^>]*><\/textarea>/.test(en)
+    && /data-chars="0"/.test(en) && !en.includes("dokument?locale=") && !en.includes("data-legal-download"));
   const old = render({ title: { pl: "Regulamin" }, description: { pl: "Stary tekst" } }, "pl");
   check("I9 an old section (no doc) opens as an empty document, PL 'soon' — its old text is not shown as the document",
     /data-legal-chip="pl" data-legal-chip-status="soon"/.test(old) && /<textarea[^>]*data-legal-doc-text[^>]*><\/textarea>/.test(old) && !old.includes("Stary tekst"));
@@ -564,6 +590,284 @@ async function sectionJ() {
   check("J6 nothing renders when the overview could not be read", LegalDocsPanel({ rows: [], t, locale: "pl" }) === null);
 }
 
+/* ══ K. Publish after a refused save ══════════════════════════════════════ */
+
+type Draft = { id: string; v: number };
+
+/** A server that answers at once: `refuse` decides which drafts it refuses. */
+function fakeServer(refuse: (d: Draft) => boolean) {
+  const calls: Draft[] = [];
+  return { calls, save: async (d: Draft) => { calls.push(d); await Promise.resolve(); return !refuse(d); } };
+}
+
+/** A server that answers when the test says so. */
+function heldServer() {
+  const answers: ((ok: boolean) => void)[] = [];
+  return { answers, save: (_d: Draft) => new Promise<boolean>((resolve) => { answers.push(resolve); }) };
+}
+
+async function sectionK() {
+  console.log("\nK. PUBLISH AFTER A REFUSED SAVE — the builder's save tracker and publish()");
+  {
+    // The finding: Publish pressed while the edit still waits for its autosave.
+    const tr = createSaveTracker<Draft>();
+    const srv = fakeServer(() => true);
+    const ok = await tr.flush({ id: "a", v: 1 }, srv.save);
+    check("K1 the waiting edit is sent by flush; the server refuses it → false (Publish must not run), asked once (one toast, not two)",
+      ok === false && srv.calls.length === 1 && srv.calls[0].v === 1);
+  }
+  {
+    const tr = createSaveTracker<Draft>();
+    const srv = fakeServer(() => false);
+    check("K2 nothing waiting, nothing refused → true, without a single request", (await tr.flush(null, srv.save)) === true && srv.calls.length === 0);
+    check("K2b … a waiting edit that is stored → true", (await tr.flush({ id: "a", v: 1 }, srv.save)) === true && srv.calls.length === 1);
+  }
+  {
+    // The autosave fired and was refused a while ago; Publish is pressed later
+    // with nothing waiting — the more common way into the same bug.
+    const tr = createSaveTracker<Draft>();
+    const refusing = fakeServer(() => true);
+    await tr.run({ id: "a", v: 1 }, refusing.save);
+    const ok = await tr.flush(null, refusing.save);
+    check("K3 an autosave refused EARLIER (nothing waiting at Publish) is sent once more; refused again → false",
+      ok === false && refusing.calls.length === 2 && refusing.calls[1].v === 1);
+    const back = fakeServer(() => false);
+    check("K3b … and when that retry lands (it was the network) → true", (await tr.flush(null, back.save)) === true && back.calls.length === 1);
+    check("K3c … after which nothing is sent again", (await tr.flush(null, back.save)) === true && back.calls.length === 1);
+  }
+  {
+    // A save already on its way when Publish is pressed.
+    const tr = createSaveTracker<Draft>();
+    const held = heldServer();
+    void tr.run({ id: "a", v: 1 }, held.save);
+    const retry = fakeServer(() => true);
+    let settled = false;
+    const flushing = tr.flush(null, retry.save).then((ok) => { settled = true; return ok; });
+    await new Promise((r) => setTimeout(r, 5));
+    check("K4 flush WAITS for a save already on its way", settled === false && held.answers.length === 1);
+    held.answers[0](false);
+    check("K4b … which, refused, makes it false — without asking again what was just refused", (await flushing) === false && retry.calls.length === 0);
+  }
+  {
+    // An older save settling (refused) after a newer one of the same section was stored.
+    const tr = createSaveTracker<Draft>();
+    const held = heldServer();
+    void tr.run({ id: "a", v: 1 }, held.save);
+    await tr.run({ id: "a", v: 2 }, async () => true);
+    held.answers[0](false);
+    await new Promise((r) => setTimeout(r, 0));
+    const srv = fakeServer(() => true);
+    check("K5 only a section's NEWEST save counts: v1 refused after v2 was stored → nothing to retry, true",
+      (await tr.flush(null, srv.save)) === true && srv.calls.length === 0);
+  }
+  {
+    const tr = createSaveTracker<Draft>();
+    const refusing = fakeServer(() => true);
+    await tr.run({ id: "a", v: 1 }, refusing.save);
+    tr.forget("a");
+    check("K6 a deleted section's refused save is forgotten (it would block every Publish after it)",
+      (await tr.flush(null, refusing.save)) === true && refusing.calls.length === 1);
+  }
+  {
+    const tr = createSaveTracker<Draft>();
+    const refusingB = fakeServer((d) => d.id === "b");
+    await tr.run({ id: "b", v: 1 }, refusingB.save);
+    const ok = await tr.flush({ id: "a", v: 3 }, refusingB.save);
+    check("K7 another section's refused save blocks Publish too, while the waiting edit is stored",
+      ok === false && refusingB.calls.filter((d) => d.id === "a").length === 1 && refusingB.calls.filter((d) => d.id === "b").length === 2);
+  }
+
+  const code = readFileSync("components/admin/cms/builder.tsx", "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  const publish = code.slice(code.indexOf("function publish()"), code.indexOf("const published ="));
+  check("K8 publish(): a false flush shows cms.publishBlocked and returns BEFORE publishPageAction",
+    /if \(!\(await flush\(\)\)\) \{ toast\.error\(t\("cms\.publishBlocked"\)\); return; \}/.test(publish)
+    && publish.indexOf("await flush()") > 0 && publish.indexOf("await flush()") < publish.indexOf("publishPageAction(page.id)"));
+  check("K9 flush() resolves the tracker's verdict; persist() runs every save through it; the save itself resolves res.ok",
+    /const flush = useCallback\(async \(\): Promise<boolean> =>[\s\S]*?return saves\.flush\(next, saveNow\);/.test(code)
+    && /const persist = useCallback\(\(draft: Draft\) => saves\.run\(draft, saveNow\)/.test(code)
+    && /return res\.ok;\s*\}, \[page\.id, t\]\);/.test(code));
+  check("K10 a save that throws (offline, a deploy) is a refused save with its toast, never a stored one",
+    /saveBlockAction\(\{[\s\S]*?\}\)\.catch\(\(\) => \(\{ ok: false as const, error: "generic"/.test(code));
+  check("K11 the other callers are unchanged: the autosave and the eye toggle still fire persist() and move on",
+    (code.match(/void persist\(next\);/g) ?? []).length === 2);
+  check("K12 deleting a section drops its waiting autosave and forgets its saves",
+    /if \(queued\.current\?\.id === block\.id\) queued\.current = null;\s*saves\.forget\(block\.id\);/.test(code));
+}
+
+/* ══ L. the full-screen editor ════════════════════════════════════════════ */
+
+function sectionL() {
+  console.log("\nL. FULL SCREEN — one render tree, a labelled modal dialog, focus, caret and scroll kept");
+  const code = readFileSync("components/admin/cms/legal-doc-field.tsx", "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  check("L1 no early return that swaps the tree (`if (expanded …) return createPortal(…)` remounted the textarea); ONE createPortal",
+    !/if \(expanded[^\n]*\n?\s*return createPortal/.test(code) && (code.match(/createPortal\(/g) ?? []).length === 1);
+  check("L2 always portalled into ONE host element made once, moved between its slot and the body",
+    /return <div ref=\{slotRef\} data-legal-slot>\{host \? createPortal\(shell, host\) : shell\}<\/div>;/.test(code)
+    && /const el = document\.createElement\("div"\);\s*setHost\(el\);\s*return \(\) => \{ el\.remove\(\); \};\s*\}, \[\]\);/.test(code)
+    && /const target = expanded \? document\.body : slot;/.test(code) && /target\.appendChild\(host\);/.test(code));
+  check("L3 the move runs in a layout effect (before paint) keyed on the host and the state",
+    /useLayoutEffect\(\(\) => \{\s*const slot = slotRef\.current;[\s\S]*?\}, \[host, expanded\]\);/.test(code));
+  check("L4 full screen = role=dialog, aria-modal, a label; inline = none of it",
+    /role=\{expanded \? "dialog" : undefined\}/.test(code) && /aria-modal=\{expanded \? true : undefined\}/.test(code)
+    && /aria-label=\{expanded \? t\("cms\.legalDoc\.fullscreenLabel", \{ label, lang: locale\.toUpperCase\(\) \}\) : undefined\}/.test(code));
+  const effect = code.slice(code.indexOf("useLayoutEffect(() => {"), code.indexOf("}, [host, expanded]);"));
+  check("L5 the selection and scrollTop are read BEFORE the move and put back after it",
+    effect.indexOf("const keep = box && { start: box.selectionStart, end: box.selectionEnd, dir: box.selectionDirection, top: box.scrollTop }") > 0
+    && effect.indexOf("const keep =") < effect.indexOf("target.appendChild(host)")
+    && effect.indexOf("target.appendChild(host)") < effect.indexOf("box.setSelectionRange(keep.start, keep.end")
+    && effect.includes("box.scrollTop = keep.top;"));
+  check("L6 focus: into the text on open, back to the toggle on close, nothing moved on the first placement",
+    /if \(first \|\| !box \|\| !keep\) return;/.test(effect) && /if \(expanded\) box\.focus\(\{ preventScroll: true \}\);/.test(effect)
+    && /if \(!expanded\) toggleRef\.current\?\.focus\(\{ preventScroll: true \}\);/.test(effect)
+    && /<button ref=\{toggleRef\}/.test(code) && /<Textarea ref=\{textRef\}/.test(code));
+  check("L7 Escape closes it unless the confirm dialog is open; Tab stays inside the dialog",
+    /if \(!expanded \|\| pending\) return;/.test(code) && /if \(e\.key === "Escape"\) \{ setExpanded\(false\); return; \}/.test(code)
+    && /if \(e\.key !== "Tab" \|\| !dialog\) return;/.test(code));
+  const html = render({ doc: regDoc() }, "pl");
+  check("L8 rendered (server / first render): the editor in place inside its slot, no dialog, no full-screen marker",
+    html.includes("<div data-legal-slot=\"true\"><div><div data-legal-doc-field=\"pl\"") && !html.includes("role=\"dialog\"")
+    && !html.includes("aria-modal") && !html.includes("data-legal-fullscreen"), html.slice(0, 160));
+}
+
+/* ══ M. the download link ═════════════════════════════════════════════════ */
+
+function sectionM() {
+  console.log("\nM. 'POBIERZ ZAPISANY TEKST' — offered for what is STORED, as a download");
+  const typed = withLegalDigests(doc({ text: REGULAMIN }, { status: "soon", text: "Terms — draft\n" }) as LegalDocContent);
+  const unsaved = render({ doc: typed }, "en", { doc: regDoc() });
+  check("M1 EN typed but not saved yet → no link (the route would answer 404)", !unsaved.includes("data-legal-download"));
+  const saved = render({ doc: typed }, "en", { doc: typed });
+  check("M2 … once the save has landed → the EN link, a `download` link",
+    /<a href="\/admin\/www\/regulamin\/dokument\?locale=en" download="" data-legal-download/.test(saved));
+  const cleared = render({ doc: doc({ text: "" }) }, "pl", { doc: regDoc() });
+  check("M3 PL cleared on screen (its save refused) but still stored → the link stays: it serves the stored text",
+    cleared.includes("dokument?locale=pl") && cleared.includes("data-legal-active-empty"));
+  const none = render({ doc: regDoc() }, "pl", null);
+  check("M4 the builder says nothing is stored for this section → no link", !none.includes("data-legal-download"));
+  const pl = render({ doc: regDoc() }, "pl");
+  check("M5 the PL link of a saved document carries `download` (saved as a file, the builder stays)",
+    /<a href="\/admin\/www\/regulamin\/dokument\?locale=pl" download="" data-legal-download/.test(pl));
+  const builder = readFileSync("components/admin/cms/builder.tsx", "utf8");
+  check("M6 the builder provides what is stored (SavedSectionContent ← `stored`), updated only when a save LANDS",
+    /<SavedSectionContent\.Provider value=\{stored\.get\(active\.id\) \?\? null\}>/.test(builder)
+    && /if \(res\.ok\) \{\s*if \(draft\.id\) \{\s*baseline\.current\.set\(draft\.id, draft\.content\);\s*setStored\(/.test(builder));
+}
+
+/* ══ N. the admin preview ═════════════════════════════════════════════════ */
+
+function sectionN() {
+  console.log("\nN. THE ADMIN PREVIEW — the draft, whatever the admin's interface language");
+  const t = makeT(polishDict());
+  // `preview` is the context /podglad builds (admin + draftPreview); without
+  // it, the context of every public page.
+  const draw = (d: unknown, locale: string, preview: boolean) => renderToStaticMarkup(createElement(BlockRenderer, {
+    blocks: [{ id: "b1", type: "legal", sort_order: 0, visible: true, content: { doc: d } as unknown as CmsBlockContent, style: {}, code: {} }],
+    ctx: renderContext({ locale, t, ...(preview ? { admin: true, draftPreview: true } : {}) }),
+  }));
+  const podglad = readFileSync("app/podglad/[slug]/page.tsx", "utf8");
+  check("N0 /podglad (the builder's frame and 'Podgląd strony (szkic)') renders with admin AND draftPreview",
+    /renderContext\(\{ locale, t, media, data, admin: true, draftPreview: true, showAuth: true \}\)/.test(podglad));
+  const publicRoutes = ["app/[slug]/page.tsx", "app/page.tsx", "components/cms/legal-page.tsx"].map((p) => readFileSync(p, "utf8"));
+  check("N0b … and no public route does", publicRoutes.every((src) => !src.includes("draftPreview")));
+  const plOnly = doc({ text: "Regulamin GrovBase\n\nTekst polskiego szkicu.\n" });
+  const adminEn = draw(plOnly, "en", true);
+  check("N1 an EN admin previewing a PL-only document sees the POLISH DRAFT, not 'coming soon'",
+    adminEn.includes("Tekst polskiego szkicu.") && !adminEn.includes("data-legal-soon"));
+  check("N1b … with a note naming the language whose visitors see the notice instead",
+    adminEn.includes("data-legal-preview-polish=\"en\""));
+  check("N1c … the text marked as Polish (lang=\"pl\")", /lang="pl"/.test(adminEn));
+  const adminDe = draw(plOnly, "de", true);
+  check("N2 the same for DE", adminDe.includes("Tekst polskiego szkicu.") && adminDe.includes("data-legal-preview-polish=\"de\""));
+  const publicEn = draw(plOnly, "en", false);
+  check("N3 the PUBLIC rendering is unchanged: an EN visitor gets the notice, not the Polish text, and no admin note",
+    publicEn.includes("data-legal-soon") && !publicEn.includes("Tekst polskiego szkicu.") && !publicEn.includes("data-legal-preview-polish"));
+  const enActive = doc({ text: "Regulamin\n\nTekst polski.\n" }, { status: "active", text: "Terms of Service\n\nEnglish text.\n" });
+  const adminEnActive = draw(enActive, "en", true);
+  check("N4 an EN admin with EN active sees the EN text — no Polish, no note",
+    adminEnActive.includes("English text.") && !adminEnActive.includes("Tekst polski.") && !adminEnActive.includes("data-legal-preview-polish"));
+  const adminPl = draw(plOnly, "pl", true);
+  check("N5 a PL admin: the Polish text and no note (nothing to explain)",
+    adminPl.includes("Tekst polskiego szkicu.") && !adminPl.includes("data-legal-preview-polish"));
+  const noPolish = doc({ status: "soon", text: "Szkic jeszcze nieaktywny.\n" });
+  const adminNoPolish = draw(noPolish, "en", true);
+  check("N6 no active Polish text either → what visitors see (the notice); a non-active text is never shown as live",
+    adminNoPolish.includes("data-legal-soon") && !adminNoPolish.includes("Szkic jeszcze nieaktywny."));
+  if (process.env.I18N_FRAGMENT) {
+    check("N7 the note's wording (fragment merged)", adminEn.includes("wersja EN nie jest jeszcze aktywna"));
+  }
+}
+
+/* ══ O. an old legal section ══════════════════════════════════════════════ */
+
+const SEED_PL = "<h2>Postanowienia ogólne</h2><p>W przygotowaniu.</p><h2>Definicje</h2><p>W przygotowaniu.</p>";
+
+function sectionO() {
+  console.log("\nO. AN OLD SECTION — said so, and its text one click from the Polish draft");
+  const texts = legacyLegalText({ html: { pl: SEED_PL, en: "<h2>General provisions</h2><p>In preparation.</p>" } });
+  check("O1 html → plain text: each block on its own lines with a blank line between, the tags gone",
+    texts.pl === "Postanowienia ogólne\n\nW przygotowaniu.\n\nDefinicje\n\nW przygotowaniu.", JSON.stringify(texts.pl));
+  check("O1b … per language, with no fallback (DE holds nothing → \"\")",
+    texts.en === "General provisions\n\nIn preparation." && texts.de === "");
+  const nbsp = String.fromCharCode(0xa0);
+  const ent = legacyLegalText({ html: { pl: "<p>&bdquo;Usługa&rdquo; &amp; &sect;&nbsp;1 &#8212; &#x2192; &lt;b&gt; &foo; &#1;</p>" } }).pl;
+  check("O2 entities decoded (named, decimal, hex; &nbsp; as U+00A0); &lt;b&gt; stays TEXT; an unknown or control entity is kept as written",
+    ent === `„Usługa” & §${nbsp}1 — → <b> &foo; &#1;`, JSON.stringify(ent));
+  const lists = legacyLegalText({ html: { pl: "<p>Wstęp<br>druga linia</p><ul>\n  <li>pierwszy</li>\n  <li>drugi <strong>pogrubiony</strong></li>\n</ul><table><tr><td>a</td><td>b</td></tr></table>" } }).pl;
+  check("O3 <br> and list items start new lines; inline tags vanish without gluing words; table cells stay apart",
+    lists === "Wstęp\ndruga linia\n\npierwszy\ndrugi pogrubiony\n\na b", JSON.stringify(lists));
+  const hidden = legacyLegalText({ html: { pl: "<style>p{color:red}</style><p>Treść</p><script>alert(1)</script><!-- notatka -->" } }).pl;
+  check("O4 what a visitor never saw (a script, a style, a comment) is not text", hidden === "Treść", JSON.stringify(hidden));
+  const desc = legacyLegalText({ title: { pl: "  Regulamin  " }, description: { pl: "Akapit pierwszy.\r\n\r\nAkapit   drugi — „bez zmian”." } }).pl;
+  check("O5 no html → the description AS WRITTEN (CRLF → LF only), the title as the first line",
+    desc === "Regulamin\n\nAkapit pierwszy.\n\nAkapit   drugi — „bez zmian”.", JSON.stringify(desc));
+  check("O6 the html wins over the description (as on the old page) — unless it holds no text",
+    legacyLegalText({ description: { pl: "opis" }, html: { pl: "<p>html</p>" } }).pl === "html"
+    && legacyLegalText({ description: { pl: "opis" }, html: { pl: "<p> </p>" } }).pl === "opis");
+  // NOT ONE WORD REWRITTEN: every seeded legacy section, every language — the
+  // words out are the words in, in the same order.
+  const words = (s: string) => s.split(/[\s ]+/).filter(Boolean);
+  const seeded = SEED_PAGES.flatMap((p) => p.sections.filter((s) => s.type === "legal").map((s) => ({ slug: p.slug, content: s.content })));
+  const sameWords = seeded.length >= 2 && seeded.every(({ content }) => {
+    const out = legacyLegalText(content);
+    return LEGAL_LOCALES.every((l) => {
+      const html = (content.html as Record<string, string> | undefined)?.[l] ?? "";
+      return html !== "" && words(out[l]).join(" ") === words(html.replace(/<[^>]*>/g, " ")).join(" ");
+    });
+  });
+  check("O7 the seeded old Regulamin and Privacy outlines (PL/EN/DE): the same words, in the same order", sameWords, String(seeded.length));
+
+  const oldHtml = render({ html: { pl: SEED_PL } }, "pl");
+  check("O8 an old section shows the notice and the move button", oldHtml.includes("data-legal-legacy") && oldHtml.includes("data-legal-legacy-move"));
+  const enOnly = render({ html: { en: "<p>Only English</p>" } }, "pl");
+  check("O9 old text in another language only → the notice, but nothing to move into PL",
+    enOnly.includes("data-legal-legacy") && !enOnly.includes("data-legal-legacy-move"));
+  check("O10 a section with a document, or a new empty one → no notice",
+    !render({ html: { pl: SEED_PL }, doc: regDoc() }, "pl").includes("data-legal-legacy") && !render({}, "pl").includes("data-legal-legacy"));
+  if (process.env.I18N_FRAGMENT) {
+    check("O10b the button reads „Przenieś dotychczasowy tekst do wersji PL” (fragment merged)", oldHtml.includes("Przenieś dotychczasowy tekst do wersji PL"));
+  }
+
+  const old = { title: { pl: "Regulamin" }, html: { pl: SEED_PL, en: "<p>EN</p>" }, description: { pl: "stary opis" } };
+  const before = JSON.stringify(old);
+  const moved = withLegacyPolishDraft(old as CmsBlockContent);
+  const movedDoc = readLegalDoc(moved);
+  check("O11 the move: doc.pl.text = the old Polish text (the title, then the html as plain text)",
+    movedDoc?.pl.text === `Regulamin\n\n${texts.pl}`, JSON.stringify(movedDoc?.pl.text));
+  check("O11b … status, version and date left to the admin (a new document's: soon, \"\", null); EN and DE empty",
+    movedDoc?.pl.status === "soon" && movedDoc.pl.version === "" && movedDoc.pl.effective === null
+    && movedDoc.en.text === "" && movedDoc.de.text === "" && movedDoc.en.status === "soon");
+  const m = (moved ?? {}) as Record<string, unknown>;
+  check("O11c … the old fields stay in the section untouched (until a save writes it); the input is not mutated",
+    JSON.stringify(old) === before && JSON.stringify(m.title) === JSON.stringify(old.title)
+    && JSON.stringify(m.html) === JSON.stringify(old.html) && JSON.stringify(m.description) === JSON.stringify(old.description));
+  check("O12 nothing to move → null: a section with a document, or one with no Polish text",
+    withLegacyPolishDraft({ doc: regDoc(), html: { pl: SEED_PL } } as unknown as CmsBlockContent) === null
+    && withLegacyPolishDraft({ html: { en: "<p>x</p>" } } as CmsBlockContent) === null);
+  const stored = moved ? legalSectionForSave(moved) : null;
+  check("O13 the moved draft passes the server's check unchanged (a 'soon' language may hold text)",
+    stored?.ok === true && readLegalDoc(stored.content)?.pl.text === movedDoc?.pl.text);
+}
+
 async function main() {
   sectionA();
   sectionB();
@@ -575,6 +879,11 @@ async function main() {
   sectionH();
   sectionI();
   await sectionJ();
+  await sectionK();
+  sectionL();
+  sectionM();
+  sectionN();
+  sectionO();
   console.log(`\n${passed} passed, ${failures} failed`);
   if (failures > 0) process.exit(1);
 }

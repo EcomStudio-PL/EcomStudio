@@ -27,6 +27,7 @@ import { buildLinkTargets, publicPathFor, type LinkPage } from "@/lib/cms-links"
 import { Field, LinkTargetsProvider, LocaleTabs, type Locale } from "./fields";
 import { StylePanel, ResponsivePanel } from "./style-panel";
 import { CodePanel } from "./code-panel";
+import { SavedSectionContent } from "./legal-doc-field";
 import { cn, formatDate } from "@/lib/utils";
 
 /**
@@ -84,6 +85,65 @@ type Draft = {
   showUntil: string | null;
   audience: string;
 };
+
+/**
+ * WHICH SAVES HAVE NOT LANDED — what Publish has to know before it runs.
+ *
+ * Publishing copies what is STORED, not what is on screen. So before it runs,
+ * every save already on its way has to land, and a section whose newest save
+ * the server REFUSED (an active language with no text, a version too long, a
+ * date that is not one …) is sent once more: refused again, the screen and
+ * the database disagree and Publish stops — it would otherwise put the
+ * previous version live under a "Strona opublikowana" toast.
+ *
+ * Only a section's NEWEST save decides: an older one settling late says
+ * nothing about what is stored now. Plain bookkeeping, no React, so the test
+ * suite drives it with a fake save (scripts/legal-admin-tests.ts).
+ */
+export function createSaveTracker<D extends { id: string }>() {
+  let counter = 0;
+  const newest = new Map<string, number>();
+  const refused = new Map<string, D>();
+  const inflight = new Set<Promise<boolean>>();
+
+  /** One save of a section, its outcome recorded. `save` resolves true when
+   *  the server stored the draft. */
+  function run(draft: D, save: (draft: D) => Promise<boolean>): Promise<boolean> {
+    const mine = ++counter;
+    newest.set(draft.id, mine);
+    const done = save(draft).then((ok) => {
+      if (newest.get(draft.id) === mine) {
+        if (ok) refused.delete(draft.id);
+        else refused.set(draft.id, draft);
+      }
+      return ok;
+    });
+    inflight.add(done);
+    const settle = () => { inflight.delete(done); };
+    done.then(settle, settle);
+    return done;
+  }
+
+  return {
+    run,
+    /** A deleted section has nothing left to store. */
+    forget(id: string) { newest.delete(id); refused.delete(id); },
+    /** `next` (the edit still waiting for its autosave) goes out, everything
+     *  on its way lands, and a section refused BEFORE this call is sent once
+     *  more (the refusal may have been the network; a refusal that arrives
+     *  during this call has just been answered and shown — it is not asked
+     *  again). True when nothing on screen differs from what is stored. */
+    async flush(next: D | null, save: (draft: D) => Promise<boolean>): Promise<boolean> {
+      const earlier = new Map(refused);
+      if (next) void run(next, save);
+      await Promise.allSettled(inflight);
+      for (const [id, draft] of earlier) {
+        if (refused.get(id) === draft) await run(draft, save);
+      }
+      return refused.size === 0;
+    },
+  };
+}
 
 const toDraft = (b: BlockRow): Draft => ({
   id: b.id,
@@ -165,10 +225,19 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
   const baseline = useRef(new Map<string, Draft["content"]>(
     initial.flatMap((b) => (b.id ? [[b.id, b.content] as [string, Draft["content"]]] : [])),
   ));
+  /** The same, as STATE: what the editor may offer to download is what is
+   *  stored, so a landed save has to re-render it (the legal editor's
+   *  "Pobierz zapisany tekst" reads the database, not the screen). */
+  const [stored, setStored] = useState(() => new Map<string, CmsBlockContent>(
+    initial.flatMap((b) => (b.id ? [[b.id, b.content ?? {}] as [string, CmsBlockContent]] : [])),
+  ));
+  const [saves] = useState(() => createSaveTracker<Draft>());
 
-  const persist = useCallback(async (draft: Draft) => {
+  const saveNow = useCallback(async (draft: Draft): Promise<boolean> => {
     setSaveState("saving");
     const base = draft.id ? baseline.current.get(draft.id) : undefined;
+    // A request that never got an answer (offline, a deploy mid-save) is a
+    // failed save like any other: said so, and never counted as stored.
     const res = await saveBlockAction({
       id: draft.id,
       pageId: page.id,
@@ -183,9 +252,12 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
       showUntil: draft.showUntil,
       audience: draft.audience,
       ...(draft.type === "launch" && base ? { base } : {}),
-    });
+    }).catch(() => ({ ok: false as const, error: "generic", detail: undefined }));
     if (res.ok) {
-      if (draft.id) baseline.current.set(draft.id, draft.content);
+      if (draft.id) {
+        baseline.current.set(draft.id, draft.content);
+        setStored((prev) => new Map(prev).set(draft.id, draft.content));
+      }
       setSaveState("saved");
       // The preview reads the database, so it only becomes correct once the
       // save has landed.
@@ -196,7 +268,12 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
       // about one line — "{premiera}" in the headline, say.
       toast.error(t(`cms.err.${res.error}`), res.detail ? { description: res.detail } : undefined);
     }
+    return res.ok;
   }, [page.id, t]);
+
+  /** Save a section now. Resolves true when the server stored it; a refusal
+   *  has already been shown (the toast and "Błąd zapisu"). */
+  const persist = useCallback((draft: Draft) => saves.run(draft, saveNow), [saves, saveNow]);
 
   /** Queue a section for saving. Restarting the timer on each edit is what
    *  makes this "a moment after typing stops" rather than per keystroke. */
@@ -212,13 +289,15 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
 
   /** Write the pending edit out now — before leaving the page, and when the
    *  admin presses Publish. An autosave that had not fired yet must not be
-   *  the difference between what is on screen and what is published. */
-  const flush = useCallback(async () => {
+   *  the difference between what is on screen and what is published.
+   *  Resolves false when something on screen could not be stored (the
+   *  refusal is already on screen): Publish must not run then. */
+  const flush = useCallback(async (): Promise<boolean> => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const next = queued.current;
     queued.current = null;
-    if (next) await persist(next);
-  }, [persist]);
+    return saves.flush(next, saveNow);
+  }, [saves, saveNow]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -363,6 +442,10 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
   function removeSection(block: Draft) {
     const index = blocks.findIndex((b) => b.id === block.id);
     run(deleteBlockAction(block.id), () => {
+      // A deleted section has nothing left to save: its pending autosave and
+      // a refused save of it would otherwise block every Publish after this.
+      if (queued.current?.id === block.id) queued.current = null;
+      saves.forget(block.id);
       setBlocks((prev) => { remember(prev); return prev.filter((b) => b.id !== block.id); });
       if (activeId === block.id) setActiveId(null);
       setDeleting(null);
@@ -385,6 +468,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
       });
       if (!res.ok || !res.data) { toast.error(t(`cms.err.${res.ok ? "generic" : res.error}`)); return; }
       const restored: Draft = { ...block, id: res.data.id };
+      setStored((prev) => new Map(prev).set(restored.id, restored.content));
       const next = [...blocks];
       next.splice(Math.max(0, Math.min(index, next.length)), 0, restored);
       setBlocks(next);
@@ -425,8 +509,9 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
   function publish() {
     start(async () => {
       // Whatever is still queued goes first, so Publish never ships the
-      // version from a second ago.
-      await flush();
+      // version from a second ago — and a save the server refused stops it:
+      // publishing then would put the PREVIOUS version live.
+      if (!(await flush())) { toast.error(t("cms.publishBlocked")); return; }
       const res = await publishPageAction(page.id);
       if (res.ok) { toast.success(t("cms.publishedToast")); setPreviewNonce((n) => n + 1); router.refresh(); }
       else toast.error(t(`cms.err.${res.error}`));
@@ -796,7 +881,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
 
                 <div className="thin-scroll max-h-[calc(100dvh-16rem)] space-y-4 overflow-y-auto p-3.5">
                   {shownTab === "content" && (
-                    <>
+                    <SavedSectionContent.Provider value={stored.get(active.id) ?? null}>
                       {/* A gallery's summary has no language: its captions
                           are edited with its pairs, in the inline editor. */}
                       {active.type !== GALLERY_BLOCK_TYPE && <LocaleTabs locale={locale} onChange={setLocale} />}
@@ -837,7 +922,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                           )}
                         </div>
                       )}
-                    </>
+                    </SavedSectionContent.Provider>
                   )}
 
                   {shownTab === "style" && (

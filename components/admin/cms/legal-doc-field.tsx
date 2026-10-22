@@ -1,8 +1,10 @@
 "use client";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext, useContext, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
-import { Download, ExternalLink, Eye, EyeOff, FileUp, Maximize2, Minimize2, Wand2 } from "lucide-react";
+import { ArrowDownToLine, Download, ExternalLink, Eye, EyeOff, FileUp, Maximize2, Minimize2, Wand2 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
@@ -40,6 +42,11 @@ import { cn, formatBytes } from "@/lib/utils";
  * runs at the speed of the keyboard. The counter, the digest and the preview
  * read a DEFERRED copy of the text, the digest after a pause, and the
  * preview only while it is open.
+ *
+ * AN OLD SECTION (title / description / html, no doc) says so: the first
+ * edit stores a document, and from then on the page shows the document
+ * instead of the old text — so the old text is offered as the Polish draft
+ * first (legacyLegalText), never dropped without a word.
  */
 
 /** A file bigger than this is not a text document (a Regulamin is ~100 kB). */
@@ -91,6 +98,109 @@ function useSha256(text: string): string | null {
   return result && result.text === text ? result.hex : null;
 }
 
+/**
+ * The section's content AS STORED — the last save that landed. The builder
+ * provides it (components/admin/cms/builder.tsx); the editor's own `content`
+ * runs a second ahead of it while the autosave waits, and a refused save
+ * never reaches it. Without a provider the content given is taken as stored.
+ * The .txt download reads the database, so it is offered from this.
+ */
+export const SavedSectionContent = createContext<CmsBlockContent | null | undefined>(undefined);
+
+/* ── AN OLD `legal` SECTION ─────────────────────────────────────────────── */
+
+/** The named entities an authored legal page plausibly holds; any other
+ *  `&name;` is left exactly as written. */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ", shy: "­",
+  ndash: "–", mdash: "—", hellip: "…", bdquo: "„", ldquo: "“", rdquo: "”", sbquo: "‚",
+  lsquo: "‘", rsquo: "’", laquo: "«", raquo: "»", sect: "§", para: "¶", copy: "©",
+  reg: "®", trade: "™", euro: "€", deg: "°", middot: "·", bull: "•", times: "×", rarr: "→",
+};
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(#[xX][0-9a-fA-F]{1,6}|#\d{1,7}|[a-zA-Z][a-zA-Z0-9]{1,31});/g, (whole, body: string) => {
+    if (body[0] !== "#") return NAMED_ENTITIES[body] ?? whole;
+    const code = body[1] === "x" || body[1] === "X" ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+    // A control character or a lone surrogate is not text: kept as written.
+    const ok = code >= 0x20 && code <= 0x10ffff && !(code >= 0x7f && code <= 0x9f) && !(code >= 0xd800 && code <= 0xdfff);
+    return ok ? String.fromCodePoint(code) : whole;
+  });
+}
+
+/** Markers for where the markup broke a line or a paragraph (control
+ *  characters no authored text holds), resolved once the tags are gone. */
+const PARA_MARK = "\u0001";
+const LINE_MARK = "\u0002";
+const BLOCK_TAGS = "p|div|h[1-6]|ul|ol|dl|dt|dd|blockquote|pre|table|thead|tbody|tfoot|section|article|header|footer|aside|nav|figure|figcaption|address|details|summary|hr";
+
+/**
+ * Authored markup as the words a visitor read: the tags stripped, the
+ * entities decoded, a block element (a paragraph, a heading, a list) on its
+ * own lines with a blank line between, a list item or a <br> on a new line.
+ * Whitespace is folded the way the browser folded it — nothing else changes;
+ * not one word is rewritten, added or dropped (what a <script> or <style>
+ * held was never shown, so it is not text).
+ */
+function htmlToPlainText(html: string): string {
+  const marked = html
+    .replace(/<(script|style|template)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/[ \t\n\r\f]+/g, " ")
+    .replace(/<br\b[^>]*>/gi, LINE_MARK)
+    .replace(/<(li|tr)\b[^>]*>/gi, LINE_MARK)
+    .replace(/<\/t[dh]\s*>/gi, " ")
+    .replace(new RegExp(`</?(?:${BLOCK_TAGS})\\b[^>]*>`, "gi"), PARA_MARK)
+    .replace(/<[^>]*>/g, "");
+  return decodeEntities(marked)
+    // A run of breaks (and the spaces around them) is one blank line when it
+    // holds a paragraph break, as many line breaks as it holds <br>s otherwise.
+    .replace(/ *[\u0001\u0002][ \u0001\u0002]*/g, (run) =>
+      run.includes(PARA_MARK) ? "\n\n" : "\n".repeat(run.split(LINE_MARK).length - 1))
+    .replace(/^[ \n]+|[ \n]+$/g, "");
+}
+
+const localeText = (value: unknown, locale: LegalLocale): string => {
+  if (!value || typeof value !== "object") return "";
+  const text = (value as Record<string, unknown>)[locale];
+  return typeof text === "string" ? text : "";
+};
+
+/**
+ * What an old `legal` section (title / description / html, no `doc`) shows,
+ * per language, as plain text — the starting draft the editor offers to move
+ * into the document. The title is its first line; then the authored markup
+ * as plain text (htmlToPlainText) when there is any, the description as
+ * written otherwise — the same choice the old renderer made. "" for a
+ * language with nothing in it.
+ */
+export function legacyLegalText(content: unknown): Record<LegalLocale, string> {
+  const out = {} as Record<LegalLocale, string>;
+  const c = (content && typeof content === "object" ? content : {}) as Record<string, unknown>;
+  for (const l of LEGAL_LOCALES) {
+    const title = localeText(c.title, l).trim();
+    const html = htmlToPlainText(localeText(c.html, l));
+    const body = html !== "" ? html : normalizeLegalText(localeText(c.description, l));
+    out[l] = normalizeLegalText([title, hasText(body) ? body : ""].filter(Boolean).join("\n\n"));
+  }
+  return out;
+}
+
+/**
+ * "Przenieś dotychczasowy tekst do wersji PL": the section with a new
+ * document whose Polish text is the old section's Polish text — status,
+ * version and date left for the admin (a new document's defaults), every
+ * other key, the old fields included, exactly as it was. null when the
+ * section already has a document or holds no Polish text to move.
+ */
+export function withLegacyPolishDraft(content: CmsBlockContent): CmsBlockContent | null {
+  if (readLegalDoc(content)) return null;
+  const text = legacyLegalText(content).pl;
+  if (text === "") return null;
+  const doc = blankDoc();
+  return withDoc(content, { ...doc, pl: { ...doc.pl, text } });
+}
+
 export function LegalDocField({ label, hint, locale, content, onChange }: {
   label: string;
   hint?: string;
@@ -107,8 +217,21 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
 
   // An old `legal` section (html / description, no doc) opens as an empty
   // document, every language "soon" — nothing is written until it is edited.
-  const doc = useMemo(() => readLegalDoc(content) ?? blankDoc(), [content]);
+  const storedDoc = useMemo(() => readLegalDoc(content), [content]);
+  const doc = useMemo(() => storedDoc ?? blankDoc(), [storedDoc]);
   const entry = doc[locale];
+  // …and says what it still holds: the first edit replaces it on the page.
+  const legacy = useMemo(() => {
+    if (storedDoc) return null;
+    const texts = legacyLegalText(content);
+    return LEGAL_LOCALES.some((l) => texts[l] !== "") ? texts : null;
+  }, [storedDoc, content]);
+
+  // The download serves what is STORED, so it is offered for a language
+  // whose saved text exists — not for one typed a second ago, or never.
+  const saved = useContext(SavedSectionContent);
+  const savedDoc = useMemo(() => (saved === undefined ? storedDoc : readLegalDoc(saved)), [saved, storedDoc]);
+  const savedHasText = (savedDoc?.[locale].text ?? "") !== "";
 
   const deferred = useDeferredValue(entry.text);
   const chars = useMemo(() => legalCharCount(deferred), [deferred]);
@@ -120,14 +243,89 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
   const [pending, setPending] = useState<Pending | null>(null);
   const [loaded, setLoaded] = useState<{ locale: LegalLocale; name: string; size: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const slotRef = useRef<HTMLDivElement>(null);
 
   const outline = useMemo(() => (preview ? parseLegalText(deferred) : null), [preview, deferred]);
 
+  /*
+    FULL SCREEN WITHOUT A REMOUNT. The builder's settings column is 400px
+    wide and a 75 000-character document deserves the whole window — but the
+    column sits in a `.panel`, whose backdrop-filter pins a fixed element to
+    the panel instead of the viewport (components/ui/modal.tsx explains the
+    trap), so the full-screen editor has to live at the body.
+    Switching between "in place" and "a portal" would unmount the textarea:
+    focus, the caret, the scroll position and the typed text's undo history
+    gone with it. So the editor is ALWAYS portalled, into one element of its
+    own (`host`) that is moved — in place while inline, to the body while
+    full screen. The same nodes, only moved: React never unmounts them, and
+    focus, selection and scroll are carried across below. (One thing a
+    browser does not carry: Chromium drops a moved field's native undo
+    steps, even with moveBefore — Ctrl+Z reaches back to the toggle, not
+    past it. A top-layer <dialog> would keep them, but would also hide the
+    toasts — save refusals included — behind it.)
+    The first render (and the server's) draws it in place: there is no
+    document to make a host from yet.
+  */
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = document.createElement("div");
+    setHost(el);
+    return () => { el.remove(); };
+  }, []);
+
+  /** Where the host was last put: null before the first placement. */
+  const placedFull = useRef<boolean | null>(null);
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    if (!host || !slot) return;
+    const target = expanded ? document.body : slot;
+    if (host.parentNode === target) return;
+    const box = textRef.current;
+    // A moved textarea keeps its value but not its scroll position (and a
+    // browser may drop the selection): both are read before and put back.
+    const keep = box && { start: box.selectionStart, end: box.selectionEnd, dir: box.selectionDirection, top: box.scrollTop };
+    // The column keeps the editor's height while the editor is away, so the
+    // builder behind the overlay does not jump when it comes back.
+    if (expanded) slot.style.minHeight = `${slot.offsetHeight}px`;
+    target.appendChild(host);
+    if (!expanded) slot.style.minHeight = "";
+    const first = placedFull.current === null;
+    placedFull.current = expanded;
+    if (first || !box || !keep) return;
+    // Focus: into the dialog on open (the text, caret where it was), back to
+    // the toggle on close — never left on a node that just moved.
+    if (expanded) box.focus({ preventScroll: true });
+    if (box.selectionStart !== keep.start || box.selectionEnd !== keep.end) {
+      box.setSelectionRange(keep.start, keep.end, keep.dir ?? undefined);
+    }
+    box.scrollTop = keep.top;
+    if (!expanded) toggleRef.current?.focus({ preventScroll: true });
+  }, [host, expanded]);
+
   useEffect(() => {
     // Escape leaves the full-screen editor — unless a dialog is open over
-    // it, which Escape closes first.
+    // it, which Escape closes first. Tab stays inside it: aria-modal says the
+    // builder behind is out of reach, so focus must not wander there.
     if (!expanded || pending) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setExpanded(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setExpanded(false); return; }
+      const dialog = dialogRef.current;
+      if (e.key !== "Tab" || !dialog) return;
+      const stops = Array.from(dialog.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]"))
+        .filter((el) => el.tabIndex >= 0 && !el.hasAttribute("disabled") && el.getClientRects().length > 0);
+      if (stops.length === 0) return;
+      const inside = dialog.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === stops[0])) {
+        e.preventDefault();
+        stops[stops.length - 1].focus();
+      } else if (!e.shiftKey && (!inside || document.activeElement === stops[stops.length - 1])) {
+        e.preventDefault();
+        stops[0].focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [expanded, pending]);
@@ -191,9 +389,19 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
     toast.success(t("cms.legalDoc.fillDone", { version: facts.version ?? "—", date: facts.effective ?? "—" }));
   }
 
+  /** The old section's Polish text becomes the Polish draft — the words as
+   *  they were, the status left as the admin sets it. The old fields stay in
+   *  the section until a save writes it. */
+  function moveLegacy() {
+    const next = withLegacyPolishDraft(content);
+    if (!next) return;
+    onChange(next);
+    toast.success(t("cms.legalDoc.legacyMoved"));
+  }
+
   const id = `cms-legal-${locale}`;
   const activeEmpty = entry.status === "active" && !hasText(entry.text);
-  const download = slug ? `/admin/www/${slug}/dokument?locale=${locale}` : null;
+  const download = slug && savedHasText ? `/admin/www/${slug}/dokument?locale=${locale}` : null;
 
   const editor = (
     <div data-legal-doc-field={locale} data-legal-expanded={expanded ? "1" : undefined}>
@@ -203,13 +411,31 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
             <Label htmlFor={`${id}-text`} hint={locale.toUpperCase()}>{label}</Label>
             {hint && <p className="-mt-0.5 text-[11.5px] leading-relaxed text-faint">{hint}</p>}
           </div>
-          <button type="button" onClick={() => setExpanded((v) => !v)} data-legal-expand
+          <button ref={toggleRef} type="button" onClick={() => setExpanded((v) => !v)} data-legal-expand
             title={t(expanded ? "cms.legalDoc.collapse" : "cms.legalDoc.expand")}
             aria-label={t(expanded ? "cms.legalDoc.collapse" : "cms.legalDoc.expand")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink">
             {expanded ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
           </button>
         </div>
+
+        {/* AN OLD SECTION. Its title/description/html are still what the
+            page shows; the first edit stores a document, which the page then
+            shows instead. Said before it happens, with the old text one click
+            away from being the Polish draft. */}
+        {legacy && (
+          <div role="note" className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5" data-legal-legacy>
+            <p className="text-[12px] font-semibold text-ink">{t("cms.legalDoc.legacyTitle")}</p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">{t("cms.legalDoc.legacyBody")}</p>
+            {legacy.pl !== "" ? (
+              <Button size="sm" variant="secondary" className="mt-2" onClick={moveLegacy} data-legal-legacy-move>
+                <ArrowDownToLine size={14} aria-hidden />{t("cms.legalDoc.legacyMove")}
+              </Button>
+            ) : (
+              <p className="mt-1 text-[11.5px] leading-relaxed text-faint">{t("cms.legalDoc.legacyNoPolish")}</p>
+            )}
+          </div>
+        )}
 
         {/* ALL THREE LANGUAGES AT A GLANCE. Each is its own document: the
             Polish one can be live while English is still "soon". */}
@@ -274,8 +500,10 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
             {preview ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
             {t(preview ? "cms.legalDoc.previewHide" : "cms.legalDoc.preview")}
           </Button>
+          {/* `download`: the file is saved, the builder stays where it is —
+              even if the answer is an error rather than the text. */}
           {download && (
-            <a href={download} data-legal-download
+            <a href={download} download data-legal-download
               className="plate inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[13px] font-medium text-ink transition-colors hover:bg-raised">
               <Download size={14} aria-hidden />{t("cms.legalDoc.download")}
             </a>
@@ -295,7 +523,7 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
 
         <div className={cn("grid gap-3", preview && expanded && "lg:grid-cols-2")}>
           <div className="min-w-0">
-            <Textarea id={`${id}-text`} value={entry.text} rows={24} spellCheck={false} autoCorrect="off"
+            <Textarea ref={textRef} id={`${id}-text`} value={entry.text} rows={24} spellCheck={false} autoCorrect="off"
               autoCapitalize="off" data-legal-doc-text placeholder={t("cms.legalDoc.textPlaceholder")}
               className={cn("resize-y font-mono leading-relaxed", expanded ? "min-h-[70vh]" : "min-h-[24rem]")}
               onChange={(e) => setText(e.target.value)} />
@@ -352,20 +580,17 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
     </div>
   );
 
-  /*
-    FULL SCREEN, because the builder's settings column is 400px wide and a
-    75 000-character document deserves the whole window. The overlay goes to
-    the body: the column sits in a `.panel`, whose backdrop-filter would pin a
-    fixed element to the panel instead of the viewport (components/ui/modal.tsx
-    explains the trap). Same component, same state — only where it is drawn.
-  */
-  if (expanded && typeof document !== "undefined") {
-    return createPortal(
-      <div className="thin-scroll fixed inset-0 z-[70] overflow-y-auto bg-bg p-3 sm:p-5" data-legal-fullscreen>
-        {editor}
-      </div>,
-      document.body,
-    );
-  }
-  return editor;
+  // ONE TREE, inline or full screen: only the wrapper's attributes change
+  // (a dialog over the whole window while full screen), never its children.
+  const shell = (
+    <div ref={dialogRef}
+      role={expanded ? "dialog" : undefined}
+      aria-modal={expanded ? true : undefined}
+      aria-label={expanded ? t("cms.legalDoc.fullscreenLabel", { label, lang: locale.toUpperCase() }) : undefined}
+      className={expanded ? "thin-scroll fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-bg p-3 sm:p-5" : undefined}
+      data-legal-fullscreen={expanded ? "" : undefined}>
+      {editor}
+    </div>
+  );
+  return <div ref={slotRef} data-legal-slot>{host ? createPortal(shell, host) : shell}</div>;
 }

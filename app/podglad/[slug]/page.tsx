@@ -82,8 +82,11 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
         <BlockRenderer
           blocks={blocks}
           // `admin` is what makes a broken custom block SHOW as broken here
-          // and stay invisible in production.
-          ctx={renderContext({ locale, t, media, data, admin: true, showAuth: true })}
+          // and stay invisible in production. `draftPreview`: a legal
+          // document whose language (the admin's interface language) is not
+          // active yet shows its Polish draft here, with a note, instead of
+          // the visitors' "coming soon" — the draft is what is being edited.
+          ctx={renderContext({ locale, t, media, data, admin: true, draftPreview: true, showAuth: true })}
         />
       </main>
       {footerMode === "global" && <SiteFooter {...shell} />}

@@ -41,7 +41,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   if (!locale || !source) return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
 
   const file = await readLegalTextFile(supabase, slug, locale, source);
-  if (!file) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  // No text for that language (or no such page): a plain-text 404, like the
+  // PDF route's. The editor offers this link as a download, so the answer is
+  // a failed download — never a JSON page in place of the builder.
+  if (!file) {
+    return new NextResponse("Not Found", {
+      status: 404,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+      },
+    });
+  }
 
   const bytes = new TextEncoder().encode(file.text);
   return new NextResponse(bytes, { headers: legalTextHeaders(file.filename, bytes.byteLength) });
