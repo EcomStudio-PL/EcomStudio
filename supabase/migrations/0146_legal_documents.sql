@@ -1,6 +1,14 @@
 -- 0146 — LEGAL DOCUMENTS V1: the hash-guarded import of a legal document
 -- into the CMS (the schema part; the four Polish texts arrive in 0147).
 --
+-- ==========================================================================
+-- APPLY ONLY AFTER the Legal documents V1 code is READY on PROD — the
+-- previous renderer shows a doc-only legal section as an empty page.
+-- Rolling the code back after 0147 requires restoring the pre-import
+-- versions ('Przed importem: …') of the four pages.
+-- (0146 alone changes no page; 0147, which calls it, publishes them.)
+-- ==========================================================================
+--
 -- A legal document is an ordinary CMS page whose text lives in ONE `legal`
 -- section's `doc` field (lib/legal/content.ts, lib/legal/docs.ts). This file
 -- adds the two things a migration needs to put a 75 000-character text there
@@ -8,36 +16,40 @@
 --
 --  1. legal_document_sources — the text in PARTS of at most 20 000
 --     characters, cut at line ends, so a migration can be applied in pieces
---     of ~20 KB. The parts are invisible to visitors (admin-only table) and
---     an UPSERT rewrites a part only when its body differs, so loading them
---     twice writes nothing.
+--     of ~20 KB. Admin-only; an UPSERT rewrites a part only when its body
+--     differs, so loading them twice writes nothing.
 --  2. legal_document_import() — glues the parts of (slug, locale, version)
 --     back together and refuses (`legal_import_mismatch`) unless the count,
---     the number of characters and the sha256 of the UTF-8 bytes are exactly
---     what the caller states. Only then, in one transaction:
---       · the page row is locked (and created as a draft if missing);
---       · when the document is already in the draft AND in the published
---         snapshot with that sha256 → 'unchanged', and nothing is written;
---       · otherwise the current draft is kept as a 'manual' version first,
---         the page's `legal` section receives the document (the other
---         languages keep theirs, or get status "soon"), every other section
---         of the page is hidden — never removed — and the page is published
---         with a 'publish' version labelled with the text's sha256.
---     The old html/description of the section and the hidden sections stay
---     in the version rows, so Strony WWW → Historia can restore them.
+--     the characters and the sha256 of the UTF-8 bytes are what the caller
+--     states. Then (page locked; created as a draft if missing) the first
+--     that applies:
+--       · draft AND published snapshot hold that text → 'unchanged';
+--       · THIS import already ran (its 'Import: …' version is on record) →
+--         'already_imported': an import is ONE-TIME per (slug, locale,
+--         version, file sha256), and what an admin did after it stays;
+--       · the language is ACTIVE with another non-empty text that no import
+--         put there (an admin's) → legal_import_conflict;
+--       · else the draft is kept as a version ("Przed importem: …"), the
+--         `legal` section receives the document (other languages keep
+--         theirs or get "soon"), every other section is hidden — never
+--         removed — and the draft as it then stands is published
+--         ("Import: … sha256 …").
+--     The first three write nothing. p_force (default false) skips the two
+--     one-time guards: a deliberate overwrite 0147 never asks for. Old
+--     sections and texts stay in the versions (Strony WWW → Historia).
 --
 -- WHO MAY CALL IT: nobody but the migration (the table owner). EXECUTE is
 -- revoked from public, anon and authenticated, and the function is INVOKER,
 -- so even a mistaken grant would run under the caller's own RLS.
 --
 -- Nothing here touches consents, the recorded consent versions, the inline
--- editor or any other page. Re-runnable: a second apply changes nothing.
+-- editor or any other page. Applying 0146 again changes nothing.
 --
 -- ROLLBACK: the import only adds rows and publishes; Strony WWW → Historia
--- restores the version labelled "Przed importem: …" of each page. The table
--- and the function can stay unused; retiring them is a separate migration
--- (statements that remove objects are not allowed here by the PROD
--- connector gate).
+-- restores the version labelled "Przed importem: …" of each page (also what
+-- rolling the CODE back after 0147 requires). The table and the function
+-- can stay unused; retiring them is a separate migration (statements that
+-- remove objects are not allowed here by the PROD connector gate).
 
 set local lock_timeout = '3s';
 
@@ -77,9 +89,12 @@ end $$;
 -- 2 ─────────────────────────────────────────────────────────────────────────
 -- THE IMPORT. Every check that can refuse runs BEFORE the first write, so a
 -- refusal (or a part that has not arrived yet) changes nothing at all.
+-- p_force comes last, default false: 0147's eight-argument calls never force.
+-- (No database has 0146's earlier eight-argument draft; one beside this
+-- function would make those calls ambiguous.)
 create or replace function public.legal_document_import(
   p_slug text, p_locale text, p_version text, p_effective date, p_title text,
-  p_parts integer, p_chars integer, p_sha256 text
+  p_parts integer, p_chars integer, p_sha256 text, p_force boolean default false
 )
 returns jsonb
 language plpgsql
@@ -89,10 +104,14 @@ declare
   v_text text;
   v_count integer;
   v_sha text;
+  v_label text;
   v_page public.cms_pages%rowtype;
   v_block public.cms_blocks%rowtype;
   v_has_block boolean;
   v_created boolean := false;
+  v_prior integer;
+  v_cur jsonb;
+  v_cur_sha text;
   v_doc jsonb;
   v_loc text;
   v_snap jsonb;
@@ -119,6 +138,11 @@ begin
   if p_sha256 is null or p_sha256 !~ '^[0-9a-f]{64}$' then
     raise exception 'legal_import_bad_args: sha256';
   end if;
+  if p_force is null then
+    raise exception 'legal_import_bad_args: force';
+  end if;
+  -- The label of the version this import publishes; d2 looks for it.
+  v_label := format('Import: %s v%s (%s) sha256 %s', p_title, p_version, p_locale, left(p_sha256, 12));
 
   -- a. The text, from its parts 1..p_parts, proven before it is used.
   select string_agg(s.body, '' order by s.part), count(*)
@@ -189,6 +213,49 @@ begin
       'chars', p_chars, 'sha256', p_sha256, 'version', p_version);
   end if;
 
+  -- The one-time guards; p_force (a deliberate overwrite) skips both.
+  if not p_force then
+    -- d2. THIS import already ran (its version is on record) and the page
+    -- changed since: a corrected text, an unpublished page, a drafted
+    -- language. The same piece again must not undo that or publish the
+    -- draft. (The app never removes versions; d3 guards an admin's text.)
+    select v.version into v_prior from public.cms_page_versions v
+      where v.page_id = v_page.id and v.reason = 'publish' and v.label = v_label
+      order by v.version desc limit 1;
+    if found then
+      return jsonb_build_object('status', 'already_imported', 'page_id', v_page.id, 'block_id', v_block.id,
+        'chars', p_chars, 'sha256', p_sha256, 'version', p_version, 'import_version', v_prior);
+    end if;
+
+    -- d3. The language ACTIVE with another non-empty text, in the draft
+    -- section or in a `legal` section of the published snapshot, that no
+    -- import put there: an admin's text, refused rather than overwritten. A
+    -- text an import placed and nobody changed (an 'Import: … (<locale>)
+    -- sha256 <its first 12>' version exists) is replaced by a new version.
+    for v_cur in
+      select d.loc_doc from (
+          select v_block.content -> 'doc' -> p_locale as loc_doc where v_has_block
+          union all
+          select e -> 'content' -> 'doc' -> p_locale
+            from jsonb_array_elements(case when jsonb_typeof(v_page.published_snapshot) = 'array'
+                                           then v_page.published_snapshot else '[]'::jsonb end) e
+            where e ->> 'type' = 'legal'
+        ) d
+        where jsonb_typeof(d.loc_doc) = 'object' and d.loc_doc ->> 'status' = 'active'
+          and coalesce(d.loc_doc ->> 'text', '') <> '' and d.loc_doc ->> 'text' is distinct from v_text
+    loop
+      v_cur_sha := encode(extensions.digest(convert_to(v_cur ->> 'text', 'UTF8'), 'sha256'), 'hex');
+      if not exists (
+        select 1 from public.cms_page_versions v
+          where v.page_id = v_page.id and v.reason = 'publish'
+            and v.label like format('Import: %% (%s) sha256 %s', p_locale, left(v_cur_sha, 12)))
+      then
+        raise exception 'legal_import_conflict: % (%) holds an active text no import put there (sha256 %, % characters); not replaced by v% (sha256 %), nothing written. Only p_force => true replaces it.',
+          p_slug, p_locale, left(v_cur_sha, 12), char_length(v_cur ->> 'text'), p_version, left(p_sha256, 12);
+      end if;
+    end loop;
+  end if;
+
   -- e. The draft as it is now, kept first (the shape of lib/services/cms.ts
   -- snapshotOf), so the old sections can be restored from Historia.
   if exists (select 1 from public.cms_blocks where page_id = v_page.id) then
@@ -250,8 +317,7 @@ begin
     from public.cms_blocks b where b.page_id = v_page.id;
   select coalesce(max(version), 0) + 1 into v_version from public.cms_page_versions where page_id = v_page.id;
   insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, label)
-  values (v_page.id, v_version, v_snap, coalesce(v_page.seo, '{}'::jsonb), 'publish',
-          format('Import: %s v%s (%s) sha256 %s', p_title, p_version, p_locale, left(v_sha, 12)));
+  values (v_page.id, v_version, v_snap, coalesce(v_page.seo, '{}'::jsonb), 'publish', v_label);
   update public.cms_pages
     set published_snapshot = v_snap, status = 'published', published_at = v_now,
         updated_at = v_now, scheduled_at = null
@@ -264,8 +330,8 @@ begin
 end;
 $$;
 
-comment on function public.legal_document_import(text, text, text, date, text, integer, integer, text) is
-  'Imports one language of one legal document from legal_document_sources into its CMS page and publishes it. Refuses (legal_import_mismatch, nothing written) unless parts, characters and sha256 match; returns status unchanged (nothing written) when the draft and the published page already hold that text. Migrations only.';
+comment on function public.legal_document_import(text, text, text, date, text, integer, integer, text, boolean) is
+  'Imports one language of one legal document from legal_document_sources into its CMS page and publishes it, once. Writes nothing when it refuses (legal_import_mismatch: parts, characters or sha256 differ; legal_import_conflict: an active text no import put there) or returns unchanged (draft and published page hold the text) or already_imported (this exact import already ran). p_force skips the last two guards. Migrations only.';
 
-revoke all on function public.legal_document_import(text, text, text, date, text, integer, integer, text)
+revoke all on function public.legal_document_import(text, text, text, date, text, integer, integer, text, boolean)
   from public, anon, authenticated;

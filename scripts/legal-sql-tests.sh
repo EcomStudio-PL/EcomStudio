@@ -30,7 +30,7 @@
 #      publish version labelled with the sha; menu / SEO of existing pages
 #      unchanged; EN/DE "soon"; nothing else touched.
 #   B  0147 again, as one file: every call "unchanged", no row written.
-#   C  0146 again: a no-op.
+#   C  0146 again: a no-op; ONE legal_document_import (p_force last, false).
 #   D  a damaged part, a wrong sha / count / length, bad arguments → refused,
 #      nothing changed; 0147 again repairs the part.
 #   E  a fresh PROD-like database, 0147 cut short (some parts, then the
@@ -38,13 +38,24 @@
 #      the whole file afterwards → imported.
 #   F  later admin work: a re-run leaves it alone; a new version of a text
 #      keeps the other languages and the previous text in a version.
+#   R  an import is ONE-TIME: the admin corrects the privacy text, publishes
+#      and drafts an EN text → the same import piece (and all of 0147) returns
+#      'already_imported' and writes nothing — the correction stays drafted
+#      and published, the EN draft unpublished, the cookies 1.1 live, an
+#      unpublished page unpublished; a new version over the admin's text →
+#      legal_import_conflict; p_force imports (both cases).
+#   K  a Polish text an admin wrote with no import on record (active in the
+#      published page only / in the draft only) → legal_import_conflict,
+#      nothing written (0147 as one file: not even a part); p_force imports
+#      and the admin's texts stay in the versions.
 #   G  an existing page with a doc section (hidden, windowed, audience) after
 #      another legal section: the doc section is the target; the page keeps
 #      its title and menu place; a non-standard page is refused.
 #   P  privileges: anon / customer / admin can neither execute the import nor
 #      write the parts; only an admin reads them.
 #   H  the files: generator --check, no drop/delete, every piece < 20 000
-#      bytes, the pieces add up to the file, imports follow their parts.
+#      bytes, the pieces add up to the file, imports follow their parts, the
+#      order warning in 0146, in 0147's header and in EVERY piece.
 #
 # Local harness only, its own database (legal_sqltest), removed on exit
 # (KEEP_DB=1 keeps it).
@@ -372,6 +383,10 @@ SRC_XMINS="(select string_agg(xmin::text || ':' || doc_key || ':' || part, ',' o
 doc_block() { echo "(select b from public.cms_blocks b join public.cms_pages p on p.id = b.page_id where p.slug = '$1' and b.type = 'legal' and b.visible)"; }
 pub_doc() { echo "(select e from public.cms_pages p, jsonb_array_elements(p.published_snapshot) e where p.slug = '$1' and e->>'type' = 'legal' and (e->>'visible')::boolean)"; }
 sha_sql() { echo "encode(extensions.digest(convert_to($1, 'UTF8'), 'sha256'), 'hex')"; }
+# The statuses an applied file printed, in order ("unchanged already_imported …").
+statuses() { { grep -o '"status": "[a-z_]*"' "$1" || true; } | sed -E 's/.*: "([a-z_]*)"/\1/' | paste -sd' ' -; }
+# How many versions the legal pages have.
+LEGAL_VERSIONS="(select count(*) from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id where p.slug = any ($LEGAL_SLUGS))"
 last_version() { echo "(select v from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id where p.slug = '$1' order by v.version desc limit 1)"; }
 
 # The text the database holds, decoded back to bytes and compared with the file.
@@ -575,6 +590,11 @@ check "privileges and the function body unchanged" \
 check "one policy, RLS still on" \
   "select (select count(*) from pg_policies where tablename = 'legal_document_sources') = 1
       and (select relrowsecurity from pg_class where relname = 'legal_document_sources')"
+check "ONE legal_document_import (no stale overload), p_force last, defaulting to false" \
+  "select count(*) = 1
+      and bool_and(pg_get_function_identity_arguments(p.oid) = 'p_slug text, p_locale text, p_version text, p_effective date, p_title text, p_parts integer, p_chars integer, p_sha256 text, p_force boolean')
+      and bool_and(pg_get_function_arguments(p.oid) like '%p_sha256 text, p_force boolean DEFAULT false')
+   from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.proname = 'legal_document_import'"
 check "no data changed" "select public.t_xmins() = '$X_A' and $SRC_XMINS = '$SX_A'"
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -687,6 +707,171 @@ check "the 1.0 text lives on in 'Przed importem: Polityka cookies v1.1 (pl)', th
    from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id where p.slug = 'polityka-cookies'"
 
 # ════════════════════════════════════════════════════════════════════════════
+echo "R · the same import again after admin work: once only, nothing undone"
+ADMIN_ID=00000000-0000-4000-8000-00000000a001
+PRIV_DOC=$(doc_block polityka-prywatnosci)
+# The admin corrects the Polish privacy text (the save writes sha256/chars)
+# and publishes, then starts an English text in the draft without publishing.
+q >/dev/null <<SQL
+with x as (select ($PRIV_DOC).id as id, (($PRIV_DOC).content->'doc'->'pl'->>'text') || E'§ 99. Poprawka administratora.\n' as txt)
+update public.cms_blocks b
+   set content = jsonb_set(b.content, '{doc,pl}', (b.content->'doc'->'pl') || jsonb_build_object(
+         'text', x.txt, 'sha256', $(sha_sql x.txt), 'chars', char_length(x.txt))),
+       updated_at = now(), updated_by = '$ADMIN_ID'
+  from x where b.id = x.id;
+update public.cms_pages set published_snapshot = public.t_snapshot(id), published_at = now(), updated_at = now()
+  where slug = 'polityka-prywatnosci';
+insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, created_by)
+  select p.id, (select max(v.version) + 1 from public.cms_page_versions v where v.page_id = p.id), p.published_snapshot, p.seo, 'publish', '$ADMIN_ID'
+  from public.cms_pages p where p.slug = 'polityka-prywatnosci';
+update public.cms_blocks b set content = jsonb_set(b.content, '{doc,en}',
+         '{"status":"active","text":"Privacy policy (EN draft)\n","version":"1.0","effective":null}'::jsonb), updated_at = now()
+  where b.id = ($PRIV_DOC).id;
+SQL
+ADMIN_SHA=$(q -c "select $(sha_sql "($PRIV_DOC).content->'doc'->'pl'->>'text'")")
+check "(the admin's text: the file plus one line, published, stored digests match)" \
+  "select ($PRIV_DOC).content->'doc'->'pl'->>'sha256' = '$ADMIN_SHA' and '$ADMIN_SHA' <> '${SHA[polityka-prywatnosci]}'
+      and $(sha_sql "($(pub_doc polityka-prywatnosci))->'content'->'doc'->'pl'->>'text'") = '$ADMIN_SHA'"
+FP_R=$(q -c "select public.t_fingerprint()"); X_R=$(q -c "select public.t_xmins()"); SX_R=$(q -c "select $SRC_XMINS")
+NV_R=$(q -c "select $LEGAL_VERSIONS")
+PRIV_IMPORT_V=$(q -c "select v.version from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id
+                      where p.slug = 'polityka-prywatnosci' and v.label = 'Import: Polityka prywatności v$VERSION (pl) sha256 ${SHA[polityka-prywatnosci]:0:12}'")
+if apply_file "${IMPORT_OF[polityka-prywatnosci]}" "$WORK/r1.out"; then ok "the privacy import piece applies again"
+else bad "the privacy import piece applies again ($(cat "$ERR"))"; fi
+if [ "$(statuses "$WORK/r1.out")" = "already_imported" ] && grep -q "\"import_version\": $PRIV_IMPORT_V" "$WORK/r1.out"; then
+  ok "… returns 'already_imported', naming the import's version ($PRIV_IMPORT_V)"
+else bad "… returns 'already_imported' ($(cat "$WORK/r1.out"))"; fi
+check "… writes nothing at all: rows, row versions, parts" \
+  "select public.t_fingerprint() = '$FP_R' and public.t_xmins() = '$X_R' and $SRC_XMINS = '$SX_R'"
+check "… no new version row" "select $LEGAL_VERSIONS = $NV_R"
+check "… the admin's corrected text is still drafted AND published" \
+  "select $(sha_sql "($PRIV_DOC).content->'doc'->'pl'->>'text'") = '$ADMIN_SHA'
+      and $(sha_sql "($(pub_doc polityka-prywatnosci))->'content'->'doc'->'pl'->>'text'") = '$ADMIN_SHA'"
+check "… the unpublished English draft stays a draft (published en still 'soon')" \
+  "select ($PRIV_DOC).content->'doc'->'en'->>'text' = E'Privacy policy (EN draft)\n'
+      and ($(pub_doc polityka-prywatnosci))->'content'->'doc'->'en' = '$SOON'::jsonb"
+echo " · the whole of 0147 again"
+if apply_file "$DATA" "$WORK/r2.out"; then ok "0147 applies again as one file"; else bad "0147 applies again as one file ($(cat "$ERR"))"; fi
+R2=$(statuses "$WORK/r2.out")
+if [ "$R2" = "unchanged already_imported already_imported unchanged" ]; then
+  ok "statuses: regulamin unchanged, privacy already_imported, cookies already_imported (1.1 is live), DPA unchanged"
+else bad "statuses ($R2)"; fi
+check "… nothing written; the admin's privacy text and the cookies 1.1 stay published" \
+  "select public.t_xmins() = '$X_R' and $SRC_XMINS = '$SX_R'
+      and $(sha_sql "($(pub_doc polityka-prywatnosci))->'content'->'doc'->'pl'->>'text'") = '$ADMIN_SHA'
+      and ($(pub_doc polityka-cookies))->'content'->'doc'->'pl'->>'version' = '1.1'
+      and ($(doc_block polityka-cookies)).content->'doc'->'pl'->>'version' = '1.1'"
+echo " · an unpublished page is not published again"
+q -c "update public.cms_pages set status = 'draft', updated_at = now() where slug = 'umowa-powierzenia-danych'" >/dev/null
+X_R3=$(q -c "select public.t_xmins()")
+if apply_file "${IMPORT_OF[umowa-powierzenia-danych]}" "$WORK/r3.out" && [ "$(statuses "$WORK/r3.out")" = "already_imported" ]; then
+  ok "the DPA import piece on the unpublished page: 'already_imported'"
+else bad "the DPA import piece on the unpublished page ($(cat "$ERR" "$WORK/r3.out"))"; fi
+check "… the page stays a draft, nothing written" \
+  "select public.t_xmins() = '$X_R3' and (select status from public.cms_pages where slug = 'umowa-powierzenia-danych') = 'draft'"
+echo " · a new version over the admin's text is refused; p_force overrides"
+q -c "insert into public.legal_document_sources (doc_key, locale, doc_version, part, body)
+      select 'polityka-prywatnosci', 'pl', '1.1', 1, replace(string_agg(body, '' order by part), 'Wersja: 1.0', 'Wersja: 1.1')
+      from public.legal_document_sources where doc_key = 'polityka-prywatnosci' and doc_version = '$VERSION'" >/dev/null
+PRIV_NEXT="(select body from public.legal_document_sources where doc_key = 'polityka-prywatnosci' and doc_version = '1.1')"
+PRIV_11() { # extra argument
+  echo "select public.legal_document_import('polityka-prywatnosci', 'pl', '1.1', date '2026-11-01', 'Polityka prywatności', 1,
+          (select char_length(body) from public.legal_document_sources where doc_key = 'polityka-prywatnosci' and doc_version = '1.1'),
+          (select $(sha_sql body) from public.legal_document_sources where doc_key = 'polityka-prywatnosci' and doc_version = '1.1')$1)->>'status'"
+}
+X_R4=$(q -c "select public.t_xmins()")
+expect_raise "a Polish 1.1 over the admin's corrected text → legal_import_conflict" "$(PRIV_11 "")" \
+  "legal_import_conflict: polityka-prywatnosci (pl).*sha256 ${ADMIN_SHA:0:12}"
+check "… nothing written" "select public.t_xmins() = '$X_R4'"
+OUT=$(q -c "$(PRIV_11 ", p_force => true")" 2>&1) || true
+if [ "$OUT" = "imported" ]; then ok "with p_force => true it imports"; else bad "with p_force => true it imports ($OUT)"; fi
+check "… 1.1 drafted and published; the admin's text kept in 'Przed importem: Polityka prywatności v1.1 (pl)'" \
+  "select ($PRIV_DOC).content->'doc'->'pl'->>'text' = $PRIV_NEXT
+      and ($(pub_doc polityka-prywatnosci))->'content'->'doc'->'pl'->>'text' = $PRIV_NEXT
+      and exists (select 1 from jsonb_array_elements((v).snapshot) e
+                  where e->>'type' = 'legal' and $(sha_sql "e->'content'->'doc'->'pl'->>'text'") = '$ADMIN_SHA')
+   from (select v from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id
+         where p.slug = 'polityka-prywatnosci' and v.reason = 'manual' and v.label = 'Przed importem: Polityka prywatności v1.1 (pl)') x"
+OUT=$(q -c "select public.legal_document_import('umowa-powierzenia-danych', 'pl', '$VERSION', date '$EFFECTIVE', 'Umowa powierzenia danych',
+              $(nparts umowa-powierzenia-danych), ${CHARS[umowa-powierzenia-danych]}, '${SHA[umowa-powierzenia-danych]}', p_force => true)->>'status'" 2>&1) || true
+if [ "$OUT" = "imported" ]; then ok "p_force also re-runs an import already on record (the unpublished DPA: imported)"
+else bad "p_force re-runs an import already on record ($OUT)"; fi
+check "… the DPA page is published again with the file's text" \
+  "select (select status from public.cms_pages where slug = 'umowa-powierzenia-danych') = 'published'
+      and $(sha_sql "($(pub_doc umowa-powierzenia-danych))->'content'->'doc'->'pl'->>'text'") = '${SHA[umowa-powierzenia-danych]}'"
+X_R5=$(q -c "select public.t_xmins()"); FP_R5=$(q -c "select public.t_fingerprint()")
+if apply_file "$DATA" "$WORK/r5.out" && [ "$(statuses "$WORK/r5.out")" = "unchanged already_imported already_imported unchanged" ]; then
+  ok "0147 once more: unchanged / already_imported / already_imported / unchanged"
+else bad "0147 once more ($(cat "$ERR"; statuses "$WORK/r5.out"))"; fi
+check "… and writes nothing (the privacy 1.1 stays)" \
+  "select public.t_xmins() = '$X_R5' and public.t_fingerprint() = '$FP_R5'
+      and ($(pub_doc polityka-prywatnosci))->'content'->'doc'->'pl'->>'version' = '1.1'"
+
+# ════════════════════════════════════════════════════════════════════════════
+echo "K · a Polish text an admin wrote, no import on record"
+reset_db
+# polityka-prywatnosci: the seed's legal section made a document by an admin,
+# Polish active, in the draft only (the page is a draft).
+# regulamin: a legal section with an admin's Polish text, published (with its
+# version row); afterwards the draft's Polish is set back to "soon", unpublished.
+q >/dev/null <<SQL
+update public.cms_blocks b set content = jsonb_build_object('doc', jsonb_build_object(
+         'pl', '{"status":"active","text":"Polityka prywatności (tekst administratora)\n","version":"0.9","effective":null}'::jsonb,
+         'en', '$SOON'::jsonb, 'de', '$SOON'::jsonb))
+  from public.cms_pages p where p.id = b.page_id and p.slug = 'polityka-prywatnosci' and b.type = 'legal';
+insert into public.cms_blocks (page_id, type, sort_order, content)
+  select id, 'legal', 1, jsonb_build_object('doc', jsonb_build_object(
+           'pl', '{"status":"active","text":"Regulamin (tekst administratora)\n","version":"0.9","effective":null}'::jsonb,
+           'en', '$SOON'::jsonb, 'de', '$SOON'::jsonb))
+  from public.cms_pages where slug = 'regulamin';
+update public.cms_pages p set published_snapshot = public.t_snapshot(p.id), published_at = now() where p.slug = 'regulamin';
+insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, created_by)
+  select id, 3, published_snapshot, seo, 'publish', '$ADMIN_ID' from public.cms_pages where slug = 'regulamin';
+update public.cms_blocks b set content = jsonb_set(b.content, '{doc,pl,status}', '"soon"')
+  from public.cms_pages p where p.id = b.page_id and p.slug = 'regulamin' and b.type = 'legal';
+SQL
+apply_file "$SCHEMA" || bad "0146 applies ($(cat "$ERR"))"
+SEED_K=$(q -c "select public.t_fingerprint()"); SEEDX_K=$(q -c "select public.t_xmins()")
+if apply_file "$DATA"; then bad "0147 as one file is refused"
+elif grep -q "legal_import_conflict: regulamin (pl)" "$ERR"; then ok "0147 as one file is refused at the Regulamin import (legal_import_conflict)"
+else bad "0147 as one file is refused ($(cat "$ERR"))"; fi
+check "… nothing changed, not even a part stored" \
+  "select public.t_fingerprint() = '$SEED_K' and public.t_xmins() = '$SEEDX_K' and (select count(*) = 0 from public.legal_document_sources)"
+KFP=$(q -c "select public.t_fingerprint(array['regulamin', 'polityka-prywatnosci'])")
+for p in "${PIECES[@]}"; do
+  read -r slug kind < <(piece_kind "$p")
+  if [ "$kind" = "part" ]; then apply_file "$p" || bad "part piece applies ($(cat "$ERR"))"; continue; fi
+  if apply_file "$p" "$WORK/k.out"; then echo "$slug $(statuses "$WORK/k.out")" >>"$WORK/k.status"
+  elif grep -q "legal_import_conflict: $slug (pl)" "$ERR"; then echo "$slug conflict" >>"$WORK/k.status"
+  else echo "$slug error: $(cat "$ERR")" >>"$WORK/k.status"; fi
+done
+KS=$(paste -sd' ' "$WORK/k.status")
+if [ "$KS" = "regulamin conflict polityka-prywatnosci conflict polityka-cookies imported umowa-powierzenia-danych imported" ]; then
+  ok "piece by piece: Regulamin (admin text published) and privacy (admin text in the draft) refused; cookies and DPA imported"
+else bad "piece by piece ($KS)"; fi
+check "… the two refused pages are exactly as before" "select public.t_fingerprint(array['regulamin', 'polityka-prywatnosci']) = '$KFP'"
+for s in regulamin polityka-prywatnosci; do
+  OUT=$(q -c "$(import_sql "$s" | sed -E "s/'\);\$/', p_force => true)->>'status';/")" 2>&1) || true
+  if [ "$OUT" = "imported" ]; then ok "$s: the same call with p_force => true imports"; else bad "$s: p_force => true imports ($OUT)"; fi
+done
+texts_match_files
+check "the admin's texts live on in the versions (privacy: 'Przed importem'; Regulamin: its publish and 'Przed importem')" \
+  "select exists (select 1 from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id
+                  where p.slug = 'polityka-prywatnosci' and v.label = 'Przed importem: Polityka prywatności v$VERSION (pl)'
+                    and v.snapshot @> '[{\"content\":{\"doc\":{\"pl\":{\"status\":\"active\",\"text\":\"Polityka prywatności (tekst administratora)\\n\"}}}}]'::jsonb)
+      and exists (select 1 from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id
+                  where p.slug = 'regulamin' and v.version = 3
+                    and v.snapshot @> '[{\"content\":{\"doc\":{\"pl\":{\"status\":\"active\",\"text\":\"Regulamin (tekst administratora)\\n\"}}}}]'::jsonb)
+      and exists (select 1 from public.cms_page_versions v join public.cms_pages p on p.id = v.page_id
+                  where p.slug = 'regulamin' and v.label = 'Przed importem: Regulamin v$VERSION (pl)'
+                    and v.snapshot @> '[{\"content\":{\"doc\":{\"pl\":{\"text\":\"Regulamin (tekst administratora)\\n\"}}}}]'::jsonb)"
+X_K=$(q -c "select public.t_xmins()")
+if apply_file "$DATA" "$WORK/k2.out" && [ "$(statuses "$WORK/k2.out")" = "unchanged unchanged unchanged unchanged" ]; then
+  ok "0147 afterwards: 'unchanged' four times, nothing written"
+else bad "0147 afterwards ($(cat "$ERR"; statuses "$WORK/k2.out"))"; fi
+check "… row versions unchanged" "select public.t_xmins() = '$X_K'"
+
+# ════════════════════════════════════════════════════════════════════════════
 echo "G · an existing page that already has a doc section"
 reset_db
 q >/dev/null <<'SQL'
@@ -743,6 +928,7 @@ role_denied "anon cannot execute the import" anon "" "$CALL" "$FN"
 role_denied "anon cannot write a part" anon "" "insert into public.legal_document_sources (doc_key, locale, doc_version, part, body) values ('x', 'pl', '1', 1, 'x')" "$TB"
 role_value "a customer reads no part (RLS)" authenticated "$CUSTOMER" "select count(*) from public.legal_document_sources" "0"
 role_denied "a customer cannot execute the import" authenticated "$CUSTOMER" "$CALL" "$FN"
+role_denied "a customer cannot execute a forced import" authenticated "$CUSTOMER" "${CALL%)}, p_force => true)" "$FN"
 role_value "an admin reads the parts" authenticated "$ADMIN" "select count(*) > 0 from public.legal_document_sources" "t"
 role_denied "an admin cannot execute the import either (migrations only)" authenticated "$ADMIN" "$CALL" "$FN"
 role_denied "an admin cannot write a part" authenticated "$ADMIN" "update public.legal_document_sources set body = 'x'" "$TB"
@@ -766,6 +952,7 @@ done
 big=0
 for p in "$WORK/head.sql" "${PIECES[@]}"; do [ "$(wc -c <"$p")" -lt 20000 ] || big=1; done
 if [ "$big" = 0 ]; then ok "the header and each of the ${#PIECES[@]} pieces are under 20 000 bytes"; else bad "a piece is 20 000 bytes or more"; fi
+if [ "$(wc -c <"$SCHEMA")" -lt 20000 ]; then ok "0146 (applied as one piece) is under 20 000 bytes"; else bad "0146 is $(wc -c <"$SCHEMA") bytes"; fi
 if cmp -s <(cat "$WORK/head.sql" "${PIECES[@]}") "$DATA"; then ok "the header and the pieces add up to the file"; else bad "the pieces do not add up to the file"; fi
 order_ok=1
 for s in "${SLUGS[@]}"; do
@@ -774,6 +961,20 @@ for s in "${SLUGS[@]}"; do
   for p in "${ps[@]}"; do [[ "$(basename "$p")" < "$(basename "${IMPORT_OF[$s]}")" ]] || order_ok=0; done
 done
 if [ "$order_ok" = 1 ]; then ok "every document has its parts, then its import"; else bad "parts / import order"; fi
+# The order warning, written out here (not taken from the generator). Each
+# piece is applied on its own, so each one carries it right after its marker.
+WARN="APPLY ONLY AFTER the Legal documents V1 code is READY on PROD — the previous renderer shows a doc-only legal section as an empty page. Rolling the code back after 0147 requires restoring the pre-import versions ('Przed importem: …') of the four pages."
+comment_text() { # file, lines to skip → the comment lines that follow, "-- " stripped, joined by spaces
+  awk -v skip="$2" 'NR <= skip { next } /^--( |$)/ { sub(/^-- ?/, ""); printf "%s%s", sep, $0; sep = " "; next } { exit }' "$1"
+}
+warned=0; unwarned=""
+for p in "${PIECES[@]}"; do
+  if [[ "$(comment_text "$p" 1)" == *"$WARN"* ]]; then warned=$((warned + 1)); else unwarned="$unwarned $(basename "$p")"; fi
+done
+if [ "$warned" -eq "${#PIECES[@]}" ]; then ok "every one of the ${#PIECES[@]} pieces carries the order warning right after its [n/N] line"
+else bad "pieces without the order warning:$unwarned"; fi
+if [[ "$(comment_text "$WORK/head.sql" 0)" == *"$WARN"* ]]; then ok "0147's header carries the order warning"; else bad "0147's header lacks the order warning"; fi
+if [[ "$(comment_text "$SCHEMA" 0)" == *"$WARN"* ]]; then ok "0146's header carries the order warning"; else bad "0146's header lacks the order warning"; fi
 
 echo
 echo "legal-sql: $PASS passed, $FAIL failed"
