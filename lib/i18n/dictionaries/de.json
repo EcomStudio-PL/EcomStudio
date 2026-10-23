@@ -2481,7 +2481,13 @@
       "uploadLoaded": "{name} ({size}) geladen — wird automatisch gespeichert.",
       "verbatimNote": "Der Text wird genau so gespeichert, wie er eingefügt oder hochgeladen wurde — geändert werden nur Zeilenenden (CRLF → LF) und eine Byte-Order-Mark. Mit dem SHA-256-Wert lässt er sich mit der Quelldatei vergleichen.",
       "version": "Dokumentversion",
-      "versionPlaceholder": "z. B. 1.0"
+      "versionPlaceholder": "z. B. 1.0",
+      "fullscreenLabel": "{label} ({lang}) — Vollbild",
+      "legacyBody": "Die Seite zeigt derzeit den alten Titel und Text dieses Abschnitts. Die erste Änderung am Dokument unten speichert ein neues Dokument, das sie auf der Seite ersetzt — der alte Text wird dann nicht mehr angezeigt.",
+      "legacyMove": "Bisherigen Text in die PL-Fassung übernehmen",
+      "legacyMoved": "Der bisherige Text wurde als Entwurf in die PL-Fassung übernommen. Prüfen und Status „Aktiv“ wählen, damit er auf der Seite erscheint.",
+      "legacyNoPolish": "Der alte Text hat keine polnische Fassung — es gibt nichts in die PL-Fassung zu übernehmen.",
+      "legacyTitle": "Dieser Abschnitt enthält noch den bisherigen Text"
     },
     "legalPanel": {
       "cmsVersion": "CMS-Version {n}",
@@ -2500,8 +2506,18 @@
       "sub": "AGB, Richtlinien und der Auftragsverarbeitungsvertrag. Jedes Dokument ist eine Seite mit einem einzigen Abschnitt „Rechtsdokument“. Unten: was Besucher lesen (die veröffentlichte Fassung) und ob der Entwurf noch unveröffentlichte Änderungen hat.",
       "title": "Rechtsdokumente",
       "unpublished": "unveröffentlichte Änderungen",
-      "versionDoc": "{lang} · Dokument v{version} · {chars} · sha {sha}…"
-    }
+      "versionDoc": "{lang} · Dokument v{version} · {chars} · sha {sha}…",
+      "pdfGlyphs": {
+        "body": "Die Schrift der PDF-Datei (Inter) enthält diese Zeichen nicht, daher erscheinen im heruntergeladenen PDF an ihrer Stelle leere Kästchen. Auf der Webseite hängt ihre Darstellung von den Schriften des Browsers ab — der Word-Aufzählungspunkt (U+F0B7) ist dort meist ebenfalls nicht sichtbar. Am besten ersetzt man diese Zeichen im Quelltext.",
+        "both": "Entwurf und veröffentlichte Fassung",
+        "draft": "Entwurf",
+        "published": "veröffentlichte Fassung",
+        "times": "×{n}",
+        "title": "Zeichen, die die PDF-Schrift nicht unterstützt"
+      }
+    },
+    "legalPreviewPolish": "Entwurfsvorschau: Die {lang}-Fassung ist noch nicht aktiv, daher wird hier der polnische Text angezeigt. Besucher in dieser Sprache sehen stattdessen den Hinweis, dass diese Sprachfassung demnächst verfügbar ist.",
+    "publishBlocked": "Nicht veröffentlicht: Eine Änderung konnte nicht gespeichert werden, daher wäre die vorherige Version live gegangen. Speicherfehler beheben und erneut veröffentlichen."
   },
   "insp": {
     "title": "Inspirationen",
@@ -4216,7 +4232,9 @@
     "soonBinding": "Bis dahin ist die polnische Fassung verbindlich – du kannst sie hier lesen oder als PDF herunterladen.",
     "soonBody": "Die deutsche Fassung dieses Dokuments ist bald verfügbar.",
     "termsShort": "AGB",
-    "version": "Version {version}"
+    "version": "Version {version}",
+    "fallbackNoticeOwnReady": "Du liest die polnische Fassung dieses Dokuments.",
+    "readOwnVersion": "Zur deutschen Fassung"
   },
   "genv3": {
     "optional": "optional",

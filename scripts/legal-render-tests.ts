@@ -360,7 +360,7 @@ function main() {
 
   /* ═════════════════════════════════════════════════════════════════════ */
   section("F. THE PUBLIC PAGE, RENDERED");
-  const t = (l: LegalLocale) => makeT(DICTS[l]);
+  const tr = (l: LegalLocale) => makeT(DICTS[l]);
   {
     // Every key the public components name exists in pl/en/de.
     const files = [
@@ -381,14 +381,14 @@ function main() {
     const view = legalViewFor(d, visitor, forcePolish);
     if (view.mode === "doc") {
       return renderToStaticMarkup(createElement(LegalDocument, {
-        slug, t: t(visitor), visitor, doc: d, view,
+        slug, t: tr(visitor), visitor, doc: d, view,
         outline: parseLegalText(view.entry.text),
         pdfTag: sha256(view.entry.text).slice(0, 12),
         publishedAt: "2026-10-21T10:00:00Z",
       }));
     }
     return renderToStaticMarkup(createElement(LegalSoon, {
-      slug, titleKey: LEGAL_DOCS.find((x) => x.slug === slug)?.titleKey ?? "", t: t(visitor), visitor, doc: d,
+      slug, titleKey: LEGAL_DOCS.find((x) => x.slug === slug)?.titleKey ?? "", t: tr(visitor), visitor, doc: d,
       shown: view.locale, polishTag: view.polish ? sha256(view.polish.text).slice(0, 12) : null,
     }));
   };
@@ -450,19 +450,19 @@ function main() {
       normaliseForCompare(visibleText(/<article[^>]*>([\s\S]*?)<\/article>/.exec(html)?.[1] ?? "")) === normaliseForCompare(text)
       && /<div lang="pl" data-legal-text/.test(html));
     check(`${visitor} + ?lang=pl: a notice in the visitor's language says it is the binding Polish version`,
-      html.includes(`data-legal-fallback="${visitor}"`) && html.includes(t(visitor)("legal.fallbackNotice").replace(/'/g, "&#x27;")));
+      html.includes(`data-legal-fallback="${visitor}"`) && html.includes(tr(visitor)("legal.fallbackNotice").replace(/'/g, "&#x27;")));
     check(`${visitor} + ?lang=pl: moving to another document keeps the Polish text`,
       hrefs(html, 'aria-current="page"').join() === "/regulamin?lang=pl" && html.includes('href="/polityka-cookies?lang=pl"'));
     check(`${visitor} + ?lang=pl: the PDF is the Polish one (no &lang)`,
       hrefs(html, "data-legal-pdf").every((h) => /^\/regulamin\/pdf\?v=[0-9a-f]{12}$/.test(h)));
     check(`${visitor} + ?lang=pl: the date reads in the visitor's language`,
-      html.includes(t(visitor)("legal.effectiveFrom", { date: legalDateLabel("2026-10-20", visitor) })));
+      html.includes(tr(visitor)("legal.effectiveFrom", { date: legalDateLabel("2026-10-20", visitor) })));
 
     const soon = page("regulamin", visitor);
     check(`${visitor}: soon mode — the H1 is the document's name in ${visitor}`,
-      count(soon, "<h1") === 1 && visibleText(/<h1[^>]*>([\s\S]*?)<\/h1>/.exec(soon)?.[1] ?? "") === t(visitor)("legal.termsTitle"));
+      count(soon, "<h1") === 1 && visibleText(/<h1[^>]*>([\s\S]*?)<\/h1>/.exec(soon)?.[1] ?? "") === tr(visitor)("legal.termsTitle"));
     check(`${visitor}: soon mode — the notice in the visitor's language`,
-      soon.includes(t(visitor)("legal.soonBody").replace(/'/g, "&#x27;")) && !t(visitor)("legal.soonBody").startsWith("Soon"));
+      soon.includes(tr(visitor)("legal.soonBody").replace(/'/g, "&#x27;")) && !tr(visitor)("legal.soonBody").startsWith("Soon"));
     check(`${visitor}: soon mode — "read the Polish version" → /regulamin?lang=pl`,
       hrefs(soon, "data-legal-read-polish").join() === "/regulamin?lang=pl");
     check(`${visitor}: soon mode — "download the Polish PDF" → /regulamin/pdf?v=<tag>`,
@@ -474,7 +474,7 @@ function main() {
   {
     const none = page("regulamin", "en", false, docWith("  "));
     check("no Polish text at all → the 'being finalised' copy, no link to a text that does not exist",
-      none.includes(t("en")("legal.pendingBody")) && !none.includes("data-legal-read-polish") && !none.includes("/pdf?"));
+      none.includes(tr("en")("legal.pendingBody")) && !none.includes("data-legal-read-polish") && !none.includes("/pdf?"));
     const noVersion = page("polityka-cookies", "pl", false, docWith(sourceOf("polityka-cookies"), { pl: { version: "", effective: null } }));
     check("no version / date set → no empty chips", !noVersion.includes("data-legal-version") && !noVersion.includes("data-legal-effective"));
     const noHeadings = page("polityka-cookies", "pl", false, docWith("Tytuł\n\nJeden akapit bez nagłówków."));
@@ -490,7 +490,7 @@ function main() {
       type: "legal", sort_order: 0, visible: true, content, style: {},
     } as unknown as CmsBlock);
     const render = (b: CmsBlock, locale: LegalLocale) =>
-      renderToStaticMarkup(createElement(BlockRenderer, { blocks: [b], ctx: renderContext({ locale, t: t(locale), admin: true }) }));
+      renderToStaticMarkup(createElement(BlockRenderer, { blocks: [b], ctx: renderContext({ locale, t: tr(locale), admin: true }) }));
     const doc = docWith(text);
     check("readLegalDoc reads the stored doc back", readLegalDoc({ doc })?.pl.text === text);
     const plHtml = render(block({ doc }), "pl");
@@ -513,7 +513,7 @@ function main() {
   section("H. LINKS INTO THE DOCUMENTS: CHECKOUT, FOOTERS, ROUTES, SITEMAP, PROBES");
   {
     for (const l of LOCALES) {
-      const tl = t(l);
+      const tl = tr(l);
       const labels = { terms: tl("legal.acceptTerms"), privacy: tl("legal.acceptPrivacy") };
       const parts = consentParts(tl("checkout.legalLinked"), labels);
       check(`${l}: the checkout line links both documents`,
@@ -686,7 +686,7 @@ function main() {
       check("en + ?lang=pl: both ToC lists (desktop + phone) carry lang=\"pl\"",
         count(html, '<ol lang="pl"') === 2 && count(html, "<ol ") === count(html, '<ol lang="pl"') + count(html, "<ol class="),
         `${count(html, '<ol lang="pl"')} of ${count(html, "<ol")}`);
-      const contents = t("en")("legal.contents");
+      const contents = tr("en")("legal.contents");
       check("…while the navigation's name and the phone summary stay in English",
         count(html, `aria-label="${contents}"`) === 2 && new RegExp(`<summary[^>]*>${contents}<`).test(html)
         && new RegExp(`<p class="[^"]*">${contents}</p>`).test(html));
@@ -699,7 +699,7 @@ function main() {
 
     // ?lang=pl NOTICE: "available soon" only when it is true.
     for (const visitor of ["en", "de"] as const) {
-      const tv = t(visitor);
+      const tv = tr(visitor);
       const esc = (s: string) => s.replace(/'/g, "&#x27;");
       const notice = (html: string) => /<p role="note"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "";
       const soon = page("regulamin", visitor, true);
@@ -719,8 +719,8 @@ function main() {
         && n.includes(`>${esc(tv("legal.readOwnVersion"))}</a>`));
       check(`${visitor}: the two notices are different sentences, both translated`,
         tv("legal.fallbackNoticeOwnReady") !== tv("legal.fallbackNotice")
-        && tv("legal.fallbackNoticeOwnReady") !== t("pl")("legal.fallbackNoticeOwnReady")
-        && tv("legal.readOwnVersion") !== t("pl")("legal.readOwnVersion"));
+        && tv("legal.fallbackNoticeOwnReady") !== tr("pl")("legal.fallbackNoticeOwnReady")
+        && tv("legal.readOwnVersion") !== tr("pl")("legal.readOwnVersion"));
       check(`${visitor} READY: the Polish text is still the file, 1:1, lang="pl"`,
         normaliseForCompare(visibleText(/<article[^>]*>([\s\S]*?)<\/article>/.exec(ready)?.[1] ?? "")) === normaliseForCompare(sourceOf("regulamin"))
         && /<div lang="pl" data-legal-text/.test(ready));
@@ -735,7 +735,7 @@ function main() {
       const d = docWith(sourceOf("polityka-cookies"));
       const view = legalViewFor(d, "pl");
       const html = view.mode === "doc" ? renderToStaticMarkup(createElement(LegalDocument, {
-        slug: "polityka-cookies", t: t("pl"), visitor: "pl", doc: d, view,
+        slug: "polityka-cookies", t: tr("pl"), visitor: "pl", doc: d, view,
         outline: parseLegalText(view.entry.text), pdfTag: "0123456789ab", publishedAt: iso,
       })) : "";
       const line = visibleText(/<p data-legal-updated[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? "");
@@ -758,24 +758,28 @@ function main() {
         title: m.title, og: m.openGraph?.title, tw: m.twitter?.title, canonical: m.alternates?.canonical,
       });
       for (const visitor of ["en", "de"] as const) {
-        const want = t(visitor)("legal.cookiesTitle");
+        const want = tr(visitor)("legal.cookiesTitle");
         const m = titleOf(legalPageMetadata(pageOf("polityka-cookies", importSeo), visitor, "polityka-cookies", want));
         check(`${visitor}: a page with only a Polish SEO title → "${want}" as <title>, og:title and twitter:title`,
           m.title === want && m.og === want && m.tw === want && m.canonical === "/polityka-cookies", JSON.stringify(m));
       }
-      const pl = titleOf(legalPageMetadata(pageOf("polityka-cookies", importSeo), "pl", "polityka-cookies", t("pl")("legal.cookiesTitle")));
+      const pl = titleOf(legalPageMetadata(pageOf("polityka-cookies", importSeo), "pl", "polityka-cookies", tr("pl")("legal.cookiesTitle")));
       check("pl: the admin's Polish SEO title is kept", pl.title === "Polityka cookies GrovBase" && pl.og === "Polityka cookies GrovBase");
       const own = titleOf(legalPageMetadata(pageOf("polityka-cookies", { ...importSeo, en: { title: "Our cookies", ogTitle: "Cookies at GrovBase" } }),
-        "en", "polityka-cookies", t("en")("legal.cookiesTitle")));
+        "en", "polityka-cookies", tr("en")("legal.cookiesTitle")));
       check("en: a page WITH its own English SEO title keeps it (and its og:title)",
         own.title === "Our cookies" && own.og === "Cookies at GrovBase", JSON.stringify(own));
       const ogOnly = titleOf(legalPageMetadata(pageOf("polityka-cookies", { ...importSeo, en: { ogTitle: "Cookies at GrovBase" } }),
-        "en", "polityka-cookies", t("en")("legal.cookiesTitle")));
+        "en", "polityka-cookies", tr("en")("legal.cookiesTitle")));
       check("en: an English og:title without a title → dictionary <title>, the admin's og:title",
-        ogOnly.title === t("en")("legal.cookiesTitle") && ogOnly.og === "Cookies at GrovBase" && ogOnly.tw === "Cookies at GrovBase", JSON.stringify(ogOnly));
+        ogOnly.title === tr("en")("legal.cookiesTitle") && ogOnly.og === "Cookies at GrovBase" && ogOnly.tw === "Cookies at GrovBase", JSON.stringify(ogOnly));
+      const plOg = titleOf(legalPageMetadata(pageOf("polityka-cookies", { pl: { title: "Polityka cookies", ogTitle: "Pliki cookie w GrovBase" }, en: { title: "Our cookies" } }),
+        "en", "polityka-cookies", tr("en")("legal.cookiesTitle")));
+      check("en: an English title and a POLISH og:title → the share cards take the English title, not the Polish og:title",
+        plOg.title === "Our cookies" && plOg.og === "Our cookies" && plOg.tw === "Our cookies", JSON.stringify(plOg));
       const blank = titleOf(legalPageMetadata(pageOf("umowa-powierzenia-danych", { pl: { title: "Umowa" }, de: { title: "   " } }),
-        "de", "umowa-powierzenia-danych", t("de")("legal.dpaTitle")));
-      check("de: a blank German title counts as none", blank.title === t("de")("legal.dpaTitle") && blank.canonical === "/umowa-powierzenia-danych");
+        "de", "umowa-powierzenia-danych", tr("de")("legal.dpaTitle")));
+      check("de: a blank German title counts as none", blank.title === tr("de")("legal.dpaTitle") && blank.canonical === "/umowa-powierzenia-danych");
       const described = legalPageMetadata(pageOf("polityka-cookies", { pl: { title: "T", description: "Opis" }, noindex: true }),
         "en", "polityka-cookies", "X");
       check("…and everything else is still pageMetadata's (description, robots)",

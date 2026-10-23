@@ -172,7 +172,7 @@ function LegacyLegal({ page, titleKey, locale, t, signedIn }: {
           there is nothing to go back to, so history.back() would send a
           reader off the site entirely. */}
       <Link href="/" data-legal-back
-        className="tap mt-10 inline-flex text-sm font-medium text-accent-strong transition-opacity hover:opacity-75 dark:text-accent">
+        className="tap mt-10 inline-flex text-sm font-medium text-accent-strong underline-offset-2 hover:underline dark:text-accent">
         ← {t("legal.back")}
       </Link>
     </div>

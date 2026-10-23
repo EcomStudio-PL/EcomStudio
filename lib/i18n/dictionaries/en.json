@@ -2481,7 +2481,13 @@
       "uploadLoaded": "Loaded {name} ({size}) — it will be saved automatically.",
       "verbatimNote": "The text is saved exactly as pasted or uploaded — only line endings (CRLF → LF) and a byte-order mark are changed. The SHA-256 digest lets you compare it with the source file.",
       "version": "Document version",
-      "versionPlaceholder": "e.g. 1.0"
+      "versionPlaceholder": "e.g. 1.0",
+      "fullscreenLabel": "{label} ({lang}) — full screen",
+      "legacyBody": "The page currently shows this section's old title and text. The first change to the document below saves a new document that replaces them on the page — the old text will no longer be shown.",
+      "legacyMove": "Move the previous text into the PL version",
+      "legacyMoved": "The previous text was moved into the PL version as a draft. Check it and set the status to “Active” to show it on the page.",
+      "legacyNoPolish": "The old text has no Polish version — there is nothing to move into the PL version.",
+      "legacyTitle": "This section still holds its previous text"
     },
     "legalPanel": {
       "cmsVersion": "CMS version {n}",
@@ -2500,8 +2506,18 @@
       "sub": "Terms, policies and the data processing agreement. Each document is a page with a single “Legal document” section. Below: what visitors read (the published version) and whether the draft has changes that are not published yet.",
       "title": "Legal documents",
       "unpublished": "unpublished changes",
-      "versionDoc": "{lang} · document v{version} · {chars} · sha {sha}…"
-    }
+      "versionDoc": "{lang} · document v{version} · {chars} · sha {sha}…",
+      "pdfGlyphs": {
+        "body": "The PDF's font (Inter) has no glyphs for these characters, so the downloaded PDF will show empty boxes in their place. On the web page their look depends on the browser's fonts — Word's bullet (U+F0B7), for example, is usually not visible there either. It is best to replace these characters in the source text.",
+        "both": "draft and published version",
+        "draft": "draft",
+        "published": "published version",
+        "times": "×{n}",
+        "title": "Characters the PDF font does not support"
+      }
+    },
+    "legalPreviewPolish": "Draft preview: the {lang} version is not active yet, so the Polish text is shown here. Visitors in that language see a notice that this language version is coming soon instead.",
+    "publishBlocked": "Not published: a change could not be saved, so the previous version would have gone live. Fix the save error and publish again."
   },
   "insp": {
     "title": "Inspirations",
@@ -4216,7 +4232,9 @@
     "soonBinding": "Until then, the Polish version is the binding one — you can read it here or download it as a PDF.",
     "soonBody": "The English version of this document will be available soon.",
     "termsShort": "Terms of Service",
-    "version": "Version {version}"
+    "version": "Version {version}",
+    "fallbackNoticeOwnReady": "You are reading the Polish version of this document.",
+    "readOwnVersion": "Read the English version"
   },
   "genv3": {
     "optional": "optional",

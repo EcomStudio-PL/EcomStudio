@@ -523,6 +523,17 @@ async function sectionN() {
     const g = drawnGlyphs(readFileSync(path.join(TMP, `${slug}.pdf`)));
     check(`${slug}: ${g.total} glyphs drawn, no .notdef`, g.total > 1000 && g.notdef === 0, g);
   }
+  // Variation selectors pasted from the web: folded into the glyph before
+  // them, never a box of their own — so the admin is not warned about them.
+  const VS16 = ch(0xfe0f);
+  const SELECTORS = `Selektory\n\nWersja: 1.0\n\n1. Znak GrovBase™${VS16} oraz ©${VS16} 2026 ❤${VS16} i ®${ch(0xfe0e)}.`;
+  check("legalPdfUncovered: variation selectors after covered characters report nothing",
+    legalPdfUncovered(SELECTORS).length === 0, legalPdfUncovered(SELECTORS));
+  const gs = drawnGlyphs((await renderFixture("selectors", SELECTORS)).pdf);
+  check(`…and the PDF draws no .notdef for them (${gs.total} glyphs)`, gs.total > 20 && gs.notdef === 0, gs);
+  const checkSel = legalPdfUncovered(`Gotowe ${CHECK}${VS16}`);
+  check("an uncovered base character with a selector (✔️) is reported once, as U+2714 only",
+    JSON.stringify(checkSel.map((u) => cpLabel(u.codePoint))) === JSON.stringify(["U+2714"]), checkSel);
 
   if (!HAVE.pdftotext) {
     skip("the Word-style text's text layer, its line breaks and its tab gaps", "pdftotext is not installed");

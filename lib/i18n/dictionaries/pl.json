@@ -2481,7 +2481,13 @@
       "uploadLoaded": "Wczytano plik {name} ({size}) — zapisze się automatycznie.",
       "verbatimNote": "Tekst jest zapisywany dokładnie tak, jak go wklejono lub wgrano — zmieniane są wyłącznie znaki końca wiersza (CRLF → LF) i znacznik BOM. Suma SHA-256 pozwala porównać go z plikiem źródłowym.",
       "version": "Wersja dokumentu",
-      "versionPlaceholder": "np. 1.0"
+      "versionPlaceholder": "np. 1.0",
+      "fullscreenLabel": "{label} ({lang}) — pełny ekran",
+      "legacyBody": "Strona pokazuje teraz stary tytuł i treść tej sekcji. Pierwsza zmiana w dokumencie poniżej zapisze nowy dokument, który zastąpi je na stronie — stary tekst przestanie być widoczny.",
+      "legacyMove": "Przenieś dotychczasowy tekst do wersji PL",
+      "legacyMoved": "Przeniesiono dotychczasowy tekst do wersji PL jako szkic. Sprawdź go i ustaw status „Aktywny”, aby był widoczny na stronie.",
+      "legacyNoPolish": "Stary tekst nie ma wersji polskiej — nie ma czego przenieść do wersji PL.",
+      "legacyTitle": "Ta sekcja zawiera jeszcze dotychczasowy tekst"
     },
     "legalPanel": {
       "cmsVersion": "wersja CMS {n}",
@@ -2500,8 +2506,18 @@
       "sub": "Regulamin, polityki i umowa powierzenia danych. Każdy dokument to strona z jedną sekcją „Dokument prawny”. Poniżej to, co czytają odwiedzający (wersja opublikowana), i czy szkic ma zmiany, których jeszcze nie opublikowano.",
       "title": "Dokumenty prawne",
       "unpublished": "zmiany nieopublikowane",
-      "versionDoc": "{lang} · dokument v{version} · {chars} · sha {sha}…"
-    }
+      "versionDoc": "{lang} · dokument v{version} · {chars} · sha {sha}…",
+      "pdfGlyphs": {
+        "body": "Czcionka pliku PDF (Inter) nie ma tych znaków, więc w pobranym PDF-ie w ich miejscu pojawią się puste prostokąty. Na stronie www ich wygląd zależy od czcionek przeglądarki — np. punktor z Worda (U+F0B7) zwykle także nie jest tam widoczny. Najlepiej zastąpić te znaki w tekście źródłowym.",
+        "both": "szkic i wersja opublikowana",
+        "draft": "szkic",
+        "published": "wersja opublikowana",
+        "times": "×{n}",
+        "title": "Znaki, których czcionka PDF nie obsługuje"
+      }
+    },
+    "legalPreviewPolish": "Podgląd szkicu: wersja {lang} nie jest jeszcze aktywna, dlatego widzisz tu tekst polski. Odwiedzający w tym języku zobaczą zamiast niego informację, że ta wersja językowa będzie dostępna wkrótce.",
+    "publishBlocked": "Nie opublikowano: zapis zmian został odrzucony, więc na stronę trafiłaby poprzednia wersja. Popraw błąd zapisu i opublikuj ponownie."
   },
   "insp": {
     "title": "Inspiracje",
@@ -4216,7 +4232,9 @@
     "soonBinding": "Do tego czasu wiążąca jest polska wersja — możesz ją przeczytać tutaj albo pobrać jako PDF.",
     "soonBody": "Wersja tego dokumentu w Twoim języku będzie dostępna wkrótce.",
     "termsShort": "Regulamin",
-    "version": "Wersja {version}"
+    "version": "Wersja {version}",
+    "fallbackNoticeOwnReady": "Czytasz polską wersję tego dokumentu.",
+    "readOwnVersion": "Przeczytaj wersję w Twoim języku"
   },
   "genv3": {
     "optional": "opcjonalnie",

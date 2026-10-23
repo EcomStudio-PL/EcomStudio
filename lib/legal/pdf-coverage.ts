@@ -152,6 +152,10 @@ export function legalPdfUncovered(text: string): LegalPdfUncoveredChar[] {
     // Printable ASCII is the bulk of any document and always covered.
     if (cp >= 0x20 && cp <= 0x7e) continue;
     if (ch === "\n" || ch === "\r" || ROLES.has(cp) || legalPdfHasGlyph(cp)) continue;
+    // A variation selector ("™️", "❤️" pasted from the web) is folded into the
+    // glyph before it by the font layout and never drawn on its own; an
+    // uncovered base character ("✔️") is reported through that character.
+    if ((cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xe0100 && cp <= 0xe01ef)) continue;
     const seen = found.get(ch);
     if (seen) seen.count += 1;
     else found.set(ch, { char: ch, codePoint: cp, count: 1 });

@@ -105,7 +105,7 @@ function BackLink({ t }: { t: T }) {
   // to go back to, so history.back() would send a reader off the site.
   return (
     <Link href="/" data-legal-back
-      className={cn("tap inline-flex text-sm font-medium transition-opacity hover:opacity-75", ACCENT_TEXT)}>
+      className={cn("tap inline-flex text-sm font-medium underline-offset-2 hover:underline", ACCENT_TEXT)}>
       ← {t("legal.back")}
     </Link>
   );

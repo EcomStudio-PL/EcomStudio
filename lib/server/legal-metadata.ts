@@ -57,16 +57,19 @@ function ownSeoText(seo: PageSeo | null | undefined, locale: string): SeoText {
  * document's own name in the visitor's language (`title`, the dictionary's
  * titleKey — the same one the draft fallback above uses) is the title, and
  * the social cards take it too unless that language has an og:title of its
- * own. A page with a title in the visitor's language keeps it, untouched.
+ * own. A page with a title in the visitor's language keeps it; its cards use
+ * that language's og:title or title, never the Polish og:title.
  */
 export function legalPageMetadata(page: PublicPage, locale: string, slug: string, title: string): Metadata {
   const meta = pageMetadata(page, locale, `/${slug}`);
   const own = ownSeoText(page.seo, locale);
-  if (own.title?.trim()) return meta;
-  const social = own.ogTitle?.trim() || title;
+  const ownTitle = own.title?.trim();
+  // The share cards come from this language only: its og:title, else its
+  // title, else the document's name — never a Polish og:title merged in.
+  const social = own.ogTitle?.trim() || ownTitle || title;
   return {
     ...meta,
-    title,
+    title: ownTitle ? meta.title : title,
     openGraph: { ...meta.openGraph, title: social },
     twitter: { ...meta.twitter, title: social },
   };

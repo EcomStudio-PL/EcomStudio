@@ -57,8 +57,8 @@ import {
 import { LEGAL_DOCS, LEGAL_LOCALES } from "@/lib/legal/docs";
 import { legalSha256 } from "@/lib/server/legal/published";
 import {
-  isDownloadSlug, legalDocOf, legalDocsDiffer, legalOverview, legalSectionForSave, legalTextFilename, legalTextHeaders,
-  legalVersionFacts, localeFacts, parseLegalLocaleParam, parseLegalSourceParam, withLegalDigests,
+  isDownloadSlug, legalDocOf, legalDocsDiffer, legalOverview, legalPdfGlyphGaps, legalSectionForSave, legalTextFilename,
+  legalTextHeaders, legalVersionFacts, localeFacts, parseLegalLocaleParam, parseLegalSourceParam, withLegalDigests,
 } from "@/lib/server/legal/admin";
 import { SECTION_FIELDS, fieldsFor, readField, splitFields, writeField } from "@/lib/cms-schema";
 import { SEED_PAGES } from "@/lib/cms-seed";
@@ -588,6 +588,44 @@ async function sectionJ() {
   const dpa = row("umowa-powierzenia-danych");
   check("J5 no page yet: no edit/PDF links at all", !dpa.includes("href="));
   check("J6 nothing renders when the overview could not be read", LegalDocsPanel({ rows: [], t, locale: "pl" }) === null);
+  check("J7 the owner's documents need no glyph warning", !html.includes("data-legal-pdf-glyphs"));
+
+  // J8: a row whose texts hold characters the PDF font lacks — the warning is
+  // RENDERED (not grepped from the source): language, which text, each
+  // character with its code point, the count, the title and the advice.
+  const regRow = rows.find((r) => r.def.slug === "regulamin");
+  const regPublished = regDoc();
+  const regDraft: LegalDocContent = {
+    ...regPublished,
+    pl: { ...regPublished.pl, text: `${regPublished.pl.text}\nPunkty: \u2610 \u2714\u2714 \uF0B7 i znak\u200E.` },
+  };
+  const live: LegalDocContent = { ...regPublished, pl: { ...regPublished.pl, text: `${regPublished.pl.text}\nGotowe \u2714` } };
+  const gaps = legalPdfGlyphGaps(regDraft, live);
+  check("J8a legalPdfGlyphGaps: the published ✔ and the draft's ☐ ✔×2 U+F0B7 U+200E, reported separately",
+    JSON.stringify(gaps.map((g) => [g.locale, g.source, g.chars.map((c) => [c.codePoint.toString(16), c.count])]))
+      === JSON.stringify([["pl", "published", [["2714", 1]]], ["pl", "draft", [["2610", 1], ["2714", 2], ["f0b7", 1], ["200e", 1]]]]),
+    JSON.stringify(gaps));
+  const sameText = legalPdfGlyphGaps(live, live);
+  check("J8b a draft that IS the published text is reported once, as 'both'",
+    sameText.length === 1 && sameText[0].source === "both");
+  // 2026-10-20 22:30 UTC is already 21 October in Warsaw.
+  const lateUtc = "2026-10-20T22:30:00Z";
+  const withGaps = regRow && regRow.page
+    ? [{ ...regRow, page: { ...regRow.page, publishedAt: lateUtc }, pdfGlyphGaps: gaps }] : [];
+  const warn = renderToStaticMarkup(LegalDocsPanel({ rows: withGaps, t, locale: "pl" }) ?? createElement("div"));
+  const decoded = warn.replace(/&amp;/g, "&").replace(/&quot;/g, "\"");
+  check("J8c the warning box renders with its title and advice",
+    warn.includes("data-legal-pdf-glyphs") && decoded.includes(t("cms.legalPanel.pdfGlyphs.title"))
+    && decoded.includes(t("cms.legalPanel.pdfGlyphs.body")));
+  check("J8d one line per text: published and draft",
+    /data-legal-pdf-glyphs-lang="pl" data-legal-pdf-glyphs-source="published"/.test(warn)
+    && /data-legal-pdf-glyphs-lang="pl" data-legal-pdf-glyphs-source="draft"/.test(warn));
+  check("J8e each visible character with its code point, the count for ✔ ×2, an invisible one (U+200E) as its code only",
+    warn.includes("\u2610 U+2610") && warn.includes("\u2714 U+2714") && warn.includes(t("cms.legalPanel.pdfGlyphs.times", { n: 2 }))
+    && warn.includes(">U+200E<") && !warn.includes("\u200E U+200E"));
+  check("J8f the publication date is Warsaw's (21 października for 22:30 UTC on the 20th)",
+    /^Opublikowano 21 (paź|października) 2026, 00:30/.test((/Opublikowano[^<]*/.exec(warn) ?? [""])[0]),
+    (/Opublikowano[^<]*/.exec(warn) ?? [""])[0]);
 }
 
 /* ══ K. Publish after a refused save ══════════════════════════════════════ */
