@@ -52,6 +52,11 @@ export type RenderContext = {
   data: CmsLiveData;
   /** Admin preview: show broken sections instead of hiding them. */
   admin?: boolean;
+  /** The builder's DRAFT preview (/podglad): drawn in the admin's interface
+   *  language, which is not the language being edited — so a legal document
+   *  whose language is not active yet shows its Polish draft, with a note,
+   *  instead of the visitors' "coming soon" (LegalDocSection). */
+  draftPreview?: boolean;
   /** Whether the auth CTAs should be offered at all (pre-launch they are not). */
   showAuth?: boolean;
   /** Decides which sections an "only for logged-out visitors" rule keeps. */
@@ -87,6 +92,7 @@ export function renderContext(input: {
   media?: MediaIndex;
   data?: CmsLiveData;
   admin?: boolean;
+  draftPreview?: boolean;
   showAuth?: boolean;
   signedIn?: boolean;
 }): RenderContext {
@@ -96,6 +102,7 @@ export function renderContext(input: {
     media: input.media ?? new Map(),
     data: input.data ?? EMPTY_LIVE_DATA,
     admin: input.admin,
+    draftPreview: input.draftPreview,
     showAuth: input.showAuth,
     signedIn: input.signedIn,
   };
@@ -261,7 +268,7 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
       // shown line for line by LegalText — React escapes it, no markup is
       // printed. This is what the builder preview (/podglad) shows.
       const legal = block.type === "legal" ? readLegalDoc(c) : null;
-      if (legal) return <LegalDocSection doc={legal} locale={locale} t={t} />;
+      if (legal) return <LegalDocSection doc={legal} locale={locale} t={t} preview={ctx.draftPreview === true} />;
       // Authored markup when there is any, the plain paragraphs the old
       // `legal` sections already hold when there is not. Both are sanitised.
       const html = sanitizeRichText(lt(c.html, locale));
@@ -1148,9 +1155,17 @@ export { sanitizeHtml };
  * own text when that language is active, otherwise a short notice (the
  * visitor-facing page, components/cms/legal-page.tsx, adds the way to the
  * Polish text and the PDF).
+ *
+ * THE DRAFT PREVIEW (/podglad, the builder's frame; ctx.draftPreview) is
+ * drawn in the admin's interface language, which is not the language being
+ * edited: an EN or DE admin would see only "coming soon" there, never the
+ * draft. So there a language that is not active falls back to the Polish
+ * text, with a line saying so and what visitors in that language see
+ * instead. The public rendering is untouched.
  */
-function LegalDocSection({ doc, locale, t }: { doc: LegalDocContent; locale: string; t: CmsT }) {
-  const view = legalViewFor(doc, locale);
+function LegalDocSection({ doc, locale, t, preview }: { doc: LegalDocContent; locale: string; t: CmsT; preview: boolean }) {
+  const own = legalViewFor(doc, locale);
+  const view = preview && own.mode === "soon" ? legalViewFor(doc, locale, true) : own;
   if (view.mode === "soon") {
     return (
       <div className="cms-center-x max-w-3xl" data-legal-soon>
@@ -1160,6 +1175,12 @@ function LegalDocSection({ doc, locale, t }: { doc: LegalDocContent; locale: str
   }
   return (
     <div className="cms-center-x max-w-3xl text-left">
+      {view.fallbackFrom && (
+        <p className="mb-6 rounded-xl border border-dashed border-line px-4 py-3 text-[13px] leading-relaxed text-muted"
+          data-legal-preview-polish={view.fallbackFrom}>
+          {t("cms.legalPreviewPolish", { lang: view.fallbackFrom.toUpperCase() })}
+        </p>
+      )}
       <LegalText text={view.entry.text} lang={view.locale} />
     </div>
   );
