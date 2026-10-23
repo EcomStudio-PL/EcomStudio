@@ -121,6 +121,12 @@ export function legalDateLabel(iso: string, locale: string): string {
   }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
+/** A language has a text a visitor can read: published as active, and not
+ *  blank. The same test legalViewFor makes before it shows a text. */
+export function legalHasText(doc: LegalDocContent, locale: LegalLocale): boolean {
+  return doc[locale].status === "active" && doc[locale].text.trim() !== "";
+}
+
 export type LegalLanguageItem = {
   locale: LegalLocale;
   /** The language has a published text. */
@@ -141,7 +147,7 @@ export function legalLanguages(
   doc: LegalDocContent, slug: string, shown: LegalLocale, visitor: string,
 ): LegalLanguageItem[] {
   return LEGAL_LOCALES.map((locale) => {
-    const active = doc[locale].status === "active" && doc[locale].text.trim() !== "";
+    const active = legalHasText(doc, locale);
     const current = locale === shown;
     let href: string | null = null;
     if (active && !current) {

@@ -34,6 +34,11 @@ export function LegalText({ text, outline, lang, className }: {
   );
 }
 
+/** Magenta that is still readable: --accent is 3.65:1 on the light page, so
+ *  the light theme draws addresses and bullets in --accent-strong (5.51:1)
+ *  and the dark theme keeps --accent (6.06:1). */
+const ACCENT_TEXT = "text-accent-strong dark:text-accent";
+
 function Linked({ text }: { text: string }) {
   return (
     <>
@@ -41,7 +46,7 @@ function Linked({ text }: { text: string }) {
         ? (
           <a key={i} href={s.href}
             {...(s.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-            className="font-medium text-accent underline decoration-accent/40 underline-offset-2 transition-colors hover:decoration-accent">
+            className={`font-medium ${ACCENT_TEXT} underline decoration-accent/40 underline-offset-2 transition-colors hover:decoration-accent`}>
             {s.text}
           </a>
         )
@@ -77,7 +82,7 @@ function LegalLine({ node }: { node: LegalNode }) {
         <p data-legal-item={node.depth}
           className="mt-2 flex gap-2.5"
           style={{ paddingLeft: `${node.depth * 1.6}rem` }}>
-          <span className={`shrink-0 tabular-nums ${node.bullet ? "text-accent" : "min-w-[1.6rem] font-medium text-muted"}`}>{node.marker}</span>
+          <span className={`shrink-0 tabular-nums ${node.bullet ? ACCENT_TEXT : "min-w-[1.6rem] font-medium text-muted"}`}>{node.marker}</span>
           {" "}
           <span className="min-w-0 flex-1"><Linked text={node.text} /></span>
         </p>

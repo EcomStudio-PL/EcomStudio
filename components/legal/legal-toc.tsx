@@ -76,7 +76,14 @@ function useActiveHeading(ids: string[]): string | null {
   return active;
 }
 
-export function LegalTocAside({ entries, label }: { entries: LegalTocEntry[]; label: string }) {
+/*
+ * TWO LANGUAGES ON ONE LIST. The entries are the document's own headings, so
+ * they are in the language of the TEXT (`lang` — Polish for an English reader
+ * on ?lang=pl), while the label around them ("Contents") is in the reader's
+ * interface language, which the page itself already declares. A screen
+ * reader then pronounces "Rozdział I" as Polish, not as English.
+ */
+export function LegalTocAside({ entries, label, lang }: { entries: LegalTocEntry[]; label: string; lang: string }) {
   const ids = useMemo(() => legalTocIds(entries), [entries]);
   const active = useActiveHeading(ids);
   const listRef = useRef<HTMLDivElement>(null);
@@ -97,16 +104,16 @@ export function LegalTocAside({ entries, label }: { entries: LegalTocEntry[]; la
   if (entries.length === 0) return null;
   return (
     <nav aria-label={label} data-legal-toc="aside" className="sticky top-24">
-      <p className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-faint">{label}</p>
+      <p className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</p>
       <div ref={listRef}
         className="relative mt-3 max-h-[calc(100dvh-9.5rem)] overflow-y-auto overscroll-contain pb-6 pr-2 [scrollbar-width:thin]">
-        <TocList entries={entries} active={active} />
+        <TocList entries={entries} active={active} lang={lang} />
       </div>
     </nav>
   );
 }
 
-export function LegalTocMobile({ entries, label }: { entries: LegalTocEntry[]; label: string }) {
+export function LegalTocMobile({ entries, label, lang }: { entries: LegalTocEntry[]; label: string; lang: string }) {
   const ref = useRef<HTMLDetailsElement>(null);
   if (entries.length === 0) return null;
   return (
@@ -121,15 +128,15 @@ export function LegalTocMobile({ entries, label }: { entries: LegalTocEntry[]; l
       <nav aria-label={label}
         onClick={(e) => { if ((e.target as HTMLElement).closest("a") && ref.current) ref.current.open = false; }}
         className="max-h-[60dvh] overflow-y-auto overscroll-contain border-t border-line px-2 pb-3 pt-2">
-        <TocList entries={entries} active={null} />
+        <TocList entries={entries} active={null} lang={lang} />
       </nav>
     </details>
   );
 }
 
-function TocList({ entries, active }: { entries: LegalTocEntry[]; active: string | null }) {
+function TocList({ entries, active, lang }: { entries: LegalTocEntry[]; active: string | null; lang: string }) {
   return (
-    <ol className="space-y-0.5">
+    <ol lang={lang} className="space-y-0.5">
       {entries.map((entry) => {
         const here = active === entry.id;
         const inside = here || entry.children.some((c) => c.id === active);
