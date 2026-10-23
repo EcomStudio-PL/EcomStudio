@@ -56,8 +56,10 @@ const FORBIDDEN = /drop|delete/i;
 const ORDER_WARNING = [
   "APPLY ONLY AFTER the Legal documents V1 code is READY on PROD — the",
   "previous renderer shows a doc-only legal section as an empty page.",
-  "Rolling the code back after 0147 requires restoring the pre-import",
-  "versions ('Przed importem: …') of the four pages.",
+  "Rolling the code back after 0147: restore and publish the 'Przed",
+  "importem: …' version of regulamin; unpublish (back to draft) the",
+  "other three (polityka-prywatnosci was a draft before the import,",
+  "polityka-cookies and umowa-powierzenia-danych were created by it).",
 ];
 const WARNING_LINES = ORDER_WARNING.map((l) => `-- ${l}\n`).join("");
 const RULE = `-- ${"═".repeat(74)}\n`;
@@ -201,7 +203,9 @@ ${table}
 --
 -- APPLYING IN PIECES: every statement starts with a line "-- [n/N]", repeats
 -- the warning above and is under ${group(STATEMENT_MAX_BYTES)} bytes; cut the file at those
--- lines, apply the pieces in order (this header is comments only).
+-- lines and apply the pieces in order, each from its "-- [n/N]" line up to
+-- the next one. This header (comments only) is NOT applied: sent together
+-- with piece 1 it would exceed the size limit.
 -- Applying a piece again writes nothing (see above; a part is rewritten only
 -- when it differs). An import whose parts have not all arrived (or arrived
 -- damaged) raises legal_import_mismatch and nothing a visitor or an admin

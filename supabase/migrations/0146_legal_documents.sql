@@ -4,8 +4,10 @@
 -- ==========================================================================
 -- APPLY ONLY AFTER the Legal documents V1 code is READY on PROD — the
 -- previous renderer shows a doc-only legal section as an empty page.
--- Rolling the code back after 0147 requires restoring the pre-import
--- versions ('Przed importem: …') of the four pages.
+-- Rolling the code back after 0147: restore and publish the 'Przed
+-- importem: …' version of regulamin; unpublish (back to draft) the
+-- other three (polityka-prywatnosci was a draft before the import,
+-- polityka-cookies and umowa-powierzenia-danych were created by it).
 -- (0146 alone changes no page; 0147, which calls it, publishes them.)
 -- ==========================================================================
 --

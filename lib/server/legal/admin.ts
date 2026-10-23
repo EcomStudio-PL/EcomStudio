@@ -126,10 +126,19 @@ export function legalDocOf(blocks: BlockLike[], allowHidden: boolean): LegalDocC
 
 type PageRowLite = { id: string; slug: string; title: string; status: string; published_at: string | null; published_snapshot: unknown };
 
-async function draftDoc(supabase: Client, pageId: string): Promise<LegalDocContent | null> {
-  const { data } = await supabase.from("cms_blocks").select("type, visible, sort_order, content")
-    .eq("page_id", pageId).eq("type", "legal").order("sort_order");
+async function draftDoc(supabase: Client, pageId: string, blockId?: string): Promise<LegalDocContent | null> {
+  let query = supabase.from("cms_blocks").select("type, visible, sort_order, content")
+    .eq("page_id", pageId).eq("type", "legal");
+  // One named section of this page (the editor's own), or the page's choice.
+  if (blockId) query = query.eq("id", blockId);
+  const { data } = await query.order("sort_order");
   return legalDocOf((data ?? []).map((b) => ({ type: b.type, visible: b.visible, content: b.content })), true);
+}
+
+/** The `?block=` of a draft download: a section id (a uuid), or null. */
+export function parseLegalBlockParam(raw: string | null): string | null | false {
+  if (raw === null || raw === "") return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw.toLowerCase() : false;
 }
 
 function publishedDoc(snapshot: unknown): LegalDocContent | null {
@@ -141,13 +150,14 @@ export type LegalTextFile = { filename: string; text: string; entry: LegalLocale
 /** One language of one page's document, draft or published — or null when
  *  the page, the section or that language's text does not exist. */
 export async function readLegalTextFile(
-  supabase: Client, slug: string, locale: LegalLocale, source: LegalTextSource,
+  supabase: Client, slug: string, locale: LegalLocale, source: LegalTextSource, blockId?: string | null,
 ): Promise<LegalTextFile | null> {
   if (!isDownloadSlug(slug)) return null;
   const { data: page } = await supabase.from("cms_pages")
     .select("id, slug, published_snapshot").eq("slug", slug).maybeSingle();
   if (!page) return null;
-  const doc = source === "draft" ? await draftDoc(supabase, page.id) : publishedDoc(page.published_snapshot);
+  const doc = source === "draft"
+    ? await draftDoc(supabase, page.id, blockId ?? undefined) : publishedDoc(page.published_snapshot);
   const entry = doc?.[locale];
   if (!entry || entry.text === "") return null;
   return { filename: legalTextFilename(slug, locale, entry.version, source), text: entry.text, entry };

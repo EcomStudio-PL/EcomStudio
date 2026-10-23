@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import {
-  legalTextHeaders, parseLegalLocaleParam, parseLegalSourceParam, readLegalTextFile,
+  legalTextHeaders, parseLegalBlockParam, parseLegalLocaleParam, parseLegalSourceParam, readLegalTextFile,
 } from "@/lib/server/legal/admin";
 
 export const runtime = "nodejs";
@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
  *
  *   /admin/www/regulamin/dokument?locale=pl                    the draft
  *   /admin/www/regulamin/dokument?locale=pl&source=published   what is live
+ *   /admin/www/regulamin/dokument?locale=pl&block=<id>         the draft of
+ *                                      that one section (the editor's link)
  *
  * The text goes out exactly as stored — the same string the page and the PDF
  * read — so the file can be compared byte for byte with the source document
@@ -38,9 +40,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const query = new URL(request.url).searchParams;
   const locale = parseLegalLocaleParam(query.get("locale"));
   const source = parseLegalSourceParam(query.get("source"));
-  if (!locale || !source) return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
+  const block = parseLegalBlockParam(query.get("block"));
+  if (!locale || !source || block === false) return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
 
-  const file = await readLegalTextFile(supabase, slug, locale, source);
+  const file = await readLegalTextFile(supabase, slug, locale, source, block);
   // No text for that language (or no such page): a plain-text 404, like the
   // PDF route's. The editor offers this link as a download, so the answer is
   // a failed download — never a JSON page in place of the builder.

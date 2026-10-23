@@ -46,7 +46,7 @@ import plDict from "@/lib/i18n/dictionaries/pl.json";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { makeT } from "@/lib/i18n/t";
 import {
-  LegalDocField, SavedSectionContent, legacyLegalText, withLegacyPolishDraft,
+  LegalDocField, LegalSectionId, SavedSectionContent, legacyLegalText, withLegacyPolishDraft,
 } from "@/components/admin/cms/legal-doc-field";
 import { LegalDocsPanel } from "@/components/admin/cms/legal-docs-panel";
 import { createSaveTracker } from "@/components/admin/cms/builder";
@@ -329,6 +329,28 @@ async function sectionE() {
     check("E4c … and its sha256 is the owner's upload (151b56da…)", createHash("sha256").update(body).digest("hex") === fileSha("regulamin"));
   }
   {
+    // A SECOND legal section on the page, hidden while the admin works on it:
+    // its own link (&block=) serves ITS stored text, never the page's choice.
+    const db = freshDb();
+    const B_SECOND = "cccccccc-0000-4000-8000-0000000000aa";
+    (db.tables.cms_blocks as Row[]).push({
+      id: B_SECOND, page_id: P_REG, type: "legal", sort_order: 5, visible: false,
+      content: { doc: withLegalDigests(doc({ text: "Drugi szkic PL\n" }, { status: "soon", text: "Second EN draft\n" }) as LegalDocContent) },
+    });
+    const own = await call("regulamin", `?locale=en&block=${B_SECOND}`);
+    check("E4d &block=<the hidden second section> → that section's EN text (the page-level choice has no EN)",
+      own.status === 200 && (await own.text()) === "Second EN draft\n");
+    const page = await call("regulamin", "?locale=en");
+    check("E4e without &block the page's visible section decides (its EN is empty → plain-text 404)", page.status === 404);
+    const first = await call("regulamin", `?locale=pl&block=${B_REG}`);
+    check("E4f &block=<the visible section> → its own PL text, the owner's file", first.status === 200
+      && Buffer.from(await first.arrayBuffer()).equals(readFileSync("content/legal/pl/regulamin.txt")));
+    const foreign = await call("regulamin", `?locale=pl&block=${B_COOK}`);
+    check("E4g &block=<a section of ANOTHER page> → 404 (the page and the section must match)", foreign.status === 404);
+    const bad = await call("regulamin", "?locale=pl&block=x'or'1");
+    check("E4h &block= that is not a section id → 400, nothing read", bad.status === 400);
+  }
+  {
     freshDb();
     const r = await call("regulamin");
     check("E5 no ?locale → Polish", r.status === 200 && (r.headers.get("content-disposition") ?? "").includes("regulamin_pl_"));
@@ -485,8 +507,8 @@ function sectionH() {
     && /REPLACEMENT_CHAR = String\.fromCharCode\(0xfffd\)/.test(code) && /text\.includes\(REPLACEMENT_CHAR\)/.test(code));
   check("H3b no invisible or replacement character typed literally into the editor's source (U+FEFF, U+FFFD, NUL)",
     ![0xfeff, 0xfffd, 0].some((c) => field.includes(String.fromCharCode(c))));
-  check("H4 the download link is the admin route for the tab's language",
-    code.includes("`/admin/www/${slug}/dokument?locale=${locale}`"));
+  check("H4 the download link is the admin route for the tab's language, for this section (&block=<id>)",
+    code.includes("`/admin/www/${slug}/dokument?locale=${locale}${sectionId ? `&block=${encodeURIComponent(sectionId)}` : \"\"}`"));
   check("H5 the preview is the public page's own <LegalText>, parsed only while open",
     /<LegalText outline=\{outline\}/.test(code) && /preview \? parseLegalText\(deferred\) : null/.test(code));
   check("H6 the counter, digest and preview read a deferred copy of the text", /useDeferredValue\(entry\.text\)/.test(code)
@@ -714,14 +736,45 @@ async function sectionK() {
     check("K7 another section's refused save blocks Publish too, while the waiting edit is stored",
       ok === false && refusingB.calls.filter((d) => d.id === "a").length === 1 && refusingB.calls.filter((d) => d.id === "b").length === 2);
   }
+  {
+    // An undo took the refused edit back (no save of its own): the retry sends
+    // what is ON SCREEN — valid, stored, and Publish goes on with it.
+    const tr = createSaveTracker<Draft>();
+    const srv = fakeServer((d) => d.v === 2);
+    await tr.run({ id: "a", v: 2 }, srv.save);
+    const ok = await tr.flush(null, srv.save, (id) => (id === "a" ? { id: "a", v: 1 } : null));
+    check("K7b after an undo, the retry sends the section as it is on screen (v1), not the refused v2 → stored, true",
+      ok === true && JSON.stringify(srv.calls) === JSON.stringify([{ id: "a", v: 2 }, { id: "a", v: 1 }]), JSON.stringify(srv.calls));
+  }
+  {
+    // A transient refusal must not put an undone edit live: the retry stores
+    // the screen's version, never the refused draft.
+    let online = false;
+    const calls: Draft[] = [];
+    const flaky = async (d: Draft) => { calls.push(d); await Promise.resolve(); return online; };
+    const tr = createSaveTracker<Draft>();
+    await tr.run({ id: "a", v: 2 }, flaky);
+    online = true;
+    const ok = await tr.flush(null, flaky, () => ({ id: "a", v: 1 }));
+    check("K7c a refusal that was the network: the retry stores the on-screen v1, the undone v2 is never stored",
+      ok === true && calls.length === 2 && calls[1].v === 1, JSON.stringify(calls));
+  }
+  {
+    const tr = createSaveTracker<Draft>();
+    const srv = fakeServer(() => true);
+    await tr.run({ id: "gone", v: 1 }, srv.save);
+    const ok = await tr.flush(null, srv.save, () => null);
+    check("K7d a refused section that is no longer on screen is forgotten, not re-sent", ok === true && srv.calls.length === 1);
+  }
 
   const code = readFileSync("components/admin/cms/builder.tsx", "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
   const publish = code.slice(code.indexOf("function publish()"), code.indexOf("const published ="));
   check("K8 publish(): a false flush shows cms.publishBlocked and returns BEFORE publishPageAction",
     /if \(!\(await flush\(\)\)\) \{ toast\.error\(t\("cms\.publishBlocked"\)\); return; \}/.test(publish)
     && publish.indexOf("await flush()") > 0 && publish.indexOf("await flush()") < publish.indexOf("publishPageAction(page.id)"));
-  check("K9 flush() resolves the tracker's verdict; persist() runs every save through it; the save itself resolves res.ok",
-    /const flush = useCallback\(async \(\): Promise<boolean> =>[\s\S]*?return saves\.flush\(next, saveNow\);/.test(code)
+  check("K9 flush() resolves the tracker's verdict (retrying the sections as they are on screen); persist() runs every save through it; the save itself resolves res.ok",
+    /const flush = useCallback\(async \(\): Promise<boolean> =>[\s\S]*?return saves\.flush\(next, saveNow, \(id\) => onScreen\.current\.find\(\(b\) => b\.id === id\) \?\? null\);/.test(code)
+    && /useEffect\(\(\) => \{ onScreen\.current = blocks; \}, \[blocks\]\);/.test(code)
     && /const persist = useCallback\(\(draft: Draft\) => saves\.run\(draft, saveNow\)/.test(code)
     && /return res\.ok;\s*\}, \[page\.id, t\]\);/.test(code));
   check("K10 a save that throws (offline, a deploy) is a refused save with its toast, never a stored one",
@@ -785,6 +838,18 @@ function sectionM() {
   const pl = render({ doc: regDoc() }, "pl");
   check("M5 the PL link of a saved document carries `download` (saved as a file, the builder stays)",
     /<a href="\/admin\/www\/regulamin\/dokument\?locale=pl" download="" data-legal-download/.test(pl));
+  const scoped = renderToStaticMarkup(createElement(I18nProvider, {
+    locale: "pl", dict: polishDict(),
+    children: createElement(LegalSectionId.Provider, {
+      value: B_REG,
+      children: createElement(SavedSectionContent.Provider, {
+        value: { doc: regDoc() } as unknown as CmsBlockContent,
+        children: createElement(LegalDocField, { label: "Dokument prawny", locale: "pl", content: { doc: regDoc() } as unknown as CmsBlockContent, onChange: () => undefined }),
+      }),
+    }),
+  }));
+  check("M5b inside the builder the link names its own section: …dokument?locale=pl&block=<id>",
+    scoped.includes(`href="/admin/www/regulamin/dokument?locale=pl&amp;block=${B_REG}"`));
   const builder = readFileSync("components/admin/cms/builder.tsx", "utf8");
   check("M6 the builder provides what is stored (SavedSectionContent ← `stored`), updated only when a save LANDS",
     /<SavedSectionContent\.Provider value=\{stored\.get\(active\.id\) \?\? null\}>/.test(builder)
@@ -841,15 +906,40 @@ const SEED_PL = "<h2>Postanowienia ogólne</h2><p>W przygotowaniu.</p><h2>Defini
 
 function sectionO() {
   console.log("\nO. AN OLD SECTION — said so, and its text one click from the Polish draft");
+  const words = (s: string) => s.split(/[\s\u00a0]+/).filter(Boolean);
   const texts = legacyLegalText({ html: { pl: SEED_PL, en: "<h2>General provisions</h2><p>In preparation.</p>" } });
   check("O1 html → plain text: each block on its own lines with a blank line between, the tags gone",
     texts.pl === "Postanowienia ogólne\n\nW przygotowaniu.\n\nDefinicje\n\nW przygotowaniu.", JSON.stringify(texts.pl));
   check("O1b … per language, with no fallback (DE holds nothing → \"\")",
     texts.en === "General provisions\n\nIn preparation." && texts.de === "");
-  const nbsp = String.fromCharCode(0xa0);
-  const ent = legacyLegalText({ html: { pl: "<p>&bdquo;Usługa&rdquo; &amp; &sect;&nbsp;1 &#8212; &#x2192; &lt;b&gt; &foo; &#1;</p>" } }).pl;
-  check("O2 entities decoded (named, decimal, hex; &nbsp; as U+00A0); &lt;b&gt; stays TEXT; an unknown or control entity is kept as written",
-    ent === `„Usługa” & §${nbsp}1 — → <b> &foo; &#1;`, JSON.stringify(ent));
+  // THE REFERENCE IS THE OLD PAGE ITSELF: what BlockRenderer showed a visitor
+  // for an old `legal` section (sanitizeRichText, then React), read back as
+  // text — the moved draft must hold exactly those words, in that order.
+  const shownByOldPage = (html: string) => {
+    const markup = renderToStaticMarkup(createElement(BlockRenderer, {
+      blocks: [{ id: "old", type: "legal", visible: true, sort_order: 0, content: { html: { pl: html } } } as never],
+      ctx: renderContext({ locale: "pl", t: makeT(polishDict()) }),
+    }));
+    return markup.replace(/<[^>]*>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+      .replace(/&#x27;/g, "'").replace(/&nbsp;/g, "\u00a0").replace(/&amp;/g, "&");
+  };
+  const sameAsOldPage = (html: string) => {
+    const moved = legacyLegalText({ html: { pl: html } }).pl;
+    // Every visible character, in order (spacing aside: a tag is not a space).
+    const squash = (x: string) => x.replace(/[\s\u00a0]+/g, "");
+    return { ok: squash(moved) === squash(shownByOldPage(html)), moved, shown: words(shownByOldPage(html)).join(" ") };
+  };
+  for (const [name, html] of [
+    ["entities as the old page showed them (it escaped every &)", "<p>&bdquo;Usługa&rdquo; &amp; &sect;&nbsp;1 &#8212; kt&oacute;ry &lt;b&gt; &foo; &#1; a&#10;b</p>"],
+    ["a bare < and > are text, not a tag", "<p>osoby w wieku < 18 lat oraz > 13 lat; 5 < 6 & 7 > 4</p>"],
+    ["what the sanitizer swallowed (noscript, iframe, svg) was never shown", "<p>a<noscript>ukryte</noscript> b<iframe>zz</iframe> c<svg><text>s</text></svg> d</p>"],
+    ["markup with attributes, links and inline tags", "<h2 class=\"x\">Tytuł</h2><p>Zob. <a href=\"https://grovbase.com\">stronę</a> i <em>uwagi</em>.</p>"],
+  ] as const) {
+    const r = sameAsOldPage(html);
+    check(`O2 ${name}: the moved text has exactly the old page's words`, r.ok, JSON.stringify({ moved: r.moved, shown: r.shown }));
+  }
+  const bare = legacyLegalText({ html: { pl: "<p>osoby w wieku < 18 lat oraz > 13 lat</p>" } }).pl;
+  check("O2b a bare '<' never swallows words up to the next '>'", bare === "osoby w wieku < 18 lat oraz > 13 lat", JSON.stringify(bare));
   const lists = legacyLegalText({ html: { pl: "<p>Wstęp<br>druga linia</p><ul>\n  <li>pierwszy</li>\n  <li>drugi <strong>pogrubiony</strong></li>\n</ul><table><tr><td>a</td><td>b</td></tr></table>" } }).pl;
   check("O3 <br> and list items start new lines; inline tags vanish without gluing words; table cells stay apart",
     lists === "Wstęp\ndruga linia\n\npierwszy\ndrugi pogrubiony\n\na b", JSON.stringify(lists));
@@ -863,7 +953,6 @@ function sectionO() {
     && legacyLegalText({ description: { pl: "opis" }, html: { pl: "<p> </p>" } }).pl === "opis");
   // NOT ONE WORD REWRITTEN: every seeded legacy section, every language — the
   // words out are the words in, in the same order.
-  const words = (s: string) => s.split(/[\s ]+/).filter(Boolean);
   const seeded = SEED_PAGES.flatMap((p) => p.sections.filter((s) => s.type === "legal").map((s) => ({ slug: p.slug, content: s.content })));
   const sameWords = seeded.length >= 2 && seeded.every(({ content }) => {
     const out = legacyLegalText(content);

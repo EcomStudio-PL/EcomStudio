@@ -17,6 +17,7 @@ import {
   type LegalDocContent, type LegalLocaleDoc, type LegalStatus,
 } from "@/lib/legal/content";
 import { parseLegalText } from "@/lib/legal/document";
+import { sanitizeRichText } from "@/lib/cms-sanitize";
 import type { CmsBlockContent } from "@/lib/cms";
 import { cn, formatBytes } from "@/lib/utils";
 
@@ -107,6 +108,11 @@ function useSha256(text: string): string | null {
  */
 export const SavedSectionContent = createContext<CmsBlockContent | null | undefined>(undefined);
 
+/** The id of the section being edited (the builder provides it), so the
+ *  .txt download reads THIS section's stored text — a page may hold more
+ *  than one legal section, and the page-level choice is the visible one. */
+export const LegalSectionId = createContext<string | null>(null);
+
 /* ── AN OLD `legal` SECTION ─────────────────────────────────────────────── */
 
 /** The named entities an authored legal page plausibly holds; any other
@@ -135,16 +141,18 @@ const LINE_MARK = "\u0002";
 const BLOCK_TAGS = "p|div|h[1-6]|ul|ol|dl|dt|dd|blockquote|pre|table|thead|tbody|tfoot|section|article|header|footer|aside|nav|figure|figcaption|address|details|summary|hr";
 
 /**
- * Authored markup as the words a visitor read: the tags stripped, the
- * entities decoded, a block element (a paragraph, a heading, a list) on its
- * own lines with a blank line between, a list item or a <br> on a new line.
+ * Authored markup as the words a visitor read. The old renderer showed
+ * sanitizeRichText(html) (components/cms/blocks.tsx), so that runs first: a
+ * bare "<" or "&" is text there (escaped), what it swallows (a script, a
+ * noscript, an iframe, an svg…) was never seen, and an entity the admin
+ * typed was shown as typed. Then the tags go and the sanitizer's own escapes
+ * are undone — a block element (a paragraph, a heading, a list) on its own
+ * lines with a blank line between, a list item or a <br> on a new line.
  * Whitespace is folded the way the browser folded it — nothing else changes;
- * not one word is rewritten, added or dropped (what a <script> or <style>
- * held was never shown, so it is not text).
+ * not one word is rewritten, added or dropped.
  */
 function htmlToPlainText(html: string): string {
-  const marked = html
-    .replace(/<(script|style|template)\b[\s\S]*?<\/\1\s*>/gi, "")
+  const marked = sanitizeRichText(html)
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/[ \t\n\r\f]+/g, " ")
     .replace(/<br\b[^>]*>/gi, LINE_MARK)
@@ -230,6 +238,7 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
   // The download serves what is STORED, so it is offered for a language
   // whose saved text exists — not for one typed a second ago, or never.
   const saved = useContext(SavedSectionContent);
+  const sectionId = useContext(LegalSectionId);
   const savedDoc = useMemo(() => (saved === undefined ? storedDoc : readLegalDoc(saved)), [saved, storedDoc]);
   const savedHasText = (savedDoc?.[locale].text ?? "") !== "";
 
@@ -401,7 +410,8 @@ export function LegalDocField({ label, hint, locale, content, onChange }: {
 
   const id = `cms-legal-${locale}`;
   const activeEmpty = entry.status === "active" && !hasText(entry.text);
-  const download = slug && savedHasText ? `/admin/www/${slug}/dokument?locale=${locale}` : null;
+  const download = slug && savedHasText
+    ? `/admin/www/${slug}/dokument?locale=${locale}${sectionId ? `&block=${encodeURIComponent(sectionId)}` : ""}` : null;
 
   const editor = (
     <div data-legal-doc-field={locale} data-legal-expanded={expanded ? "1" : undefined}>

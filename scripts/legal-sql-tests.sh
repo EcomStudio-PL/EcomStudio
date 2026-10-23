@@ -963,7 +963,7 @@ done
 if [ "$order_ok" = 1 ]; then ok "every document has its parts, then its import"; else bad "parts / import order"; fi
 # The order warning, written out here (not taken from the generator). Each
 # piece is applied on its own, so each one carries it right after its marker.
-WARN="APPLY ONLY AFTER the Legal documents V1 code is READY on PROD — the previous renderer shows a doc-only legal section as an empty page. Rolling the code back after 0147 requires restoring the pre-import versions ('Przed importem: …') of the four pages."
+WARN="APPLY ONLY AFTER the Legal documents V1 code is READY on PROD — the previous renderer shows a doc-only legal section as an empty page. Rolling the code back after 0147: restore and publish the 'Przed importem: …' version of regulamin; unpublish (back to draft) the other three (polityka-prywatnosci was a draft before the import, polityka-cookies and umowa-powierzenia-danych were created by it)."
 comment_text() { # file, lines to skip → the comment lines that follow, "-- " stripped, joined by spaces
   awk -v skip="$2" 'NR <= skip { next } /^--( |$)/ { sub(/^-- ?/, ""); printf "%s%s", sep, $0; sep = " "; next } { exit }' "$1"
 }

@@ -27,7 +27,7 @@ import { buildLinkTargets, publicPathFor, type LinkPage } from "@/lib/cms-links"
 import { Field, LinkTargetsProvider, LocaleTabs, type Locale } from "./fields";
 import { StylePanel, ResponsivePanel } from "./style-panel";
 import { CodePanel } from "./code-panel";
-import { SavedSectionContent } from "./legal-doc-field";
+import { LegalSectionId, SavedSectionContent } from "./legal-doc-field";
 import { cn, formatDate } from "@/lib/utils";
 
 /**
@@ -132,13 +132,22 @@ export function createSaveTracker<D extends { id: string }>() {
      *  on its way lands, and a section refused BEFORE this call is sent once
      *  more (the refusal may have been the network; a refusal that arrives
      *  during this call has just been answered and shown — it is not asked
-     *  again). True when nothing on screen differs from what is stored. */
-    async flush(next: D | null, save: (draft: D) => Promise<boolean>): Promise<boolean> {
+     *  again). What is sent again is the section AS IT IS ON SCREEN now
+     *  (`current`), not the refused draft: an undo may have taken that edit
+     *  back without a save of its own, and Publish must neither be blocked by
+     *  content that is gone nor store it. A section no longer on screen is
+     *  forgotten. True when nothing on screen differs from what is stored. */
+    async flush(
+      next: D | null, save: (draft: D) => Promise<boolean>, current?: (id: string) => D | null,
+    ): Promise<boolean> {
       const earlier = new Map(refused);
       if (next) void run(next, save);
       await Promise.allSettled(inflight);
       for (const [id, draft] of earlier) {
-        if (refused.get(id) === draft) await run(draft, save);
+        if (refused.get(id) !== draft) continue;
+        const now = current ? current(id) : draft;
+        if (now) await run(now, save);
+        else { newest.delete(id); refused.delete(id); }
       }
       return refused.size === 0;
     },
@@ -232,6 +241,9 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
     initial.flatMap((b) => (b.id ? [[b.id, b.content ?? {}] as [string, CmsBlockContent]] : [])),
   ));
   const [saves] = useState(() => createSaveTracker<Draft>());
+  /** The sections as they are on screen, for a retry at Publish time. */
+  const onScreen = useRef<Draft[]>(blocks);
+  useEffect(() => { onScreen.current = blocks; }, [blocks]);
 
   const saveNow = useCallback(async (draft: Draft): Promise<boolean> => {
     setSaveState("saving");
@@ -296,7 +308,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const next = queued.current;
     queued.current = null;
-    return saves.flush(next, saveNow);
+    return saves.flush(next, saveNow, (id) => onScreen.current.find((b) => b.id === id) ?? null);
   }, [saves, saveNow]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -881,6 +893,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
 
                 <div className="thin-scroll max-h-[calc(100dvh-16rem)] space-y-4 overflow-y-auto p-3.5">
                   {shownTab === "content" && (
+                    <LegalSectionId.Provider value={active.id || null}>
                     <SavedSectionContent.Provider value={stored.get(active.id) ?? null}>
                       {/* A gallery's summary has no language: its captions
                           are edited with its pairs, in the inline editor. */}
@@ -923,6 +936,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                         </div>
                       )}
                     </SavedSectionContent.Provider>
+                    </LegalSectionId.Provider>
                   )}
 
                   {shownTab === "style" && (
