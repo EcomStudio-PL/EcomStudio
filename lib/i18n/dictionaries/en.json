@@ -1860,7 +1860,14 @@
       "itemUrl": "Link (URL)",
       "itemValue": "Value",
       "legalDoc": "Legal document",
-      "legalDocHint": "The whole document in the language of the tab above — paste it or upload a .txt file. Each language has its own status, version and date."
+      "legalDocHint": "The whole document in the language of the tab above — paste it or upload a .txt file. Each language has its own status, version and date.",
+      "heroImageAfter": "Image (after)",
+      "heroImageAfterHint": "Without an image the header is a centred title. With one — text and image side by side.",
+      "heroImageBefore": "“Before” image (optional)",
+      "heroImageBeforeHint": "Together with the “after” image it forms a before/after pair — the same product photo before and after GrovBase.",
+      "contactAsideTitle": "Quick contact heading",
+      "contactTiles": "Quick contact tiles",
+      "contactTilesHint": "Real channels only. “Link” is mailto:address or tel:number, “Value” is the address shown on the tile (empty = taken from the link), “Icon” e.g. mail, support, handshake."
     },
     "sectionType": {
       "hero": "Hero section",
@@ -2087,7 +2094,7 @@
     "label.formSubmit": "Button text",
     "label.formConsent": "Consent text under the form",
     "label.formTopics": "Topics to choose from",
-    "label.formTopicsHint": "“Value” is the topic code (sales, support, partnership, press, other); “Title” is the label the visitor sees.",
+    "label.formTopicsHint": "“Value” is the topic code (question, sales, support, partnership, press, other); “Title” is the label the visitor sees.",
     "label.itemBadge": "Badge",
     "label.itemIcon": "Icon",
     "group.main": "Main",
@@ -2517,7 +2524,27 @@
       }
     },
     "legalPreviewPolish": "Draft preview: the {lang} version is not active yet, so the Polish text is shown here. Visitors in that language see a notice that this language version is coming soon instead.",
-    "publishBlocked": "Not published: a change could not be saved, so the previous version would have gone live. Fix the save error and publish again."
+    "publishBlocked": "Not published: a change could not be saved, so the previous version would have gone live. Fix the save error and publish again.",
+    "formErrName": "Please enter your name.",
+    "formErrEmailEmpty": "Please enter the e-mail address we should reply to.",
+    "formErrEmail": "This e-mail address looks incomplete — please check it.",
+    "formErrMessage": "Tell us how we can help.",
+    "formErrMessageShort": "The message is too short — please write at least a few words.",
+    "formErrRateLimited": "Several messages have already been sent in a short time. Please try again later.",
+    "formErrInvalid": "Please check the form fields and try again.",
+    "formErrTooFast": "The form was sent too quickly. Please wait a moment and send it again.",
+    "formOkTitle": "Message sent",
+    "formAnother": "Write another message",
+    "formSending": "Sending…",
+    "quickContact": "Quick contact",
+    "photoPlaceholder": "Room for a photo — add it in this section's settings (Image).",
+    "footerSocial": "GrovBase on social media",
+    "backToTop": "Back to top",
+    "sectionType.page_hero": "Subpage header",
+    "sectionType.contact_hub": "Form + quick contact",
+    "footerBrandLine": "Brand line (bottom bar)",
+    "footerGroupHeadings": "Column headings",
+    "footerGroupHeadingsHint": "Empty = the default name. A link goes into the column whose code you type in its “Value” box (e.g. company, legal)."
   },
   "insp": {
     "title": "Inspirations",

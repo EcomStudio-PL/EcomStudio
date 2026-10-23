@@ -57,6 +57,8 @@ import {
 import type { MediaIndex } from "@/lib/server/cms-media";
 import { stegaMark } from "@/lib/ice/stega";
 import { LaunchPage } from "@/components/launch/launch-page";
+import { SiteFooter } from "@/components/cms/site-shell";
+import { makeT } from "@/lib/i18n/t";
 import { LaunchCountdown } from "@/components/launch/countdown";
 import { WaitlistForm } from "@/components/launch/waitlist-form";
 import { pluralCategory, remainingParts, unitKey } from "@/components/launch/countdown-math";
@@ -96,6 +98,12 @@ const DICTS: Record<Locale, Dict> = {
 const LOCALES: Locale[] = ["pl", "en", "de"];
 
 /** Static markup of a component under the i18n provider, as a page has it. */
+/** The site footer the route hands the page (app/page.tsx), with nothing
+ *  configured — the documents and the language switch are always in it. */
+const footerFor = (locale: Locale) => createElement(SiteFooter, {
+  global: {}, nav: [], locale, t: makeT(DICTS[locale]), forceDark: true,
+  site: { instagramUrl: "", facebookUrl: "", linkedinUrl: "", xUrl: "" },
+});
 const markup = (locale: Locale, child: ReactElement) =>
   renderToStaticMarkup(createElement(I18nProvider, { locale, dict: DICTS[locale], children: child }));
 
@@ -343,7 +351,7 @@ async function main() {
     return markup(locale,
       createElement(LaunchPage, {
         content: copy, signedIn: false, showAuthEntry: false, waitlistFields: { firstName: "optional", lastName: "required" },
-        loginLabel: "Zaloguj się", privacyLabel: "Polityka", termsLabel: "Regulamin", rightsLabel: "Prawa",
+        loginLabel: "Zaloguj się", footer: footerFor(locale),
         social: { instagramUrl: "", facebookUrl: "", linkedinUrl: "", xUrl: "" },
         options, campaign, galleries: opts.galleries ?? [], isAdmin: opts.isAdmin ?? false,
         consents: consentsFor(locale), serverNow: NOW, analytics: { trafficSource: "direct" },
@@ -378,7 +386,7 @@ async function main() {
       const html = markup("pl",
         createElement(LaunchPage, {
           content: copy, signedIn: false, showAuthEntry: false, waitlistFields: { firstName: "hidden", lastName: "hidden" },
-          loginLabel: "", privacyLabel: "", termsLabel: "", rightsLabel: "",
+          loginLabel: "", footer: footerFor("pl"),
           social: { instagramUrl: "", facebookUrl: "", linkedinUrl: "", xUrl: "" },
           options: launchPageOptions(launchOptionsFrom({}, SUPA), media),
           campaign: launchCampaign(copy, cfg({}), "pl", NOW), galleries: [], isAdmin: false,
@@ -387,7 +395,10 @@ async function main() {
       return !/data-waitlist-first-name/.test(html);
     })());
     check("one priority hero image, not two", (pl0.match(/data-next-image/g) ?? []).length === 1 && /loading="eager"/.test(pl0));
-    check("the language switch is on the page", /data-launch-locale/.test(pl0));
+    check("the language switch is on the page (in the site footer)",
+      /data-launch-footer[\s\S]*data-footer-locale/.test(pl0));
+    check("the footer links the three documents",
+      /href="\/regulamin"/.test(pl0) && /href="\/polityka-prywatnosci"/.test(pl0) && /href="\/polityka-cookies"/.test(pl0));
     check("the final call to action and sticky bar obey their switches",
       !/data-launch-final/.test(render("pl", cfg({}), { plain: { showFinal: "0" } }))
       && !/data-launch-sticky/.test(render("pl", cfg({}), { plain: { showSticky: "0" } })));

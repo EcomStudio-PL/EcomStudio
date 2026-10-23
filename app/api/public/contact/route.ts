@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
-import { isContactTopic } from "@/lib/cms-forms";
+import { CONTACT_EMAIL_PATTERN, isContactTopic } from "@/lib/cms-forms";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +13,12 @@ export const dynamic = "force-dynamic";
  * endpoint an anonymous visitor may post to. The layers, outermost first:
  *
  *   1. a honeypot, which catches the naive bots for free;
- *   2. an in-memory per-address rate limit, which blunts a burst;
- *   3. a SECURITY DEFINER function, which is the actual boundary. It
+ *   2. a time trap: the form reports how long it was open, and a message
+ *      typed and sent inside two seconds was not typed by a person. It is
+ *      refused with its own code rather than answered "ok" — a human who
+ *      somehow got here must not be told a message arrived that did not;
+ *   3. an in-memory per-address rate limit, which blunts a burst;
+ *   4. a SECURITY DEFINER function, which is the actual boundary. It
  *      revalidates everything, applies a per-e-mail limit that survives a
  *      restart, and is the only grant anon has on this table. Nothing here
  *      can read anyone's message back out.
@@ -24,7 +28,9 @@ export const dynamic = "force-dynamic";
  * There is no second mail system in this feature.
  */
 
-const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
+/** Faster than this from opening the form to sending it is a script. A
+ *  person needs longer than this to type a name, an address and five words. */
+const MIN_FILL_MS = 2000;
 
 const str = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -37,6 +43,7 @@ export async function POST(request: Request) {
   }
 
   let name = "", email = "", message = "", topic = "other", trap = "", locale = "pl";
+  let elapsed: number | null = null;
   try {
     const body = (await request.json()) as Record<string, unknown>;
     name = str(body.name, 120);
@@ -47,10 +54,16 @@ export async function POST(request: Request) {
     locale = /^[a-z]{2}$/.test(str(body.locale, 2)) ? str(body.locale, 2) : "pl";
     // The field no human sees. Answering "ok" keeps the bot from learning.
     trap = str(body.company, 200);
+    // Absent is allowed: a page cached before the form started sending it
+    // must keep working. Present and implausibly short is not.
+    elapsed = typeof body.elapsed === "number" && Number.isFinite(body.elapsed) ? body.elapsed : null;
   } catch { /* validated below */ }
 
   if (trap) return NextResponse.json({ ok: true });
-  if (!EMAIL.test(email) || message.length < 5 || name.length === 0) {
+  if (elapsed !== null && elapsed < MIN_FILL_MS) {
+    return NextResponse.json({ ok: false, error: "too_fast" }, { status: 400 });
+  }
+  if (!CONTACT_EMAIL_PATTERN.test(email) || message.length < 5 || name.length === 0) {
     return NextResponse.json({ ok: false, error: "invalid" }, { status: 400 });
   }
 

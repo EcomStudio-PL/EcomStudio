@@ -12,8 +12,13 @@
  * So it can be applied twice and the second run does nothing.
  *
  *   npm run cms:seed-sql > /tmp/seed.sql
+ *
+ * RELEASE MODE — `npm run cms:seed-sql -- --release` prints migration 0148
+ * (Public pages V1) instead: O nas and Kontakt are REPLACED with their seed
+ * layout and PUBLISHED, the footer gets its links, headings and brand line,
+ * and the contact form's topic list gains `question`. See releaseSql().
  */
-import { SEED_PAGES, SEED_GLOBALS } from "../lib/cms-seed";
+import { SEED_PAGES, SEED_GLOBALS, FOOTER_BRAND_LINE, FOOTER_HEADINGS, FOOTER_ITEMS } from "../lib/cms-seed";
 
 /** Postgres string literal. Doubling the quote is the whole of the escaping
  *  rule, and JSON.stringify has already handled everything inside the JSON. */
@@ -114,4 +119,208 @@ set content = ${json(seed.content)},
 where slot = ${lit(slot)} and content = '{}'::jsonb;`);
 }
 
-process.stdout.write(`${out.join("\n")}\n`);
+/**
+ * PUBLIC PAGES V1 — the two pages the brief rebuilds, released.
+ *
+ * Per page, in ONE transaction (a DO block), and only while the page does not
+ * already carry its new layout (the marker is the hero's analytics id, unique
+ * to it — so applying this twice writes nothing the second time, and a page
+ * an admin has since re-arranged keeps their work as long as that hero stays):
+ *
+ *   1. the outgoing draft is kept as a labelled version ("Przed Public pages
+ *      V1"), so the previous page is one click away in Historia;
+ *   2. its sections are replaced by the seed's;
+ *   3. the menu group, order and SEO come from the seed; the page wears the
+ *      site's own header and footer;
+ *   4. it is PUBLISHED exactly the way lib/services/cms.ts publishPage does:
+ *      the same snapshot shape (snapshotOf), written as a 'publish' version
+ *      first and then as the page's published_snapshot.
+ *
+ * The footer is PATCHED, never replaced: links, headings and the brand line
+ * are added only while it still holds no links of its own, and the tagline an
+ * admin typed is kept.
+ */
+const RELEASE_SLUGS = ["o-nas", "kontakt"] as const;
+
+const BLOCK_JSON = (alias: string) => `jsonb_build_object(
+            'id', ${alias}.id, 'type', ${alias}.type, 'sort_order', ${alias}.sort_order,
+            'visible', ${alias}.visible, 'content', ${alias}.content,
+            'style', ${alias}.style, 'code', ${alias}.code,
+            'analytics_id', ${alias}.analytics_id, 'anchor', ${alias}.anchor,
+            'show_from', ${alias}.show_from, 'show_until', ${alias}.show_until,
+            'audience', ${alias}.audience
+          )`;
+
+function releaseSql(): string {
+  const parts: string[] = [];
+  parts.push(`-- 0148 — PUBLIC PAGES V1: Kontakt, O nas and the site footer.
+--
+-- GENERATED from lib/cms-seed.ts by \`npm run cms:seed-sql -- --release\`. Do
+-- not edit by hand: change the TypeScript and regenerate, so the panel's own
+-- seed and this file can never disagree.
+--
+-- APPLY ONLY AFTER the Public pages V1 code is live: the two new section
+-- types (page_hero, contact_hub) render as nothing in the previous renderer.
+--
+-- Rolling back: Strony WWW → O nas / Kontakt → Historia → "Przed Public pages
+-- V1" restores the previous layout (Kontakt was a draft before this; O nas was
+-- published). The topic list keeps 'question' — harmless to older code, which
+-- never sends it.
+
+-- ── 1. THE CONTACT FORM'S TOPICS ─────────────────────────────────────────
+-- "Pytanie" joins the closed list (lib/cms-forms.ts CONTACT_TOPICS). The
+-- function is 0086's — the same checks, limit and grants — with the one value
+-- added; it is still the only way anon reaches contact_messages.
+alter table public.contact_messages drop constraint if exists contact_messages_topic_check;
+alter table public.contact_messages add constraint contact_messages_topic_check
+  check (topic in ('question', 'sales', 'support', 'partnership', 'press', 'other'));
+
+create or replace function public.submit_contact_message(
+  p_topic text,
+  p_name text,
+  p_email text,
+  p_message text,
+  p_locale text default 'pl',
+  p_source text default null,
+  p_metadata jsonb default '{}'::jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := lower(trim(coalesce(p_email, '')));
+  v_name text := trim(coalesce(p_name, ''));
+  v_message text := trim(coalesce(p_message, ''));
+  v_topic text := coalesce(nullif(trim(coalesce(p_topic, '')), ''), 'other');
+  v_recent integer;
+  v_id uuid;
+begin
+  if v_email !~ '^[^@\\s]+@[^@\\s.]+\\.[^@\\s]{2,}$' then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  if length(v_message) < 5 or length(v_message) > 4000 then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  if length(v_name) = 0 or length(v_name) > 120 then
+    return jsonb_build_object('status', 'invalid');
+  end if;
+  if v_topic not in ('question', 'sales', 'support', 'partnership', 'press', 'other') then
+    v_topic := 'other';
+  end if;
+
+  select count(*) into v_recent from public.contact_messages
+    where email = v_email and created_at > now() - interval '1 hour';
+  if v_recent >= 5 then
+    return jsonb_build_object('status', 'rate_limited');
+  end if;
+
+  insert into public.contact_messages (topic, name, email, message, locale, source, metadata)
+  values (
+    v_topic, left(v_name, 120), left(v_email, 254), left(v_message, 4000),
+    coalesce(nullif(p_locale, ''), 'pl'), left(coalesce(p_source, ''), 80),
+    coalesce(p_metadata, '{}'::jsonb)
+  )
+  returning id into v_id;
+
+  return jsonb_build_object('status', 'created', 'id', v_id);
+end $$;
+
+revoke all on function public.submit_contact_message(text, text, text, text, text, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.submit_contact_message(text, text, text, text, text, text, jsonb)
+  to anon, authenticated;`);
+
+  for (const slug of RELEASE_SLUGS) {
+    const page = SEED_PAGES.find((p) => p.slug === slug);
+    if (!page) throw new Error(`no seed page ${slug}`);
+    const marker = page.sections[0]?.analyticsId;
+    if (!marker) throw new Error(`${slug}: the first section needs an analyticsId (the release marker)`);
+    const values = page.sections.map((section, i) => `      (${i}, ${lit(section.type)}, ${json(section.content)}, ${json(section.style ?? {})}, ${section.anchor ? lit(section.anchor) : "null"}, ${section.analyticsId ? lit(section.analyticsId) : "null"})`).join(",\n");
+    parts.push(`
+-- ── 2. ${page.title} (/${page.slug}) — replaced and published ───────────────
+do $release$
+declare
+  v_page uuid;
+  v_seo jsonb;
+  v_snapshot jsonb;
+begin
+  insert into public.cms_pages (slug, title, status, kind)
+  values (${lit(page.slug)}, ${lit(page.title)}, 'draft', 'standard')
+  on conflict (slug) do nothing;
+  select id into v_page from public.cms_pages where slug = ${lit(page.slug)};
+
+  if exists (select 1 from public.cms_blocks b where b.page_id = v_page and b.analytics_id = ${lit(marker)}) then
+    raise notice '${page.slug}: already on the Public pages V1 layout, nothing written';
+    return;
+  end if;
+
+  -- 1. Keep what is being replaced.
+  if exists (select 1 from public.cms_blocks b where b.page_id = v_page) then
+    insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, label)
+    select v_page,
+           coalesce((select max(v.version) from public.cms_page_versions v where v.page_id = v_page), 0) + 1,
+           (select jsonb_agg(${BLOCK_JSON("b")} order by b.sort_order)
+              from public.cms_blocks b where b.page_id = v_page),
+           coalesce((select p.seo from public.cms_pages p where p.id = v_page), '{}'::jsonb),
+           'manual',
+           'Przed Public pages V1';
+  end if;
+
+  -- 2. The new sections.
+  delete from public.cms_blocks where page_id = v_page;
+  insert into public.cms_blocks (page_id, sort_order, type, content, style, anchor, analytics_id)
+  select v_page, v.sort_order, v.type, v.content, v.style, v.anchor, v.analytics_id
+  from (values
+${values}
+  ) as v(sort_order, type, content, style, anchor, analytics_id);
+
+  -- 3. Menu group, SEO, the site's own chrome.
+  v_seo := ${json(page.seo)};
+  update public.cms_pages
+     set nav_group = ${page.navGroup ? lit(page.navGroup) : "null"},
+         nav_order = ${page.navOrder},
+         seo = v_seo,
+         header_mode = 'global',
+         footer_mode = 'global',
+         updated_at = now()
+   where id = v_page;
+
+  -- 4. Publish, as publishPage does: the version first, then the page.
+  select jsonb_agg(${BLOCK_JSON("b")} order by b.sort_order)
+    into v_snapshot
+    from public.cms_blocks b where b.page_id = v_page;
+  insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, label)
+  values (
+    v_page,
+    coalesce((select max(v.version) from public.cms_page_versions v where v.page_id = v_page), 0) + 1,
+    v_snapshot, v_seo, 'publish', 'Public pages V1'
+  );
+  update public.cms_pages
+     set published_snapshot = v_snapshot,
+         status = 'published',
+         published_at = now(),
+         updated_at = now(),
+         scheduled_at = null
+   where id = v_page;
+end $release$;`);
+  }
+
+  const patch = { subtitle: FOOTER_BRAND_LINE, items: FOOTER_ITEMS, fields: FOOTER_HEADINGS };
+  parts.push(`
+-- ── 3. THE FOOTER — links, column headings, brand line ────────────────────
+-- Draft and published copy together (the footer has no separate draft today),
+-- and only while neither holds links of its own: an admin's footer is theirs.
+update public.cms_global_sections
+   set content = coalesce(content, '{}'::jsonb) || ${json(patch)},
+       published_snapshot = coalesce(published_snapshot, content, '{}'::jsonb) || ${json(patch)},
+       published_at = now(),
+       updated_at = now()
+ where slot = 'footer'
+   and coalesce(jsonb_array_length(content->'items'), 0) = 0
+   and coalesce(jsonb_array_length(published_snapshot->'items'), 0) = 0;`);
+
+  return `${parts.join("\n")}\n`;
+}
+
+process.stdout.write(process.argv.includes("--release") ? releaseSql() : `${out.join("\n")}\n`);

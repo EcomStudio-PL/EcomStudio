@@ -1,8 +1,10 @@
 "use client";
-import { useId, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { resolveHandler, type FormKind } from "@/lib/cms-forms";
+import { useEffect, useId, useRef, useState } from "react";
+import Link from "next/link";
+import { CircleCheck, Loader2 } from "lucide-react";
+import { CONTACT_EMAIL_PATTERN, resolveHandler, type FormKind } from "@/lib/cms-forms";
 import { useI18n } from "@/lib/i18n/provider";
+import { cn } from "@/lib/utils";
 
 /**
  * THE FORM ON A PUBLIC PAGE.
@@ -52,13 +54,38 @@ type Labels = {
   sending: string; ok: string; error: string; required: string;
 };
 
-export function CmsForm({ kind, handler, submitLabel, consent, labels, topics }: {
+/** The inputs a visitor types into, and so the ones that can be wrong. */
+type Checked = "name" | "email" | "message";
+
+/**
+ * WHAT THE ROUTE'S REFUSALS MEAN TO THE PERSON WHO SENT THE FORM.
+ *
+ * A limit and a typo are not the same failure, and "spróbuj ponownie" is the
+ * wrong advice for both of them: retrying a rate-limited message only hits the
+ * limit again. Each code the routes answer with gets its own sentence; anything
+ * else (a 500, a dropped connection) is the generic one.
+ */
+const SERVER_ERRORS: Record<string, string> = {
+  rate_limited: "cms.formErrRateLimited",
+  invalid: "cms.formErrInvalid",
+  invalid_email: "cms.formErrEmail",
+  too_fast: "cms.formErrTooFast",
+  suppressed: "newsletter.form.suppressed",
+};
+
+export function CmsForm({ kind, handler, submitLabel, consent, labels, topics, layout = "stack", privacy }: {
   kind: FormKind;
   handler?: string;
   submitLabel: string;
   consent?: string;
   labels: Labels;
   topics: { value: string; label: string }[];
+  /** `card` is the contact page's form (contact_hub): name and e-mail side by
+   *  side, larger inputs, and a success panel that offers another message.
+   *  `stack` is the form every other section has always drawn. */
+  layout?: "stack" | "card";
+  /** A link printed after the consent sentence — the privacy policy. */
+  privacy?: { label: string; href: string };
 }) {
   const target = resolveHandler(handler, kind);
   const id = useId();
@@ -66,6 +93,19 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics }:
   const [state, setState] = useState<"idle" | "sending" | "ok" | "error">("idle");
   const [error, setError] = useState("");
   const [consented, setConsented] = useState(false);
+  const [invalid, setInvalid] = useState<Partial<Record<Checked, string>>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  /** When the form became usable. A script that fills and posts it in the
+   *  same second is not a person writing to us (see the contact route). */
+  const openedAt = useRef(0);
+  useEffect(() => { openedAt.current = Date.now(); }, []);
+
+  // The success panel replaces the form, button and all; focus follows it, or
+  // a keyboard user is left on an element that no longer exists.
+  useEffect(() => {
+    if (state === "ok" && layout === "card") statusRef.current?.focus();
+  }, [state, layout]);
 
   // A form with no approved handler is not rendered as a form that silently
   // does nothing — it is not rendered at all.
@@ -73,10 +113,51 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics }:
 
   const wantsConsent = target.kind === "newsletter";
 
+  /** The visitor's mistakes, in the page's language. The route checks the
+   *  same things again; this only saves a round trip and says WHICH field. */
+  function check(form: FormData): Partial<Record<Checked, string>> {
+    const out: Partial<Record<Checked, string>> = {};
+    const value = (name: string) => String(form.get(name) ?? "").trim();
+    if (target?.fields.includes("name") && !value("name")) out.name = t("cms.formErrName");
+    const email = value("email");
+    if (!email) out.email = t("cms.formErrEmailEmpty");
+    else if (!CONTACT_EMAIL_PATTERN.test(email)) out.email = t("cms.formErrEmail");
+    if (target?.fields.includes("message")) {
+      const message = value("message");
+      if (!message) out.message = t("cms.formErrMessage");
+      else if (message.length < 5) out.message = t("cms.formErrMessageShort");
+    }
+    return out;
+  }
+
+  /** Typing into a field that was marked wrong takes the mark off it. */
+  function clearInvalid(name: Checked) {
+    if (invalid[name]) setInvalid((prev) => ({ ...prev, [name]: undefined }));
+  }
+
+  function reset() {
+    setState("idle");
+    setError("");
+    setInvalid({});
+    openedAt.current = Date.now();
+  }
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (state === "sending" || !target) return;
     const form = new FormData(event.currentTarget);
+
+    const problems = check(form);
+    if (Object.values(problems).some(Boolean)) {
+      setInvalid(problems);
+      setState("idle");
+      setError("");
+      // The first field that needs attention, in the order they are drawn.
+      const first = (["name", "email", "message"] as const).find((k) => problems[k]);
+      if (first) formRef.current?.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
+      return;
+    }
+    setInvalid({});
 
     /*
       THE BLOCK IS OURS RATHER THAN THE BROWSER'S, and not by accident.
@@ -111,6 +192,8 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics }:
           // actually reading, which is what decides the language of every
           // campaign they are later sent.
           locale,
+          // How long the form was open before this send, in ms.
+          elapsed: openedAt.current ? Date.now() - openedAt.current : undefined,
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -119,56 +202,108 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics }:
       // AN ADDRESS THAT UNSUBSCRIBED IS NOT A FAILED SUBMISSION, and saying
       // "spróbuj ponownie" to somebody on the suppression list invites them to
       // retry something that will never work. `newsletter_subscribe` answers
-      // 'suppressed' for exactly this and the route passes it through.
-      setError(body.error === "suppressed" ? t("newsletter.form.suppressed") : labels.error);
+      // 'suppressed' for exactly this and the route passes it through — and a
+      // rate limit or a refused field each get their own sentence the same way.
+      const known = body.error ? SERVER_ERRORS[body.error] : undefined;
+      setError(known ? t(known) : labels.error);
     } catch {
       setState("error");
       setError(labels.error);
     }
   }
 
+  const card = layout === "card";
+
   if (state === "ok") {
+    if (!card) {
+      return (
+        <p role="status" className="rounded-2xl border border-accent/30 bg-accent-soft/50 px-5 py-4 text-sm font-medium text-accent">
+          {labels.ok}
+        </p>
+      );
+    }
     return (
-      <p role="status" className="rounded-2xl border border-accent/30 bg-accent-soft/50 px-5 py-4 text-sm font-medium text-accent">
-        {labels.ok}
-      </p>
+      <div ref={statusRef} role="status" tabIndex={-1} data-cms-form-ok
+        className="flex flex-col items-start gap-2 rounded-2xl border border-accent/30 bg-accent-soft/40 p-6 outline-none sm:p-7">
+        <CircleCheck size={30} aria-hidden className="text-accent" />
+        <p className="mt-1 font-display text-lg font-semibold tracking-tight">{t("cms.formOkTitle")}</p>
+        <p className="text-[14.5px] leading-relaxed text-muted">{labels.ok}</p>
+        <button type="button" onClick={reset}
+          className="tap mt-2 text-sm font-semibold text-accent underline-offset-4 hover:underline focus-visible:underline">
+          {t("cms.formAnother")}
+        </button>
+      </div>
     );
   }
 
-  const field = "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none transition-colors focus:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25";
+  const field = card
+    ? "w-full rounded-xl border border-line bg-bg/60 px-4 py-3 text-base outline-none transition-colors placeholder:text-faint focus:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25 aria-[invalid=true]:border-danger/70 sm:text-[15px]"
+    : "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none transition-colors focus:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25 aria-[invalid=true]:border-danger/70";
+  const label = card
+    ? "mb-2 block text-[13px] font-medium text-ink/85"
+    : "mb-1.5 block text-[12.5px] font-medium text-muted";
+  /** The attributes that tie a field to its own error line. */
+  const describe = (name: Checked) => invalid[name]
+    ? { "aria-invalid": true as const, "aria-describedby": `${id}-${name}-err` }
+    : {};
+  const fieldError = (name: Checked) => invalid[name] ? (
+    <p id={`${id}-${name}-err`} className="mt-1.5 text-[12.5px] font-medium text-danger">{invalid[name]}</p>
+  ) : null;
 
   return (
-    <form onSubmit={submit} className="space-y-3" data-cms-form={target.key}>
-      {target.fields.includes("name") && (
+    <form ref={formRef} onSubmit={submit} noValidate data-cms-form={target.key}
+      className={card ? "space-y-4" : "space-y-3"}>
+      <div className={card && target.fields.includes("name") ? "grid gap-4 sm:grid-cols-2" : "space-y-3"}>
+        {target.fields.includes("name") && (
+          <div>
+            <label htmlFor={`${id}-name`} className={label}>{labels.name}</label>
+            <input id={`${id}-name`} name="name" required autoComplete="name" maxLength={120} className={field}
+              onInput={() => clearInvalid("name")} {...describe("name")} />
+            {fieldError("name")}
+          </div>
+        )}
         <div>
-          <label htmlFor={`${id}-name`} className="mb-1.5 block text-[12.5px] font-medium text-muted">{labels.name}</label>
-          <input id={`${id}-name`} name="name" required autoComplete="name" maxLength={120} className={field} />
+          <label htmlFor={`${id}-email`} className={label}>{labels.email}</label>
+          <input id={`${id}-email`} name="email" type="email" required autoComplete="email"
+            inputMode="email" maxLength={200} className={field}
+            onInput={() => clearInvalid("email")} {...describe("email")} />
+          {fieldError("email")}
         </div>
-      )}
-      <div>
-        <label htmlFor={`${id}-email`} className="mb-1.5 block text-[12.5px] font-medium text-muted">{labels.email}</label>
-        <input id={`${id}-email`} name="email" type="email" required autoComplete="email"
-          inputMode="email" maxLength={200} className={field} />
       </div>
       {target.fields.includes("topic") && topics.length > 0 && (
         <div>
-          <label htmlFor={`${id}-topic`} className="mb-1.5 block text-[12.5px] font-medium text-muted">{labels.topic}</label>
-          <select id={`${id}-topic`} name="topic" className={field} defaultValue={topics[0].value}>
+          <label htmlFor={`${id}-topic`} className={label}>{labels.topic}</label>
+          <select id={`${id}-topic`} name="topic" className={cn(field, card && "cursor-pointer")} defaultValue={topics[0].value}>
             {topics.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
       )}
       {target.fields.includes("message") && (
         <div>
-          <label htmlFor={`${id}-message`} className="mb-1.5 block text-[12.5px] font-medium text-muted">{labels.message}</label>
-          <textarea id={`${id}-message`} name="message" required rows={5} maxLength={4000} className={field} />
+          <label htmlFor={`${id}-message`} className={label}>{labels.message}</label>
+          <textarea id={`${id}-message`} name="message" required rows={card ? 6 : 5} maxLength={4000}
+            className={cn(field, card && "min-h-[9.5rem] resize-y")}
+            onInput={() => clearInvalid("message")} {...describe("message")} />
+          {fieldError("message")}
         </div>
       )}
       {/* A field a person cannot see and a robot cannot resist. Cheap, and it
           does not make a human solve anything. */}
       <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden
         className="absolute left-[-9999px] h-0 w-0 opacity-0" />
-      {consent && <p className="text-[12px] leading-relaxed text-faint">{consent}</p>}
+      {(consent || privacy) && (
+        <p className="text-[12px] leading-relaxed text-faint">
+          {consent}
+          {privacy && (
+            <>
+              {consent ? " " : ""}
+              <Link href={privacy.href} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-ink">
+                {privacy.label}
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {wantsConsent && (
         /* items-start, not items-center: the sentence wraps to three lines at
            320px and a centred box floats beside the middle of the paragraph.
@@ -194,8 +329,11 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics }:
       {state === "error" && (
         <p role="alert" className="text-[12.5px] font-medium text-danger">{error || labels.error}</p>
       )}
-      <button type="submit" disabled={state === "sending"}
-        className="brand-gradient inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60">
+      <button type="submit" disabled={state === "sending"} aria-busy={state === "sending"}
+        className={cn(
+          "brand-gradient inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-60",
+          card && "w-full sm:w-auto sm:min-w-[13rem] min-h-[48px] text-[15px]",
+        )}>
         {state === "sending" && <Loader2 size={15} aria-hidden className="animate-spin" />}
         {state === "sending" ? labels.sending : submitLabel}
       </button>

@@ -459,6 +459,10 @@ export const CMS_FIELDS: Readonly<Record<string, { text: string[]; media: string
   guarantee: { text: ["title", "description", "items.*.title", "items.*.description"], media: [] },
   trust_badges: { text: ["title", "description", "items.*.title", "items.*.description"], media: [] },
   sticky_cta: { text: ["title", "ctaLabel"], media: [] },
+  page_hero: { text: ["badge", "title", "subtitle", "ctaLabel", "cta2Label"], media: ["mediaUrl", "media2Url"] },
+  // The topics are <option>s and the tile addresses are links: both stay in
+  // Strony WWW, like every other value a visitor's click depends on.
+  contact_hub: { text: ["title", "description", "ctaLabel", "badge", "tiles.*.title", "tiles.*.description"], media: [] },
 };
 
 /** CMS text fields whose value is split into paragraphs on blank lines. */

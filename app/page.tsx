@@ -156,7 +156,7 @@ export default async function LandingPage({ searchParams }: {
   // all resolved here, on the server, and handed down as finished values —
   // see lib/server/prelaunch/landing.ts.
   if (target?.kind === "launch") {
-    const [store, site, published, draftBlocks, registration, config, consents, context] = await Promise.all([
+    const [store, site, published, draftBlocks, registration, config, consents, context, global, nav] = await Promise.all([
       getLaunchStore(supabase),
       getPublicSite(supabase),
       getPublishedPage(supabase, target.slug),
@@ -167,6 +167,10 @@ export default async function LandingPage({ searchParams }: {
       getPrelaunchPublicConfig(),
       getLaunchConsents(locale, supabase),
       collectEventContext().catch(() => null),
+      // The site footer the premiere page closes with — the same cached reads
+      // every other public page makes for it.
+      getGlobalSections(),
+      getNavPages(),
     ]);
     const blocks = (which === "draft" ? draftBlocks : published?.blocks) ?? [];
     const defaults = launchDefaultsFrom(dict);
@@ -184,6 +188,8 @@ export default async function LandingPage({ searchParams }: {
       utmSource: typeof params.utm_source === "string" ? params.utm_source : null,
       refCode: typeof params.ref_code === "string" ? params.ref_code : null,
     });
+    // The site footer, dark like the page it closes whatever the theme.
+    const footer = <SiteFooter global={global} nav={nav} site={site} locale={locale} t={t} forceDark />;
     return (
       <LaunchPage
         social={site}
@@ -192,9 +198,7 @@ export default async function LandingPage({ searchParams }: {
         showAuthEntry={access.showAuthEntry}
         waitlistFields={registration.waitlist}
         loginLabel={t("launch.login")}
-        privacyLabel={t("launch.privacyPage")}
-        termsLabel={t("launch.terms")}
-        rightsLabel={t("launch.rights")}
+        footer={footer}
         options={view.options}
         campaign={view.campaign}
         galleries={view.galleries}

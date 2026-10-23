@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
 import { I18nScope } from "@/lib/i18n/provider";
@@ -14,6 +13,8 @@ import { loadPricingPage } from "@/lib/server/pricing-page";
 import { jsonLdScript } from "@/lib/grovnews-blog";
 import { menuItemKeys } from "@/lib/tool-layout";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
+import { SiteFooter } from "@/components/cms/site-shell";
+import { getGlobalSections, getNavPages, getPublicSite } from "@/lib/server/public-site";
 import { DrawerProvider } from "@/components/layout/shell-context";
 import { PricingPage } from "./pricing-page";
 import { FAQ } from "./pricing-config";
@@ -47,7 +48,7 @@ export async function pricingMetadata(): Promise<Metadata> {
  *
  *   "page"   /plany — public. Wears the application's own top bar in whichever
  *            state applies (a visitor gets the signed-out bar: no balance, no
- *            avatar) and a thin footer. Never relaxes a gate to render.
+ *            avatar) and the public site's footer. Never relaxes a gate to render.
  *   "shell"  /plan — inside app/(app)/layout.tsx, which already drew the bar,
  *            the navigation and the login-security gate. Body only.
  *
@@ -64,7 +65,7 @@ export async function PricingSurface({ scope, notice = null }: {
   const body = <PricingPage data={data} notice={notice} />;
   if (scope === "shell") return body;
 
-  const [{ dict }, { dict: appDict }, availability, isAdmin, layout, popularity, searchTags, member] = await Promise.all([
+  const [{ dict, locale }, { dict: appDict }, availability, isAdmin, layout, popularity, searchTags, member, global, nav, site] = await Promise.all([
     getDictionary(),
     // The app's namespaces on a public route, scoped to this subtree — see
     // scripts/i18n-scope-tests.ts, which knows this file is an app surface.
@@ -75,6 +76,10 @@ export async function PricingSurface({ scope, notice = null }: {
     readToolPopularity(supabase),
     readToolSearchTags(supabase),
     data.viewer.signedIn ? memberChrome(supabase) : Promise.resolve(null),
+    // The public site's footer — the same cached reads every public page makes.
+    getGlobalSections(),
+    getNavPages(),
+    getPublicSite(supabase),
   ]);
   const t = makeT(dict);
 
@@ -112,17 +117,9 @@ export async function PricingSurface({ scope, notice = null }: {
           {body}
         </main>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(ld) }} />
-        <footer className="border-t border-line">
-          <div className="mx-auto flex w-full max-w-[var(--content-max)] flex-wrap items-center justify-between gap-3 px-[var(--page-x)] py-5 text-[12px] text-muted sm:px-6 lg:px-8">
-            <span>© {new Date().getFullYear()} GrovBase</span>
-            <nav className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              <Link href="/regulamin" className="transition-colors duration-200 hover:text-ink">{t("launch.terms")}</Link>
-              <Link href="/polityka-prywatnosci" className="transition-colors duration-200 hover:text-ink">{t("launch.privacyPage")}</Link>
-              <Link href="/polityka-cookies" className="transition-colors duration-200 hover:text-ink">{t("legal.cookiesShort")}</Link>
-              <Link href="/kontakt" className="transition-colors duration-200 hover:text-ink">{t("nav.support")}</Link>
-            </nav>
-          </div>
-        </footer>
+        {/* The public site's footer (documents, O nas, Kontakt, Cennik). It
+            replaced this page's own thin bar, so there is still exactly one. */}
+        <SiteFooter global={global} nav={nav} site={site} locale={locale} t={t} />
       </div>
     </DrawerProvider>
     </I18nScope>

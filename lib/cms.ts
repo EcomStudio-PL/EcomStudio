@@ -37,6 +37,10 @@ export type CmsBlockContent = {
   alt?: LocaleText;
   alignment?: "left" | "right" | "center";
   items?: CmsItem[];
+  /** contact_hub: the quick-contact tiles beside the form. A second list,
+   *  because `items` there is already the form's topics — the same shape and
+   *  meaning they have in `contact_form`. */
+  tiles?: CmsItem[];
   /** Rich text: a very small, sanitized subset of HTML (headings, lists,
    *  links, bold, tables) — never a script and never a style attribute. */
   html?: LocaleText;
@@ -209,6 +213,13 @@ export type ChromeMode = "global" | "minimal" | "none";
 
 export const CHROME_MODES: readonly ChromeMode[] = ["global", "minimal", "none"];
 
+/** The groups a footer link may belong to, in the order the footer prints
+ *  them. A footer item names its group in `value`; a page names it in
+ *  `nav_group`. The column heading is `content.fields["group.<name>"]` of
+ *  the global footer, else the dictionary's cms.footerGroup.<name>. */
+export const FOOTER_GROUPS = ["product", "tools", "company", "help", "legal"] as const;
+export type FooterGroup = (typeof FOOTER_GROUPS)[number];
+
 export const isChromeMode = (v: unknown): v is ChromeMode =>
   typeof v === "string" && (CHROME_MODES as readonly string[]).includes(v);
 
@@ -263,6 +274,14 @@ export const BLOCK_TYPES = [
    * as a read-only summary with a visibility switch.
    */
   "launch_gallery",
+  /*
+   * Added with Public pages V1 (Kontakt, O nas). `page_hero` is the header of
+   * a subpage: centred when it has no picture, text + a before/after visual
+   * when it has one, and never the dashboard mock-up `hero` falls back to.
+   * `contact_hub` is the contact form and the quick-contact tiles side by
+   * side — one section, because two sections cannot share a row.
+   */
+  "page_hero", "contact_hub",
 ] as const;
 
 /**
@@ -282,10 +301,10 @@ export const SECTION_GROUPS: readonly { key: string; types: readonly string[] }[
   { key: "popular", types: ["hero", "features", "cta", "faq", "gallery", "before_after"] },
   { key: "sales", types: ["offer", "pricing_table", "bonus", "countdown", "urgency_cta", "promo_bar", "sticky_cta", "guarantee", "comparison", "benefits"] },
   { key: "proof", types: ["testimonials", "logo_cloud", "stats", "trust_badges", "text_image", "product_lock"] },
-  { key: "text", types: ["text", "rich_text", "legal", "workflow", "use_cases", "cards"] },
+  { key: "text", types: ["page_hero", "text", "rich_text", "legal", "workflow", "use_cases", "cards"] },
   { key: "media", types: ["media", "video", "showcase"] },
   { key: "product", types: ["tools_grid", "models"] },
-  { key: "forms", types: ["contact", "contact_form", "newsletter"] },
+  { key: "forms", types: ["contact_hub", "contact", "contact_form", "newsletter"] },
   { key: "layout", types: ["spacer", "divider"] },
   { key: "advanced", types: ["custom_code"] },
 ] as const;

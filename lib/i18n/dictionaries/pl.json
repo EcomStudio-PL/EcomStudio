@@ -1860,7 +1860,14 @@
       "itemUrl": "Link (URL)",
       "itemValue": "Wartość",
       "legalDoc": "Dokument prawny",
-      "legalDocHint": "Cały dokument w języku z zakładki powyżej — wklej go albo wgraj plik .txt. Każdy język ma własny status, wersję i datę."
+      "legalDocHint": "Cały dokument w języku z zakładki powyżej — wklej go albo wgraj plik .txt. Każdy język ma własny status, wersję i datę.",
+      "heroImageAfter": "Obraz (po)",
+      "heroImageAfterHint": "Bez obrazu nagłówek jest wyśrodkowanym tytułem. Z obrazem — tekst i obraz obok siebie.",
+      "heroImageBefore": "Obraz „przed” (opcjonalnie)",
+      "heroImageBeforeHint": "Razem z obrazem „po” tworzy parę przed/po — to samo zdjęcie produktu przed i po GrovBase.",
+      "contactAsideTitle": "Nagłówek szybkiego kontaktu",
+      "contactTiles": "Kafelki szybkiego kontaktu",
+      "contactTilesHint": "Tylko prawdziwe kanały. „Link” to mailto:adres lub tel:numer, „Wartość” — adres pokazany na kafelku (pusta = z linku), „Ikona” — np. mail, support, handshake."
     },
     "sectionType": {
       "hero": "Sekcja główna",
@@ -2087,7 +2094,7 @@
     "label.formSubmit": "Tekst przycisku",
     "label.formConsent": "Tekst zgody pod formularzem",
     "label.formTopics": "Tematy do wyboru",
-    "label.formTopicsHint": "„Wartość” to kod tematu (sales, support, partnership, press, other), „Tytuł” to etykieta widoczna dla odwiedzającego.",
+    "label.formTopicsHint": "„Wartość” to kod tematu (question, sales, support, partnership, press, other), „Tytuł” to etykieta widoczna dla odwiedzającego.",
     "label.itemBadge": "Etykieta",
     "label.itemIcon": "Ikona",
     "group.main": "Główne",
@@ -2517,7 +2524,27 @@
       }
     },
     "legalPreviewPolish": "Podgląd szkicu: wersja {lang} nie jest jeszcze aktywna, dlatego widzisz tu tekst polski. Odwiedzający w tym języku zobaczą zamiast niego informację, że ta wersja językowa będzie dostępna wkrótce.",
-    "publishBlocked": "Nie opublikowano: zapis zmian został odrzucony, więc na stronę trafiłaby poprzednia wersja. Popraw błąd zapisu i opublikuj ponownie."
+    "publishBlocked": "Nie opublikowano: zapis zmian został odrzucony, więc na stronę trafiłaby poprzednia wersja. Popraw błąd zapisu i opublikuj ponownie.",
+    "formErrName": "Podaj swoje imię.",
+    "formErrEmailEmpty": "Podaj adres e-mail, na który mamy odpowiedzieć.",
+    "formErrEmail": "Ten adres e-mail wygląda na niepełny — sprawdź go.",
+    "formErrMessage": "Napisz, w czym możemy pomóc.",
+    "formErrMessageShort": "Wiadomość jest za krótka — napisz choć kilka słów.",
+    "formErrRateLimited": "Wysłano już kilka wiadomości w krótkim czasie. Spróbuj ponownie za jakiś czas.",
+    "formErrInvalid": "Sprawdź pola formularza i spróbuj ponownie.",
+    "formErrTooFast": "Formularz został wysłany zbyt szybko. Odczekaj chwilę i wyślij go ponownie.",
+    "formOkTitle": "Wiadomość wysłana",
+    "formAnother": "Napisz kolejną wiadomość",
+    "formSending": "Wysyłanie…",
+    "quickContact": "Szybki kontakt",
+    "photoPlaceholder": "Miejsce na zdjęcie — dodaj je w ustawieniach tej sekcji (Obraz).",
+    "footerSocial": "GrovBase w mediach społecznościowych",
+    "backToTop": "Na górę",
+    "sectionType.page_hero": "Nagłówek podstrony",
+    "sectionType.contact_hub": "Formularz + szybki kontakt",
+    "footerBrandLine": "Podpis marki (dolny pasek)",
+    "footerGroupHeadings": "Nagłówki kolumn",
+    "footerGroupHeadingsHint": "Puste pole = nazwa domyślna. Link trafia do kolumny, której kod wpiszesz w jego polu „Wartość” (np. company, legal)."
   },
   "insp": {
     "title": "Inspiracje",

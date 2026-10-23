@@ -5,7 +5,7 @@ import { toast } from "@/lib/notify";
 import { Megaphone, PanelTop, PanelBottom, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { saveGlobalSectionAction } from "@/app/actions/cms";
-import type { CmsBlockContent } from "@/lib/cms";
+import { FOOTER_GROUPS, type CmsBlockContent } from "@/lib/cms";
 import type { GlobalSections as Sections, GlobalSlot } from "@/lib/server/public-site";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label } from "@/components/ui/input";
@@ -56,6 +56,19 @@ export function GlobalSectionsEditor({ sections }: { sections: Sections }) {
     setContent({
       ...current.content,
       [key]: { ...((current.content[key] ?? {}) as Record<string, string>), [locale]: value },
+    });
+
+  // Footer column headings live in content.fields["group.<name>"], one
+  // LocaleText each — the same per-language shape as every other footer text.
+  const groupHeading = (group: string) =>
+    ((current.content.fields?.[`group.${group}`] ?? {}) as Record<string, string | undefined>)[locale] ?? "";
+  const setGroupHeading = (group: string, value: string) =>
+    setContent({
+      ...current.content,
+      fields: {
+        ...(current.content.fields ?? {}),
+        [`group.${group}`]: { ...(current.content.fields?.[`group.${group}`] ?? {}), [locale]: value },
+      },
     });
 
   function save() {
@@ -152,8 +165,31 @@ export function GlobalSectionsEditor({ sections }: { sections: Sections }) {
                 <Textarea id="g-tagline" rows={3} value={localized("description")}
                   onChange={(e) => setLocalized("description", e.target.value)} />
               </div>
+              <div>
+                <Label htmlFor="g-brandline" hint={locale.toUpperCase()}>{t("cms.footerBrandLine")}</Label>
+                <Input id="g-brandline" value={localized("subtitle")} maxLength={120}
+                  onChange={(e) => setLocalized("subtitle", e.target.value)} />
+              </div>
               <ItemsField label={t("cms.footerLinks")} hint={t("cms.footerLinksHint")}
                 locale={locale} content={current.content} onChange={setContent} />
+              {/* The column headings. Empty means the default name of the
+                  group (cms.footerGroup.*), so nothing has to be typed for a
+                  column to have one. */}
+              <fieldset className="rounded-xl border border-line p-3.5">
+                <legend className="px-1 text-[12.5px] font-semibold">{t("cms.footerGroupHeadings")}</legend>
+                <p className="mb-3 text-[11.5px] leading-relaxed text-faint">{t("cms.footerGroupHeadingsHint")}</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {FOOTER_GROUPS.map((group) => (
+                    <div key={group}>
+                      <Label htmlFor={`g-group-${group}`} hint={locale.toUpperCase()}>
+                        {t(`cms.footerGroup.${group}`)} · <code className="text-[11px] text-faint">{group}</code>
+                      </Label>
+                      <Input id={`g-group-${group}`} placeholder={t(`cms.footerGroup.${group}`)} maxLength={40}
+                        value={groupHeading(group)} onChange={(e) => setGroupHeading(group, e.target.value)} />
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
             </>
           )}
 

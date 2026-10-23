@@ -152,6 +152,11 @@ async function main() {
         serverNow  the server clock the countdown runs on
         analytics  the traffic source for the page_view funnel event
 
+      Public pages V1 then swapped the three footer labels (privacyLabel,
+      termsLabel, rightsLabel) for the site's own footer, handed down whole:
+
+        footer     <SiteFooter> — the footer every public page closes with
+
       Still EXACT, and spreads are refused: `{...props}` would let anything
       through without this list ever changing.
     */
@@ -159,7 +164,7 @@ async function main() {
     const props = launchTags.flatMap((tag) => [...tag.matchAll(/(\w+)=\{/g)].map((p) => p[1]!));
     const expected = [
       "social", "content", "signedIn", "showAuthEntry", "waitlistFields",
-      "loginLabel", "privacyLabel", "termsLabel", "rightsLabel",
+      "loginLabel", "footer",
       "options", "campaign", "galleries", "isAdmin", "consents", "serverNow", "analytics",
     ];
     check("the launch page is handed exactly the reviewed V2 props",

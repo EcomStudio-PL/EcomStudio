@@ -5,6 +5,7 @@ import {
   ShieldCheck, Clock, Check, Star, Heart, TrendingUp, Users, Globe, Mail,
   MessageSquare, Phone, MapPin, Building2, CreditCard, Coins, Gift, Wrench,
   PenLine, Eye, Lock, Video, Play, BarChart3, Target, Lightbulb, Truck,
+  LifeBuoy, Handshake,
 } from "lucide-react";
 
 /**
@@ -27,6 +28,7 @@ export const CMS_ICONS: Record<string, LucideIcon> = {
   card: CreditCard, coins: Coins, gift: Gift, tools: Wrench, pen: PenLine,
   eye: Eye, lock: Lock, video: Video, play: Play, chart: BarChart3,
   target: Target, idea: Lightbulb, truck: Truck,
+  support: LifeBuoy, handshake: Handshake,
 };
 
 export const CMS_ICON_NAMES = Object.keys(CMS_ICONS);

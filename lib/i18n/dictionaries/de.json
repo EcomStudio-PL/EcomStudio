@@ -1860,7 +1860,14 @@
       "itemUrl": "Link (URL)",
       "itemValue": "Wert",
       "legalDoc": "Rechtsdokument",
-      "legalDocHint": "Das ganze Dokument in der Sprache des Tabs oben — einfügen oder als .txt-Datei hochladen. Jede Sprache hat eigenen Status, eigene Version und eigenes Datum."
+      "legalDocHint": "Das ganze Dokument in der Sprache des Tabs oben — einfügen oder als .txt-Datei hochladen. Jede Sprache hat eigenen Status, eigene Version und eigenes Datum.",
+      "heroImageAfter": "Bild (nachher)",
+      "heroImageAfterHint": "Ohne Bild ist der Kopf ein zentrierter Titel. Mit Bild – Text und Bild nebeneinander.",
+      "heroImageBefore": "„Vorher“-Bild (optional)",
+      "heroImageBeforeHint": "Zusammen mit dem „Nachher“-Bild entsteht ein Vorher/Nachher-Paar – dasselbe Produktfoto vor und nach GrovBase.",
+      "contactAsideTitle": "Überschrift schneller Kontakt",
+      "contactTiles": "Kacheln für schnellen Kontakt",
+      "contactTilesHint": "Nur echte Kanäle. „Link“ ist mailto:Adresse oder tel:Nummer, „Wert“ die auf der Kachel gezeigte Adresse (leer = aus dem Link), „Icon“ z. B. mail, support, handshake."
     },
     "sectionType": {
       "hero": "Hero-Bereich",
@@ -2087,7 +2094,7 @@
     "label.formSubmit": "Button-Text",
     "label.formConsent": "Einwilligungstext unter dem Formular",
     "label.formTopics": "Auswählbare Themen",
-    "label.formTopicsHint": "„Wert“ ist der Themencode (sales, support, partnership, press, other); „Titel“ ist die sichtbare Bezeichnung.",
+    "label.formTopicsHint": "„Wert“ ist der Themencode (question, sales, support, partnership, press, other); „Titel“ ist die sichtbare Bezeichnung.",
     "label.itemBadge": "Badge",
     "label.itemIcon": "Symbol",
     "group.main": "Haupt",
@@ -2517,7 +2524,27 @@
       }
     },
     "legalPreviewPolish": "Entwurfsvorschau: Die {lang}-Fassung ist noch nicht aktiv, daher wird hier der polnische Text angezeigt. Besucher in dieser Sprache sehen stattdessen den Hinweis, dass diese Sprachfassung demnächst verfügbar ist.",
-    "publishBlocked": "Nicht veröffentlicht: Eine Änderung konnte nicht gespeichert werden, daher wäre die vorherige Version live gegangen. Speicherfehler beheben und erneut veröffentlichen."
+    "publishBlocked": "Nicht veröffentlicht: Eine Änderung konnte nicht gespeichert werden, daher wäre die vorherige Version live gegangen. Speicherfehler beheben und erneut veröffentlichen.",
+    "formErrName": "Bitte gib deinen Namen ein.",
+    "formErrEmailEmpty": "Bitte gib die E-Mail-Adresse an, an die wir antworten sollen.",
+    "formErrEmail": "Diese E-Mail-Adresse scheint unvollständig zu sein – bitte prüfen.",
+    "formErrMessage": "Schreib uns, wobei wir helfen können.",
+    "formErrMessageShort": "Die Nachricht ist zu kurz – schreib bitte wenigstens ein paar Worte.",
+    "formErrRateLimited": "In kurzer Zeit wurden bereits mehrere Nachrichten gesendet. Bitte versuch es später erneut.",
+    "formErrInvalid": "Bitte prüfe die Formularfelder und versuch es erneut.",
+    "formErrTooFast": "Das Formular wurde zu schnell gesendet. Bitte warte kurz und sende es erneut.",
+    "formOkTitle": "Nachricht gesendet",
+    "formAnother": "Weitere Nachricht schreiben",
+    "formSending": "Wird gesendet…",
+    "quickContact": "Schneller Kontakt",
+    "photoPlaceholder": "Platz für ein Foto – füge es in den Einstellungen dieses Abschnitts hinzu (Bild).",
+    "footerSocial": "GrovBase in sozialen Medien",
+    "backToTop": "Nach oben",
+    "sectionType.page_hero": "Unterseiten-Kopf",
+    "sectionType.contact_hub": "Formular + schneller Kontakt",
+    "footerBrandLine": "Markenzeile (untere Leiste)",
+    "footerGroupHeadings": "Spaltenüberschriften",
+    "footerGroupHeadingsHint": "Leer = Standardname. Ein Link landet in der Spalte, deren Code du in sein Feld „Wert“ eingibst (z. B. company, legal)."
   },
   "insp": {
     "title": "Inspirationen",

@@ -78,7 +78,8 @@ export function Field({ def, locale, content, onChange, onChangeWith, visible }:
   const id = `cms-${def.key.replace(/[.#]/g, "-")}`;
 
   if (def.kind === "items") {
-    return <ItemsField label={label} hint={hint} locale={locale} content={content} onChange={onChange} />;
+    return <ItemsField label={label} hint={hint} locale={locale} content={content} onChange={onChange}
+      field={def.key === "tiles" ? "tiles" : "items"} />;
   }
 
   // A whole legal document (the language on the tab), with its own editor.
@@ -349,13 +350,16 @@ function GallerySummary({ label, hint, content, visible }: {
 /** The repeatable list — cards, steps, questions, contact rows, gallery
  *  images, comparison lines. One editor for all of them, because they are one
  *  shape with different fields showing. */
-export function ItemsField({ label, hint, locale, content, onChange }: {
+export function ItemsField({ label, hint, locale, content, onChange, field = "items" }: {
   label: string; hint?: string; locale: Locale; content: CmsBlockContent;
   onChange: (content: CmsBlockContent) => void;
+  /** Which list of the section this edits. `tiles` is contact_hub's second
+   *  list (its channels) beside `items` (its topics). */
+  field?: "items" | "tiles";
 }) {
   const { t } = useI18n();
-  const items: CmsItem[] = content.items ?? [];
-  const setItems = (next: CmsItem[]) => onChange({ ...content, items: next });
+  const items: CmsItem[] = content[field] ?? [];
+  const setItems = (next: CmsItem[]) => onChange({ ...content, [field]: next });
   const patch = (i: number, part: Partial<CmsItem>) =>
     setItems(items.map((x, j) => (j === i ? { ...x, ...part } : x)));
   const text = (item: CmsItem, key: "title" | "description" | "badge") =>

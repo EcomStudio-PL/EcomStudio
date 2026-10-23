@@ -146,6 +146,32 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
   // The code itself lives on its own tab, not in this list.
   custom_code: [HEADING],
 
+  // ── ADDED WITH PUBLIC PAGES V1 (Kontakt, O nas) ─────────────────────────
+  // The header of a subpage. With no picture it is a centred title; with one
+  // it is text + the picture, and with a second ("przed") the two are shown
+  // as a before/after pair.
+  page_hero: [
+    f("badge", "text", "badge"),
+    HEADING,
+    f("subtitle", "textarea", "subheading"),
+    ...CTA,
+    f("cta2Label", "text", "cta2Label"),
+    f("cta2Url", "url", "cta2Url"),
+    f("mediaUrl", "media", "heroImageAfter", "heroImageAfterHint"),
+    f("media2Url", "media", "heroImageBefore", "heroImageBeforeHint"),
+  ],
+  // The form and the quick-contact tiles, side by side. `items` are the
+  // form's topics exactly as in contact_form; `tiles` are the channels.
+  contact_hub: [
+    HEADING, BODY,
+    f("formHandler", "handler", "formHandler"),
+    f("ctaLabel", "text", "formSubmit"),
+    f("subtitle", "textarea", "formConsent"),
+    f("items", "items", "formTopics", "formTopicsHint"),
+    f("badge", "text", "contactAsideTitle"),
+    f("tiles", "items", "contactTiles", "contactTilesHint"),
+  ],
+
   /* ── CONVERSION ─────────────────────────────────────────────────────────
    *
    * Every one of these is filled in by hand. Nothing counts visitors,
@@ -370,6 +396,10 @@ const EXTRA_QUICK: Record<string, string[]> = {
   // A form that posts nowhere is not a form.
   contact_form: ["formHandler"],
   newsletter: ["formHandler"],
+  // The tiles are the other half of the section, not a setting.
+  contact_hub: ["formHandler", "badge", "tiles"],
+  // The "przed" picture is half of the before/after visual.
+  page_hero: ["media2Url"],
   // The wand: what it shows is the whole configuration.
   tools_grid: ["filter"],
   // A legal section is its document and nothing else.

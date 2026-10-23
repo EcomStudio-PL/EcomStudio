@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Clock, Gift, Minus, Quote, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowUpRight, Check, Clock, Gift, Mail, Minus, Quote, ShieldCheck, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CmsBlock, CmsBlockContent, CmsItem } from "@/lib/cms";
 import { lt, safeUrl, sectionIsLive, videoEmbedUrl, PINNED_SECTIONS } from "@/lib/cms";
@@ -238,6 +238,50 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
           <CtaRow content={c} locale={locale} className="mt-7 justify-center" />
         </Reveal>
       );
+
+    case "page_hero": {
+      // The header of a subpage. It owns the page's <h1> when it opens the
+      // page; anywhere further down it is a section heading like any other.
+      const Title = first ? "h1" : "h2";
+      const after = safeUrl(c.mediaUrl);
+      const before = after ? safeUrl(c.media2Url) : null;
+      return (
+        <div className="relative isolate" data-page-hero={after ? (before ? "pair" : "image") : "text"}>
+          {/* The glow. Clipped SIDEWAYS to the section's own column, so it can
+              never widen the page into a sideways scroll on a phone; free
+              vertically, so it fades out instead of ending on a hard edge. */}
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-20 bottom-0 -z-10 overflow-x-clip">
+            <div className="absolute left-1/2 top-0 h-[26rem] w-full max-w-[52rem] -translate-x-1/2 bg-[radial-gradient(closest-side,rgb(var(--accent)/0.20),transparent)]" />
+            <div className="absolute right-0 top-24 h-[18rem] w-[60%] max-w-[30rem] bg-[radial-gradient(closest-side,rgb(var(--violet)/0.12),transparent)]" />
+          </div>
+          <div className={after
+            ? "grid items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-16"
+            : "mx-auto max-w-3xl text-center"}>
+            <div className={after ? "max-w-2xl" : ""}>
+              {T("badge") && (
+                <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent-soft/60 px-3.5 py-1.5 font-display text-[11.5px] font-semibold uppercase tracking-[0.16em] text-accent shadow-[0_10px_30px_-18px_rgb(var(--accent)/0.9)]">
+                  <Sparkles size={13} aria-hidden />{T("badge")}
+                </p>
+              )}
+              <Title className="text-balance font-display text-[clamp(2.1rem,5.4vw,3.75rem)] font-semibold leading-[1.04] tracking-[-0.03em]">
+                {T("title")}
+              </Title>
+              {T("subtitle") && (
+                <p className={`mt-5 text-pretty text-[clamp(1rem,1.6vw,1.18rem)] leading-relaxed text-muted ${after ? "max-w-xl" : "mx-auto max-w-2xl"}`}>
+                  {T("subtitle")}
+                </p>
+              )}
+              <CtaRow content={c} locale={locale} className={after ? "mt-8" : "mt-8 justify-center"} />
+            </div>
+            {after && (
+              <PageHeroVisual after={after} before={before} alt={T("alt") || T("title")}
+                labels={{ before: t("landing.before"), after: t("landing.after") }}
+                media={ctx.media} priority={first} />
+            )}
+          </div>
+        </div>
+      );
+    }
 
     case "spacer":
       // The padding IS the section; there is nothing to draw.
@@ -576,13 +620,33 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
 
     case "text_image": {
       const right = c.alignment !== "left";
+      const text = (
+        <>
+          <SectionHeading>{T("title")}</SectionHeading>
+          {paragraphs(T("description")).map((p, i) => (
+            <p key={i} className="mt-3 text-[15px] leading-relaxed text-muted sm:text-base">{p}</p>
+          ))}
+          <CtaRow content={c} locale={locale} className="mt-6" />
+        </>
+      );
+      // NO PICTURE YET IS A TEXT SECTION, not a text and an empty frame — the
+      // "O nas" photo of the people behind GrovBase is added later, and until
+      // then the words stand on their own. The builder's preview keeps the
+      // place visible, so the admin knows where the picture will go.
+      if (!safeUrl(c.mediaUrl)) {
+        if (!ctx.admin) return <Reveal className="cms-center-x max-w-3xl">{text}</Reveal>;
+        return (
+          <div className="grid items-center gap-10 lg:grid-cols-2">
+            <Reveal className={right ? "" : "lg:order-2"}>{text}</Reveal>
+            <div className={`flex aspect-[16/10] items-center justify-center rounded-3xl border border-dashed border-line px-6 text-center text-[13px] text-faint ${right ? "lg:order-2" : ""}`}>
+              {t("cms.photoPlaceholder")}
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="grid items-center gap-10 lg:grid-cols-2">
-          <Reveal className={right ? "" : "lg:order-2"}>
-            <SectionHeading>{T("title")}</SectionHeading>
-            {T("description") && <p className="mt-3 text-[15px] leading-relaxed text-muted sm:text-base">{T("description")}</p>}
-            <CtaRow content={c} locale={locale} className="mt-6" />
-          </Reveal>
+          <Reveal className={right ? "" : "lg:order-2"}>{text}</Reveal>
           <Reveal className={right ? "lg:order-2" : ""}>
             <div className="overflow-hidden rounded-3xl border border-line">
               <CmsImage url={c.mediaUrl} alt={T("alt") || T("title")} meta={img(c.mediaUrl)}
@@ -722,6 +786,56 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
           </Reveal>
         </>
       );
+
+    case "contact_hub": {
+      const tiles = (c.tiles ?? []).filter((it) => lt(it.title, locale));
+      const aside = T("badge");
+      const asideId = `cms-${block.id ?? block.sort_order}-quick`;
+      return (
+        <div className={tiles.length > 0
+          ? "grid items-start gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:gap-8"
+          : "mx-auto max-w-2xl"}>
+          <div data-contact-form-card
+            className="relative overflow-hidden rounded-[1.75rem] border border-line bg-surface p-5 text-left shadow-[0_30px_80px_-52px_rgb(var(--accent)/0.6)] sm:p-8">
+            <span aria-hidden className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgb(var(--accent)/0.75),transparent)]" />
+            <span aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-60 w-60 bg-[radial-gradient(closest-side,rgb(var(--accent)/0.14),transparent)]" />
+            <div className="relative">
+              {T("title") && <h2 className="font-display text-[1.4rem] font-semibold tracking-tight sm:text-[1.65rem]">{T("title")}</h2>}
+              {T("description") && <p className="mt-2 max-w-xl text-[14.5px] leading-relaxed text-muted">{T("description")}</p>}
+              <div className={T("title") || T("description") ? "mt-6" : ""}>
+                <CmsForm
+                  kind="contact"
+                  layout="card"
+                  handler={c.formHandler}
+                  submitLabel={lt(c.ctaLabel, locale) || t("cms.formSend")}
+                  consent={lt(c.subtitle, locale)}
+                  privacy={{ label: t("launch.privacyPage"), href: "/polityka-prywatnosci" }}
+                  labels={{
+                    name: t("cms.formName"), email: t("cms.formEmail"), topic: t("cms.formTopic"),
+                    message: t("cms.formMessage"), sending: t("cms.formSending"),
+                    ok: t("cms.formOk"), error: t("cms.formError"), required: t("cms.formRequired"),
+                  }}
+                  topics={items.map((it) => ({ value: it.value ?? "", label: lt(it.title, locale) }))
+                    .filter((o) => o.value && o.label)}
+                />
+              </div>
+            </div>
+          </div>
+          {tiles.length > 0 && (
+            <aside {...(aside ? { "aria-labelledby": asideId } : { "aria-label": t("cms.quickContact") })} className="text-left">
+              {aside && (
+                <h2 id={asideId} className="px-1 text-[11.5px] font-semibold uppercase tracking-[0.14em] text-faint">{aside}</h2>
+              )}
+              <ul className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-1 ${aside ? "mt-4" : ""}`}>
+                {tiles.map((it, i) => (
+                  <li key={i}><ContactTile item={it} locale={locale} /></li>
+                ))}
+              </ul>
+            </aside>
+          )}
+        </div>
+      );
+    }
 
     case "contact_form":
     case "newsletter":
@@ -1064,7 +1178,7 @@ function Card({ item, locale, media, plain }: {
           {Icon ? <Icon size={19} /> : <Check size={19} />}
         </span>
       )}
-      <span className="mt-4 flex flex-wrap items-center gap-2">
+      <span className={`flex flex-wrap items-center gap-2 ${item.mediaUrl ? "" : "mt-4"}`}>
         <h3 className="font-display text-[14.5px] font-semibold">{lt(item.title, locale)}</h3>
         {lt(item.badge, locale) && (
           <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-accent">
@@ -1077,7 +1191,7 @@ function Card({ item, locale, media, plain }: {
       )}
     </>
   );
-  const className = "flex h-full flex-col rounded-2xl border border-line bg-surface p-5 text-left transition-colors hover:border-accent/30";
+  const className = "flex h-full flex-col rounded-2xl border border-line bg-surface p-5 text-left transition-[border-color,box-shadow,transform] duration-200 hover:border-accent/30 hover:shadow-[0_24px_50px_-34px_rgb(var(--accent)/0.6)] motion-safe:hover:-translate-y-0.5";
   return href ? <Link href={href} className={className}>{inner}</Link> : <div className={className}>{inner}</div>;
 }
 
@@ -1183,6 +1297,100 @@ function LegalDocSection({ doc, locale, t, preview }: { doc: LegalDocContent; lo
       )}
       <LegalText text={view.entry.text} lang={view.locale} />
     </div>
+  );
+}
+
+/**
+ * THE PICTURE BESIDE A SUBPAGE HEADER.
+ *
+ * One image is shown framed. Two are the product's own before/after: the
+ * finished picture large, the photograph it was made from pinned over its
+ * corner — what GrovBase does, shown rather than described, with files from
+ * the media library rather than a stock illustration.
+ *
+ * Every box has its aspect reserved before an image arrives, so nothing on
+ * the page moves when one does; the "przed" card stays inside the column on
+ * a phone, so its tilt cannot widen the page.
+ */
+function PageHeroVisual({ after, before, alt, labels, media, priority }: {
+  after: string; before: string | null; alt: string;
+  labels: { before: string; after: string }; media: MediaIndex; priority: boolean;
+}) {
+  const chip = "absolute rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm";
+  return (
+    <div className={`relative mx-auto w-full max-w-[32rem] lg:mr-0 lg:max-w-[34rem] ${before ? "pb-10 pl-4 sm:pl-8" : ""}`}>
+      <span aria-hidden className="pointer-events-none absolute inset-6 -z-10 rounded-[2.5rem] bg-[radial-gradient(closest-side,rgb(var(--accent)/0.30),transparent)] blur-2xl" />
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-line bg-surface shadow-[0_40px_90px_-48px_rgb(var(--accent)/0.8)]">
+        <div className="relative aspect-square">
+          <CmsImage url={after} alt={alt} meta={metaFor(media, after)} priority={priority}
+            sizes="(max-width: 1023px) 92vw, 36rem" className="absolute inset-0 h-full w-full object-cover" />
+        </div>
+        {before && <span className={`${chip} right-3 top-3`}>{labels.after}</span>}
+      </div>
+      {before && (
+        <>
+          <div className="absolute bottom-0 left-0 w-[42%] -rotate-3 overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_50px_-20px_rgb(0_0_0/0.55)] ring-4 ring-bg">
+            <div className="relative aspect-square">
+              <CmsImage url={before} alt="" meta={metaFor(media, before)} priority={priority}
+                sizes="(max-width: 1023px) 40vw, 15rem" className="absolute inset-0 h-full w-full object-cover" />
+            </div>
+            <span className={`${chip} left-2 top-2`}>{labels.before}</span>
+          </div>
+          <span aria-hidden
+            className="brand-gradient absolute bottom-[18%] left-[38%] flex h-11 w-11 items-center justify-center rounded-full text-white shadow-[0_10px_30px_-8px_rgb(var(--accent)/0.9)] ring-4 ring-bg">
+            <Sparkles size={18} />
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** What a contact tile shows as its address: the one typed, else the address
+ *  inside a mailto:/tel: link, without its query (?subject=…). */
+function shownAddress(item: CmsItem, href: string | null): string {
+  const typed = (item.value ?? "").trim();
+  if (typed) return typed;
+  if (!href) return "";
+  const m = /^(?:mailto|tel):([^?]+)/i.exec(href);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+
+/** One quick-contact channel. A tile is one link — the whole card is the
+ *  target, with the address spelled out so it can be copied by hand too. */
+function ContactTile({ item, locale }: { item: CmsItem; locale: string }) {
+  const href = mailOrTel(item.url) ?? internalOrHttps(item.url);
+  const Icon = cmsIcon(item.icon) ?? Mail;
+  const address = shownAddress(item, href);
+  const inner = (
+    <>
+      <span aria-hidden
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-inset ring-accent/25">
+        <Icon size={19} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-display text-[15px] font-semibold">{lt(item.title, locale)}</span>
+        {item.description && (
+          <span className="mt-1 block text-[13px] leading-relaxed text-muted">{lt(item.description, locale)}</span>
+        )}
+        {address && <span className="mt-2 block break-all text-[13.5px] font-semibold text-accent">{address}</span>}
+      </span>
+      {href && (
+        <ArrowUpRight size={17} aria-hidden
+          className="mt-0.5 shrink-0 text-faint transition-[color,transform] duration-200 group-hover:text-accent motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" />
+      )}
+    </>
+  );
+  const className = "group flex h-full items-start gap-4 rounded-2xl border border-line bg-surface/80 p-4 transition-[border-color,box-shadow] duration-200 sm:p-5";
+  if (!href) return <div className={className}>{inner}</div>;
+  const interactive = `${className} hover:border-accent/40 hover:shadow-[0_20px_45px_-32px_rgb(var(--accent)/0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg`;
+  if (href.startsWith("/") || href.startsWith("#")) return <Link href={href} className={interactive}>{inner}</Link>;
+  const external = href.startsWith("https:");
+  return (
+    <a href={href} className={interactive}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+      {inner}
+    </a>
   );
 }
 

@@ -3,7 +3,6 @@ import Image from "next/image";
 import { AuthLink } from "@/components/auth/auth-link";
 import { BarChart3, Gift, Percent, Sparkles, Timer, Zap } from "lucide-react";
 import { Brand } from "@/components/layout/brand";
-import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { WaitlistForm, type WaitlistSuccessCopy } from "@/components/launch/waitlist-form";
 import { LaunchCountdown } from "@/components/launch/countdown";
 import { GalleryPlaceholder, LaunchGallery } from "@/components/launch/gallery";
@@ -27,7 +26,7 @@ import type { WaitlistFieldConfig } from "@/lib/server/registration-config";
  * island closing the right column. Under it the page goes on to show the
  * product instead of describing it — three before/after galleries — then the
  * optional cost line and "who is behind it" tile, a final call to action with
- * the same form, the footer, and on a phone a sticky bar back to the form.
+ * the same form, the site's footer, and on a phone a sticky bar back to the form.
  *
  * NOTHING HERE DECIDES WHAT MAY BE PROMISED. Which offer line, which benefit
  * cards, whether a countdown runs, which galleries a visitor sees: all of it
@@ -67,7 +66,7 @@ const PERK_ICONS: Record<LaunchPerk["key"], typeof Gift> = { credits: Gift, pric
 const ART_SIZES = "(min-width: 1536px) 56vw, (min-width: 1280px) 61vw, (min-width: 1024px) 64vw, 100vw";
 
 export function LaunchPage({
-  content, signedIn, loginLabel, privacyLabel, termsLabel, rightsLabel, social,
+  content, signedIn, loginLabel, footer, social,
   waitlistFields, showAuthEntry, options, campaign, galleries, isAdmin, consents, serverNow, analytics,
 }: {
   content: Record<LaunchField, string>;
@@ -77,9 +76,11 @@ export function LaunchPage({
    *  entry point is not what closes the door — the routes do that. Someone
    *  already signed in always keeps their way back into the app. */
   showAuthEntry: boolean;
-  privacyLabel: string;
-  termsLabel: string;
-  rightsLabel: string;
+  /** The public site's footer (components/cms/site-shell.tsx SiteFooter) —
+   *  the same one every CMS page, the documents and /plany close with, so the
+   *  premiere page links O nas, Kontakt, Cennik and the documents like they do.
+   *  It brings the language switch with it. */
+  footer: React.ReactNode;
   /** Social profiles from the site settings; empty URLs render nothing. */
   social: { instagramUrl: string; facebookUrl: string; linkedinUrl: string; xUrl: string };
   /** Which optional fields the signup form asks for (/admin/settings/registration).
@@ -430,19 +431,14 @@ export function LaunchPage({
           </section>
         )}
 
-        {/* ── FOOTER ───────────────────────────────────────────────────────
-            One line, as before, plus the language switch: the EN and DE copy
-            reaches nobody who cannot choose it from here. */}
-        <footer data-launch-footer
-          className="mt-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-[rgb(var(--glass-border)/0.1)] pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-3 text-center text-[11.5px] text-muted lg:pb-3 min-[1400px]:gap-x-[clamp(14px,1vw,20px)] min-[1400px]:text-[clamp(12px,min(0.88vw,1.33vh),14px)]">
-          <span>GrovBase © {new Date().getFullYear()} · {rightsLabel}</span>
-          <span aria-hidden className="hidden sm:inline">·</span>
-          <Link href="/polityka-prywatnosci" className="tap transition-colors hover:text-ink">{privacyLabel}</Link>
-          <Link href="/regulamin" className="tap transition-colors hover:text-ink">{termsLabel}</Link>
-          <span data-launch-locale className="ml-1">
-            <LocaleSwitcher align="right" side="top" />
-          </span>
-        </footer>
+      </div>
+
+      {/* ── FOOTER ─────────────────────────────────────────────────────────
+          The site's own footer, full width under the page's column. Still
+          [data-launch-footer]: the sticky bar steps aside while it is on
+          screen, and the geometry probe stacks it after the last section. */}
+      <div data-launch-footer className="mt-auto">
+        {footer}
       </div>
 
       {shown.sticky && <StickyCta label={c["sticky.cta"]} />}

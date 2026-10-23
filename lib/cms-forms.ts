@@ -48,10 +48,16 @@ export function resolveHandler(key: string | undefined, kind: FormKind): FormHan
 
 /** The contact topics the panel offers. Values are stored, labels come from
  *  the dictionary, so a topic never arrives as free text an operator has to
- *  interpret — and never as something unbounded going into an email subject. */
-export const CONTACT_TOPICS = ["sales", "support", "partnership", "press", "other"] as const;
+ *  interpret — and never as something unbounded going into an email subject.
+ *  `question` was added with the Kontakt page (Pytanie / Pomoc techniczna /
+ *  Współpraca / Inne); the database's own list is widened by 0148. */
+export const CONTACT_TOPICS = ["question", "sales", "support", "partnership", "press", "other"] as const;
 export type ContactTopic = (typeof CONTACT_TOPICS)[number];
 
 export function isContactTopic(value: string): value is ContactTopic {
   return (CONTACT_TOPICS as readonly string[]).includes(value);
 }
+
+/** The address shape the contact route and submit_contact_message accept
+ *  (0086). One copy, so the form never waves through what the route refuses. */
+export const CONTACT_EMAIL_PATTERN = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
