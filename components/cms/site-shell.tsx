@@ -239,8 +239,10 @@ export function SiteFooter({ global, nav, site, locale, t, forceDark = false }:
   const content: CmsBlockContent = global.footer?.content ?? {};
   const tagline = lt(content.description, locale);
   const brandLine = lt(content.subtitle, locale);
+  // The visitor's own language or the dictionary's name — never the Polish
+  // heading on the English site, which is what lt()'s fallback would give.
   const heading = (group: FooterGroup) =>
-    lt(content.fields?.[`group.${group}`], locale) || t(`cms.footerGroup.${group}`);
+    (content.fields?.[`group.${group}`]?.[locale as "pl" | "en" | "de"] ?? "").trim() || t(`cms.footerGroup.${group}`);
 
   const all = footerLinks(content, nav, locale, t);
   const groups = FOOTER_GROUPS
@@ -255,10 +257,14 @@ export function SiteFooter({ global, nav, site, locale, t, forceDark = false }:
   ].filter((s) => s.url);
 
   return (
-    <footer data-site-footer className={`relative mt-auto overflow-hidden border-t ${HAIRLINE} bg-sunken/40`}>
-      {/* A lit edge and a low glow: the brand's magenta, kept to the seam. */}
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgb(var(--accent)/0.45),transparent)]" />
-      <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-40 w-full max-w-[52rem] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(closest-side,rgb(var(--accent)/0.12),transparent)]" />
+    <footer data-site-footer className={`relative mt-auto border-t ${HAIRLINE} bg-sunken/40`}>
+      {/* A lit edge and a low glow: the brand's magenta, kept to the seam.
+          Clipped in their own layer, so the footer itself clips nothing —
+          the language menu opens upwards out of it. */}
+      <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <span className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgb(var(--accent)/0.45),transparent)]" />
+        <span className="absolute left-1/2 top-0 h-40 w-full max-w-[52rem] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(closest-side,rgb(var(--accent)/0.12),transparent)]" />
+      </span>
 
       <div className="relative mx-auto w-full max-w-[88rem] px-[var(--page-x,1rem)] pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-12 sm:pt-14">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,2fr)] lg:gap-16">
@@ -311,15 +317,18 @@ export function SiteFooter({ global, nav, site, locale, t, forceDark = false }:
               </>
             )}
           </p>
-          <div className="flex items-center gap-2.5">
-            <span data-footer-locale><LocaleSwitcher align="right" side="top" /></span>
-            {/* "#top" is the one fragment every browser scrolls to the top of
-                the document for, with no element and no script behind it. */}
+          {/* The language switch is the LAST thing on the row, at the right
+              edge at every width: its menu is anchored to its right side and
+              opens leftwards, so on a phone it must have the row to its left. */}
+          <div className="flex items-center gap-2.5 self-end sm:self-auto">
+            {/* "#top" is the empty, focusable anchor at the start of <body>
+                (app/layout.tsx): no script, and keyboard focus goes up too. */}
             <a href="#top"
               className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border ${HAIRLINE} px-3.5 text-[12.5px] font-medium text-muted transition-colors hover:border-accent/40 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50`}>
               <ArrowUp size={14} aria-hidden />
               {t("cms.backToTop")}
             </a>
+            <span data-footer-locale><LocaleSwitcher align="right" side="top" /></span>
           </div>
         </div>
       </div>

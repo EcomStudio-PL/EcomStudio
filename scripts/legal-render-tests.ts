@@ -60,6 +60,7 @@ import {
   legalTocIds, legalTocTree,
 } from "@/components/legal/legal-view";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
+import { footerLinks } from "@/components/cms/site-shell";
 import type { CmsBlock, PageSeo } from "@/lib/cms";
 import { formatInstant } from "@/lib/utils";
 import { legalPageMetadata } from "@/lib/server/legal-metadata";
@@ -528,9 +529,18 @@ function main() {
       && /"\/regulamin" : "\/polityka-prywatnosci"\} target="_blank" rel="noopener noreferrer"/.test(checkout));
     check("checkout: the old key stays in the dictionaries", LOCALES.every((l) => typeof (DICTS[l].checkout as Dict).legal === "string"));
 
+    // Public pages V1 made the site footer's documents data (footerLinks, its
+    // "Informacje" column), so it is checked on what it prints; the minimal
+    // footer still spells its three links out in the markup.
     const shell = read("components/cms/site-shell.tsx");
-    check("both public footers link the cookie policy after the two documents",
-      (shell.match(/href="\/regulamin"[^\n]*\n[^\n]*href="\/polityka-prywatnosci"[^\n]*\n[^\n]*href="\/polityka-cookies"[^\n]*legal\.cookiesShort/g) ?? []).length === 2);
+    check("the minimal footer links the cookie policy after the two documents",
+      (shell.match(/href="\/regulamin"[^\n]*\n[^\n]*href="\/polityka-prywatnosci"[^\n]*\n[^\n]*href="\/polityka-cookies"[^\n]*legal\.cookiesShort/g) ?? []).length === 1);
+    for (const l of LOCALES) {
+      const legal = footerLinks({}, [], l, tr(l)).filter((x) => x.group === "legal");
+      check(`${l}: the site footer links the three documents, the cookie policy last, even with nothing configured`,
+        legal.map((x) => x.url).join() === "/regulamin,/polityka-prywatnosci,/polityka-cookies"
+        && legal[2]!.label === tr(l)("legal.cookiesShort"));
+    }
 
     for (const d of LEGAL_DOCS) {
       const file = `app/${d.slug}/page.tsx`;

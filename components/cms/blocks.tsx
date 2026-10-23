@@ -69,14 +69,17 @@ export function BlockRenderer({ blocks, ctx }: { blocks: CmsBlock[]; ctx: Render
   // HTML at all, and a "sign up" block is not delivered to someone who has.
   // The admin preview keeps everything: the point of the preview is to see
   // what you are building, including the part that is not live yet.
-  const live = blocks.filter((b) => b.visible && (ctx.admin || sectionIsLive(b, { signedIn: ctx.signedIn })));
+  const live = blocks.filter((b) => b.visible && (ctx.admin || sectionIsLive(b, { signedIn: ctx.signedIn })))
+    .sort((a, b) => a.sort_order - b.sort_order);
+  // "First" is the first section a visitor READS — it owns the page's <h1> and
+  // the hero image's priority. A pinned bar, a spacer or a divider sorted
+  // above it is not where the page starts.
+  const lead = live.findIndex((b) => !PINNED_SECTIONS.has(b.type) && b.type !== "spacer" && b.type !== "divider");
   return (
     <>
-      {live
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .map((block, i) => (
-          <CmsSection key={block.id ?? i} block={block} ctx={ctx} first={i === 0} />
-        ))}
+      {live.map((block, i) => (
+        <CmsSection key={block.id ?? i} block={block} ctx={ctx} first={i === lead} />
+      ))}
     </>
   );
 }
@@ -1353,7 +1356,10 @@ function shownAddress(item: CmsItem, href: string | null): string {
   if (typed) return typed;
   if (!href) return "";
   const m = /^(?:mailto|tel):([^?]+)/i.exec(href);
-  return m ? decodeURIComponent(m[1]) : "";
+  if (!m) return "";
+  // A stray "%" an admin typed is not an escape; decoding it must not throw
+  // from inside a component, where the section's own try/catch cannot see it.
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
 /** One quick-contact channel. A tile is one link — the whole card is the

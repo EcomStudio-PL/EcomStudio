@@ -2544,7 +2544,8 @@
     "sectionType.contact_hub": "Formularz + szybki kontakt",
     "footerBrandLine": "Podpis marki (dolny pasek)",
     "footerGroupHeadings": "Nagłówki kolumn",
-    "footerGroupHeadingsHint": "Puste pole = nazwa domyślna. Link trafia do kolumny, której kod wpiszesz w jego polu „Wartość” (np. company, legal)."
+    "footerGroupHeadingsHint": "Puste pole = nazwa domyślna. Link trafia do kolumny, której kod wpiszesz w jego polu „Wartość” (np. company, legal).",
+    "formErrEmailRequired": "Podaj adres e-mail."
   },
   "insp": {
     "title": "Inspiracje",

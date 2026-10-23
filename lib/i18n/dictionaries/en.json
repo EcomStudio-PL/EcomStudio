@@ -2544,7 +2544,8 @@
     "sectionType.contact_hub": "Form + quick contact",
     "footerBrandLine": "Brand line (bottom bar)",
     "footerGroupHeadings": "Column headings",
-    "footerGroupHeadingsHint": "Empty = the default name. A link goes into the column whose code you type in its “Value” box (e.g. company, legal)."
+    "footerGroupHeadingsHint": "Empty = the default name. A link goes into the column whose code you type in its “Value” box (e.g. company, legal).",
+    "formErrEmailRequired": "Please enter your e-mail address."
   },
   "insp": {
     "title": "Inspirations",

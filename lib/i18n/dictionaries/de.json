@@ -2544,7 +2544,8 @@
     "sectionType.contact_hub": "Formular + schneller Kontakt",
     "footerBrandLine": "Markenzeile (untere Leiste)",
     "footerGroupHeadings": "Spaltenüberschriften",
-    "footerGroupHeadingsHint": "Leer = Standardname. Ein Link landet in der Spalte, deren Code du in sein Feld „Wert“ eingibst (z. B. company, legal)."
+    "footerGroupHeadingsHint": "Leer = Standardname. Ein Link landet in der Spalte, deren Code du in sein Feld „Wert“ eingibst (z. B. company, legal).",
+    "formErrEmailRequired": "Bitte gib deine E-Mail-Adresse ein."
   },
   "insp": {
     "title": "Inspirationen",

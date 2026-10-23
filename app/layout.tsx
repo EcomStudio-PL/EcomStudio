@@ -117,6 +117,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="font-sans">
+        {/* Where the public footer's "Na górę" (href="#top") lands: an empty,
+            focusable anchor, so the page scrolls up AND keyboard focus moves
+            with it — the next Tab is the first link of the header. */}
+        <div id="top" tabIndex={-1} className="outline-none" />
         {/* Renders nothing. Cancels iOS Safari's pinch, which is the one part
             of the 1:1 lock the viewport meta cannot do — see the file. */}
         <ViewportLock />

@@ -99,7 +99,22 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics, l
   /** When the form became usable. A script that fills and posts it in the
    *  same second is not a person writing to us (see the contact route). */
   const openedAt = useRef(0);
-  useEffect(() => { openedAt.current = Date.now(); }, []);
+  useEffect(() => {
+    // From the moment the form was SEEN: on a slow phone a person can type
+    // into the server-rendered form before this script runs, and timing them
+    // from hydration would call a real message "too fast".
+    const typed = Array.from(formRef.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      'input[name="name"], input[name="email"], textarea[name="message"]') ?? []).some((el) => el.value.trim() !== "");
+    openedAt.current = typed ? Math.min(Date.now(), Math.round(performance.timeOrigin)) : Date.now();
+  }, []);
+  /** "Napisz kolejną wiadomość" swaps the panel back for the form; focus goes
+   *  to its first field rather than falling to <body> with the panel. */
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (state !== "idle" || !refocus.current) return;
+    refocus.current = false;
+    formRef.current?.querySelector<HTMLElement>('[name="name"], [name="email"]')?.focus();
+  }, [state]);
 
   // The success panel replaces the form, button and all; focus follows it, or
   // a keyboard user is left on an element that no longer exists.
@@ -120,7 +135,8 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics, l
     const value = (name: string) => String(form.get(name) ?? "").trim();
     if (target?.fields.includes("name") && !value("name")) out.name = t("cms.formErrName");
     const email = value("email");
-    if (!email) out.email = t("cms.formErrEmailEmpty");
+    // Nobody replies to a newsletter signup: its empty address gets the plain sentence.
+    if (!email) out.email = t(target?.kind === "newsletter" ? "cms.formErrEmailRequired" : "cms.formErrEmailEmpty");
     else if (!CONTACT_EMAIL_PATTERN.test(email)) out.email = t("cms.formErrEmail");
     if (target?.fields.includes("message")) {
       const message = value("message");
@@ -136,6 +152,7 @@ export function CmsForm({ kind, handler, submitLabel, consent, labels, topics, l
   }
 
   function reset() {
+    refocus.current = true;
     setState("idle");
     setError("");
     setInvalid({});

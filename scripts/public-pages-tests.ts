@@ -148,6 +148,25 @@ section("B. WHAT THE PAGES RENDER");
     ![...html.matchAll(/href="([^"]+)"/g)].some((m) => /^\/(home|dashboard|generator|retusz|tools|k|plan|register|login)(\/|$|\?)/.test(m[1]!)));
 }
 
+{
+  // Review follow-ups: a tile with a stray "%" renders (its address as typed)
+  // instead of throwing from inside a component, where the section's own
+  // try/catch cannot catch it; and a pinned bar sorted above the header does
+  // not demote the page's title to an <h2>.
+  const blocks = blocksOf("kontakt");
+  const hub = blocks.find((b) => b.type === "contact_hub")!;
+  const broken = { ...hub, content: { ...hub.content, tiles: [{ title: { pl: "Biuro" }, url: "mailto:50%off@firma.pl" }] } };
+  let html = "";
+  let threw = false;
+  try { html = render("pl", blocks.map((b) => (b === hub ? broken : b))); } catch { threw = true; }
+  check("a tile whose mailto has a stray % renders its address as typed (no crash)", !threw && />50%off@firma\.pl</.test(html));
+  const bar: CmsBlock = { id: "00000000-0000-4000-8000-0000000000ff", type: "promo_bar", sort_order: -1, visible: true,
+    content: { title: { pl: "Promocja" }, ctaLabel: { pl: "Zobacz" }, ctaUrl: "/plany" } };
+  const withBar = render("pl", [bar, ...blocksOf("kontakt")]);
+  check("a pinned bar sorted first: the header still owns the one <h1>",
+    (withBar.match(/<h1[\s>]/g) ?? []).length === 1 && /<h1[^>]*>Porozmawiajmy\.<\/h1>/.test(withBar));
+}
+
 /* ── C ────────────────────────────────────────────────────────────────────── */
 
 section("C. THE FOOTER");
@@ -199,6 +218,16 @@ const FOOTER = SEED_GLOBALS.footer.content as unknown as CmsBlockContent;
   }));
   check("…and exactly the configured one when there is one",
     /aria-label="Instagram"/.test(withSocial) && !/aria-label="Facebook"/.test(withSocial) && /rel="noopener noreferrer"/.test(withSocial));
+  check("the language switch is the last control of the bottom bar (its menu opens leftwards, inside the page)",
+    html.lastIndexOf("data-footer-locale") > html.lastIndexOf('href="#top"'));
+  check("the footer itself clips nothing (only its glow layer does), so the language menu is never cut off",
+    !/<footer[^>]*overflow-hidden/.test(html));
+  const partial = { ...FOOTER, fields: { "group.company": { pl: "Firma GrovBase" } } } as CmsBlockContent;
+  const enPartial = markup("en", createElement(SiteFooter, {
+    global: { footer: { slot: "footer", visible: true, content: partial } }, nav: NAV, site, locale: "en", t: makeT(DICTS.en),
+  }));
+  check("a heading typed only in Polish: the English site shows the English default, not the Polish text",
+    !/Firma GrovBase/.test(enPartial) && new RegExp(`>${lookup(DICTS.en, "cms.footerGroup.company")}</h2>`).test(enPartial));
   check("the premiere page's footer uses the on-dark logo whatever the theme",
     /logo-on-dark/.test(markup("pl", createElement(SiteFooter, { global: {}, nav: [], site, locale: "pl", t: makeT(DICTS.pl), forceDark: true }))));
 }
