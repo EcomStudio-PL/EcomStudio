@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ExternalLink, FileText } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { LEGAL_LOCALES } from "@/lib/legal/docs";
-import type { LegalOverviewRow } from "@/lib/server/legal/admin";
-import { formatDate } from "@/lib/utils";
+import { legalCodePointLabel } from "@/lib/legal/pdf-coverage";
+import type { LegalOverviewRow, LegalPdfGlyphGap } from "@/lib/server/legal/admin";
+import { formatInstant } from "@/lib/utils";
 
 /**
  * STRONY WWW → DOKUMENTY PRAWNE — the four documents at a glance.
@@ -13,7 +14,10 @@ import { formatDate } from "@/lib/utils";
  * the length and digest of each text, so it can be checked against the
  * source file without opening anything), when it went live and as which CMS
  * version, and whether the draft has moved on since ("zmiany
- * nieopublikowane" — compared by digest, status, version and date).
+ * nieopublikowane" — compared by digest, status, version and date). A text
+ * holding characters the PDF's font cannot draw (☐, ✔, Word's Symbol
+ * bullet…) gets a warning naming each of them: the PDF shows empty boxes
+ * there, the page does not.
  *
  * A server component: plain data in (lib/server/legal/admin.ts
  * legalOverview), links out. Editing happens in the builder.
@@ -22,6 +26,43 @@ import { formatDate } from "@/lib/utils";
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
 const intlLocale = (ui: string) => (ui === "pl" ? "pl-PL" : ui === "de" ? "de-DE" : "en-GB");
+
+/** A control, format or space character has nothing to show: only its code. */
+const UNSHOWABLE = /[\p{Cc}\p{Cf}\p{Z}]/u;
+
+function PdfGlyphWarning({ gaps, t }: { gaps: LegalPdfGlyphGap[]; t: T }) {
+  return (
+    <div role="note" data-legal-pdf-glyphs
+      className="mt-2.5 rounded-xl bg-[rgb(var(--warning)/0.12)] px-3 py-2.5 text-[12px] leading-relaxed text-warning ring-1 ring-[rgb(var(--warning)/0.30)]">
+      <p className="flex items-start gap-2 font-semibold">
+        <AlertTriangle size={14} aria-hidden className="mt-0.5 shrink-0" />
+        <span className="min-w-0">{t("cms.legalPanel.pdfGlyphs.title")}</span>
+      </p>
+      <ul className="mt-1 space-y-0.5 pl-[22px]">
+        {gaps.map((g) => (
+          <li key={`${g.locale}-${g.source}`} className="min-w-0 break-words"
+            data-legal-pdf-glyphs-lang={g.locale} data-legal-pdf-glyphs-source={g.source}>
+            <span className="font-semibold uppercase">{g.locale}</span>
+            {" · "}{t(`cms.legalPanel.pdfGlyphs.${g.source}`)}:{" "}
+            {g.chars.map((c, i) => {
+              const code = legalCodePointLabel(c.codePoint);
+              return (
+                <span key={c.codePoint}>
+                  {i > 0 && ", "}
+                  <code className="whitespace-nowrap" data-legal-pdf-glyph={code}>
+                    {UNSHOWABLE.test(c.char) ? code : `${c.char} ${code}`}
+                  </code>
+                  {c.count > 1 && <> {t("cms.legalPanel.pdfGlyphs.times", { n: c.count })}</>}
+                </span>
+              );
+            })}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 pl-[22px]">{t("cms.legalPanel.pdfGlyphs.body")}</p>
+    </div>
+  );
+}
 
 export function LegalDocsPanel({ rows, t, locale }: { rows: LegalOverviewRow[]; t: T; locale: string }) {
   // No rows: the overview could not be read (app/admin/www/page.tsx) — the
@@ -45,7 +86,7 @@ export function LegalDocsPanel({ rows, t, locale }: { rows: LegalOverviewRow[]; 
       </div>
 
       <ul className="grid gap-2.5 lg:grid-cols-2">
-        {rows.map(({ def, page, cmsVersion, published, unpublished, draftHasDoc }) => {
+        {rows.map(({ def, page, cmsVersion, published, unpublished, draftHasDoc, pdfGlyphGaps }) => {
           const live = page?.status === "published";
           const pl = published?.pl;
           return (
@@ -102,8 +143,9 @@ export function LegalDocsPanel({ rows, t, locale }: { rows: LegalOverviewRow[]; 
                       {t(draftHasDoc ? "cms.legalPanel.notPublishedYet" : "cms.legalPanel.noDoc")}
                     </p>
                   )}
+                  {pdfGlyphGaps.length > 0 && <PdfGlyphWarning gaps={pdfGlyphGaps} t={t} />}
                   <p className="mt-2 text-[11.5px] text-faint">
-                    {page.publishedAt && live ? t("cms.legalPanel.publishedAt", { date: formatDate(page.publishedAt, locale) }) : t("cms.legalPanel.notPublished")}
+                    {page.publishedAt && live ? t("cms.legalPanel.publishedAt", { date: formatInstant(page.publishedAt, locale) }) : t("cms.legalPanel.notPublished")}
                     {cmsVersion !== null && <> · {t("cms.legalPanel.cmsVersion", { n: cmsVersion })}</>}
                   </p>
 

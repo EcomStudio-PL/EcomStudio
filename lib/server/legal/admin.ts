@@ -9,6 +9,7 @@ import {
   cleanLegalDocInput, legalCharCount, readLegalDoc,
   type LegalDocContent, type LegalDocProblem, type LegalLocaleDoc, type LegalStatus,
 } from "@/lib/legal/content";
+import { legalPdfUncovered, type LegalPdfUncoveredChar } from "@/lib/legal/pdf-coverage";
 import { legalSha256 } from "./published";
 
 /**
@@ -23,8 +24,9 @@ import { legalSha256 } from "./published";
  *      never something a browser claimed about it;
  *   2. the DOWNLOAD — the draft (or published) text of one language, byte for
  *      byte, as a .txt the admin can diff against the source file;
- *   3. the OVERVIEW on /admin/www — which documents exist, what is live, and
- *      whether the draft has moved on since the last publish;
+ *   3. the OVERVIEW on /admin/www — which documents exist, what is live,
+ *      whether the draft has moved on since the last publish, and which
+ *      characters of a text the PDF can only draw as an empty box;
  *   4. the HISTORY — which document each published version carried.
  *
  * Everything reads with the admin's own session: RLS (0051/0085) is what lets
@@ -175,7 +177,42 @@ export type LegalOverviewRow = {
   /** The draft's document differs from the published one: a text (by
    *  sha256), a status, a version or a date. */
   unpublished: boolean;
+  /** Characters the PDF's fonts have no glyph for, per language and text
+   *  (empty: every character can be drawn). */
+  pdfGlyphGaps: LegalPdfGlyphGap[];
 };
+
+export type LegalPdfGlyphGap = {
+  locale: LegalLocale;
+  /** Which text holds them: the published one, the draft, or both — the
+   *  draft's text being the published text. */
+  source: "published" | "draft" | "both";
+  chars: LegalPdfUncoveredChar[];
+};
+
+/**
+ * Per language, the characters of the published text and of the draft that
+ * the PDF can only draw as an empty box (legalPdfUncovered: ☐, ✔, Word's
+ * Symbol bullet…) — so the admin reads it here rather than in a customer's
+ * download. The text itself is never touched; a draft that IS the published
+ * text is reported once.
+ */
+export function legalPdfGlyphGaps(draft: LegalDocContent | null, published: LegalDocContent | null): LegalPdfGlyphGap[] {
+  const out: LegalPdfGlyphGap[] = [];
+  for (const l of LEGAL_LOCALES) {
+    const live = published?.[l].text ?? "";
+    const next = draft?.[l].text ?? "";
+    const liveChars = live === "" ? [] : legalPdfUncovered(live);
+    if (next !== "" && next === live) {
+      if (liveChars.length > 0) out.push({ locale: l, source: "both", chars: liveChars });
+      continue;
+    }
+    if (liveChars.length > 0) out.push({ locale: l, source: "published", chars: liveChars });
+    const nextChars = next === "" ? [] : legalPdfUncovered(next);
+    if (nextChars.length > 0) out.push({ locale: l, source: "draft", chars: nextChars });
+  }
+  return out;
+}
 
 /** The facts of one language — the stored digests when the save wrote them,
  *  computed from the text otherwise (a document stored before digests). */
@@ -215,7 +252,9 @@ export async function legalOverview(supabase: Client): Promise<LegalOverviewRow[
 
   return Promise.all(LEGAL_DOCS.map(async (def): Promise<LegalOverviewRow> => {
     const page = pages.get(def.slug);
-    if (!page) return { def, page: null, cmsVersion: null, published: null, draftHasDoc: false, unpublished: false };
+    if (!page) {
+      return { def, page: null, cmsVersion: null, published: null, draftHasDoc: false, unpublished: false, pdfGlyphGaps: [] };
+    }
     const [draft, version] = await Promise.all([
       draftDoc(supabase, page.id),
       supabase.from("cms_page_versions").select("version").eq("page_id", page.id)
@@ -231,6 +270,7 @@ export async function legalOverview(supabase: Client): Promise<LegalOverviewRow[
       published: published ? docFacts(published) : null,
       draftHasDoc: draft !== null,
       unpublished: draft !== null && legalDocsDiffer(draft, published),
+      pdfGlyphGaps: legalPdfGlyphGaps(draft, published),
     };
   }));
 }
