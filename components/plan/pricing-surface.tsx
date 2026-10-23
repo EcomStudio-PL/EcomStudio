@@ -118,6 +118,7 @@ export async function PricingSurface({ scope, notice = null }: {
             <nav className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <Link href="/regulamin" className="transition-colors duration-200 hover:text-ink">{t("launch.terms")}</Link>
               <Link href="/polityka-prywatnosci" className="transition-colors duration-200 hover:text-ink">{t("launch.privacyPage")}</Link>
+              <Link href="/polityka-cookies" className="transition-colors duration-200 hover:text-ink">{t("legal.cookiesShort")}</Link>
               <Link href="/kontakt" className="transition-colors duration-200 hover:text-ink">{t("nav.support")}</Link>
             </nav>
           </div>
