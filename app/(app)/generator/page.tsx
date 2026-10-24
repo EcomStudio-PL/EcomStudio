@@ -8,6 +8,7 @@ import { listGalleryItems } from "@/lib/server/gallery";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
+import { readSmartPromptOffer } from "@/lib/server/smart-prompt";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
@@ -32,11 +33,13 @@ export default async function GeneratorPage({ searchParams }: {
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
-  const [usable, wallet, gallery, priceOptions] = await Promise.all([
+  const [usable, wallet, gallery, priceOptions, smartPrompt] = await Promise.all([
     getUsableModels(supabase),
     getWallet(supabase, workspace.id),
     listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE }),
     conceptModelOptions(supabase),
+    // Inteligentny prompt: the catalogue price and whether it may be offered.
+    readSmartPromptOffer(supabase),
   ]);
 
   const models: GenModel[] = customModels(usable).map(toClientModel).map((m) => ({
@@ -83,6 +86,7 @@ export default async function GeneratorPage({ searchParams }: {
         initialItems={gallery.items}
         initialCursor={gallery.nextCursor}
         initialPrompt={initialPrompt}
+        smartPrompt={smartPrompt}
       />
     </div>
   );

@@ -16,6 +16,9 @@ import { PhotoUploader, UPLOAD_ACCEPT, normalizeFiles } from "@/components/genv3
 import { cn } from "@/lib/utils";
 import type { BriefState, GenModel, UploadedRef } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
+import {
+  SmartPromptButton, SmartPromptCorner, SmartPromptRestore, SmartPromptStatus, type SmartPromptControls,
+} from "@/components/genv3/smart-prompt";
 
 /** Section heading exactly like the reference: bold label, optional
  *  "(opcjonalnie)", a help glyph carrying the hint as its tooltip. */
@@ -201,8 +204,10 @@ export function VariantChips({ variant, choices, onChoose }: {
  * itself, so a four-thousand-character prompt still cannot push the engine
  * picker or the cost island off the screen.
  */
-export function PromptSection({ value, onChange, max }: {
+export function PromptSection({ value, onChange, max, smart }: {
   value: string; onChange: (v: string) => void; max: number;
+  /** Inteligentny prompt (components/genv3/smart-prompt.tsx); absent = no button. */
+  smart?: SmartPromptControls;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -210,6 +215,8 @@ export function PromptSection({ value, onChange, max }: {
   const boxRef = useRef<HTMLElement>(null);
   const filled = value.trim().length > 0;
   const nearCap = value.length > max * 0.9;
+  // The corner icon sits over the text's first line; the text makes room.
+  const corner = !!smart?.offered && !!smart.session && smart.enhanced;
 
   // Focus lands at the END of what is already written — expanding to edit a
   // long prompt should not put the caret at the top of it.
@@ -256,26 +263,41 @@ export function PromptSection({ value, onChange, max }: {
     <section ref={boxRef} data-prompt-section data-open={open || undefined}>
       <SectionLabel hint={t("genv3.promptHint")}>{t("genv3.prompt")}</SectionLabel>
       {open ? (
-        <div className="rounded-xl border border-[rgb(var(--accent)/0.45)] bg-sunken/50 p-2">
+        <div className="relative rounded-xl border border-[rgb(var(--accent)/0.45)] bg-sunken/50 p-2">
+          {smart && <SmartPromptCorner smart={smart} />}
           <Textarea
             ref={areaRef}
             data-prompt-input
             value={value}
             maxLength={max}
+            // While a rewrite is on its way the text stays put: typing now
+            // would be overwritten by the answer a moment later.
+            readOnly={smart?.busy}
+            aria-busy={smart?.busy || undefined}
             placeholder={t("genv3.promptPh")}
             aria-label={t("genv3.prompt")}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } }}
-            className="thin-scroll max-h-[38dvh] min-h-[7.5rem] resize-y border-0 bg-transparent px-1.5 py-1 focus:bg-transparent focus:ring-0 sm:max-h-64"
+            className={cn(
+              "thin-scroll max-h-[38dvh] min-h-[7.5rem] resize-y border-0 bg-transparent px-1.5 py-1 focus:bg-transparent focus:ring-0 sm:max-h-64",
+              corner && "pr-9",
+              smart?.busy && "opacity-70",
+            )}
           />
-          <div className="mt-1 flex items-center justify-between gap-2 px-1.5">
-            <button type="button" data-prompt-collapse onClick={() => setOpen(false)}
-              className="flex items-center gap-1 text-[10.5px] font-semibold text-faint transition-colors hover:text-accent">
-              <ChevronDown size={11} aria-hidden className="rotate-180" />
-              {t("genv3.promptCollapse")}
-            </button>
-            <span data-prompt-counter className={cn("text-[10.5px] font-medium tabular-nums", nearCap ? "text-accent2" : "text-faint")}>
-              {value.length}/{max}
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-1.5">
+            <span className="flex items-center gap-3">
+              <button type="button" data-prompt-collapse onClick={() => setOpen(false)}
+                className="flex items-center gap-1 text-[10.5px] font-semibold text-faint transition-colors hover:text-accent">
+                <ChevronDown size={11} aria-hidden className="rotate-180" />
+                {t("genv3.promptCollapse")}
+              </button>
+              {smart && <SmartPromptRestore smart={smart} />}
+            </span>
+            <span className="ml-auto flex items-center gap-2">
+              {smart && <SmartPromptButton smart={smart} />}
+              <span data-prompt-counter className={cn("text-[10.5px] font-medium tabular-nums", nearCap ? "text-accent2" : "text-faint")}>
+                {value.length}/{max}
+              </span>
             </span>
           </div>
         </div>
@@ -308,6 +330,7 @@ export function PromptSection({ value, onChange, max }: {
           </span>
         </button>
       )}
+      {smart && <SmartPromptStatus smart={smart} />}
     </section>
   );
 }

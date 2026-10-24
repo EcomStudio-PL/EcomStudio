@@ -12,6 +12,8 @@ import { ModelSelect } from "@/components/genv3/model-select";
 import { InspirationLibraryModal } from "@/components/genv3/inspiration-library";
 import { DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { useHomeHandoff } from "@/lib/home-handoff";
+import { useSmartPrompt } from "@/components/genv3/smart-prompt";
+import type { SmartPromptOffer } from "@/lib/smart-prompt";
 import { cn } from "@/lib/utils";
 import {
   defaultRatio, snapQuality, snapRatio, snapTo, unitPrice,
@@ -52,7 +54,7 @@ const PROMPT_MAX = 4000;
 export function GeneratorWorkspace({
   mode, models, credits, workspaceId, engineAvailable = true,
   initialItems, initialCursor, initialStyle, initialRatio, initialShots,
-  variant, initialPrompt = "", sessionPreviews,
+  variant, initialPrompt = "", sessionPreviews, smartPrompt,
 }: {
   mode: GenMode;
   models: GenModel[];
@@ -68,6 +70,8 @@ export function GeneratorWorkspace({
   initialPrompt?: string;
   /** Admin-configured preview media for the two session tiles. */
   sessionPreviews?: SessionPreviewMap;
+  /** Inteligentny prompt: price + whether to offer it (custom mode only). */
+  smartPrompt?: SmartPromptOffer;
 }) {
   const { t } = useI18n();
   const managed = mode === "managed";
@@ -113,6 +117,13 @@ export function GeneratorWorkspace({
   const effQuality = snapQuality(model, quality);
   const maxCount = managed ? 10 : Math.max(1, model?.maxOutputs ?? 1);
   const effCount = Math.min(Math.max(count, 1), maxCount);
+
+  // ── Inteligentny prompt (custom mode): rewrites land in `prompt` itself ─
+  const refPaths = useMemo(() => refs.map((r) => r.path).slice(0, MAX_REFS), [refs]);
+  const smart = useSmartPrompt({
+    value: prompt, onChange: setPrompt, offer: managed ? undefined : smartPrompt,
+    referencePaths: refPaths, balance, onBalance: setBalance,
+  });
 
   const perShot = unitPrice(model, effResolution, mode, effQuality);
   const total = perShot * effCount;
@@ -398,7 +409,9 @@ export function GeneratorWorkspace({
   });
 
   // Photos are the only hard requirement now — no product, no name.
-  const canGenerate = !!model && !busy && !uploading && refs.length > 0
+  // Not while a rewrite is on its way: the text about to be replaced is not
+  // the text the customer would be generating from.
+  const canGenerate = !!model && !busy && !smart.busy && !uploading && refs.length > 0
     && missing === 0
     && (managed ? engineAvailable : prompt.trim().length > 2);
   const generate = managed ? generateManaged : generateCustom;
@@ -492,7 +505,7 @@ export function GeneratorWorkspace({
                 onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
                 onOpenLibrary={() => setLibraryOpen(true)}
               />
-              <PromptSection value={prompt} onChange={setPrompt} max={PROMPT_MAX} />
+              <PromptSection value={prompt} onChange={setPrompt} max={PROMPT_MAX} smart={smart} />
             </>
           )}
           <SettingsSection

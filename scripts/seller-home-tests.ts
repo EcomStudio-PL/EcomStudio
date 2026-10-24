@@ -712,8 +712,29 @@ for (const [file, digest] of ENGINE) check(`${file} unchanged`, sha(readFileSync
 const ws = read("components/genv3/workspace.tsx");
 const RECEIVER_IMPORT = 'import { useHomeHandoff } from "@/lib/home-handoff";\n';
 const RECEIVER = ws.slice(ws.indexOf("  // A photo chosen on /home"), ws.indexOf("  /**\n   * A PICK FROM THE GROVBASE LIBRARY"));
-check("the generator workspace differs only by the handoff receiver",
-  sha(ws.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "07d316d73828d44727ec892747596a47f6b56ff719eb9bfc41fc0e125fdcb769");
+// The Inteligentny prompt task added its wiring and nothing else: two imports,
+// one optional prop, one hook call, the Generate hold while a rewrite is in
+// flight, and the `smart` prop on PromptSection. Taken out as well, the file is
+// still the same bytes as before — the digest is NOT re-pinned.
+const SMART_PIECES: readonly [string, string][] = [
+  ['import { useSmartPrompt } from "@/components/genv3/smart-prompt";\nimport type { SmartPromptOffer } from "@/lib/smart-prompt";\n', ""],
+  ['  variant, initialPrompt = "", sessionPreviews, smartPrompt,\n', '  variant, initialPrompt = "", sessionPreviews,\n'],
+  ["  /** Inteligentny prompt: price + whether to offer it (custom mode only). */\n  smartPrompt?: SmartPromptOffer;\n", ""],
+  ["  // ── Inteligentny prompt (custom mode): rewrites land in `prompt` itself ─\n"
+    + "  const refPaths = useMemo(() => refs.map((r) => r.path).slice(0, MAX_REFS), [refs]);\n"
+    + "  const smart = useSmartPrompt({\n"
+    + "    value: prompt, onChange: setPrompt, offer: managed ? undefined : smartPrompt,\n"
+    + "    referencePaths: refPaths, balance, onBalance: setBalance,\n"
+    + "  });\n\n", ""],
+  ["  // Not while a rewrite is on its way: the text about to be replaced is not\n"
+    + "  // the text the customer would be generating from.\n"
+    + "  const canGenerate = !!model && !busy && !smart.busy && ", "  const canGenerate = !!model && !busy && "],
+  [" max={PROMPT_MAX} smart={smart} />", " max={PROMPT_MAX} />"],
+];
+check("…the Inteligentny prompt wiring is all present (a vanished piece is not a pass)", SMART_PIECES.every(([piece]) => ws.includes(piece)));
+const wsBefore = SMART_PIECES.reduce((src, [piece, was]) => src.replace(piece, was), ws);
+check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring)",
+  sha(wsBefore.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "07d316d73828d44727ec892747596a47f6b56ff719eb9bfc41fc0e125fdcb769");
 check("…which feeds the screen's own upload and starts nothing", /useHomeHandoff\(\(file\) => \{ void upload\(\[file\], "refs"\); \}\)/.test(RECEIVER)
   && !/generate\(|fetch\(/.test(RECEIVER));
 check("/home has no generation path: no AI route, no provider, no prompt",

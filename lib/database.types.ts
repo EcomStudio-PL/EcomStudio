@@ -7340,6 +7340,9 @@ export type Database = {
       thumbnail_run_status: { Args: { p_run_id: string }; Returns: Json }
       thumbnail_runs_recent: { Args: { p_workspace_id: string; p_limit: number }; Returns: Json }
       thumbnail_run_cancel: { Args: { p_run_id: string }; Returns: Json }
+      /* Inteligentny prompt (migration 0149): the private settings row, for
+         the server only (server_call_ok). Null when the row is missing. */
+      smart_prompt_config_read: { Args: { p_token: string | null }; Returns: Json }
       /* Trial watermark (migration 0143). The binding contract — argument
          names and reply keys — is lib/server/trial-watermark/rpc.ts, which
          parses every reply; the p_token ones are gated by server_call_ok. */

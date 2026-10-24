@@ -50,6 +50,8 @@ import { ThumbnailPromptApproval, ThumbnailSettingsForm } from "@/components/adm
 import { THUMBNAIL_TOOL_KEY } from "@/lib/thumbnail/config";
 import { ToolGuideSection } from "@/components/admin/tool-guide-section";
 import { isGuideTool } from "@/lib/tool-guides";
+import { readSmartPromptAdmin } from "@/lib/server/smart-prompt-admin";
+import { SmartPromptAdminCard } from "@/components/admin/smart-prompt-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -139,7 +141,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
 
       <ToolTabs toolKey={row.key} tabs={tabs} active={tab} label={t("aicc.tabsLabel")} t={t} />
 
-      {tab === "basics" && <BasicsTab supabase={supabase} t={t} row={row} config={config} />}
+      {tab === "basics" && <BasicsTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
       {tab === "engine" && <EngineTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
       {tab === "workflow" && <WorkflowTab supabase={supabase} t={t} row={row} locale={locale} />}
       {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} diag={diag} />}
@@ -158,8 +160,8 @@ type WithConfig = Ctx & { config: Parameters<typeof ToolConfigForm>[0]["initial"
 
 /* ── PODSTAWOWE ───────────────────────────────────────────────────────────*/
 
-async function BasicsTab({ supabase, t, row, config }: WithConfig) {
-  const [services, presets, thumb] = await Promise.all([
+async function BasicsTab({ supabase, t, row, config, locale }: WithConfig & { locale: string }) {
+  const [services, presets, thumb, smart] = await Promise.all([
     readBillingServices(supabase),
     // "Dodaj tło AI" scenes: a private row, readable here because the viewer
     // is an admin (settings_admin_write is FOR ALL).
@@ -168,6 +170,8 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
           .then(({ data }) => parsePresets(data?.value))
       : Promise.resolve(null),
     row.key === THUMBNAIL_TOOL_KEY ? readThumbnailAdmin(supabase) : Promise.resolve(null),
+    // Inteligentny prompt lives in the generator's "Twój prompt" field.
+    row.key === "generator" ? readSmartPromptAdmin(supabase) : Promise.resolve(null),
   ]);
 
   return (
@@ -194,6 +198,7 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
         </Card>
       </div>
     )}
+    {smart && <SmartPromptAdminCard data={smart} t={t} locale={locale} />}
     <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[1fr_320px]">
       <Card className="p-5">
         {!toolHasPromptEngine(row.key) && (

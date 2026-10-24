@@ -4563,6 +4563,38 @@
       "bulkResume": "Fortsetzen",
       "bulkNoProgress": "Die übrigen Bilder konnten gerade nicht freigeschaltet werden. Versuche es gleich noch einmal.",
       "bulkNeedsPlan": "Wähle einen Plan, um das Wasserzeichen zu entfernen."
+    },
+    "smart": {
+      "button": "Intelligenter Prompt",
+      "title": "Die KI macht aus deiner Beschreibung einen präzisen Foto-Prompt. Der Text landet in diesem Feld — du kannst ihn weiter bearbeiten.",
+      "editedTitle": "Den aktuellen Text als neue Beschreibung verwenden und zu einem präzisen Prompt ausbauen.",
+      "againTitle": "Eine andere Version aus deiner ursprünglichen Beschreibung erzeugen.",
+      "emptyHint": "Gib zuerst eine kurze Beschreibung deiner Idee ein (mindestens 3 Zeichen).",
+      "busy": "Prompt wird erstellt…",
+      "again": "Andere Version erzeugen",
+      "restore": "Meine Beschreibung wiederherstellen",
+      "restoreTitle": "Stellt den Text vor der Überarbeitung wieder her — kostenlos.",
+      "restored": "Deine Beschreibung wurde wiederhergestellt.",
+      "done": "Fertig — Version {n} steht im Prompt-Feld. {cost} abgebucht.",
+      "costOne": "{n} Credit",
+      "costFew": "{n} Credits",
+      "costMany": "{n} Credits",
+      "err": {
+        "generic": "Der Prompt konnte nicht erstellt werden. Bitte versuche es erneut.",
+        "unauthenticated": "Deine Sitzung ist abgelaufen — bitte melde dich erneut an.",
+        "invalid_input": "Die Anfrage konnte nicht gesendet werden — lade die Seite neu und versuche es erneut.",
+        "too_short": "Die Beschreibung ist zu kurz — schreib wenigstens ein paar Wörter.",
+        "too_long": "Die Beschreibung ist zu lang — höchstens 4.000 Zeichen.",
+        "unavailable": "Der intelligente Prompt ist vorübergehend nicht verfügbar. Es wurden keine Credits abgebucht.",
+        "feature_unavailable": "Der intelligente Prompt ist vorübergehend nicht verfügbar. Es wurden keine Credits abgebucht.",
+        "maintenance": "Der intelligente Prompt wird gewartet. Bitte versuche es später — es wurden keine Credits abgebucht.",
+        "insufficient_credits": "Nicht genug Credits für den intelligenten Prompt.",
+        "duplicate_request": "Diese Anfrage wird bereits bearbeitet — bitte warte auf das Ergebnis.",
+        "provider_failed": "Das KI-Modell hat nicht geantwortet — deine Credits wurden erstattet. Bitte versuche es erneut.",
+        "empty_result": "Das Modell hat keinen Prompt geliefert — deine Credits wurden erstattet.",
+        "result_too_long": "Das Ergebnis war länger als 4.000 Zeichen — deine Credits wurden erstattet. Bitte versuche es erneut.",
+        "no_workspace": "Arbeitsbereich nicht gefunden — bitte lade die Seite neu."
+      }
     }
   },
   "retouch": {
@@ -6855,6 +6887,66 @@
         "postprocess": "Schritte",
         "yes": "ja",
         "no": "nein"
+      }
+    },
+    "smart": {
+      "title": "Intelligenter Prompt",
+      "sub": "Ein Button im Feld „Dein Prompt“: Ein günstiges Textmodell baut die Beschreibung des Kunden zu einem präzisen Prompt aus, der im selben Feld landet. Jeder Klick (auch „andere Version“) wird einzeln berechnet; ein Modellfehler erstattet die Credits.",
+      "ready": "Bereit",
+      "blocked": "Nicht verfügbar",
+      "saved": "Einstellungen für den intelligenten Prompt gespeichert.",
+      "invalidField": "Bitte prüfe das Feld: {field}.",
+      "enabledHint": "Aus — der Button verschwindet aus dem Editor und der Server lehnt ab, ohne Credits abzubuchen.",
+      "creditsHint": "Preis eines Klicks in Credits (mind. 1). Derselbe wie unter Admin → Dienste.",
+      "modelHint": "Leer = Standardmodell des Anbieters. Eine unbekannte ID fällt auf das nächste Modell des Anbieters zurück.",
+      "modelAutoHint": "Der Automatikmodus nutzt die Planer-Kette (Admin → KI → Modelle) und deren Modell.",
+      "instructionHint": "Leer = integrierte Anweisung. Die Anweisung erreicht nie den Kunden; der Kundentext wird als Daten angehängt.",
+      "instructionPh": "Leer lassen, um die integrierte Anweisung zu verwenden.",
+      "showDefault": "Integrierte Anweisung anzeigen",
+      "hideDefault": "Integrierte Anweisung ausblenden",
+      "copyDefault": "Integrierte zum Bearbeiten übernehmen",
+      "useDefault": "Zur integrierten zurück",
+      "usage": "Letzte {n} Tage",
+      "services": "Dienste und Preise",
+      "field": {
+        "enabled": "Aktiv",
+        "credits": "Preis (Credits)",
+        "provider": "Anbieter",
+        "model": "Modell",
+        "instruction": "Anweisung"
+      },
+      "provider": {
+        "auto": "Automatisch (Planer-Kette)",
+        "google": "Google (Gemini)",
+        "openai": "OpenAI"
+      },
+      "blocker": {
+        "server_unconfigured": "Kein Server-Schlüssel (GROVBASE_SERVER_KEY) — der Server kann keine Credits abbuchen.",
+        "config_unreadable": "Die Einstellungen sind unlesbar oder Migration 0149 ist nicht angewendet.",
+        "service_missing": "Der Dienst smart_prompt fehlt im Katalog (Migration 0149).",
+        "price_unconfigured": "Der Preis muss größer als 0 sein.",
+        "service_disabled": "Der Dienst ist ausgeschaltet.",
+        "maintenance": "Der Dienst ist im Wartungsmodus (Admin → Dienste).",
+        "no_provider": "Der gewählte Anbieter ist nicht aktiv oder hat keinen gespeicherten API-Schlüssel."
+      },
+      "err": {
+        "forbidden": "Keine Berechtigung.",
+        "invalid": "Ungültige Daten.",
+        "migration_pending": "Migration 0149 ist noch nicht angewendet — nichts wurde gespeichert.",
+        "generic": "Speichern fehlgeschlagen. Bitte versuche es erneut."
+      },
+      "u": {
+        "runs": "Erfolgreich / alle",
+        "refunded": "Erstattet / laufend",
+        "credits": "Abgebuchte Credits (netto)",
+        "calls": "Modellanfragen",
+        "failed": "{n} fehlgeschlagen",
+        "tokens": "Tokens ein / aus",
+        "cost": "API-Kosten",
+        "unpriced": "{n} Anfragen ohne Tokenpreis — Kosten unbekannt (nicht 0).",
+        "prices": "Tokenpreise festlegen",
+        "models": "Modelle",
+        "last": "Zuletzt genutzt"
       }
     }
   },

@@ -4563,6 +4563,38 @@
       "bulkResume": "Kontynuuj",
       "bulkNoProgress": "Pozostałych zdjęć nie udało się teraz odblokować. Spróbuj ponownie za chwilę.",
       "bulkNeedsPlan": "Aby usunąć znak wodny, wybierz plan."
+    },
+    "smart": {
+      "button": "Inteligentny prompt",
+      "title": "AI rozwinie Twój opis w precyzyjny prompt fotograficzny. Tekst trafi do tego pola — możesz go dalej edytować.",
+      "editedTitle": "Użyj obecnego tekstu jako nowego opisu i rozwiń go w precyzyjny prompt.",
+      "againTitle": "Wygeneruj inną wersję z Twojego pierwotnego opisu.",
+      "emptyHint": "Wpisz najpierw krótki opis pomysłu (co najmniej 3 znaki).",
+      "busy": "Tworzę prompt…",
+      "again": "Wygeneruj inną wersję",
+      "restore": "Przywróć mój opis",
+      "restoreTitle": "Przywraca tekst sprzed ulepszenia — bez opłaty.",
+      "restored": "Przywrócono Twój opis.",
+      "done": "Gotowe — wersja {n} jest w polu promptu. Pobrano {cost}.",
+      "costOne": "{n} kredyt",
+      "costFew": "{n} kredyty",
+      "costMany": "{n} kredytów",
+      "err": {
+        "generic": "Nie udało się utworzyć promptu. Spróbuj ponownie.",
+        "unauthenticated": "Sesja wygasła — zaloguj się ponownie.",
+        "invalid_input": "Nie udało się wysłać prośby — odśwież stronę i spróbuj ponownie.",
+        "too_short": "Opis jest za krótki — napisz choć kilka słów.",
+        "too_long": "Opis jest za długi — maksymalnie 4000 znaków.",
+        "unavailable": "Inteligentny prompt jest chwilowo niedostępny. Nie pobrano kredytów.",
+        "feature_unavailable": "Inteligentny prompt jest chwilowo niedostępny. Nie pobrano kredytów.",
+        "maintenance": "Inteligentny prompt jest w konserwacji. Spróbuj później — nie pobrano kredytów.",
+        "insufficient_credits": "Za mało kredytów na Inteligentny prompt.",
+        "duplicate_request": "Ta prośba jest już obsługiwana — poczekaj na wynik.",
+        "provider_failed": "Model AI nie odpowiedział — kredyty zostały zwrócone. Spróbuj ponownie.",
+        "empty_result": "Model nie zwrócił promptu — kredyty zostały zwrócone.",
+        "result_too_long": "Wynik przekroczył 4000 znaków — kredyty zostały zwrócone. Spróbuj ponownie.",
+        "no_workspace": "Nie znaleziono przestrzeni roboczej — odśwież stronę."
+      }
     }
   },
   "retouch": {
@@ -6855,6 +6887,66 @@
         "postprocess": "Kroki",
         "yes": "tak",
         "no": "nie"
+      }
+    },
+    "smart": {
+      "title": "Inteligentny prompt",
+      "sub": "Przycisk w polu „Twój prompt”: tani model tekstowy rozwija opis klienta w precyzyjny prompt, który trafia do tego samego pola. Każde kliknięcie (także „inna wersja”) to osobna opłata; błąd modelu zwraca kredyty.",
+      "ready": "Gotowe",
+      "blocked": "Niedostępne",
+      "saved": "Zapisano ustawienia Inteligentnego promptu.",
+      "invalidField": "Sprawdź pole: {field}.",
+      "enabledHint": "Wyłączony — przycisk znika z edytora, a serwer odmawia bez pobierania kredytów.",
+      "creditsHint": "Cena jednego kliknięcia w kredytach (min. 1). Ta sama co w Admin → Usługi.",
+      "modelHint": "Puste = domyślny model dostawcy. Nieznany identyfikator przechodzi na kolejny model z listy dostawcy.",
+      "modelAutoHint": "Tryb automatyczny używa łańcucha planera (Admin → AI → Modele) i jego modelu.",
+      "instructionHint": "Puste = wbudowana instrukcja. Instrukcja nigdy nie trafia do klienta; tekst klienta jest dołączany jako dane.",
+      "instructionPh": "Zostaw puste, aby używać wbudowanej instrukcji.",
+      "showDefault": "Pokaż wbudowaną instrukcję",
+      "hideDefault": "Ukryj wbudowaną instrukcję",
+      "copyDefault": "Wstaw wbudowaną do edycji",
+      "useDefault": "Wróć do wbudowanej",
+      "usage": "Ostatnie {n} dni",
+      "services": "Usługi i ceny",
+      "field": {
+        "enabled": "Włączony",
+        "credits": "Cena (kredyty)",
+        "provider": "Dostawca",
+        "model": "Model",
+        "instruction": "Instrukcja"
+      },
+      "provider": {
+        "auto": "Automatycznie (łańcuch planera)",
+        "google": "Google (Gemini)",
+        "openai": "OpenAI"
+      },
+      "blocker": {
+        "server_unconfigured": "Brak klucza serwera (GROVBASE_SERVER_KEY) — serwer nie może pobierać kredytów.",
+        "config_unreadable": "Ustawienia są nieczytelne lub migracja 0149 nie jest zastosowana.",
+        "service_missing": "Brak usługi smart_prompt w katalogu (migracja 0149).",
+        "price_unconfigured": "Cena musi być większa od 0.",
+        "service_disabled": "Usługa jest wyłączona.",
+        "maintenance": "Usługa jest w trybie konserwacji (Admin → Usługi).",
+        "no_provider": "Wybrany dostawca nie jest aktywny albo nie ma zapisanego klucza API."
+      },
+      "err": {
+        "forbidden": "Brak uprawnień.",
+        "invalid": "Nieprawidłowe dane.",
+        "migration_pending": "Migracja 0149 nie jest jeszcze zastosowana — nic nie zapisano.",
+        "generic": "Nie udało się zapisać. Spróbuj ponownie."
+      },
+      "u": {
+        "runs": "Udane / wszystkie",
+        "refunded": "Zwrócone / w toku",
+        "credits": "Pobrane kredyty (netto)",
+        "calls": "Zapytania do modelu",
+        "failed": "{n} nieudanych",
+        "tokens": "Tokeny wej. / wyj.",
+        "cost": "Koszt API",
+        "unpriced": "{n} zapytań bez ceny tokenów — koszt nieznany (nie 0).",
+        "prices": "Ustaw ceny tokenów",
+        "models": "Modele",
+        "last": "Ostatnie użycie"
       }
     }
   },

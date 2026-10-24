@@ -4563,6 +4563,38 @@
       "bulkResume": "Continue",
       "bulkNoProgress": "The remaining images couldn't be unlocked right now. Try again in a moment.",
       "bulkNeedsPlan": "Choose a plan to remove the watermark."
+    },
+    "smart": {
+      "button": "Smart prompt",
+      "title": "AI turns your description into a precise photographic prompt. The text lands in this field — you can keep editing it.",
+      "editedTitle": "Use the current text as your new description and expand it into a precise prompt.",
+      "againTitle": "Generate another version from your original description.",
+      "emptyHint": "Type a short description of your idea first (at least 3 characters).",
+      "busy": "Writing prompt…",
+      "again": "Generate another version",
+      "restore": "Restore my description",
+      "restoreTitle": "Brings back the text from before the rewrite — free of charge.",
+      "restored": "Your description has been restored.",
+      "done": "Done — version {n} is in the prompt field. {cost} charged.",
+      "costOne": "{n} credit",
+      "costFew": "{n} credits",
+      "costMany": "{n} credits",
+      "err": {
+        "generic": "The prompt could not be created. Please try again.",
+        "unauthenticated": "Your session has expired — please sign in again.",
+        "invalid_input": "The request could not be sent — refresh the page and try again.",
+        "too_short": "The description is too short — write at least a few words.",
+        "too_long": "The description is too long — 4,000 characters at most.",
+        "unavailable": "Smart prompt is temporarily unavailable. No credits were charged.",
+        "feature_unavailable": "Smart prompt is temporarily unavailable. No credits were charged.",
+        "maintenance": "Smart prompt is under maintenance. Please try later — no credits were charged.",
+        "insufficient_credits": "Not enough credits for Smart prompt.",
+        "duplicate_request": "This request is already being handled — please wait for the result.",
+        "provider_failed": "The AI model did not respond — your credits were refunded. Please try again.",
+        "empty_result": "The model returned no prompt — your credits were refunded.",
+        "result_too_long": "The result exceeded 4,000 characters — your credits were refunded. Please try again.",
+        "no_workspace": "Workspace not found — please refresh the page."
+      }
     }
   },
   "retouch": {
@@ -6855,6 +6887,66 @@
         "postprocess": "Steps",
         "yes": "yes",
         "no": "no"
+      }
+    },
+    "smart": {
+      "title": "Smart prompt",
+      "sub": "A button in the “Your prompt” field: a cheap text model expands the customer's description into a precise prompt that lands in the same field. Every click (including “another version”) is a separate charge; a model error refunds the credits.",
+      "ready": "Ready",
+      "blocked": "Unavailable",
+      "saved": "Smart prompt settings saved.",
+      "invalidField": "Check the field: {field}.",
+      "enabledHint": "Off — the button disappears from the editor and the server refuses without charging.",
+      "creditsHint": "Price of one click in credits (min. 1). The same as in Admin → Services.",
+      "modelHint": "Empty = the provider's default model. An unknown id falls through to the provider's next model.",
+      "modelAutoHint": "Automatic mode uses the planner chain (Admin → AI → Models) and its model.",
+      "instructionHint": "Empty = the built-in instruction. The instruction never reaches the customer; the customer's text is attached as data.",
+      "instructionPh": "Leave empty to use the built-in instruction.",
+      "showDefault": "Show the built-in instruction",
+      "hideDefault": "Hide the built-in instruction",
+      "copyDefault": "Copy the built-in one to edit",
+      "useDefault": "Back to the built-in one",
+      "usage": "Last {n} days",
+      "services": "Services and prices",
+      "field": {
+        "enabled": "Enabled",
+        "credits": "Price (credits)",
+        "provider": "Provider",
+        "model": "Model",
+        "instruction": "Instruction"
+      },
+      "provider": {
+        "auto": "Automatic (planner chain)",
+        "google": "Google (Gemini)",
+        "openai": "OpenAI"
+      },
+      "blocker": {
+        "server_unconfigured": "No server key (GROVBASE_SERVER_KEY) — the server cannot charge credits.",
+        "config_unreadable": "The settings are unreadable or migration 0149 is not applied.",
+        "service_missing": "The smart_prompt service is missing from the catalogue (migration 0149).",
+        "price_unconfigured": "The price must be greater than 0.",
+        "service_disabled": "The service is switched off.",
+        "maintenance": "The service is in maintenance mode (Admin → Services).",
+        "no_provider": "The selected provider is not active or has no stored API key."
+      },
+      "err": {
+        "forbidden": "Not allowed.",
+        "invalid": "Invalid data.",
+        "migration_pending": "Migration 0149 is not applied yet — nothing was saved.",
+        "generic": "Could not save. Please try again."
+      },
+      "u": {
+        "runs": "Succeeded / all",
+        "refunded": "Refunded / in progress",
+        "credits": "Credits charged (net)",
+        "calls": "Model requests",
+        "failed": "{n} failed",
+        "tokens": "Tokens in / out",
+        "cost": "API cost",
+        "unpriced": "{n} requests without a token price — cost unknown (not 0).",
+        "prices": "Set token prices",
+        "models": "Models",
+        "last": "Last used"
       }
     }
   },
