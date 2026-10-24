@@ -26,12 +26,12 @@ async function requireAdmin() {
 
 type TicketRow = {
   id: string; ticket_no: number; email: string; topic: string; message: string; locale: string;
-  status: string; user_id: string | null; account: unknown;
+  status: string; user_id: string | null; account: unknown; sender_verified: boolean;
 };
 
 async function readTicket(supabase: Awaited<ReturnType<typeof createClient>>, id: string): Promise<TicketRow | null> {
   const { data } = await supabase.from("contact_messages")
-    .select("id, ticket_no, email, topic, message, locale, status, user_id, account").eq("id", id).maybeSingle();
+    .select("id, ticket_no, email, topic, message, locale, status, user_id, account, sender_verified").eq("id", id).maybeSingle();
   return (data as TicketRow | null) ?? null;
 }
 

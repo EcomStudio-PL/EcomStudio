@@ -235,6 +235,7 @@ const state = {
   calls: [] as Call[], answer: { status: "created", id: "t1", ticket: 1001, duplicate: false } as Record<string, unknown>,
   rpcError: null as null | { code: string; message: string }, user: null as null | { id: string; email: string },
   files: new Map<string, Uint8Array<ArrayBuffer>>(), removed: [] as string[], reads: [] as string[],
+  prior: { status: "none" } as Record<string, unknown>, openShort: false, downloads: [] as string[],
 };
 function chain(table: string): unknown {
   state.reads.push(table);
@@ -257,12 +258,15 @@ function chain(table: string): unknown {
       state.calls.push({ fn, args });
       if (state.rpcError) return { data: null, error: state.rpcError };
       if (fn === "contact_reserve_uploads") return { data: { status: "ok", paths: ["2026-10/11111111-1111-4111-8111-111111111111"] }, error: null };
+      if (fn === "contact_submission_ticket") return { data: state.prior, error: null };
+      if (fn === "contact_attachments_open") return { data: (args.p_paths as string[]).length - (state.openShort ? 1 : 0), error: null };
+      if (fn === "contact_attachment_refuse") return { data: null, error: null };
       return { data: state.answer, error: null };
     },
     from: (table: string) => chain(table),
     storage: {
       from: () => ({
-        download: async (path: string) => state.files.has(path)
+        download: async (path: string) => (state.downloads.push(path), state.files.has(path))
           ? { data: new Blob([state.files.get(path)!]), error: null } : { data: null, error: { message: "not found" } },
         remove: async (paths: string[]) => { state.removed.push(...paths); return { data: null, error: null }; },
       }),
@@ -279,7 +283,8 @@ const post = async (body: Record<string, unknown>, from = `198.51.100.${++ipN}`)
 };
 const SUB = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const good = { submissionId: SUB, topic: "app", name: "Anna", email: "Anna@Example.com", message: "Dzień dobry, mam pytanie o kredyty.", locale: "pl", elapsed: 6000 };
-const last = () => state.calls[state.calls.length - 1];
+const last = () => [...state.calls].reverse().find((c) => c.fn === "contact_submit" || c.fn === "contact_reserve_uploads") ?? state.calls[state.calls.length - 1];
+const submits = () => state.calls.filter((c) => c.fn === "contact_submit");
 
 void (async () => {
   let r = await post(good);
@@ -328,11 +333,21 @@ void (async () => {
   state.calls.length = 0;
   r = await post({ ...good, submissionId: "eeeeeeee-1111-4111-8111-eeeeeeeeeeee", topic: "technical",
     attachments: [{ path: P2, name: "zdjecie.png", size: 10, mime: "image/png" }] });
-  check("an HTML file named .png: refused (attachment_invalid), removed from the bucket, no ticket",
-    r.body.error === "attachment_invalid" && state.removed.includes(P2) && state.calls.length === 0);
+  check("an HTML file named .png: refused (attachment_invalid), marked refused, removed from the bucket, no ticket",
+    r.body.error === "attachment_invalid" && state.removed.includes(P2) && submits().length === 0
+    && state.calls.some((c) => c.fn === "contact_attachment_refuse" && c.args.p_path === P2));
   r = await post({ ...good, submissionId: "eeeeeeee-1111-4111-8111-eeeeeeeeeee2", topic: "technical",
     attachments: [{ path: "2026-10/33333333-3333-4333-8333-333333333333", name: "x.png", size: 10, mime: "image/png" }] });
-  check("a picture that was never uploaded: upload_failed, no ticket", r.body.error === "upload_failed" && state.calls.length === 0);
+  check("a picture that was never uploaded: upload_failed, no ticket", r.body.error === "upload_failed" && submits().length === 0);
+  state.calls.length = 0;
+  state.openShort = true;
+  r = await post({ ...good, submissionId: "eeeeeeee-1111-4111-8111-eeeeeeeeeee3", topic: "technical",
+    attachments: [{ path: P1, name: "a.png", size: 10, mime: "image/png" }] });
+  check("a slot the database will not open for checking (expired, refused, another submission): upload_failed, nothing read",
+    r.body.error === "upload_failed" && submits().length === 0 && !state.calls.some((c) => c.fn === "contact_attachment_refuse"));
+  state.openShort = false;
+  check("…files are opened for checking through the token, with this submission's id",
+    state.calls.some((c) => c.fn === "contact_attachments_open" && c.args.p_submission === "eeeeeeee-1111-4111-8111-eeeeeeeeeee3" && typeof c.args.p_token === "string"));
 
   state.user = { id: "u1", email: "jan@example.com" };
   state.reads.length = 0;
@@ -354,6 +369,16 @@ void (async () => {
   r = await post(good);
   check("a retry of the same submission: the SAME ticket number, ok", r.status === 200 && r.body.ticket === 1001 && r.body.duplicate === true);
   state.answer = { status: "created", id: "t1", ticket: 1001, duplicate: false };
+  state.prior = { status: "found", id: "t9", ticket: 1077 };
+  state.calls.length = 0; state.downloads.length = 0;
+  r = await post({ ...good, submissionId: "a9a9a9a9-1111-4111-8111-a9a9a9a9a9a9", topic: "technical",
+    attachments: [{ path: P1, name: "a.png", size: 10, mime: "image/png" }] });
+  check("a retry after a lost response (ticket already made, files bound): that ticket — no file re-read, no new ticket",
+    r.status === 200 && r.body.ticket === 1077 && r.body.duplicate === true && state.downloads.length === 0 && submits().length === 0);
+  state.prior = { status: "mismatch" };
+  r = await post({ ...good, submissionId: "a9a9a9a9-1111-4111-8111-a9a9a9a9a9a9" });
+  check("…the same submission id with another address: refused", r.status === 400 && r.body.field === "submission" && submits().length === 0);
+  state.prior = { status: "none" };
   state.rpcError = { code: "PGRST202", message: "function not found" };
   r = await post({ ...good, submissionId: "a3a3a3a3-1111-4111-8111-a3a3a3a3a3a3" });
   check("the function missing (migration not applied): 503 unavailable, never „ok”", r.status === 503 && r.body.error === "unavailable");
@@ -448,14 +473,20 @@ void (async () => {
   const fakeDb = { rpc: async () => ({ data: null, error: null }) } as never;
   const mail = await renderConfirmation(fakeDb, null, {
     id: "t1", ticket_no: 1042, email: "anna@example.com", topic: "technical",
-    message: "Generator <b>nie działa</b>.\n\nDrugi akapit.", locale: "pl",
+    message: "Generator <b>nie działa</b>.\n\nDrugi akapit.", locale: "pl", sender_verified: true,
   });
   check("the customer's confirmation: the number in the subject, the topic, the response time",
     Boolean(mail) && /#1042/.test(mail!.subject) && /Problem techniczny/.test(mail!.html) && /1 dnia roboczego/.test(mail!.html));
-  check("…a copy of the message, ESCAPED (no markup from the sender)", /Generator &lt;b&gt;nie działa&lt;\/b&gt;\./.test(mail!.html) && !/<b>nie działa<\/b>/.test(mail!.html)
+  check("…a signed-in author writing from their own address gets a copy of the message, ESCAPED", /Generator &lt;b&gt;nie działa&lt;\/b&gt;\./.test(mail!.html) && !/<b>nie działa<\/b>/.test(mail!.html)
     && /Drugi akapit\./.test(mail!.text));
   check("…no name (the address is not proven)", !/Anna/.test(mail!.html));
-  const en_ = await renderConfirmation(fakeDb, null, { id: "t1", ticket_no: 7, email: "a@b.com", topic: "app", message: "Hello there, a question.", locale: "en" });
+  const guest = await renderConfirmation(fakeDb, null, {
+    id: "t2", ticket_no: 1043, email: "victim@example.com", topic: "other",
+    message: "Kup tanio! https://spam.example/x", locale: "pl", sender_verified: false,
+  });
+  check("…a guest's (unproven) address gets NO copy: nothing a stranger typed is relayed from our mailbox",
+    Boolean(guest) && /#1043/.test(guest!.subject) && !/spam\.example|Kup tanio/.test(guest!.html + guest!.text) && !/Twoja wiadomość/.test(guest!.html));
+  const en_ = await renderConfirmation(fakeDb, null, { id: "t1", ticket_no: 7, email: "a@b.com", topic: "app", message: "Hello there, a question.", locale: "en", sender_verified: false });
   check("…in the language the person wrote in", /ticket #7/i.test(en_!.subject) && /Question about the app/.test(en_!.html) && /1 business day/.test(en_!.html));
   const admin = renderAdminNotification({ eventType: "contact.message", occurredAt: "24.10.2026 10:00",
     title: "[Problem techniczny] #1042 – klient@example.com", icon: "", rows: [["📧 E-mail", "klient@example.com"]] });

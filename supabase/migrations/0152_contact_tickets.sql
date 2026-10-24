@@ -17,13 +17,24 @@
 --   3. contact_attachments: up to three pictures per technical ticket, in a
 --      PRIVATE bucket `contact-attachments` (5 MB, JPG/PNG/WebP). A browser
 --      may upload only to a path the server reserved for its submission a
---      moment earlier (a random name, 30 minutes); once the ticket is sent the
---      file belongs to it and only an admin can read it. No public URL exists.
+--      moment earlier (a random name, 30 minutes). NOBODY can read, list or
+--      delete a pending upload — not even the visitor who sent it — except in
+--      three short windows the SERVER opens through the token: while it checks
+--      the bytes at send time (60 s, and the slot takes no further upload from
+--      then on), a file it refused (removed at once), and an orphan the sweep
+--      has claimed. A list request never sees one (storage.operation()). Once
+--      the ticket is sent the file belongs to it and only an admin can read
+--      it. No public URL exists.
 --   4. the writers, all SECURITY DEFINER and all behind the server token
 --      (server_call_ok, 0077) — so a browser holding the publishable key can
 --      call none of them directly, and every request has passed the route's
 --      honeypot, schema validation, file sniffing and in-memory limiter first:
 --        contact_reserve_uploads   upload slots for one submission
+--        contact_attachments_open  the server's 60-second read of the slots it
+--                                  is about to bind (and the end of uploads)
+--        contact_attachment_refuse a file the server refused, to be removed
+--        contact_submission_ticket the ticket a submission already created
+--                                  (a retry never re-checks bound files)
 --        contact_submit            the ticket (rate limits, dedupe, binding)
 --        contact_confirmation_mark the customer mail's outcome (or an admin)
 --        contact_confirmations_due the cron's retry list (claimed, so a retry
@@ -81,6 +92,10 @@ alter table public.contact_messages
   add column if not exists confirmation_attempts integer not null default 0,
   add column if not exists confirmation_at timestamptz,
   add column if not exists confirmation_error text,
+  -- The ticket's address is the signed-in author's own, proven one: only
+  -- then does the confirmation carry a copy of the message (an unproven
+  -- address must not receive text a stranger typed, from our mailbox).
+  add column if not exists sender_verified boolean not null default false,
   add column if not exists updated_at timestamptz not null default now();
 
 alter sequence public.contact_ticket_no_seq owned by public.contact_messages.ticket_no;
@@ -146,6 +161,11 @@ create table if not exists public.contact_attachments (
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default now() + interval '30 minutes',
   bound_at timestamptz,
+  -- The server's windows (see the header): reading at send time, a refused
+  -- file, an orphan claimed by the sweep.
+  opened_at timestamptz,
+  refused_at timestamptz,
+  purge_at timestamptz,
   constraint contact_attachments_path_check
     check (object_path ~ '^[0-9]{4}-[0-9]{2}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
   constraint contact_attachments_mime_check
@@ -160,6 +180,11 @@ create table if not exists public.contact_attachments (
 create index if not exists contact_attachments_message_idx on public.contact_attachments (message_id);
 create index if not exists contact_attachments_submission_idx on public.contact_attachments (submission_id);
 create index if not exists contact_attachments_ip_recent_idx on public.contact_attachments (ip_hash, created_at desc);
+-- A re-run over a table created by an earlier draft of this file.
+alter table public.contact_attachments
+  add column if not exists opened_at timestamptz,
+  add column if not exists refused_at timestamptz,
+  add column if not exists purge_at timestamptz;
 
 alter table public.contact_attachments enable row level security;
 revoke all on table public.contact_attachments from anon, authenticated;
@@ -169,29 +194,48 @@ create policy contact_attachments_admin_read on public.contact_attachments for s
   to authenticated using (public.is_admin());
 
 -- What the storage policies ask. Definer: the caller cannot read the table.
--- A path is UPLOADABLE (and readable back by the server that sniffs it) only
--- while it is a reserved, unexpired slot no ticket owns yet.
-create or replace function public.contact_attachment_pending(p_name text)
+--
+-- UPLOADABLE: a reserved, unexpired slot no ticket owns, that the server has
+-- not started to check (no swapping a file between the check and the bind).
+create or replace function public.contact_attachment_uploadable(p_name text)
 returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.contact_attachments a
-     where a.object_path = p_name and a.message_id is null and a.expires_at > now());
+     where a.object_path = p_name and a.message_id is null and a.expires_at > now()
+       and a.opened_at is null and a.refused_at is null and a.purge_at is null);
 $$;
 
--- REMOVABLE by the visitor's session (a refused file) or the sweep (an
--- orphan): any slot no ticket owns. A bound file is the admin's alone.
+-- READABLE by a session without the admin role: only inside a window the
+-- server opened with its token — the 60 seconds it reads the bytes at send
+-- time, or a refused / claimed file it is about to remove.
+create or replace function public.contact_attachment_readable(p_name text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.contact_attachments a
+     where a.object_path = p_name and a.message_id is null
+       and (a.opened_at > now() - interval '60 seconds'
+            or a.refused_at > now() - interval '10 minutes'
+            or a.purge_at > now() - interval '10 minutes'));
+$$;
+
+-- REMOVABLE: a file the server refused, or an orphan the sweep claimed.
+-- A bound file is the admin's alone; a pending one nobody's.
 create or replace function public.contact_attachment_removable(p_name text)
 returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.contact_attachments a
-     where a.object_path = p_name and a.message_id is null);
+     where a.object_path = p_name and a.message_id is null
+       and (a.refused_at is not null or a.purge_at is not null));
 $$;
 
-revoke all on function public.contact_attachment_pending(text) from public;
+revoke all on function public.contact_attachment_uploadable(text) from public;
+revoke all on function public.contact_attachment_readable(text) from public;
 revoke all on function public.contact_attachment_removable(text) from public;
-grant execute on function public.contact_attachment_pending(text) to anon, authenticated;
+grant execute on function public.contact_attachment_uploadable(text) to anon, authenticated;
+grant execute on function public.contact_attachment_readable(text) to anon, authenticated;
 grant execute on function public.contact_attachment_removable(text) to anon, authenticated;
 
 -- 4 ─────────────────────────────────────────────────────────────────────────
@@ -232,6 +276,60 @@ begin
     v_paths := v_paths || v_path;
   end loop;
   return jsonb_build_object('status', 'ok', 'paths', to_jsonb(v_paths));
+end $$;
+
+-- The ticket a submission already created — asked FIRST by the route, so a
+-- retry after a lost response answers with it instead of re-reading files
+-- that are already bound (and unreadable). Another address: mismatch.
+create or replace function public.contact_submission_ticket(p_token text, p_submission uuid, p_email text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.contact_messages%rowtype;
+begin
+  if not public.server_call_ok(p_token) then raise exception 'not_allowed' using errcode = '42501'; end if;
+  select * into v_row from public.contact_messages where submission_id = p_submission;
+  if not found then return jsonb_build_object('status', 'none'); end if;
+  if v_row.email <> lower(btrim(coalesce(p_email, ''))) then return jsonb_build_object('status', 'mismatch'); end if;
+  return jsonb_build_object('status', 'found', 'id', v_row.id, 'ticket', v_row.ticket_no);
+end $$;
+
+-- The server is about to read the submission's files to check their bytes:
+-- a 60-second read window, and from now on the slots take no upload. Returns
+-- how many of the paths it opened (all, or the send is refused).
+create or replace function public.contact_attachments_open(p_token text, p_submission uuid, p_paths text[])
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_n integer;
+begin
+  if not public.server_call_ok(p_token) then raise exception 'not_allowed' using errcode = '42501'; end if;
+  update public.contact_attachments
+     set opened_at = now()
+   where object_path = any(coalesce(p_paths, '{}')) and submission_id = p_submission
+     and message_id is null and expires_at > now() and refused_at is null and purge_at is null;
+  get diagnostics v_n = row_count;
+  return v_n;
+end $$;
+
+-- A file whose bytes the server refused: removable (and readable for the
+-- removal) from now on; never bindable.
+create or replace function public.contact_attachment_refuse(p_token text, p_submission uuid, p_path text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.server_call_ok(p_token) then raise exception 'not_allowed' using errcode = '42501'; end if;
+  update public.contact_attachments set refused_at = now()
+   where object_path = p_path and submission_id = p_submission and message_id is null;
 end $$;
 
 -- THE TICKET. Every check the route makes is made again here, because this is
@@ -321,7 +419,9 @@ begin
     return jsonb_build_object('status', 'invalid', 'field', 'client');
   end if;
 
-  -- One address at a time, so two parallel sends cannot both pass the limit.
+  -- One IP hash and one address at a time (always in this order), so
+  -- parallel sends can pass neither limit — not even to different addresses.
+  perform pg_advisory_xact_lock(hashtextextended('contact.submit.ip:' || p_ip_hash, 0));
   perform pg_advisory_xact_lock(hashtextextended('contact.submit:' || v_email, 0));
   select * into v_row from public.contact_messages where submission_id = p_submission;
   if found then
@@ -363,7 +463,8 @@ begin
     if (v_file ->> 'size')::integer > 5242880
        or not exists (select 1 from public.contact_attachments a
                        where a.object_path = v_file ->> 'path' and a.submission_id = p_submission
-                         and a.message_id is null and a.expires_at > now()) then
+                         and a.message_id is null and a.expires_at > now()
+                         and a.opened_at is not null and a.refused_at is null and a.purge_at is null) then
       return jsonb_build_object('status', 'invalid', 'field', 'attachments');
     end if;
   end loop;
@@ -373,14 +474,15 @@ begin
 
   insert into public.contact_messages (
     topic, name, email, message, locale, source, metadata, nip, generation_ref, user_id,
-    account, client, submission_id, ip_hash, message_hash
+    account, client, submission_id, ip_hash, message_hash, sender_verified
   ) values (
     v_topic, v_name, v_email, v_message, v_locale, left(coalesce(p_source, 'kontakt'), 80), '{}'::jsonb,
     case when v_topic = 'payments' then v_nip end,
     case when v_topic = 'technical' then v_gen end,
     v_uid,
     case when v_uid is null then '{}'::jsonb else coalesce(p_account, '{}'::jsonb) end,
-    coalesce(p_client, '{}'::jsonb), p_submission, p_ip_hash, v_hash
+    coalesce(p_client, '{}'::jsonb), p_submission, p_ip_hash, v_hash,
+    v_uid is not null and exists (select 1 from auth.users u where u.id = v_uid and lower(u.email) = v_email)
   )
   returning * into v_row;
 
@@ -425,7 +527,7 @@ end $$;
 -- ('sending') under a skip-locked lock, so two runs cannot send it twice; a
 -- claim older than 30 minutes is a run that died, and is claimable again.
 create or replace function public.contact_confirmations_due(p_token text, p_limit integer default 10)
-returns table (id uuid, ticket_no bigint, email text, topic text, message text, locale text)
+returns table (id uuid, ticket_no bigint, email text, topic text, message text, locale text, sender_verified boolean)
 language plpgsql
 security definer
 set search_path = public
@@ -447,14 +549,15 @@ begin
   ), claimed as (
     update public.contact_messages m set confirmation_status = 'sending', updated_at = now()
       from due where m.id = due.id
-    returning m.id, m.ticket_no, m.email, m.topic, m.message, m.locale
+    returning m.id, m.ticket_no, m.email, m.topic, m.message, m.locale, m.sender_verified
   )
-  select c.id, c.ticket_no, c.email, c.topic, c.message, c.locale from claimed c;
+  select c.id, c.ticket_no, c.email, c.topic, c.message, c.locale, c.sender_verified from claimed c;
 end $$;
 
--- The orphan sweep: slots no ticket took, an hour past their expiry. The
--- cron removes the objects through the Storage API (the delete policy below
--- allows exactly these), then forgets the rows.
+-- The orphan sweep: slots no ticket took, an hour past their expiry, CLAIMED
+-- (purge_at) — which is what lets the session-less cron read and delete them
+-- through the Storage API for the next ten minutes, and nothing else. A
+-- claim older than that (a removal that failed) is claimed again.
 create or replace function public.contact_attachments_expired(p_token text, p_limit integer default 50)
 returns setof text
 language plpgsql
@@ -464,10 +567,17 @@ as $$
 begin
   if not public.server_call_ok(p_token) then raise exception 'not_allowed' using errcode = '42501'; end if;
   return query
-    select a.object_path from public.contact_attachments a
+  with due as (
+    select a.id from public.contact_attachments a
      where a.message_id is null and a.expires_at < now() - interval '1 hour'
+       and (a.purge_at is null or a.purge_at < now() - interval '10 minutes')
      order by a.created_at
-     limit greatest(1, least(coalesce(p_limit, 50), 100));
+     limit greatest(1, least(coalesce(p_limit, 50), 100))
+     for update skip locked
+  )
+  update public.contact_attachments a set purge_at = now()
+    from due where a.id = due.id
+  returning a.object_path;
 end $$;
 
 create or replace function public.contact_attachments_forget(p_token text, p_paths text[])
@@ -481,12 +591,15 @@ declare
 begin
   if not public.server_call_ok(p_token) then raise exception 'not_allowed' using errcode = '42501'; end if;
   delete from public.contact_attachments a
-   where a.object_path = any(coalesce(p_paths, '{}')) and a.message_id is null and a.expires_at < now();
+   where a.object_path = any(coalesce(p_paths, '{}')) and a.message_id is null and a.purge_at is not null;
   get diagnostics v_n = row_count;
   return v_n;
 end $$;
 
 revoke all on function public.contact_reserve_uploads(text, uuid, integer, text) from public;
+revoke all on function public.contact_submission_ticket(text, uuid, text) from public;
+revoke all on function public.contact_attachments_open(text, uuid, text[]) from public;
+revoke all on function public.contact_attachment_refuse(text, uuid, text) from public;
 revoke all on function public.contact_submit(text, uuid, text, text, text, text, text, text, text, jsonb, jsonb, text, jsonb, text) from public;
 revoke all on function public.contact_confirmation_mark(text, uuid, text, text) from public;
 revoke all on function public.contact_confirmations_due(text, integer) from public;
@@ -495,6 +608,9 @@ revoke all on function public.contact_attachments_forget(text, text[]) from publ
 -- anon and authenticated may CALL them; server_call_ok inside is the gate
 -- (the 0102 shape: the route and the cron run with the publishable key).
 grant execute on function public.contact_reserve_uploads(text, uuid, integer, text) to anon, authenticated;
+grant execute on function public.contact_submission_ticket(text, uuid, text) to anon, authenticated;
+grant execute on function public.contact_attachments_open(text, uuid, text[]) to anon, authenticated;
+grant execute on function public.contact_attachment_refuse(text, uuid, text) to anon, authenticated;
 grant execute on function public.contact_submit(text, uuid, text, text, text, text, text, text, text, jsonb, jsonb, text, jsonb, text) to anon, authenticated;
 grant execute on function public.contact_confirmation_mark(text, uuid, text, text) to anon, authenticated;
 grant execute on function public.contact_confirmations_due(text, integer) to anon, authenticated;
@@ -514,11 +630,14 @@ on conflict (id) do update
 
 drop policy if exists contact_attachments_upload on storage.objects;
 create policy contact_attachments_upload on storage.objects for insert to anon, authenticated
-  with check (bucket_id = 'contact-attachments' and public.contact_attachment_pending(name));
+  with check (bucket_id = 'contact-attachments' and public.contact_attachment_uploadable(name));
 
-drop policy if exists contact_attachments_read_pending on storage.objects;
-create policy contact_attachments_read_pending on storage.objects for select to anon, authenticated
-  using (bucket_id = 'contact-attachments' and public.contact_attachment_pending(name));
+-- Never through a LIST: storage.operation() names the Storage API call, and
+-- a listing would otherwise show every name inside an open window.
+drop policy if exists contact_attachments_read_window on storage.objects;
+create policy contact_attachments_read_window on storage.objects for select to anon, authenticated
+  using (bucket_id = 'contact-attachments' and public.contact_attachment_readable(name)
+         and coalesce(storage.operation(), '') !~* '(list|search)');
 
 drop policy if exists contact_attachments_remove_unbound on storage.objects;
 create policy contact_attachments_remove_unbound on storage.objects for delete to anon, authenticated

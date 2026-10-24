@@ -122,8 +122,16 @@ export function readClaimedFiles(raw: unknown): ClaimedFile[] | null {
  * is removed; the others stay until the ticket binds them or the sweep does.
  */
 export async function verifyAttachments(
-  supabase: Client, files: ClaimedFile[],
+  supabase: Client, token: string, submission: string, files: ClaimedFile[],
 ): Promise<{ ok: true; files: VerifiedFile[] } | { ok: false; error: "attachment_invalid" | "upload_failed" }> {
+  if (files.length === 0) return { ok: true, files: [] };
+  // Nobody can read a pending upload (0152) — the server opens a 60-second
+  // window on exactly these slots, which also ends uploads to them: what is
+  // checked now is what gets bound.
+  const { data: opened, error: openError } = await supabase.rpc("contact_attachments_open", {
+    p_token: token, p_submission: submission, p_paths: files.map((f) => f.path),
+  });
+  if (openError || opened !== files.length) return { ok: false, error: "upload_failed" };
   const out: VerifiedFile[] = [];
   for (const f of files) {
     const { data, error } = await supabase.storage.from(CONTACT_BUCKET).download(f.path);
@@ -131,6 +139,8 @@ export async function verifyAttachments(
     const bytes = new Uint8Array(await data.arrayBuffer());
     const mime = sniff(bytes.subarray(0, 64));
     if (bytes.length === 0 || bytes.length > CONTACT_LIMITS.fileBytes || !isContactMime(mime)) {
+      // Refused: marked (never bindable, removable) and removed at once.
+      await supabase.rpc("contact_attachment_refuse", { p_token: token, p_submission: submission, p_path: f.path });
       await supabase.storage.from(CONTACT_BUCKET).remove([f.path]).catch(() => undefined);
       return { ok: false, error: "attachment_invalid" };
     }
@@ -169,12 +179,17 @@ async function confirmationTemplate(supabase: Client, token: string | null, even
 
 export type TicketForMail = {
   id: string; ticket_no: number; email: string; topic: string; message: string; locale: string;
+  /** The address is the signed-in author's own (0152): only then is a copy
+   *  of the message in the mail. */
+  sender_verified: boolean;
 };
 
 /**
  * The customer's confirmation, as it will be sent: the studio's words (no
- * name — the address is not proven, S9), the ticket number, the topic, the
- * response time, and a copy of the message as plain escaped paragraphs.
+ * name, S9), the ticket number, the topic, the response time — and a copy of
+ * the message, as plain escaped paragraphs, ONLY when the address is the
+ * signed-in author's own. A guest's address is unproven: copying their text
+ * into it would let anyone send any words to any inbox from our mailbox.
  */
 export async function renderConfirmation(
   supabase: Client, token: string | null, ticket: TicketForMail,
@@ -196,7 +211,7 @@ export async function renderConfirmation(
       { label: labels.ticket, value: `#${ticket.ticket_no}`, mono: true },
       { label: labels.topic, value: topic },
     ],
-    paragraphs: [labels.copy, ...message.split(/\n\s*\n/)],
+    paragraphs: ticket.sender_verified ? [labels.copy, ...message.split(/\n\s*\n/)] : [],
     footer: roll(def.footer),
     showLogo: def.showLogo,
   });
@@ -293,6 +308,7 @@ export async function retryConfirmations(supabase: Client): Promise<{ sent: numb
   for (const row of data ?? []) {
     const status = await sendConfirmation(supabase, {
       id: row.id, ticket_no: Number(row.ticket_no), email: row.email, topic: row.topic, message: row.message, locale: row.locale,
+      sender_verified: row.sender_verified === true,
     });
     if (status === "sent") sent++; else failed++;
   }
@@ -306,7 +322,24 @@ export async function sweepAttachments(supabase: Client): Promise<number> {
   const { data, error } = await supabase.rpc("contact_attachments_expired", { p_token: token, p_limit: 50 });
   if (error || !data || data.length === 0) return 0;
   const paths = (data as string[]).filter((p) => PATH.test(p));
-  if (paths.length > 0) await supabase.storage.from(CONTACT_BUCKET).remove(paths).catch(() => undefined);
-  const { data: n } = await supabase.rpc("contact_attachments_forget", { p_token: token, p_paths: paths });
+  if (paths.length === 0) return 0;
+  // Claimed (purge_at): the session-less client may read and delete exactly
+  // these for ten minutes. Only what Storage really removed is forgotten — a
+  // file that stayed keeps its row and is claimed again tomorrow. A slot
+  // whose upload never happened has nothing to remove and is forgotten too.
+  const bucket = supabase.storage.from(CONTACT_BUCKET);
+  const { data: removed, error: removeError } = await bucket.remove(paths);
+  if (removeError) return 0;
+  const gone = new Set((removed ?? []).map((o) => o.name));
+  const forget: string[] = [];
+  for (const p of paths) {
+    if (gone.has(p)) { forget.push(p); continue; }
+    // Not removed: either nothing was ever uploaded there (forget the slot),
+    // or the file is still there (keep it — claimed again next run).
+    const still = await bucket.exists(p).catch(() => ({ data: true }));
+    if (still.data === false) forget.push(p);
+  }
+  if (forget.length === 0) return 0;
+  const { data: n } = await supabase.rpc("contact_attachments_forget", { p_token: token, p_paths: forget });
   return typeof n === "number" ? n : 0;
 }

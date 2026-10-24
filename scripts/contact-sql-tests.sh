@@ -92,6 +92,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 create function auth.uid() returns uuid language sql stable as $f$
   select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid
 $f$;
+create table auth.users (id uuid primary key, email text);
 create table public.profiles (id uuid primary key, email text not null default '', role text not null default 'user');
 create table public.app_settings (key text primary key, value jsonb not null default '{}'::jsonb);
 alter table public.app_settings enable row level security;
@@ -104,6 +105,10 @@ create table storage.buckets (id text primary key, name text not null, public bo
 create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id),
   name text, owner uuid, metadata jsonb, created_at timestamptz default now(), unique (bucket_id, name));
 alter table storage.objects enable row level security;
+-- Supabase's own: the Storage API names the call it is making.
+create function storage.operation() returns text language plpgsql stable as $f$
+begin return current_setting('storage.operation', true); end; $f$;
+grant execute on function storage.operation() to anon, authenticated;
 grant select, insert, update, delete on storage.objects to anon, authenticated;
 grant select on storage.buckets to anon, authenticated;
 insert into storage.buckets (id, name, public) values ('media', 'media', true), ('product-images', 'product-images', false);
@@ -175,6 +180,7 @@ create function public.t_user(p_who text, p_role text default 'user') returns uu
 declare v_id uuid := gen_random_uuid();
 begin
   perform public.t_set('uid:' || p_who, v_id::text);
+  insert into auth.users (id, email) values (v_id, p_who || '@example.com');
   insert into public.profiles (id, email, role) values (v_id, p_who || '@example.com', p_role);
   return v_id;
 end $$;
@@ -250,10 +256,12 @@ select public.t_raises('M3  … and an old status', 'postgres',
 select public.t_true('M4  the bucket is private, 5 MB, JPG/PNG/WebP only', 'postgres', $q$
   select public = false and file_size_limit = 5242880 and allowed_mime_types = array['image/jpeg','image/png','image/webp']
     from storage.buckets where id = 'contact-attachments' $q$);
-select public.t_true('M5  every new writer is SECURITY DEFINER with search_path=public', 'postgres', $q$
-  select count(*) = 8 and bool_and(prosecdef and proconfig = '{search_path=public}') from pg_proc
+select public.t_true('M5  every new function is SECURITY DEFINER with search_path=public', 'postgres', $q$
+  select count(*) = 12 and bool_and(prosecdef and proconfig = '{search_path=public}') from pg_proc
    where proname in ('contact_reserve_uploads', 'contact_submit', 'contact_confirmation_mark', 'contact_confirmations_due',
-                     'contact_attachments_expired', 'contact_attachments_forget', 'contact_attachment_pending', 'contact_attachment_removable') $q$);
+                     'contact_attachments_expired', 'contact_attachments_forget', 'contact_attachment_uploadable',
+                     'contact_attachment_readable', 'contact_attachment_removable', 'contact_submission_ticket',
+                     'contact_attachments_open', 'contact_attachment_refuse') $q$);
 select public.t_true('M6  no policy on contact_messages or contact_attachments names anon', 'postgres', $q$
   select not exists (select 1 from pg_policies where tablename in ('contact_messages', 'contact_attachments') and 'anon' = any(roles)) $q$);
 
@@ -299,6 +307,12 @@ select public.t_raises('B5  contact_confirmations_due without the token: not_all
   $q$ select * from public.contact_confirmations_due('nope', 5) $q$, 'not_allowed');
 select public.t_raises('B6  the sweep without the token: not_allowed', 'anon',
   $q$ select * from public.contact_attachments_expired('nope', 5) $q$, 'not_allowed');
+select public.t_raises('B7  opening slots for reading without the token: not_allowed', 'anon',
+  $q$ select public.contact_attachments_open('nope', gen_random_uuid(), array['x']) $q$, 'not_allowed');
+select public.t_raises('B8  refusing a file without the token: not_allowed', 'anon',
+  $q$ select public.contact_attachment_refuse('nope', gen_random_uuid(), 'x') $q$, 'not_allowed');
+select public.t_raises('B9  asking for a submission''s ticket without the token: not_allowed', 'anon',
+  $q$ select public.contact_submission_ticket('nope', gen_random_uuid(), 'a@b.pl') $q$, 'not_allowed');
 
 -- ── C. A TICKET ─────────────────────────────────────────────────────────
 select public.t_keep('c1', 'anon', $q$ select public.t_submit('c1', ' Gosc@Example.com ') $q$);
@@ -314,8 +328,14 @@ select public.t_keep('c3', 'authenticated', $q$ select public.t_submit('c3', 'cu
   'Proszę o fakturę za ostatni miesiąc.', '2.2.2.2', 'PL 123-456-78-90') $q$);
 select public.t_true('C3  a customer''s ticket names THEM (auth.uid()) and keeps the server''s snapshot and the NIP', 'postgres', $q$
   select user_id = public.t_uid('customer') and account = '{"plan":"Pro","credits":120}'::jsonb and nip = 'PL 123-456-78-90'
-     and topic = 'payments'
+     and topic = 'payments' and sender_verified
     from public.contact_messages where id = (public.t_var('c3')::jsonb ->> 'id')::uuid $q$);
+select public.t_true('C3b … sender_verified only for the account''s OWN address; a guest never', 'postgres', $q$
+  select not sender_verified from public.contact_messages where id = (public.t_var('c1')::jsonb ->> 'id')::uuid $q$);
+select public.t_true('C3c the ticket of a submission, for the route: found / mismatch / none', 'anon', $q$
+  select public.contact_submission_ticket(public.t_tok(), md5('c3')::uuid, 'Customer@Example.com ') ->> 'ticket' = public.t_var('c3')::jsonb ->> 'ticket'
+     and public.contact_submission_ticket(public.t_tok(), md5('c3')::uuid, 'other@example.com') ->> 'status' = 'mismatch'
+     and public.contact_submission_ticket(public.t_tok(), md5('never')::uuid, 'a@b.pl') ->> 'status' = 'none' $q$);
 select public.t_keep('c4', 'authenticated', $q$ select public.t_submit('c3', 'customer@example.com', 'payments',
   'Proszę o fakturę za ostatni miesiąc.', '2.2.2.2', 'PL 123-456-78-90') $q$);
 select public.t_true('C4  the SAME submission again is the same ticket (duplicate), not a second one', 'postgres', $q$
@@ -377,8 +397,27 @@ select public.t_raises('D5  … but not to any other path', 'anon',
   $q$ insert into storage.objects (bucket_id, name) values ('contact-attachments', '2026-10/' || gen_random_uuid()) $q$, 'row-level security');
 select public.t_raises('D6  … nor into another bucket', 'anon',
   $q$ insert into storage.objects (bucket_id, name) values ('product-images', public.t_var('d1')::jsonb -> 'paths' ->> 1) $q$, 'row-level security');
-select public.t_true('D7  the server (same session) can read the pending upload back to sniff it', 'anon', $q$
-  select count(*) = 1 from storage.objects where bucket_id = 'contact-attachments' and name = public.t_var('d1')::jsonb -> 'paths' ->> 0 $q$);
+select public.t_true('D4b … and to the second one', 'anon', $q$
+  with i as (insert into storage.objects (bucket_id, name) values ('contact-attachments', public.t_var('d1')::jsonb -> 'paths' ->> 1) returning 1)
+  select count(*) = 1 from i $q$);
+select public.t_true('D7  a PENDING upload: nobody reads it, not even the uploader''s own session', 'anon', $q$
+  select count(*) = 0 from storage.objects where bucket_id = 'contact-attachments' $q$);
+select public.t_true('D7a … nor deletes it', 'anon', $q$
+  with d as (delete from storage.objects where bucket_id = 'contact-attachments' returning 1) select count(*) = 0 from d $q$);
+select public.t_true('D7b the server opens the two slots for checking (token): both opened', 'anon', $q$
+  select public.contact_attachments_open(public.t_tok(), md5('d')::uuid,
+    array[public.t_var('d1')::jsonb -> 'paths' ->> 0, public.t_var('d1')::jsonb -> 'paths' ->> 1, '2026-10/00000000-0000-4000-8000-000000000000']) = 2 $q$);
+select public.t_true('D7c … another submission cannot open them', 'anon', $q$
+  select public.contact_attachments_open(public.t_tok(), md5('zzz')::uuid, array[public.t_var('d1')::jsonb -> 'paths' ->> 0]) = 0 $q$);
+select public.t_true('D7d inside the window the server reads the bytes', 'anon', $q$
+  select count(*) = 2 from storage.objects where bucket_id = 'contact-attachments' $q$);
+select public.t_true('D7e … but a LIST through the Storage API never shows them', 'anon', $q$
+  with s as (select set_config('storage.operation', 'storage.object.list', true))
+  select (select count(*) from s) = 1 and (select count(*) from storage.objects where bucket_id = 'contact-attachments') = 0 $q$);
+select public.t_raises('D7f an opened slot takes no further upload (no swap between check and bind)', 'anon',
+  $q$ insert into storage.objects (bucket_id, name) values ('contact-attachments', 'x') $q$, 'row-level security');
+select public.t_true('D7g … and an opened file cannot be deleted by a visitor', 'anon', $q$
+  with d as (delete from storage.objects where bucket_id = 'contact-attachments' returning 1) select count(*) = 0 from d $q$);
 select public.t_true('D8  files: another submission''s slot, a bad type, too big, twice the same path — all refused', 'anon', $q$
   select public.t_submit('d-other', 'd@example.com', 'technical', p_files => jsonb_build_array(jsonb_build_object(
            'path', public.t_var('d1')::jsonb -> 'paths' ->> 0, 'name', 'a.png', 'mime', 'image/png', 'size', 100))) ->> 'field' = 'attachments'
@@ -404,7 +443,7 @@ select public.t_true('D9  a technical ticket with two files: created, both bound
      and (select file_name = 'zrzut ekranu.png' and mime = 'image/png' and size_bytes = 2048 from public.contact_attachments
            where object_path = public.t_var('d1')::jsonb -> 'paths' ->> 0)
      and (select generation_ref = 'gen_123' from public.contact_messages where id = (public.t_var('d9')::jsonb ->> 'id')::uuid) $q$);
-select public.t_true('D10 once bound, anon can no longer read the file', 'anon', $q$
+select public.t_true('D10 once bound, anon can no longer read the files', 'anon', $q$
   select count(*) = 0 from storage.objects where bucket_id = 'contact-attachments' $q$);
 select public.t_true('D11 … nor delete it (0 rows)', 'anon', $q$
   with d as (delete from storage.objects where bucket_id = 'contact-attachments' returning 1) select count(*) = 0 from d $q$);
@@ -417,17 +456,28 @@ select public.t_true('D14 a customer cannot read the file or the rows', 'authent
   select (select count(*) from storage.objects where bucket_id = 'contact-attachments') = 0
      and (select count(*) from public.contact_attachments) = 0 $q$);
 select public.t_be('admin');
-select public.t_true('D15 an admin reads the file and the rows', 'authenticated', $q$
-  select (select count(*) from storage.objects where bucket_id = 'contact-attachments') = 1
+select public.t_true('D15 an admin reads the files and the rows', 'authenticated', $q$
+  select (select count(*) from storage.objects where bucket_id = 'contact-attachments') = 2
      and (select count(*) from public.contact_attachments where message_id is not null) = 2 $q$);
 select public.t_be('anon');
-select public.t_true('D16 a refused upload (unbound slot) can be removed by the visitor''s session', 'anon', $q$
-  with i as (insert into storage.objects (bucket_id, name) values ('contact-attachments', public.t_var('d1')::jsonb -> 'paths' ->> 2) returning 1),
-       n as (select count(*) c from i)
-  select (select c from n) = 1 $q$);
-select public.t_true('D16b (removed)', 'anon', $q$
-  with d as (delete from storage.objects where bucket_id = 'contact-attachments' and name = public.t_var('d1')::jsonb -> 'paths' ->> 2 returning 1)
+select public.t_keep('d16', 'anon', $q$ select public.contact_reserve_uploads(public.t_tok(), md5('d16')::uuid, 2, public.t_ip('4.4.4.4')) $q$);
+select public.t_true('D16 a refused file: uploaded, opened, refused by the server …', 'anon', $q$
+  with i as (insert into storage.objects (bucket_id, name) values ('contact-attachments', public.t_var('d16')::jsonb -> 'paths' ->> 0) returning 1)
+  select (select count(*) from i) = 1 $q$);
+select public.t_true('D16b (opened and refused through the token)', 'anon', $q$
+  select public.contact_attachments_open(public.t_tok(), md5('d16')::uuid, array[public.t_var('d16')::jsonb -> 'paths' ->> 0]) = 1
+     and (select true from (select public.contact_attachment_refuse(public.t_tok(), md5('d16')::uuid, public.t_var('d16')::jsonb -> 'paths' ->> 0)) x) $q$);
+select public.t_true('D16c … is never bindable', 'anon', $q$
+  select public.t_submit('d16', 'd16@example.com', 'technical', p_files => jsonb_build_array(jsonb_build_object(
+    'path', public.t_var('d16')::jsonb -> 'paths' ->> 0, 'name', 'a.png', 'mime', 'image/png', 'size', 10))) ->> 'field' = 'attachments' $q$);
+select public.t_true('D16d … and is removed (the delete the route makes)', 'anon', $q$
+  with d as (delete from storage.objects where bucket_id = 'contact-attachments' and name = public.t_var('d16')::jsonb -> 'paths' ->> 0 returning 1)
   select count(*) = 1 from d $q$);
+select public.t_true('D17 a slot uploaded but never opened cannot be bound (the bytes were never checked)', 'anon', $q$
+  with i as (insert into storage.objects (bucket_id, name) values ('contact-attachments', public.t_var('d16')::jsonb -> 'paths' ->> 1) returning 1)
+  select (select count(*) from i) = 1
+     and public.t_submit('d16', 'd16@example.com', 'technical', p_files => jsonb_build_array(jsonb_build_object(
+           'path', public.t_var('d16')::jsonb -> 'paths' ->> 1, 'name', 'a.png', 'mime', 'image/png', 'size', 10))) ->> 'field' = 'attachments' $q$);
 
 -- ── E. CONFIRMATIONS AND THE SWEEP ──────────────────────────────────────
 select public.t_true('E1  the server marks a confirmation failed (attempts +1, error scrubbed)', 'anon', $q$
@@ -451,11 +501,26 @@ select public.t_be('anon');
 -- Age the unused slots past expiry + 1h, then sweep.
 update public.contact_attachments set expires_at = now() - interval '2 hours', created_at = now() - interval '3 hours'
  where message_id is null;
-select public.t_true('E7  the sweep lists only unbound, expired slots', 'postgres', $q$
-  select count(*) > 0 and bool_and(p not in (select object_path from public.contact_attachments where message_id is not null))
-    from public.contact_attachments_expired(public.t_tok(), 100) p $q$);
-select public.t_true('E8  … forgets them, never a bound one', 'anon', $q$
-  select public.contact_attachments_forget(public.t_tok(), (select array_agg(p) from public.contact_attachments_expired(public.t_tok(), 100) p)) > 0 $q$);
+select public.t_true('E7a before the sweep claims them, an expired orphan is still unreadable', 'anon', $q$
+  select count(*) = 0 from storage.objects where bucket_id = 'contact-attachments' and name = public.t_var('d16')::jsonb -> 'paths' ->> 1 $q$);
+select public.t_keep('e7', 'postgres', $q$ select to_jsonb(array_agg(p)) from public.contact_attachments_expired(public.t_tok(), 100) p $q$);
+select public.t_true('E7  the sweep claims only unbound, expired slots', 'postgres', $q$
+  select jsonb_array_length(public.t_var('e7')::jsonb) > 0
+     and not exists (select 1 from jsonb_array_elements_text(public.t_var('e7')::jsonb) p
+                      where p in (select object_path from public.contact_attachments where message_id is not null))
+     and (select bool_and(purge_at is not null) from public.contact_attachments
+           where object_path in (select jsonb_array_elements_text(public.t_var('e7')::jsonb))) $q$);
+select public.t_true('E7b … a second run right after claims none of them again', 'postgres', $q$
+  select count(*) = 0 from public.contact_attachments_expired(public.t_tok(), 100) $q$);
+select public.t_true('E7c a claimed orphan is removable by the session-less cron (read + delete)', 'anon', $q$
+  with d as (delete from storage.objects where bucket_id = 'contact-attachments' and name = public.t_var('d16')::jsonb -> 'paths' ->> 1 returning 1)
+  select count(*) = 1 from d $q$);
+select public.t_true('E7d … but not through a LIST', 'anon', $q$
+  with s as (select set_config('storage.operation', 'storage.object.list', true))
+  select (select count(*) from s) = 1 and (select count(*) from storage.objects where bucket_id = 'contact-attachments') = 0 $q$);
+select public.t_true('E8  … the claimed rows are forgotten, never a bound one', 'anon', $q$
+  select public.contact_attachments_forget(public.t_tok(),
+    (select array_agg(p) from jsonb_array_elements_text(public.t_var('e7')::jsonb) p)) > 0 $q$);
 select public.t_true('E8b (bound files still there)', 'postgres', $q$
   select (select count(*) from public.contact_attachments where message_id is not null) = 2
      and (select count(*) from public.contact_attachments where message_id is null) = 0 $q$);

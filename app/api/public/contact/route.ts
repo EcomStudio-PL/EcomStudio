@@ -107,7 +107,23 @@ export async function POST(request: Request) {
   if (!token || !hash) return refuse("unavailable", 503);
 
   const supabase = await createClient();
-  const verified = await verifyAttachments(supabase, claimed);
+  // A retry of a submission that already made its ticket (a lost response,
+  // a second click): that ticket, before anything else — its files are bound
+  // by now and nobody but an admin can read them again.
+  if (!legacy) {
+    const { data: prior, error: priorError } = await supabase.rpc("contact_submission_ticket", {
+      p_token: token, p_submission: submissionId, p_email: input.email,
+    });
+    if (priorError) {
+      console.error("contact.prior", priorError.code ?? "-");
+      return refuse(priorError.code === "PGRST202" || priorError.code === "42883" || priorError.code === "42501" ? "unavailable" : "generic", 503);
+    }
+    const p = (prior ?? {}) as { status?: string; ticket?: number };
+    if (p.status === "found" && typeof p.ticket === "number") return NextResponse.json({ ok: true, ticket: p.ticket, duplicate: true });
+    if (p.status === "mismatch") return refuse("invalid", 400, { field: "submission" });
+  }
+
+  const verified = await verifyAttachments(supabase, token, submissionId, claimed);
   if (!verified.ok) return refuse(verified.error, 400);
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -158,6 +174,9 @@ export async function POST(request: Request) {
       id: result.id, ticket_no: result.ticket, email: input.email, topic, message: input.message.trim(), locale,
       name: input.name.trim(), nip: input.nip.trim() || null, generation: input.generation.trim() || null,
       files: verified.files.length, account, userId: user?.id ?? null,
+      // The same rule the database applied (0152 sender_verified): the
+      // signed-in author writing from their own address.
+      sender_verified: Boolean(user?.email && user.email.toLowerCase() === input.email),
     };
     after(() => deliverTicket(supabase, ticket));
   }

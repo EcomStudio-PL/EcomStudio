@@ -163,8 +163,9 @@ export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // form, per language (lib/server/contact-tickets.ts). NO delivery switch
   // and no name: it goes to an address nobody has proven yet (S9), and it
   // carries what the person needs — the ticket number, the topic and when to
-  // expect an answer. The copy of their message is always appended by the
-  // code, under the template's words, as escaped paragraphs.
+  // expect an answer. A copy of their message is appended by the code, under
+  // the template's words, only when the address is the signed-in author's own
+  // (contact_messages.sender_verified) — never to an unproven address.
   entry("contact.confirmation", "email", "app", "tpl.contactConfirm", "tpl.gMail", true, CONTACT_PLACEHOLDERS),
   entry("contact.confirmation_en", "email", "app", "tpl.contactConfirmEn", "tpl.gMail", true, CONTACT_PLACEHOLDERS),
   entry("contact.confirmation_de", "email", "app", "tpl.contactConfirmDe", "tpl.gMail", true, CONTACT_PLACEHOLDERS),
@@ -324,7 +325,7 @@ const DEFAULTS: Record<string, TemplateDef> = {
   "contact.confirmation:email": { channel: "email", email: {
     subject: "Otrzymaliśmy Twoją wiadomość — zgłoszenie #{{ticket}}",
     heading: "Dziękujemy za wiadomość",
-    body: "Twoje zgłoszenie #{{ticket}} ({{topic}}) trafiło do zespołu GrovBase. Odpowiemy w ciągu {{response_time}} na ten adres e-mail. Poniżej znajdziesz kopię wiadomości.",
+    body: "Twoje zgłoszenie #{{ticket}} ({{topic}}) trafiło do zespołu GrovBase. Odpowiemy w ciągu {{response_time}} na ten adres e-mail.",
     ctaLabel: "", ctaUrl: "",
     footer: "GrovBase",
     showLogo: true, showFields: true, showCta: false,
@@ -332,7 +333,7 @@ const DEFAULTS: Record<string, TemplateDef> = {
   "contact.confirmation_en:email": { channel: "email", email: {
     subject: "We have received your message — ticket #{{ticket}}",
     heading: "Thank you for your message",
-    body: "Your ticket #{{ticket}} ({{topic}}) has reached the GrovBase team. We will reply within {{response_time}} to this e-mail address. A copy of your message is below.",
+    body: "Your ticket #{{ticket}} ({{topic}}) has reached the GrovBase team. We will reply within {{response_time}} to this e-mail address.",
     ctaLabel: "", ctaUrl: "",
     footer: "GrovBase",
     showLogo: true, showFields: true, showCta: false,
@@ -340,7 +341,7 @@ const DEFAULTS: Record<string, TemplateDef> = {
   "contact.confirmation_de:email": { channel: "email", email: {
     subject: "Wir haben deine Nachricht erhalten — Ticket #{{ticket}}",
     heading: "Danke für deine Nachricht",
-    body: "Dein Ticket #{{ticket}} ({{topic}}) ist beim GrovBase-Team angekommen. Wir antworten innerhalb von {{response_time}} an diese E-Mail-Adresse. Unten findest du eine Kopie deiner Nachricht.",
+    body: "Dein Ticket #{{ticket}} ({{topic}}) ist beim GrovBase-Team angekommen. Wir antworten innerhalb von {{response_time}} an diese E-Mail-Adresse.",
     ctaLabel: "", ctaUrl: "",
     footer: "GrovBase",
     showLogo: true, showFields: true, showCta: false,

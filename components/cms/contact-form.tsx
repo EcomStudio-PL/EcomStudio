@@ -214,8 +214,10 @@ export function ContactForm({
         formRef.current?.querySelector<HTMLElement>(`[name="${body.field}"]`)?.focus();
         return;
       }
-      if (body.error === "attachment_invalid") {
-        // The route removed the picture it refused; the next try reserves anew.
+      if (body.error === "attachment_invalid" || body.error === "upload_failed") {
+        // The route refused (and removed) a picture, or could not read one;
+        // its slots take no new upload once checked, so the next try
+        // reserves and uploads anew.
         uploaded.current.clear();
       }
       setFormError(t(`cms.contact.err.${body.error && SERVER_ERRORS.has(body.error) ? body.error : "generic"}`));

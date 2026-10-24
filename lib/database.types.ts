@@ -1501,6 +1501,7 @@ export type Database = {
           nip: string | null
           source: string | null
           status: string
+          sender_verified: boolean
           submission_id: string | null
           ticket_no: number
           topic: string
@@ -1529,6 +1530,7 @@ export type Database = {
           nip?: string | null
           source?: string | null
           status?: string
+          sender_verified?: boolean
           submission_id?: string | null
           ticket_no?: number
           topic?: string
@@ -1557,6 +1559,7 @@ export type Database = {
           nip?: string | null
           source?: string | null
           status?: string
+          sender_verified?: boolean
           submission_id?: string | null
           ticket_no?: number
           topic?: string
@@ -1591,6 +1594,9 @@ export type Database = {
           message_id: string | null
           mime: string | null
           object_path: string
+          opened_at: string | null
+          purge_at: string | null
+          refused_at: string | null
           size_bytes: number | null
           submission_id: string
         }
@@ -1604,6 +1610,9 @@ export type Database = {
           message_id?: string | null
           mime?: string | null
           object_path: string
+          opened_at?: string | null
+          purge_at?: string | null
+          refused_at?: string | null
           size_bytes?: number | null
           submission_id: string
         }
@@ -1617,6 +1626,9 @@ export type Database = {
           message_id?: string | null
           mime?: string | null
           object_path?: string
+          opened_at?: string | null
+          purge_at?: string | null
+          refused_at?: string | null
           size_bytes?: number | null
           submission_id?: string
         }
@@ -8414,6 +8426,7 @@ export type Database = {
           topic: string
           message: string
           locale: string
+          sender_verified: boolean
         }[]
       }
       contact_attachments_expired: {
@@ -8424,9 +8437,25 @@ export type Database = {
         Args: { p_token: string; p_paths: string[] }
         Returns: number
       }
-      contact_attachment_pending: {
+      contact_attachment_uploadable: {
         Args: { p_name: string }
         Returns: boolean
+      }
+      contact_attachment_readable: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
+      contact_submission_ticket: {
+        Args: { p_token: string; p_submission: string; p_email: string }
+        Returns: Json
+      }
+      contact_attachments_open: {
+        Args: { p_token: string; p_submission: string; p_paths: string[] }
+        Returns: number
+      }
+      contact_attachment_refuse: {
+        Args: { p_token: string; p_submission: string; p_path: string }
+        Returns: undefined
       }
       contact_attachment_removable: {
         Args: { p_name: string }
