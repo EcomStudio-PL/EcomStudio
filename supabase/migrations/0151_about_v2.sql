@@ -8,6 +8,10 @@
 -- page draws neutral canvases until then. The sixth value and the questions
 -- about photos and company details are switched OFF and hold placeholders —
 -- the renderer never shows a "[…]" text, switched on or not.
+--
+-- ORDER: the code that renders about_* sections must be LIVE first (an older
+-- build draws nothing for them — /o-nas would be a header and a footer), and
+-- 0150 must be applied before anyone uses "Widoczność" on the page.
 
 do $about$
 declare

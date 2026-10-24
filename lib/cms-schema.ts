@@ -1,5 +1,5 @@
 import type { CmsBlockContent, LocaleText } from "./cms";
-import { ABOUT_BLOCK_SLOTS, ABOUT_TYPES, type AboutType } from "./about-page";
+import { ABOUT_BLOCK_SLOTS, ABOUT_ITEM_SLOTS, ABOUT_TYPES, type AboutType } from "./about-page";
 import { SECTION_DEFAULT_SHOWN, sectionKey, type LaunchSection } from "./launch/fields";
 
 /**
@@ -49,7 +49,7 @@ export type FieldDef = {
    *  "Widoczny" switch per row; `points` — a list of points per row (each
    *  switchable); `plain` — no link and no picture per row (the section's
    *  pictures are media slots, its links are not per item). */
-  items?: { hideable?: boolean; points?: boolean; plain?: boolean };
+  items?: { hideable?: boolean; points?: boolean; plain?: boolean; slots?: readonly string[] };
   /** slots: the media slot keys the section paints. */
   slots?: readonly string[];
 };
@@ -73,7 +73,7 @@ const CTA = [f("ctaLabel", "text", "ctaLabel"), f("ctaUrl", "url", "ctaUrl")];
 const IMAGE = [f("mediaUrl", "media", "image")];
 
 /** An O nas list: hideable rows, no per-row link or picture. */
-function aboutItems(label: string, opts: { hideable?: boolean; points?: boolean }, hint?: string): FieldDef {
+function aboutItems(label: string, opts: { hideable?: boolean; points?: boolean; slots?: readonly string[] }, hint?: string): FieldDef {
   return { ...f("items", "items", label, hint ?? "aboutItemsHint"), items: { ...opts, plain: true } };
 }
 
@@ -255,8 +255,8 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
     ...CTA, aboutSlots("about_importance"),
   ],
   about_values: [f("badge", "text", "badge"), HEADING, aboutItems("aboutValues", { hideable: true })],
-  about_audience: [f("badge", "text", "badge"), HEADING, aboutItems("aboutCards", { hideable: true, points: true }, "aboutCardsHint")],
-  about_team: [f("badge", "text", "badge"), HEADING, aboutItems("aboutPeople", { hideable: true }, "aboutPeopleHint")],
+  about_audience: [f("badge", "text", "badge"), HEADING, aboutItems("aboutCards", { hideable: true, points: true, slots: ABOUT_ITEM_SLOTS.about_audience }, "aboutCardsHint")],
+  about_team: [f("badge", "text", "badge"), HEADING, aboutItems("aboutPeople", { hideable: true, slots: ABOUT_ITEM_SLOTS.about_team }, "aboutPeopleHint")],
   about_faq: [f("badge", "text", "badge"), HEADING, aboutItems("questions", { hideable: true }, "aboutFaqHint")],
   about_cta: [
     HEADING, f("subtitle", "textarea", "subheading"),

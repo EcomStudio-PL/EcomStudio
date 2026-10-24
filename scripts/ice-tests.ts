@@ -2296,6 +2296,7 @@ async function sectionM() {
     const sql = readFileSync("supabase/migrations/0150_cms_inline_visibility.sql", "utf8");
     check("M11 0150: admin only, about_* only, the five item sections, points only on audience, draft_diverged, CAS, versions, no anon",
       /if not public\.is_admin\(\)/.test(sql) && /left\(v_block\.type, 6\) <> 'about_'/.test(sql)
+      && /array_ndims\(p_path\) <> 1 or array_position\(p_path, null\) is not null/.test(sql) && /not coalesce\(/.test(sql)
       && /'about_process', 'about_values', 'about_audience', 'about_team', 'about_faq'/.test(sql)
       && /v_len = 4 and v_block\.type <> 'about_audience'/.test(sql) && /raise exception 'draft_diverged'/.test(sql)
       && /v_block\.updated_at <> p_base/.test(sql) && /insert into public\.cms_page_versions/.test(sql)

@@ -48,12 +48,17 @@ declare
 begin
   if not public.is_admin() then raise exception 'not_admin' using errcode = '42501'; end if;
   if p_hidden is null then raise exception 'bad_input'; end if;
-  if not (
-    v_len = 0
-    or (v_len = 2 and p_path[1] = 'items' and p_path[2] ~ '^[0-9]{1,3}$')
-    or (v_len = 4 and p_path[1] = 'items' and p_path[2] ~ '^[0-9]{1,3}$'
-        and p_path[3] = 'points' and p_path[4] ~ '^[0-9]{1,3}$')
-  ) then
+  -- A one-dimensional list with no NULL in it, of one of the three shapes.
+  -- coalesce: a NULL element would make the shape test NULL, and "if not
+  -- NULL" would let it through.
+  if p_path is null
+     or (v_len > 0 and (array_ndims(p_path) <> 1 or array_position(p_path, null) is not null))
+     or not coalesce(
+       v_len = 0
+       or (v_len = 2 and p_path[1] = 'items' and p_path[2] ~ '^[0-9]{1,3}$')
+       or (v_len = 4 and p_path[1] = 'items' and p_path[2] ~ '^[0-9]{1,3}$'
+           and p_path[3] = 'points' and p_path[4] ~ '^[0-9]{1,3}$'),
+       false) then
     raise exception 'bad_path';
   end if;
 

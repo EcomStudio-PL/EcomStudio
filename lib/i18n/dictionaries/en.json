@@ -1774,6 +1774,8 @@
     }
   },
   "cms": {
+    "label.itemSlotPick": "Item picture",
+    "label.itemSlotNone": "— no picture —",
     "sectionType.about_hero": "About: header",
     "sectionType.about_story": "About: our story",
     "sectionType.about_process": "About: how it works",

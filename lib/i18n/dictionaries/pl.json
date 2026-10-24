@@ -1774,6 +1774,8 @@
     }
   },
   "cms": {
+    "label.itemSlotPick": "Zdjęcie elementu",
+    "label.itemSlotNone": "— bez zdjęcia —",
     "sectionType.about_hero": "O nas: nagłówek",
     "sectionType.about_story": "O nas: historia",
     "sectionType.about_process": "O nas: jak to działa",

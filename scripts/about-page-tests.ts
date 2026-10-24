@@ -102,7 +102,7 @@ for (const l of LOCALES) {
   const missing = ABOUT_TYPES.flatMap((type) => fieldsFor(type).flatMap((f) => [f.label, f.hint].filter(Boolean) as string[]))
     .filter((k) => !lookup(DICTS[l], `cms.label.${k}`));
   const keys = ["cms.label.itemVisible", "cms.label.itemPlaceholder", "cms.label.itemSlot", "cms.label.aboutPoints", "cms.label.aboutAddPoint",
-    "cms.label.aboutPoint", "cms.label.aboutVideoOk", "cms.label.aboutPicturesOpen", "cms.sectionGroup.about", "media.section.about",
+    "cms.label.aboutPoint", "cms.label.itemSlotPick", "cms.label.itemSlotNone", "cms.label.aboutVideoOk", "cms.label.aboutPicturesOpen", "cms.sectionGroup.about", "media.section.about",
     "ice.bar.visibility", "ice.vis.title", "ice.vis.intro", "ice.vis.sectionOff", "ice.vis.editText", "ice.vis.placeholder",
     "ice.vis.versionNote", "ice.vis.hiddenNow", "ice.vis.shownNow", "ice.vis.hidden", "ice.vis.shown", "ice.field.point"]
     .filter((k) => !lookup(DICTS[l], k));
@@ -124,6 +124,10 @@ check("builder: about lists have a switch per row and no per-row link or picture
     const items = fieldsFor(t).find((f) => f.kind === "items")!;
     return items.items?.hideable === true && items.items.plain === true && (items.items.points === true) === (t === "about_audience");
   }));
+check("builder: a card or a person picks its picture from exactly its section's item slots",
+  JSON.stringify(fieldsFor("about_audience").find((f) => f.kind === "items")?.items?.slots) === JSON.stringify(["about.audience.small", "about.audience.large"])
+  && JSON.stringify(fieldsFor("about_team").find((f) => f.kind === "items")?.items?.slots) === JSON.stringify(["about.team.jakub", "about.team.marcel"])
+  && !fieldsFor("about_values").find((f) => f.kind === "items")?.items?.slots);
 check("builder: the picture rows list exactly each section's block slots, and are in the quick fields",
   (["about_hero", "about_story", "about_importance"] as const).every((t) => {
     const row = fieldsFor(t).find((f) => f.kind === "slots");
@@ -215,6 +219,15 @@ check("the frames carry data-config-key (what the inline editor finds) and reser
 
 /* ── C ────────────────────────────────────────────────────────────────────── */
 
+{
+  const blocks = seedBlocks().filter((b) => b.type !== "about_hero");
+  const out = render("pl", blocks);
+  check("hero switched off: the next section (story) owns the one <h1>, painted at once",
+    count(out, /<h1[\s>]/g) === 1 && /<h1[^>]*>Skąd się wzięliśmy<\/h1>/.test(out)
+    && /<div class="lg:order-1"><h1/.test(out)
+    && /<h2[^>]*>Projektuje grafik, wykonuje AI<\/h2>/.test(out));
+}
+
 section("C. WHAT A VISITOR NEVER RECEIVES");
 const SECRET: Record<Locale, string[]> = {
   pl: ["treść do potwierdzenia", "nazwa firmy", "[miasto]", "NIP", "Twoje zdjęcia są Twoje", "Co dzieje się z moimi zdjęciami", "Dane firmy"],
@@ -269,7 +282,8 @@ for (const l of LOCALES) {
 }
 check("publicText / shownItems: a gap is never text; a hidden or untitled item is never an item",
   publicText({ pl: "[treść do potwierdzenia]" }, "pl") === "" && publicText({ pl: "  Tekst " }, "pl") === "Tekst"
-  && hasPlaceholder("NIP [numer]") && !hasPlaceholder("Cena [PLN] bez") === false
+  && hasPlaceholder("NIP [numer]") && hasPlaceholder(`[${"długa notatka ".repeat(10)}]`) && hasPlaceholder("Tekst [do\npotwierdzenia] dalej")
+  && !hasPlaceholder("Bez nawiasów") && !hasPlaceholder("[]")
   && shownItems([{ title: { pl: "A" } }, { hidden: true, title: { pl: "B" } }, { title: { pl: "" } }, { title: { pl: "C" }, badge: { pl: "[rola]" } }] as CmsItem[], "pl").length === 1);
 {
   // In "Edytuj stronę" the texts carry invisible markers; the JSON-LD and the

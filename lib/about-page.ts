@@ -132,8 +132,10 @@ export const ABOUT_POINT_ITEMS: ReadonlySet<string> = new Set(["about_audience"]
 /* ── placeholders ───────────────────────────────────────────────────────── */
 
 /** "[treść do potwierdzenia]", "[nazwa firmy]", "NIP [numer]" — a bracketed
- *  run of words is a gap still to be filled, never copy. */
-const PLACEHOLDER = /\[[^[\]\n]{1,80}\]/;
+ *  run of words is a gap still to be filled, never copy. Any length, across
+ *  lines too: a long note to self in brackets is still not copy, and leaving
+ *  a real bracket out costs nothing next to publishing a gap. */
+const PLACEHOLDER = /\[[^[\]]+\]/;
 
 export function hasPlaceholder(text: string | undefined | null): boolean {
   return typeof text === "string" && PLACEHOLDER.test(text);

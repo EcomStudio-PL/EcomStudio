@@ -170,15 +170,17 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
   const { locale } = ctx;
   const T = (k: keyof CmsBlockContent) => publicText(c[k] as never, locale);
   const slots = ctx.slots;
+  // Whichever section a visitor reads first owns the page's <h1> and is
+  // painted at once — the hero normally, the next section when the hero is
+  // switched off. An entrance fade would hold the largest paint until
+  // hydration.
+  const Heading = first ? "h1" : "h2";
+  const Enter = first ? Static : Reveal;
 
   switch (block.type) {
     /* 1 ── HERO ───────────────────────────────────────────────────────────── */
     case "about_hero": {
-      const Title = first ? "h1" : "h2";
       const slot = slotOf(slots, ABOUT_SLOT.hero);
-      // The first screen is painted at once: an entrance fade would hold the
-      // headline and the picture (the page's largest paint) until hydration.
-      const Enter = first ? Static : Reveal;
       return (
         <div data-about="hero">
           <Enter className="mx-auto max-w-[56rem] text-center">
@@ -187,9 +189,9 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
                 <span className={LABEL}>{T("badge")}</span>
               </p>
             )}
-            <Title className="font-display text-[clamp(2.05rem,5.4vw,4.1rem)] font-semibold leading-[1.04] tracking-[-0.032em] text-ink [text-wrap:balance]">
+            <Heading className="font-display text-[clamp(2.05rem,5.4vw,4.1rem)] font-semibold leading-[1.04] tracking-[-0.032em] text-ink [text-wrap:balance]">
               {T("title")}
-            </Title>
+            </Heading>
             {T("subtitle") && (
               <p className="mx-auto mt-6 max-w-[42rem] text-[clamp(1rem,1.7vw,1.2rem)] leading-relaxed text-muted [text-wrap:pretty]">
                 {T("subtitle")}
@@ -216,9 +218,9 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
             <Frame slot={slotOf(slots, ABOUT_SLOT.story)} locale={locale} alt={T("title")} ratio="4 / 3" slotKey={ABOUT_SLOT.story}
               sizes="(max-width: 1023px) 100vw, 40rem" className={CARD} fallback={<ProcessCanvas />} />
           </Reveal>
-          <Reveal className="lg:order-1">
+          <Enter className="lg:order-1">
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
+            <Heading className={H2}>{T("title")}</Heading>
             <div className="mt-6 space-y-4">
               {body.map((p, i) => <p key={i} className={BODY}>{p}</p>)}
             </div>
@@ -229,7 +231,7 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
                 </StartButton>
               </div>
             )}
-          </Reveal>
+          </Enter>
         </div>
       );
     }
@@ -239,10 +241,10 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
       const steps = shownItems(c.items, locale);
       return (
         <div data-about="process">
-          <Reveal className="mx-auto max-w-2xl text-center">
+          <Enter className="mx-auto max-w-2xl text-center">
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
-          </Reveal>
+            <Heading className={H2}>{T("title")}</Heading>
+          </Enter>
           {/* A row of three on a desktop, a column on a phone — 01 → 02 → 03
               either way. The arrow belongs to the step it points INTO, so the
               list stays a plain <ol> of three items for a screen reader. */}
@@ -301,9 +303,9 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
               {tile(ABOUT_SLOT.importance2, "1 / 1", Sparkles, "(max-width: 1023px) 40vw, 18rem")}
             </div>
           </Reveal>
-          <Reveal>
+          <Enter>
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
+            <Heading className={H2}>{T("title")}</Heading>
             <div className="mt-6 space-y-4">
               {body.map((p, i) => <p key={i} className={BODY}>{p}</p>)}
             </div>
@@ -314,7 +316,7 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
                 </Link>
               </div>
             )}
-          </Reveal>
+          </Enter>
         </div>
       );
     }
@@ -324,10 +326,10 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
       const values = shownItems(c.items, locale);
       return (
         <div data-about="values">
-          <Reveal className="mx-auto max-w-2xl text-center">
+          <Enter className="mx-auto max-w-2xl text-center">
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
-          </Reveal>
+            <Heading className={H2}>{T("title")}</Heading>
+          </Enter>
           {/* Flex, wrapped and centred: three a row on a desktop, two on a
               tablet, one on a phone — and a short last row is centred rather
               than left with a hole where a switched-off tile used to be. */}
@@ -359,10 +361,10 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
       const cards = shownItems(c.items, locale);
       return (
         <div data-about="audience">
-          <Reveal className="mx-auto max-w-2xl text-center">
+          <Enter className="mx-auto max-w-2xl text-center">
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
-          </Reveal>
+            <Heading className={H2}>{T("title")}</Heading>
+          </Enter>
           <div className={cn("mt-[clamp(2.25rem,4.5vw,3.5rem)] grid gap-5 sm:gap-6",
             cards.length > 1 ? "md:grid-cols-2" : "mx-auto max-w-xl")}>
             {cards.map((it, i) => {
@@ -412,10 +414,10 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
       const people = shownItems(c.items, locale);
       return (
         <div data-about="team">
-          <Reveal className="mx-auto max-w-2xl text-center">
+          <Enter className="mx-auto max-w-2xl text-center">
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
-          </Reveal>
+            <Heading className={H2}>{T("title")}</Heading>
+          </Enter>
           <div className={cn("mx-auto mt-[clamp(2.25rem,4.5vw,3.5rem)] grid max-w-4xl gap-5 sm:gap-6",
             people.length > 1 ? "sm:grid-cols-2" : "max-w-md")}>
             {people.map((it, i) => {
@@ -474,10 +476,10 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
       };
       return (
         <div data-about="faq" className="mx-auto max-w-[45rem]">
-          <Reveal className="text-center">
+          <Enter className="text-center">
             {T("badge") && <p className={cn(LABEL, "mb-4")}>{T("badge")}</p>}
-            <h2 className={H2}>{T("title")}</h2>
-          </Reveal>
+            <Heading className={H2}>{T("title")}</Heading>
+          </Enter>
           <Reveal delay={80} className="mt-[clamp(2rem,4vw,3rem)]">
             <AboutFaq items={qa} />
           </Reveal>
@@ -493,7 +495,7 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
       const label2 = T("cta2Label");
       const href2 = linkOf(c.cta2Url);
       return (
-        <Reveal>
+        <Enter>
           <div data-about="cta"
             className="relative overflow-hidden rounded-[2rem] px-6 py-[clamp(3rem,7vw,5.5rem)] text-center text-white shadow-[0_30px_80px_-40px_rgb(176_0_172/0.65)] sm:px-12"
             style={{ background: "linear-gradient(135deg, #8E0C8A 0%, #B000AC 42%, #C21AB8 70%, #D628CF 100%)" }}>
@@ -502,9 +504,9 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
             <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.18]"
               style={{ backgroundImage: "radial-gradient(rgb(255 255 255 / 0.55) 1px, transparent 1px)", backgroundSize: "24px 24px", maskImage: "linear-gradient(to bottom, black, transparent 85%)" }} />
             <div className="relative mx-auto max-w-2xl">
-              <h2 className="font-display text-[clamp(1.85rem,4.4vw,3.1rem)] font-semibold leading-[1.06] tracking-[-0.028em] [text-wrap:balance]">
+              <Heading className="font-display text-[clamp(1.85rem,4.4vw,3.1rem)] font-semibold leading-[1.06] tracking-[-0.028em] [text-wrap:balance]">
                 {T("title")}
-              </h2>
+              </Heading>
               {T("subtitle") && <p className="mx-auto mt-4 max-w-xl text-[clamp(1rem,1.6vw,1.15rem)] leading-relaxed text-white/90">{T("subtitle")}</p>}
               {(label || (label2 && href2)) && (
                 <div className="mt-9 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
@@ -524,7 +526,7 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
               )}
             </div>
           </div>
-        </Reveal>
+        </Enter>
       );
     }
 

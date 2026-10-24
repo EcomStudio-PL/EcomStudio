@@ -1650,4 +1650,161 @@ select public.t_true(
     from pg_proc p where p.oid = 'public.media_slots_resolve(text[])'::regprocedure $q$);
 SQL
 
+# ── V. 0150 cms_inline_visibility — a switch of an O nas section, item or point
+#
+# 0150 lands on 0141 (content_versions, cms_page_versions' reason CHECK) and
+# is applied verbatim, twice. The same contract as cms_inline_patch: admin
+# only, compare-and-set, draft_diverged, one page version and one history row
+# per switch, and NOTHING but the `hidden` flag (or the section's `visible`)
+# may change — proven by comparing the whole content before and after.
+VIS_MIGRATION="$ROOT/supabase/migrations/0150_cms_inline_visibility.sql"
+if PGOPTIONS='-c client_min_messages=warning' "${PSQL[@]}" -1 -f "$VIS_MIGRATION" >/dev/null 2>"$ERR"; then
+  record 'V0  0150 applies on top of 0141 in one transaction' true ''
+else
+  record 'V0  0150 applies on top of 0141 in one transaction' false "$(tr '\n' ' ' < "$ERR")"
+fi
+if PGOPTIONS='-c client_min_messages=warning' "${PSQL[@]}" -1 -f "$VIS_MIGRATION" >/dev/null 2>"$ERR"; then
+  record 'V0b and again (re-runnable)' true ''
+else
+  record 'V0b and again (re-runnable)' false "$(tr '\n' ' ' < "$ERR")"
+fi
+"${PSQL[@]}" >/dev/null <<'SQL'
+-- A published O nas page: principles (one tile off), cards (one point off),
+-- an ordinary hero; and an unpublished page with an about section.
+insert into public.cms_pages (id, slug, title, status, published_snapshot, seo, published_at) values
+  ('f0000000-0000-0000-0000-0000000000a1', 'o-nas-v', 'O nas', 'published', jsonb_build_array(
+     jsonb_build_object('id', 'b0000000-0000-0000-0000-0000000000a1', 'type', 'about_values', 'sort_order', 0, 'visible', true,
+       'content', '{"title":{"pl":"W co wierzymy"},"items":[{"title":{"pl":"A"}},{"hidden":true,"title":{"pl":"B"},"description":{"pl":"[treść do potwierdzenia]"}}]}'::jsonb),
+     jsonb_build_object('id', 'b0000000-0000-0000-0000-0000000000a2', 'type', 'about_audience', 'sort_order', 1, 'visible', true,
+       'content', '{"items":[{"title":{"pl":"Mali"},"points":[{"title":{"pl":"P1"}},{"hidden":true,"title":{"pl":"P2"}}]}]}'::jsonb),
+     jsonb_build_object('id', 'b0000000-0000-0000-0000-0000000000a3', 'type', 'hero', 'sort_order', 2, 'visible', true,
+       'content', '{"title":{"pl":"Hero"},"items":[{"title":{"pl":"x"}}]}'::jsonb)),
+   '{"pl":{"title":"O nas"}}', now()),
+  ('f0000000-0000-0000-0000-0000000000a2', 'o-nas-szkic', 'Szkic', 'draft', '[]'::jsonb, '{}', null);
+insert into public.cms_blocks (id, page_id, type, sort_order, visible, content, updated_at)
+select (e.value->>'id')::uuid, 'f0000000-0000-0000-0000-0000000000a1', e.value->>'type', (e.value->>'sort_order')::int, true,
+       e.value->'content', '2026-10-24 10:00:00+00'
+  from public.cms_pages p, jsonb_array_elements(p.published_snapshot) e where p.id = 'f0000000-0000-0000-0000-0000000000a1';
+insert into public.cms_blocks (id, page_id, type, content, updated_at) values
+  ('b0000000-0000-0000-0000-0000000000a4', 'f0000000-0000-0000-0000-0000000000a2', 'about_faq',
+   '{"items":[{"title":{"pl":"Q"}}]}', '2026-10-24 10:00:00+00');
+insert into public.t_vars values ('v_before',
+  (select published_snapshot::text from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1'));
+insert into public.t_vars values ('v_versions', (select count(*)::text from public.cms_page_versions));
+insert into public.t_vars values ('v_history', (select count(*)::text from public.content_versions));
+
+select public.t_be('customer');
+select public.t_raises('V1  a customer calling cms_inline_visibility is refused by its own check',
+  'authenticated', $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], false, null, null) $q$,
+  'not_admin');
+select public.t_be('anon');
+select public.t_raises('V2  an anonymous caller cannot reach it at all',
+  'anon', $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], false, null, null) $q$,
+  'permission denied for function cms_inline_visibility');
+select public.t_true('V3  grants: authenticated may execute, anon may not; SECURITY DEFINER with a fixed search_path',
+  'postgres', $q$
+  select has_function_privilege('authenticated', 'public.cms_inline_visibility(uuid, text[], boolean, text, timestamptz)', 'execute')
+     and not has_function_privilege('anon', 'public.cms_inline_visibility(uuid, text[], boolean, text, timestamptz)', 'execute')
+     and (select prosecdef and proconfig = '{search_path=public}' from pg_proc
+           where oid = 'public.cms_inline_visibility(uuid, text[], boolean, text, timestamptz)'::regprocedure) $q$);
+
+select public.t_be('admin');
+-- Refusals first: none of them may write anything (checked by V12).
+select public.t_raises('V4  hidden NULL is bad_input', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], null, null, null) $q$, 'bad_input');
+select public.t_raises('V5a a NULL path is bad_path (never "the section")', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', null, true, null, null) $q$, 'bad_path');
+select public.t_raises('V5b a NULL element is bad_path', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items', null], true, null, null) $q$, 'bad_path');
+select public.t_raises('V5c a two-dimensional path is bad_path', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array[['items','1']], true, null, null) $q$, 'bad_path');
+select public.t_raises('V5d a field (items.0.title) is bad_path', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','0','title'], true, null, null) $q$, 'bad_path');
+select public.t_raises('V5e a non-numeric index is bad_path', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','-1'], true, null, null) $q$, 'bad_path');
+select public.t_raises('V5f an item that does not exist is bad_path', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','9'], true, null, null) $q$, 'bad_path');
+select public.t_raises('V6a an ordinary (non-about) section is not_editable', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a3', array[]::text[], true, null, null) $q$, 'not_editable');
+select public.t_raises('V6b … and so are its items', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a3', array['items','0'], true, null, null) $q$, 'not_editable');
+select public.t_raises('V6c points exist only on the audience cards', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','0','points','0'], true, null, null) $q$, 'not_editable');
+select public.t_raises('V7  a stale base is a conflict', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], false, null, '2000-01-01 00:00:00+00') $q$, 'conflict');
+select public.t_raises('V8  the state it already has is a noop', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], true, null, null) $q$, 'noop');
+select public.t_raises('V9  an unpublished page is not_published', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a4', array['items','0'], true, null, null) $q$, 'not_published');
+select public.t_raises('V10 an unknown block is block_missing', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000ff', array[]::text[], true, null, null) $q$, 'block_missing');
+select public.t_true('V11 (the draft of the principles is edited in the builder, unpublished)', 'authenticated', $q$
+  with u as (update public.cms_blocks set content = jsonb_set(content, '{title,pl}', '"Szkic"')
+              where id = 'b0000000-0000-0000-0000-0000000000a1' returning 1) select count(*) = 1 from u $q$);
+select public.t_raises('V11b a block with an unpublished change is draft_diverged', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], false, null, null) $q$, 'draft_diverged');
+select public.t_true('V11c (the unpublished change is discarded)', 'authenticated', $q$
+  with u as (update public.cms_blocks set content = jsonb_set(content, '{title,pl}', '"W co wierzymy"'), updated_at = '2026-10-24 10:00:00+00'
+              where id = 'b0000000-0000-0000-0000-0000000000a1' returning 1) select count(*) = 1 from u $q$);
+select public.t_true('V12 none of the refusals changed the page, wrote a version or a history row', 'authenticated', $q$
+  select (select published_snapshot::text from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1') = public.t_var('v_before')
+     and (select count(*)::text from public.cms_page_versions) = public.t_var('v_versions')
+     and (select count(*)::text from public.content_versions) = public.t_var('v_history') $q$);
+
+-- Successes.
+select public.t_true('V13 an admin switches the hidden tile ON (with the right base) and gets a timestamp', 'authenticated', $q$
+  with r as (select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], false,
+               'Edytor wizualny · pokazano', '2026-10-24 10:00:00+00') as ts),
+       s as (insert into public.t_vars select 'V13', ts::text from r returning v)
+  select (select v from s) is not null $q$);
+select public.t_true('V14 draft and snapshot: the "hidden" key is gone from that tile — and NOTHING else changed', 'authenticated', $q$
+  select (select content from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000a1')
+       = '{"title":{"pl":"W co wierzymy"},"items":[{"title":{"pl":"A"}},{"title":{"pl":"B"},"description":{"pl":"[treść do potwierdzenia]"}}]}'::jsonb
+     and (select published_snapshot -> 0 -> 'content' from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1')
+       = (select content from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000a1')
+     and (select published_snapshot -> 1 from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1')
+       = (public.t_var('v_before')::jsonb -> 1)
+     and (select updated_at = public.t_var('V13')::timestamptz and updated_by = public.t_admin_uid()
+            from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000a1') $q$);
+select public.t_true('V15 one page version (reason publish, the label, the new snapshot) and one history row', 'authenticated', $q$
+  select (select count(*) = 1 and bool_and(reason = 'publish' and label = 'Edytor wizualny · pokazano' and created_by = public.t_admin_uid()
+                 and snapshot = (select published_snapshot from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1'))
+            from public.cms_page_versions where page_id = 'f0000000-0000-0000-0000-0000000000a1')
+     and (select count(*) = 1 and bool_and(locale is null and action = 'save' and before = '{"hidden":true}' and after = '{"hidden":false}')
+            from public.content_versions
+           where target = 'cms' and key = 'f0000000-0000-0000-0000-0000000000a1:b0000000-0000-0000-0000-0000000000a1:items.1.hidden') $q$);
+select public.t_raises('V16 the old base is now a conflict (compare-and-set is real)', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array['items','1'], true, null, '2026-10-24 10:00:00+00') $q$, 'conflict');
+-- Each switch is its own statement, and so is each check: a statement reads
+-- the data as it was when it started, never what it changed itself.
+select public.t_true('V17 a point: the hidden one switched on …', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a2', array['items','0','points','1'], false, null, null) is not null $q$);
+select public.t_true('V17b … and the first one switched off', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a2', array['items','0','points','0'], true, null, null) is not null $q$);
+select public.t_true('V17c the cards now read exactly that, in the draft and the snapshot alike', 'authenticated', $q$
+  select (select published_snapshot -> 1 -> 'content' from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1')
+       = '{"items":[{"title":{"pl":"Mali"},"points":[{"hidden":true,"title":{"pl":"P1"}},{"title":{"pl":"P2"}}]}]}'::jsonb
+     and (select content from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000a2')
+       = (select published_snapshot -> 1 -> 'content' from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1') $q$);
+select public.t_true('V18 a whole section switched off …', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array[]::text[], true, null, null) is not null $q$);
+select public.t_true('V18b … off in the draft (visible=false) and in the snapshot ("visible": false), with its history row', 'authenticated', $q$
+  select (select not visible from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000a1')
+     and (select published_snapshot -> 0 -> 'visible' = 'false'::jsonb from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000a1')
+     and (select count(*) = 1 from public.content_versions
+           where key = 'f0000000-0000-0000-0000-0000000000a1:b0000000-0000-0000-0000-0000000000a1:visible' and after = '{"hidden":true}') $q$);
+select public.t_true('V19 (the builder switches the section back on, unpublished)', 'authenticated', $q$
+  with u as (update public.cms_blocks set visible = true where id = 'b0000000-0000-0000-0000-0000000000a1' returning 1)
+  select count(*) = 1 from u $q$);
+select public.t_raises('V19b a section whose draft switch differs from the published one is draft_diverged', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a1', array[]::text[], false, null, null) $q$, 'draft_diverged');
+select public.t_true('V20 a customer still reads only what anon reads: the published page, never the draft rows', 'postgres', $q$
+  select (select count(*) from public.cms_blocks) > 0 $q$);
+SQL
+"${PSQL[@]}" >/dev/null <<'SQL'
+select public.t_be('customer');
+select public.t_true('V20b (as a customer: no cms_blocks row is readable)', 'authenticated', $q$
+  select count(*) = 0 from public.cms_blocks $q$);
+SQL
+
 scoreboard

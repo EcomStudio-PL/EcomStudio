@@ -513,10 +513,24 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
                   {t("cms.label.itemPlaceholder")}
                 </p>
               )}
-              {item.slot && aboutSlotSpec(item.slot) && (
-                <p className="text-[11.5px] leading-relaxed text-faint" data-item-slot={item.slot}>
-                  {t("cms.label.itemSlot", { name: t(`media.slot.${aboutSlotSpec(item.slot)!.label}`) })}
-                </p>
+              {/* Which picture this card or person carries (a media slot of
+                  the section) — so a card added again gets its frame back. */}
+              {options?.slots && options.slots.length > 0 && (
+                <div data-item-slot-pick={i}>
+                  <Select value={item.slot && options.slots.includes(item.slot) ? item.slot : ""}
+                    aria-label={t("cms.label.itemSlotPick")}
+                    onChange={(e) => patch(i, { slot: e.target.value || undefined })}>
+                    <option value="">{t("cms.label.itemSlotNone")}</option>
+                    {options.slots.map((key) => (
+                      <option key={key} value={key}>{t(`media.slot.${aboutSlotSpec(key)?.label ?? key}`)}</option>
+                    ))}
+                  </Select>
+                  {item.slot && aboutSlotSpec(item.slot) && (
+                    <p className="mt-1 text-[11.5px] leading-relaxed text-faint" data-item-slot={item.slot}>
+                      {t("cms.label.itemSlot", { name: t(`media.slot.${aboutSlotSpec(item.slot)!.label}`) })}
+                    </p>
+                  )}
+                </div>
               )}
               {options?.points && (
                 <PointsField points={item.points ?? []} locale={locale} onChange={(points) => patch(i, { points })} />
