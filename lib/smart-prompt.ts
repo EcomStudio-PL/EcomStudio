@@ -47,7 +47,7 @@ export type SmartPromptConfig = {
 export const SMART_PROMPT_ERRORS = [
   "unauthenticated", "invalid_input", "too_short", "too_long", "unavailable",
   "insufficient_credits", "duplicate_request", "provider_failed", "empty_result",
-  "result_too_long", "maintenance", "no_workspace", "feature_unavailable", "account_blocked",
+  "result_too_long", "result_rejected", "maintenance", "no_workspace", "feature_unavailable", "account_blocked",
 ] as const;
 export type SmartPromptError = (typeof SMART_PROMPT_ERRORS)[number];
 

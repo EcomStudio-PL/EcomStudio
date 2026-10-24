@@ -80,6 +80,41 @@ const SCHEMA = {
   required: ["prompt"],
 };
 
+/**
+ * THE RUN'S OWN DEADLINE. The text chain allows 120 s per provider request
+ * plus same-model retries and a fallback provider, which can add up past the
+ * route's 300 s limit. Past this point the answer is abandoned and the credit
+ * refunded in code, with time left before the platform would kill the
+ * invocation (the route's maxDuration must stay above it; the suite checks).
+ */
+export const SMART_PROMPT_DEADLINE_MS = 240_000;
+
+export class DeadlineExceeded extends Error {}
+
+/** `work`, or a DeadlineExceeded after `ms` — the timer never outlives it. */
+export async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new DeadlineExceeded("deadline")), ms);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Whether an answer quotes the instruction back — a model talked into
+ * "printing its rules" must not hand them to the customer. Every line of the
+ * instruction of 40+ characters is looked for, whitespace and case folded.
+ */
+export function quotesInstruction(answer: string, instruction: string): boolean {
+  const fold = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const hay = fold(answer);
+  return instruction.split("\n").map(fold).filter((l) => l.length >= 40).some((l) => hay.includes(l));
+}
+
 /** A forged fence in customer text would let it pose as a second block.
  *  Removed until none is left: one pass would let a nested form
  *  ("DANE_KLIENTDANE_KLIENTA>>>A>>>") rebuild a marker out of its halves. */
@@ -223,10 +258,10 @@ export async function readSmartPromptBlockers(supabase: Client, opts: { withProv
 }
 
 /**
- * Whether a provider the feature would ask is switched on and HAS a stored
- * credential — metadata only (the token-gated row), no key is opened. Cheap
- * enough for every generator page view; the request itself still resolves the
- * real key before charging. 'auto' asks the planner chain's own order.
+ * Whether a provider the feature would ask is switched on and has a key that
+ * opens — the same rule the run applies before charging, so the offer and the
+ * run cannot disagree. The key stays in server memory for this check only.
+ * 'auto' asks the planner chain's own order.
  */
 async function providerConfigured(supabase: Client, config: SmartPromptConfig): Promise<boolean> {
   const token = dispatchToken();
@@ -245,7 +280,9 @@ async function providerConfigured(supabase: Client, config: SmartPromptConfig): 
   for (const p of rows ?? []) {
     if (!p.active) continue;
     const { data: cred } = await supabase.rpc("provider_credential_read", { p_token: token, p_provider_id: p.id });
-    if (cred?.[0]) return true;
+    // The run skips a provider whose key cannot be opened (vault empty,
+    // legacy ciphertext without its key), so the offer does too.
+    if (cred?.[0] && (await readProviderKey(supabase, p.id, cred[0]))) return true;
   }
   return false;
 }
@@ -354,19 +391,22 @@ export async function runSmartPrompt(
   let outcome: SmartPromptError | null = null;
   let text = "";
   let executor: { provider: string; model: string } | null = null;
+  const instruction = config.instruction ?? SMART_PROMPT_DEFAULT_INSTRUCTION;
   try {
-    const { data, outcome: served } = await callVisionJson<{ prompt?: unknown }>(meter.wrap(backends), {
+    const { data, outcome: served } = await withDeadline(callVisionJson<{ prompt?: unknown }>(meter.wrap(backends), {
       images: [],
-      system: config.instruction ?? SMART_PROMPT_DEFAULT_INSTRUCTION,
+      system: instruction,
       user: smartPromptMessage({ intent, locale: input.locale, variationIndex, photos: referencePaths.length, analysis }),
       schema: SCHEMA,
-    });
+    }), SMART_PROMPT_DEADLINE_MS);
     executor = { provider: served.provider, model: served.model };
     const cleaned = cleanEnhancedPrompt(data?.prompt);
-    if (cleaned.ok) text = cleaned.text;
-    else outcome = cleaned.error;
+    if (!cleaned.ok) outcome = cleaned.error;
+    else if (quotesInstruction(cleaned.text, instruction)) outcome = "result_rejected";
+    else text = cleaned.text;
   } catch {
-    // Every backend refused or failed (ProviderError codes are in the trace).
+    // Every backend refused or failed (ProviderError codes are in the trace),
+    // or the run's own deadline passed.
     outcome = "provider_failed";
   }
 

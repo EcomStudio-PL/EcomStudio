@@ -13,7 +13,8 @@ export async function textCapableBackends() {
 
 /* @/lib/server/provider-credentials — the vault, already opened. */
 export async function readProviderKey(_s: unknown, providerId: string) {
-  return smart().named.find((b) => `prov-${b.provider}` === providerId)?.cred.apiKey ?? null;
+  if (smart().unreadableKey) return null;
+  return [...smart().named, ...smart().chain].find((b) => `prov-${b.provider}` === providerId)?.cred.apiKey ?? null;
 }
 
 /* @/lib/services/usage — the price is the catalogue's (usage_event_start). */

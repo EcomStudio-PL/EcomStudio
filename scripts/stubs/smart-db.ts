@@ -23,6 +23,8 @@ export type SmartState = {
   prices: { providerSlug: string; model: string; inputPerMTok: number; outputPerMTok: number }[];
   config: unknown;
   configError: boolean;
+  /** A credential row exists but its key cannot be opened. */
+  unreadableKey: boolean;
   service: { credits_cost: number; enabled: boolean; maintenance_mode: boolean } | null;
   activity: Record<string, unknown>[];
   seq: number;
@@ -45,6 +47,7 @@ export function resetSmart(patch: Partial<SmartState> = {}): SmartState {
     prices: [],
     config: { v: 1, provider: "openai", model: "gpt-5-mini", instruction: "" },
     configError: false,
+    unreadableKey: false,
     service: { credits_cost: 1, enabled: true, maintenance_mode: false },
     activity: [],
     seq: 0,

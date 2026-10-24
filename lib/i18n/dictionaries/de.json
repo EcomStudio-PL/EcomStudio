@@ -4594,7 +4594,8 @@
         "empty_result": "Das Modell hat keinen Prompt geliefert — deine Credits wurden erstattet.",
         "result_too_long": "Das Ergebnis war länger als 4.000 Zeichen — deine Credits wurden erstattet. Bitte versuche es erneut.",
         "no_workspace": "Arbeitsbereich nicht gefunden — bitte lade die Seite neu.",
-        "account_blocked": "Dein Konto ist vorübergehend pausiert — der intelligente Prompt ist nicht verfügbar. Es wurden keine Credits abgebucht."
+        "account_blocked": "Dein Konto ist vorübergehend pausiert — der intelligente Prompt ist nicht verfügbar. Es wurden keine Credits abgebucht.",
+        "result_rejected": "Das Modell hat eine unbrauchbare Antwort geliefert — deine Credits wurden erstattet. Bitte versuche es erneut."
       }
     }
   },

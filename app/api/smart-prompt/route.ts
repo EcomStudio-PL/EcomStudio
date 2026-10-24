@@ -6,9 +6,9 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getLocale } from "@/lib/i18n/server";
 import { runSmartPrompt } from "@/lib/server/smart-prompt";
 
-// Above the text chain's own limits (120 s per provider request, plus its
-// retries), so a slow provider ends in the module's refund path rather than
-// in a killed invocation the ledger reconciler has to clean up later.
+// Above the run's own deadline (SMART_PROMPT_DEADLINE_MS, 240 s), so a slow
+// provider ends in the module's refund path rather than in a killed
+// invocation the ledger reconciler has to clean up later.
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
