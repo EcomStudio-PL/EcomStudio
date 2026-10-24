@@ -142,7 +142,10 @@ export function roleLabel(t: T, el: IceElement): string {
 }
 
 export function sectionLabel(t: T, info: IcePageInfo, elementId: string): string {
-  if (info.kind !== "registry") return "";
+  if (info.kind !== "registry") {
+    const slot = info.cms.slots.find((x) => x.element.id === elementId);
+    return slot ? t(`ice.block.${slot.blockType}`) : "";
+  }
   const sec = info.page.sections.find((x) => x.elements.some((e) => e.id === elementId));
   return sec ? t(`ice.sec.${sec.key}`) : "";
 }

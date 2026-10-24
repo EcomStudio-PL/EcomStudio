@@ -38,7 +38,7 @@ import { CONTACT_EMAIL_PATTERN, CONTACT_TOPICS, isContactTopic } from "@/lib/cms
 import { fieldsFor } from "@/lib/cms-schema";
 import { CMS_FIELDS } from "@/lib/ice/registry";
 import { CMS_ICONS } from "@/lib/cms-icons";
-import { SEED_PAGES, SEED_GLOBALS, FOOTER_ITEMS } from "@/lib/cms-seed";
+import { ABOUT_V1, SEED_PAGES, SEED_GLOBALS, FOOTER_ITEMS } from "@/lib/cms-seed";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
 import { SiteFooter, footerLinks } from "@/components/cms/site-shell";
 import type { NavPage } from "@/lib/server/public-site";
@@ -58,8 +58,10 @@ const LOCALES: Locale[] = ["pl", "en", "de"];
 const markup = (locale: Locale, child: ReactElement) =>
   renderToStaticMarkup(createElement(I18nProvider, { locale, dict: DICTS[locale], children: child }));
 
+// These checks are about what Public pages V1 released (0148). O nas has since
+// moved on to V2 (scripts/about-page-tests.ts); its V1 seed is kept verbatim.
 const page = (slug: string) => {
-  const found = SEED_PAGES.find((p) => p.slug === slug);
+  const found = slug === "o-nas" ? ABOUT_V1 : SEED_PAGES.find((p) => p.slug === slug);
   if (!found) throw new Error(`no seed page ${slug}`);
   return found;
 };

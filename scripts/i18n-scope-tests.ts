@@ -266,10 +266,17 @@ const APP_SCOPED_SUBTREES = [
  * ships nothing, so the walk stops at it; section G proves each entry really
  * is server-only, so this list cannot become a way to hide a component.
  */
-const SERVER_ONLY_BOUNDARIES = readdirSync(join(ROOT, "lib/server/ice"))
-  .filter((f) => f.endsWith(".ts"))
-  .sort()
-  .map((f) => join(ROOT, "lib/server/ice", f));
+const SERVER_ONLY_BOUNDARIES = [
+  ...readdirSync(join(ROOT, "lib/server/ice"))
+    .filter((f) => f.endsWith(".ts"))
+    .sort()
+    .map((f) => join(ROOT, "lib/server/ice", f)),
+  // The media-slot loader (O nas V2 reads the about page's pictures through
+  // it): behind it sits the slot registry, whose Admin → Media labels and
+  // tool-card names are keys as DATA — a public page receives resolved file
+  // URLs from it, never a label.
+  join(ROOT, "lib/server/media-slots.ts"),
+];
 
 /**
  * THE VISUAL EDITOR'S OWN SUBTREE.

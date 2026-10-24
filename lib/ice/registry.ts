@@ -8,6 +8,7 @@ import { LAYOUT_SECTIONS, itemLabelKey } from "@/lib/tool-layout";
 import { categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { PHOTO_TOOLS, TOOLS } from "@/lib/images/tools";
 import { LAUNCH_V2_BUILDER_ONLY, LAUNCH_V2_TEXT_FIELDS } from "@/lib/launch/fields";
+import { ABOUT_SLOTS } from "@/lib/about-page";
 import type { IceElement, IcePage, IceSection, IceSlotSpec } from "./types";
 
 /**
@@ -366,12 +367,45 @@ export function allElements(page: IcePage): IceElement[] {
   return page.sections.flatMap((s) => s.elements);
 }
 
+/* ── the O nas page's pictures (a CMS page, lib/about-page.ts) ──────────── */
+
+/**
+ * The about page is a CMS page, so its words are block fields (CMS_FIELDS
+ * below); its pictures are media slots, framed exactly like /home's — the
+ * same panel, crop and phone file. They are listed here so the server knows
+ * every key the editor may write (slotSpec), whichever page paints them.
+ */
+export const ABOUT_ICE_SLOTS: readonly IceSlotSpec[] = ABOUT_SLOTS.map((a) => {
+  const [w, h] = a.ratio.split("/").map(Number);
+  return {
+    key: a.key,
+    ratio: `${w}/${h}`,
+    width: a.width,
+    height: a.height,
+    video: a.video,
+    ...(a.mobile ? { mobile: true, frames: [{ label: "phone" as const, ratio: "4/3" }] } : {}),
+    entityType: "section" as const,
+    entityId: "about",
+    slotName: a.name,
+  };
+});
+
+/** The editor element of one about slot: found on the page by the frame's
+ *  data-config-key; the share image has no frame and is reached from the
+ *  list of elements. */
+export function aboutSlotElement(key: string): IceElement | null {
+  const spec = ABOUT_ICE_SLOTS.find((x) => x.key === key);
+  const about = ABOUT_SLOTS.find((x) => x.key === key);
+  return spec && about ? media(spec, about.label, cfg(key)) : null;
+}
+
 const TEXTS = new Map<string, IceElement>();
 const SLOTS = new Map<string, IceSlotSpec>();
 for (const p of ICE_PAGES) for (const e of allElements(p)) {
   if (e.kind === "text" && e.text) TEXTS.set(e.text.key, e);
   for (const s of e.slots ?? []) SLOTS.set(s.key, s);
 }
+for (const s of ABOUT_ICE_SLOTS) SLOTS.set(s.key, s);
 
 /** Every text key any page may edit. */
 export const ICE_TEXT_KEYS: ReadonlySet<string> = new Set(TEXTS.keys());
@@ -463,6 +497,18 @@ export const CMS_FIELDS: Readonly<Record<string, { text: string[]; media: string
   // The topics are <option>s and the tile addresses are links: both stay in
   // Strony WWW, like every other value a visitor's click depends on.
   contact_hub: { text: ["title", "description", "ctaLabel", "badge", "tiles.*.title", "tiles.*.description"], media: [] },
+  // O NAS V2 (lib/about-page.ts). Pictures are media slots (ABOUT_ICE_SLOTS),
+  // not URL fields; addresses, icons, the team's initial and the item's slot
+  // name stay in Strony WWW.
+  about_hero: { text: ["badge", "title", "subtitle"], media: [] },
+  about_story: { text: ["badge", "title", "description", "ctaLabel"], media: [] },
+  about_process: { text: ["badge", "title", "items.*.title", "items.*.description"], media: [] },
+  about_importance: { text: ["badge", "title", "description", "ctaLabel"], media: [] },
+  about_values: { text: ["badge", "title", "items.*.title", "items.*.description"], media: [] },
+  about_audience: { text: ["badge", "title", "items.*.title", "items.*.description", "items.*.points.*.title"], media: [] },
+  about_team: { text: ["badge", "title", "items.*.title", "items.*.badge", "items.*.description"], media: [] },
+  about_faq: { text: ["badge", "title", "items.*.title", "items.*.description"], media: [] },
+  about_cta: { text: ["title", "subtitle", "ctaLabel", "cta2Label"], media: [] },
 };
 
 /** CMS text fields whose value is split into paragraphs on blank lines. */

@@ -1,9 +1,13 @@
 import "server-only";
 import { headers } from "next/headers";
-import { CMS_FIELDS, CMS_MULTILINE, LAUNCH_TEXT_FIELDS } from "@/lib/ice/registry";
+import { CMS_FIELDS, CMS_MULTILINE, LAUNCH_TEXT_FIELDS, aboutSlotElement } from "@/lib/ice/registry";
 import { stegaMark, stegaStrip } from "@/lib/ice/stega";
 import { isLegalSlug } from "@/lib/legal/docs";
-import type { IceCmsField, IceLocale } from "@/lib/ice/types";
+import {
+  ABOUT_HIDEABLE_ITEMS, ABOUT_POINT_ITEMS, blockSlotKeys, hasPlaceholder, isAboutType,
+} from "@/lib/about-page";
+import type { CmsBlockContent } from "@/lib/cms";
+import type { IceCmsField, IceCmsSlot, IceCmsToggle, IceLocale } from "@/lib/ice/types";
 import { iceEditSessions } from "./session";
 
 /**
@@ -47,14 +51,18 @@ export function valueAt(content: unknown, path: readonly string[]): unknown {
   return cur;
 }
 
-/** "items.*.title" → every item's title path. */
+/** "items.*.title" → every item's title path; "items.*.points.*.title" →
+ *  every point of every item, item by item. */
 function expand(spec: string, content: unknown): string[][] {
-  const parts = spec.split(".");
-  const star = parts.indexOf("*");
-  if (star < 0) return [parts];
-  const list = valueAt(content, parts.slice(0, star));
-  if (!Array.isArray(list)) return [];
-  return list.map((_, i) => [...parts.slice(0, star), String(i), ...parts.slice(star + 1)]);
+  const go = (done: string[], rest: string[]): string[][] => {
+    const star = rest.indexOf("*");
+    if (star < 0) return [[...done, ...rest]];
+    const head = [...done, ...rest.slice(0, star)];
+    const list = valueAt(content, head);
+    if (!Array.isArray(list)) return [];
+    return list.flatMap((_, i) => go([...head, String(i)], rest.slice(star + 1)));
+  };
+  return go([], spec.split("."));
 }
 
 function localeValues(v: unknown): Partial<Record<IceLocale, string>> {
@@ -97,6 +105,58 @@ export function blockFields(block: CmsBlockLike, base: string | null): IceCmsFie
   if (!spec) return [];
   for (const s of spec.text) for (const p of expand(s, block.content)) push(p, "text");
   for (const s of spec.media) for (const p of expand(s, block.content)) push(p, "media");
+  return out;
+}
+
+/** The picture slots one block paints (the O nas sections), as editor
+ *  elements — none for any other block. */
+export function blockSlots(block: CmsBlockLike): IceCmsSlot[] {
+  if (!isUuid(block.id) || !isAboutType(block.type)) return [];
+  const id = block.id;
+  return blockSlotKeys(block.type, block.content as CmsBlockContent | undefined).flatMap((key) => {
+    const element = aboutSlotElement(key);
+    return element ? [{ blockId: id, blockType: block.type, element }] : [];
+  });
+}
+
+const anyPlaceholder = (v: unknown) => Object.values(localeValues(v)).some((x) => hasPlaceholder(x));
+
+/**
+ * The switches of one block (the O nas sections only): the section itself,
+ * then each item of the sections whose items may be switched off, then each
+ * point of an item that carries points. Listed hidden or not — a switched-off
+ * tile is exactly the one that needs a way back.
+ */
+export function blockToggles(block: CmsBlockLike, base: string | null): IceCmsToggle[] {
+  if (!isUuid(block.id) || !isAboutType(block.type)) return [];
+  const id = block.id;
+  const content = isBag(block.content) ? block.content : {};
+  const out: IceCmsToggle[] = [{
+    id: `${id}|`, blockId: id, blockType: block.type, path: [], label: localeValues(content.title),
+    hidden: block.visible === false, placeholder: false, base,
+  }];
+  if (!ABOUT_HIDEABLE_ITEMS.has(block.type)) return out;
+  const items = Array.isArray(content.items) ? content.items : [];
+  items.forEach((raw, i) => {
+    const item = isBag(raw) ? raw : {};
+    const points = ABOUT_POINT_ITEMS.has(block.type) && Array.isArray(item.points) ? item.points : [];
+    const path = ["items", String(i)];
+    out.push({
+      id: `${id}|${path.join("|")}`, blockId: id, blockType: block.type, path, label: localeValues(item.title),
+      hidden: item.hidden === true,
+      placeholder: [item.title, item.description, item.badge].some(anyPlaceholder)
+        || points.some((p) => isBag(p) && p.hidden !== true && anyPlaceholder(p.title)),
+      base,
+    });
+    points.forEach((rawPoint, j) => {
+      const point = isBag(rawPoint) ? rawPoint : {};
+      const pPath = [...path, "points", String(j)];
+      out.push({
+        id: `${id}|${pPath.join("|")}`, blockId: id, blockType: block.type, path: pPath, label: localeValues(point.title),
+        hidden: point.hidden === true, placeholder: anyPlaceholder(point.title), base,
+      });
+    });
+  });
   return out;
 }
 

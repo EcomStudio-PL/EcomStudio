@@ -1,4 +1,5 @@
 import type { CmsBlockContent, LocaleText } from "./cms";
+import { ABOUT_BLOCK_SLOTS, ABOUT_TYPES, type AboutType } from "./about-page";
 import { SECTION_DEFAULT_SHOWN, sectionKey, type LaunchSection } from "./launch/fields";
 
 /**
@@ -29,7 +30,9 @@ export type FieldKind =
   | "heading"   // a group heading in a long form — draws a title, stores NOTHING
   | "gallery"   // a PRZED/PO gallery: a read-only summary and the way into the inline editor
   // ── added with the legal documents (Legal documents V1) ──
-  | "legaldoc"; // a whole legal document per language — status, version, date, text (lib/legal/content.ts)
+  | "legaldoc" // a whole legal document per language — status, version, date, text (lib/legal/content.ts)
+  // ── added with O nas V2 ──
+  | "slots";   // the section's pictures: media slots, listed with where to change them — stores NOTHING
 
 export type FieldDef = {
   /** A key of CmsBlockContent, or — for `launch` — a key inside content.fields. */
@@ -42,6 +45,13 @@ export type FieldDef = {
   /** toggle: whether the switch reads ON while nothing is stored — the
    *  section's own default (lib/launch/fields.ts SECTION_DEFAULT_SHOWN). */
   defaultOn?: boolean;
+  /** items: what each row offers beyond the shared inputs. `hideable` — a
+   *  "Widoczny" switch per row; `points` — a list of points per row (each
+   *  switchable); `plain` — no link and no picture per row (the section's
+   *  pictures are media slots, its links are not per item). */
+  items?: { hideable?: boolean; points?: boolean; plain?: boolean };
+  /** slots: the media slot keys the section paints. */
+  slots?: readonly string[];
 };
 
 const f = (key: string, kind: FieldKind, label: string, hint?: string): FieldDef =>
@@ -61,6 +71,16 @@ const CTA = [f("ctaLabel", "text", "ctaLabel"), f("ctaUrl", "url", "ctaUrl")];
 // No separate `alt` entry: the media picker already asks for it next to the
 // image it describes, and two inputs for one value is how they drift apart.
 const IMAGE = [f("mediaUrl", "media", "image")];
+
+/** An O nas list: hideable rows, no per-row link or picture. */
+function aboutItems(label: string, opts: { hideable?: boolean; points?: boolean }, hint?: string): FieldDef {
+  return { ...f("items", "items", label, hint ?? "aboutItemsHint"), items: { ...opts, plain: true } };
+}
+
+/** The pictures an O nas section paints (its block slots). */
+function aboutSlots(type: AboutType): FieldDef {
+  return { ...f("#slots", "slots", "aboutPictures", "aboutPicturesHint"), slots: ABOUT_BLOCK_SLOTS[type] ?? [] };
+}
 
 /** Section type → the fields it actually renders. */
 export const SECTION_FIELDS: Record<string, FieldDef[]> = {
@@ -219,6 +239,30 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
     ...CTA,
   ],
   sticky_cta: [HEADING, ...CTA],
+
+  // ── O NAS V2 (lib/about-page.ts, components/cms/about-sections.tsx) ────
+  // Pictures are media slots (a summary row with where to change them);
+  // a start button left without an address follows the platform's own
+  // start — sign-up when it is open, the waitlist before the launch.
+  about_hero: [f("badge", "text", "badge"), HEADING, f("subtitle", "textarea", "subheading"), aboutSlots("about_hero")],
+  about_story: [
+    f("badge", "text", "badge"), HEADING, f("description", "textarea", "aboutParagraphs", "aboutParagraphsHint"),
+    f("ctaLabel", "text", "ctaLabel"), f("ctaUrl", "url", "ctaUrl", "aboutStartHint"), aboutSlots("about_story"),
+  ],
+  about_process: [f("badge", "text", "badge"), HEADING, aboutItems("steps", { hideable: true })],
+  about_importance: [
+    f("badge", "text", "badge"), HEADING, f("description", "textarea", "aboutParagraphs", "aboutParagraphsHint"),
+    ...CTA, aboutSlots("about_importance"),
+  ],
+  about_values: [f("badge", "text", "badge"), HEADING, aboutItems("aboutValues", { hideable: true })],
+  about_audience: [f("badge", "text", "badge"), HEADING, aboutItems("aboutCards", { hideable: true, points: true }, "aboutCardsHint")],
+  about_team: [f("badge", "text", "badge"), HEADING, aboutItems("aboutPeople", { hideable: true }, "aboutPeopleHint")],
+  about_faq: [f("badge", "text", "badge"), HEADING, aboutItems("questions", { hideable: true }, "aboutFaqHint")],
+  about_cta: [
+    HEADING, f("subtitle", "textarea", "subheading"),
+    f("ctaLabel", "text", "ctaLabel"), f("ctaUrl", "url", "ctaUrl", "aboutStartHint"),
+    f("cta2Label", "text", "cta2Label"), f("cta2Url", "url", "cta2Url"),
+  ],
 };
 
 /**
@@ -406,6 +450,9 @@ const EXTRA_QUICK: Record<string, string[]> = {
   legal: ["doc"],
   // A video's poster is the only thing visible before a click.
   video: ["posterUrl"],
+  // O nas: the small label above a heading, the pictures and the second
+  // button are part of how each section reads, not settings.
+  ...Object.fromEntries(ABOUT_TYPES.map((type) => [type, ["badge", "#slots", "cta2Label", "cta2Url"]])),
 };
 
 export function splitFields(type: string, fields: FieldDef[]): {
@@ -443,7 +490,7 @@ const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler", "dat
  *  A legal document is here too: it IS stored, but not as one string per
  *  language — its own editor (components/admin/cms/legal-doc-field.tsx) reads
  *  and writes `content.doc` whole, and the generic path must never touch it. */
-const NOT_STORED = new Set<FieldKind>(["heading", "gallery", "legaldoc"]);
+const NOT_STORED = new Set<FieldKind>(["heading", "gallery", "legaldoc", "slots"]);
 
 /** A section switch as it reads: "1" on, "0" off, nothing stored → the
  *  section's own default. */

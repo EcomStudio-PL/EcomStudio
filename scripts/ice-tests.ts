@@ -42,7 +42,7 @@ import { lookup } from "@/lib/i18n/t";
 import { lt, type LocaleText } from "@/lib/cms";
 import { applyOverrides, rewriteKeys } from "@/lib/i18n/overrides";
 import {
-  CMS_FIELDS, CMS_MULTILINE, ICE_PAGES, ICE_TEXT_KEYS, ICE_UNSUPPORTED, LAUNCH_TEXT_FIELDS, allElements, cardSlotKey,
+  ABOUT_ICE_SLOTS, CMS_FIELDS, CMS_MULTILINE, ICE_PAGES, ICE_TEXT_KEYS, ICE_UNSUPPORTED, LAUNCH_TEXT_FIELDS, allElements, cardSlotKey,
   icePageByKey, icePageFor, isDeniedKey, pageTextKeys, pagesOfText, slotSpec, textSpec,
 } from "@/lib/ice/registry";
 import { MARK_END, MARK_START, hasInvisible, stegaLocate, stegaMark, stegaRead, stegaStrip } from "@/lib/ice/stega";
@@ -64,7 +64,9 @@ import {
   ICE_EDIT_PREFIX, ICE_HINT_COOKIE, editCookieName, editCookieValue, iceCookies, iceEditSession, iceEditSessions,
   iceViewerIsAdmin, newNonce, parseEditCookie,
 } from "@/lib/server/ice/session";
-import { blockFields, isUuid, markBlocks, markPublishedPage, markText, valueAt, type CmsBlockLike } from "@/lib/server/ice/cms";
+import {
+  blockFields, blockSlots, blockToggles, isUuid, markBlocks, markPublishedPage, markText, valueAt, type CmsBlockLike,
+} from "@/lib/server/ice/cms";
 import * as actions from "@/lib/server/ice/actions";
 import * as wrappers from "@/app/actions/ice";
 import { iceGateData } from "@/lib/server/ice/gate";
@@ -1132,6 +1134,7 @@ async function sectionI() {
     ["galleryDiscard", () => actions.galleryDiscard({ key: "thumbs", base: null })],
     ["galleryVersions", () => actions.galleryVersions({ key: "thumbs" })],
     ["galleryRestore", () => actions.galleryRestore({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
+    ["cmsVisibility", () => actions.cmsVisibility({ blockId: B_HERO, path: [], hidden: true, base: null })],
   ];
   const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths" && k !== "iceDbReady");
   const covered = new Set(CALLS.map(([n]) => n.replace(/\(.*\)$/, "")));
@@ -1176,6 +1179,7 @@ async function sectionI() {
       ["iceGalleryDiscardAction", () => wrappers.iceGalleryDiscardAction({ key: "thumbs", base: null })],
       ["iceGalleryVersionsAction", () => wrappers.iceGalleryVersionsAction({ key: "thumbs" })],
       ["iceGalleryRestoreAction", () => wrappers.iceGalleryRestoreAction({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
+      ["iceCmsVisibilityAction", () => wrappers.iceCmsVisibilityAction({ blockId: B_HERO, path: [], hidden: true, base: null })],
     ];
     const names = Object.keys(wrappers);
     const results = await Promise.all(wrapperCalls.map(([, f]) => f()));
@@ -2130,6 +2134,175 @@ async function sectionL() {
     /value\.length > 2000\) throw new IceRefusal\("text_too_long"\)/.test(readFileSync("lib/server/ice/actions.ts", "utf8")));
 }
 
+/* ══ M. O NAS V2 — fields, slots and switches of the about sections ═══════ */
+
+const ABOUT_ID = "bbbbbbbb-0000-4000-8000-000000000009";
+const B_A_HERO = "a3a3a3a3-0000-4000-8000-000000000009";
+const B_A_VALUES = "a1a1a1a1-0000-4000-8000-000000000007";
+const B_A_AUD = "a2a2a2a2-0000-4000-8000-000000000008";
+const aHero = () => ({ id: B_A_HERO, type: "about_hero", visible: true, content: { badge: { pl: "O NAS" }, title: { pl: "Nagłówek" } } });
+const aValues = () => ({
+  id: B_A_VALUES, type: "about_values", visible: true,
+  content: {
+    title: { pl: "W co wierzymy" },
+    items: [
+      { title: { pl: "Wierność" }, description: { pl: "Opis" } },
+      { hidden: true, title: { pl: "Twoje zdjęcia" }, description: { pl: "[treść do potwierdzenia]" } },
+    ],
+  },
+});
+const aAudience = () => ({
+  id: B_A_AUD, type: "about_audience", visible: true,
+  content: {
+    title: { pl: "Dla kogo" },
+    items: [
+      { slot: "about.audience.small", title: { pl: "Mali" }, description: { pl: "Opis" }, points: [{ title: { pl: "P1" } }, { hidden: true, title: { pl: "P2" } }] },
+      // A slot key of another section is ignored.
+      { slot: "about.team.jakub", title: { pl: "Duzi" }, points: [] },
+    ],
+  },
+});
+
+function aboutDb(): FakeDb {
+  const db = freshDb();
+  db.tables.cms_pages.push({
+    id: ABOUT_ID, slug: "o-nas", title: "O nas", kind: "standard", status: "published", is_homepage: false,
+    published_snapshot: [aHero(), aValues(), aAudience()],
+  });
+  db.tables.cms_blocks.push(
+    { id: B_A_HERO, page_id: ABOUT_ID, updated_at: "2026-10-02T10:00:00.000Z" },
+    { id: B_A_VALUES, page_id: ABOUT_ID, updated_at: "2026-10-02T10:00:01.000Z" },
+    { id: B_A_AUD, page_id: ABOUT_ID, updated_at: "2026-10-02T10:00:02.000Z" },
+  );
+  db.rpcs.cms_inline_visibility = () => ({ data: NOW_TS, error: null });
+  db.rpcs.cms_inline_patch = () => ({ data: NOW_TS, error: null });
+  return db;
+}
+
+async function sectionM() {
+  console.log("\nM. O NAS V2 — about fields, picture slots, visibility switches");
+
+  const aud = blockFields(aAudience(), "b");
+  check("M1 about_audience fields: points of every card, card by card, after the cards' own fields (items.*.points.*.title)",
+    same(aud.map((x) => x.path.join(".")), ["badge", "title", "items.0.title", "items.1.title", "items.0.description", "items.1.description", "items.0.points.0.title", "items.0.points.1.title"])
+    && aud.every((x, i) => x.n === i && x.kind === "text"), JSON.stringify(aud.map((x) => x.path.join("."))));
+  check("M1b every about type has its fields in CMS_FIELDS, text only (pictures are slots, never URL fields)",
+    ["about_hero", "about_story", "about_process", "about_importance", "about_values", "about_audience", "about_team", "about_faq", "about_cta"]
+      .every((t) => CMS_FIELDS[t] && CMS_FIELDS[t].media.length === 0 && CMS_FIELDS[t].text.every((p) => !/url$/i.test(p) && p !== "slot" && p !== "icon")));
+  const marked = markBlocks([aAudience()] as CmsBlockLike[], "pl", NONCE)[0];
+  const point = valueAt(marked.content, ["items", "0", "points", "1", "title", "pl"]);
+  check("M1c a point's text is marked like any other field (its own number), the source untouched",
+    typeof point === "string" && stegaRead(point as string).some((p) => p === `${NONCE}.c${B_A_AUD.slice(0, 8)}.7`) && aAudience().content.items[0].points[1].title.pl === "P2");
+
+  const heroSlots = blockSlots(aHero()).map((x) => x.element.id);
+  const audSlots = blockSlots(aAudience()).map((x) => x.element.id);
+  check("M2 slots: the hero paints its visual and carries the share image; a card names its own slot; a foreign slot key is ignored",
+    same(heroSlots, ["about.hero.visual", "about.seo.og"]) && same(audSlots, ["about.audience.small"]) && blockSlots(heroBlock()).length === 0, JSON.stringify([heroSlots, audSlots]));
+  const hs = slotSpec("about.hero.visual");
+  check("M2b every about slot is a registered slot (entity section/about), the hero alone with video and a phone file",
+    ABOUT_ICE_SLOTS.length === 10 && ABOUT_ICE_SLOTS.every((x) => slotSpec(x.key) === x && x.entityType === "section" && x.entityId === "about")
+    && Boolean(hs?.video && hs.mobile) && ABOUT_ICE_SLOTS.filter((x) => x.video || x.mobile).length === 1);
+  check("M2c a slot element is found on the page by the frame's data-config-key",
+    blockSlots(aHero()).every((x) => x.element.kind === "media" && x.element.dom === `[data-config-key="${x.element.id}"]`));
+
+  const vt = blockToggles(aValues(), "base");
+  check("M3 values: the section and each item, hidden or not; the placeholder tile is flagged",
+    same(vt.map((x) => [x.path.join("."), x.hidden, x.placeholder]), [["", false, false], ["items.0", false, false], ["items.1", true, true]])
+    && vt.every((x) => x.base === "base" && x.id === `${B_A_VALUES}|${x.path.join("|")}`));
+  const at = blockToggles(aAudience(), null);
+  check("M3b audience: each card and each of its points (a hidden point stays listed)",
+    same(at.map((x) => [x.path.join("."), x.hidden]), [["", false], ["items.0", false], ["items.0.points.0", false], ["items.0.points.1", true], ["items.1", false]]));
+  check("M3c a hero has only its section switch; a non-about block has none",
+    blockToggles(aHero(), null).length === 1 && blockToggles(heroBlock(), null).length === 0 && blockToggles(faqBlock(), null).length === 0);
+
+  {
+    aboutDb();
+    const r = await actions.pageInfo("/o-nas");
+    const cms = r.ok && r.data.kind === "cms" ? r.data.cms : null;
+    check("M4 pageInfo on the about page: its slots and switches, each switch with its block's base",
+      Boolean(cms) && cms!.slots.length === 3 && cms!.toggles.length === 1 + 3 + 5
+      && cms!.toggles.find((x) => x.blockId === B_A_VALUES)?.base === "2026-10-02T10:00:01.000Z", JSON.stringify(r).slice(0, 200));
+    aboutDb();
+    const o = await actions.pageInfo("/oferta");
+    check("M4b any other CMS page: no slots, no switches", o.ok && o.data.kind === "cms" && o.data.cms.slots.length === 0 && o.data.cms.toggles.length === 0);
+  }
+
+  const vis = (o: Partial<Parameters<typeof actions.cmsVisibility>[0]>) =>
+    actions.cmsVisibility({ blockId: B_A_VALUES, path: ["items", "1"], hidden: false, base: "2026-10-02T10:00:01.000Z", ...o } as Parameters<typeof actions.cmsVisibility>[0]);
+  const REFUSALS: [string, Partial<Parameters<typeof actions.cmsVisibility>[0]>, string][] = [
+    ["a section that is not an about section", { blockId: B_HERO, path: [] }, "not_editable"],
+    ["an item of a non-about section", { blockId: B_FAQ, path: ["items", "0"] }, "not_editable"],
+    ["a point of a section without points", { path: ["items", "0", "points", "0"] }, "not_editable"],
+    ["an item that does not exist", { path: ["items", "9"] }, "not_editable"],
+    ["a field, not a switch", { path: ["items", "0", "title"] }, "not_editable"],
+    ["a bad path segment", { path: ["items", "0;drop"] }, "bad_path"],
+    ["a path too long", { path: ["items", "0", "points", "0", "x"] }, "bad_path"],
+    ["a switch that is not a boolean", { hidden: "no" as unknown as boolean }, "bad_input"],
+    ["an unknown block", { blockId: "99999999-0000-4000-8000-000000000000" }, "block_missing"],
+    ["a block of an unpublished page", { blockId: B_DRAFT, path: [] }, "not_published"],
+  ];
+  for (const [what, input, code] of REFUSALS) {
+    const db = aboutDb();
+    const r = await vis(input);
+    check(`M5 cmsVisibility refuses ${what} → ${code}, no RPC`, !r.ok && r.error === code && db.rpcCalls().length === 0 && iceState.audits.length === 0 && iceState.revalidated.length === 0, JSON.stringify(r).slice(0, 140));
+  }
+  {
+    const db = aboutDb();
+    const r = await vis({ path: ["items", "0"], hidden: false });
+    check("M6 switching to the state it already has: ok, nothing written", r.ok && db.rpcCalls().length === 0 && iceState.audits.length === 0);
+  }
+  {
+    const db = aboutDb();
+    const r = await vis({});
+    const a = db.rpcCalls("cms_inline_visibility")[0]?.args;
+    check("M7 success: cms_inline_visibility with the path, the switch, the base and a label",
+      r.ok && same(a, { p_block_id: B_A_VALUES, p_path: ["items", "1"], p_hidden: false, p_label: "Edytor wizualny · pokazano · about_values · items.1", p_base: "2026-10-02T10:00:01.000Z" }), JSON.stringify(a));
+    check("M7b … one audit row (ice.cms.visibility), CMS_TAG and exactly /o-nas revalidated",
+      iceState.audits.length === 1 && iceState.audits[0].action === "ice.cms.visibility" && same(iceState.revalidated, [`tag:${CMS_TAG}`, "path:/o-nas"]));
+  }
+  {
+    const db = aboutDb();
+    const r = await vis({ blockId: B_A_AUD, path: ["items", "0", "points", "1"], hidden: false, base: null });
+    const r2 = await vis({ blockId: B_A_HERO, path: [], hidden: true, base: null });
+    const calls = db.rpcCalls("cms_inline_visibility");
+    check("M7c a point and a whole section are switches too", r.ok && r2.ok && same(calls.map((c) => c.args.p_path), [["items", "0", "points", "1"], []]) && calls[1].args.p_hidden === true);
+  }
+  for (const [code, want] of [["draft_diverged", "draft_diverged"], ["conflict", "conflict"], ["not_editable", "not_editable"]] as const) {
+    const db = aboutDb();
+    db.rpcs.cms_inline_visibility = () => ({ data: null, error: { message: code } });
+    const r = await vis({});
+    check(`M8 RPC "${code}" → ${want}, nothing audited`, !r.ok && r.error === want && iceState.audits.length === 0);
+  }
+  {
+    const db = aboutDb();
+    db.rpcs.cms_inline_visibility = () => ({ data: null, error: { message: "noop" } });
+    const r = await vis({});
+    check("M8b RPC noop → ok, nothing audited", r.ok && iceState.audits.length === 0);
+  }
+  {
+    const db = aboutDb();
+    db.tables.content_versions = [];
+    const r = await actions.pageHistory("/o-nas");
+    const slotReads = db.calls.filter((c) => c.kind === "from" && c.table === "content_versions");
+    check("M9 the about page's history reads its cms versions and its pictures' slot versions", r.ok && slotReads.length === 2);
+  }
+  {
+    // A text of a switched-off tile is still a field: reachable from the list.
+    const db = aboutDb();
+    const r = await actions.cmsSave({ blockId: B_A_VALUES, path: ["items", "1", "description"], locale: "pl", value: "Gotowy tekst", expected: "[treść do potwierdzenia]", base: null });
+    check("M10 a hidden tile's text stays editable (cmsSave on it)", r.ok && db.rpcCalls("cms_inline_patch").length === 1, JSON.stringify(r));
+  }
+  {
+    const sql = readFileSync("supabase/migrations/0150_cms_inline_visibility.sql", "utf8");
+    check("M11 0150: admin only, about_* only, the five item sections, points only on audience, draft_diverged, CAS, versions, no anon",
+      /if not public\.is_admin\(\)/.test(sql) && /left\(v_block\.type, 6\) <> 'about_'/.test(sql)
+      && /'about_process', 'about_values', 'about_audience', 'about_team', 'about_faq'/.test(sql)
+      && /v_len = 4 and v_block\.type <> 'about_audience'/.test(sql) && /raise exception 'draft_diverged'/.test(sql)
+      && /v_block\.updated_at <> p_base/.test(sql) && /insert into public\.cms_page_versions/.test(sql)
+      && /insert into public\.content_versions/.test(sql) && /from public, anon/.test(sql));
+  }
+}
+
 /* ══ main ══════════════════════════════════════════════════════════════════ */
 
 async function main() {
@@ -2146,6 +2319,7 @@ async function main() {
   await sectionI();
   await sectionK();
   await sectionL();
+  await sectionM();
   sectionJ();
   check("Z the shipped dictionaries were never mutated by anything in this run", LOCALES.every((l, i) => JSON.stringify(DICTS[l]) === SHIPPED_JSON[i]));
   globalThis.fetch = realFetch;

@@ -1,6 +1,7 @@
 import { CATEGORIES, offeredWorkflows } from "./categories";
 import { TOOL_CARDS, isVideoCard } from "./tool-cards";
 import { ICE_LOCALES, type IceCrop, type IceLocale } from "./ice/types";
+import { ABOUT_SLOTS } from "./about-page";
 
 /**
  * EVERY PLACE IN GROVBASE WHERE AN ADMIN MAY PUT A PICTURE.
@@ -43,7 +44,7 @@ export type SlotEntity = "category" | "workflow" | "tool" | "banner" | "section"
 
 /** Which shape the slot is painted in, so the admin preview and the renderer
  *  agree without either guessing. */
-export type SlotRatio = "2336/1744" | "9/16" | "5/4" | "16/10" | "16/9" | "4/3" | "4/5" | "1/1" | "3/1" | "21/9";
+export type SlotRatio = "2336/1744" | "9/16" | "5/4" | "16/10" | "16/9" | "4/3" | "4/5" | "1/1" | "3/1" | "21/9" | "1200/630";
 
 /** The two thumbnail frames on Start and /tools — PHOTO_THUMB_RATIO and
  *  VIDEO_THUMB_RATIO in components/tools/tool-thumb.tsx (the tests hold these
@@ -268,6 +269,11 @@ const SECTION_SLOTS: SlotDef[] = [
   //     different situations (no work yet, no favourites, no videos) and has
   //     no picture to replace. One slot could not tell them apart.
   ...homeSlots(),
+  // THE "O NAS" PAGE (lib/about-page.ts): its hero, story, collage, audience
+  // cards, the team's optional photos and its share image. Framed in "Edytuj
+  // stronę" on /o-nas; listed here so Admin → Media → Sekcje shows them too.
+  ...ABOUT_SLOTS.map((s) => slot(s.key, "section", "about", s.name,
+    `media.slot.${s.label}`, s.ratio as SlotRatio, s.video, `media.fb.${s.fallback}`)),
 ];
 
 /* ── BANNERS ─────────────────────────────────────────────────────────────

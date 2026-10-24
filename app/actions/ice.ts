@@ -1,6 +1,6 @@
 "use server";
 import * as ice from "@/lib/server/ice/actions";
-import type { IceGallerySaveInput, IceLocale, IceSlotWrite } from "@/lib/ice/types";
+import type { IceCmsVisibilityInput, IceGallerySaveInput, IceLocale, IceSlotWrite } from "@/lib/ice/types";
 import type { GalleryKey } from "@/lib/launch/gallery";
 
 /**
@@ -36,6 +36,7 @@ export async function iceCmsSaveAction(input: {
 }) {
   return ice.cmsSave(input);
 }
+export async function iceCmsVisibilityAction(input: IceCmsVisibilityInput) { return ice.cmsVisibility(input); }
 export async function iceGalleryStateAction(path: string) { return ice.galleryState(path); }
 export async function iceGallerySaveAction(input: IceGallerySaveInput) { return ice.gallerySave(input); }
 export async function iceGalleryPublishAction(input: { confirmLaunchDraft?: boolean }) { return ice.galleryPublish(input); }

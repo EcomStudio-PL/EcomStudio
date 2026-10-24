@@ -29,7 +29,10 @@ export function cmsFieldLabel(t: T, f: IceCmsField): string {
   const block = t(`ice.block.${f.blockType}`);
   if (f.blockType === "launch") return `${block} · ${t(`ice.launchField.${f.path[1].replace(/\./g, "_")}`)}`;
   const item = f.path[0] === "items" ? Number(f.path[1]) + 1 : null;
+  // An audience card's point: "Dla kogo · Element 1 · Punkt 2 · Tytuł".
+  const point = item && f.path[2] === "points" ? Number(f.path[3]) + 1 : null;
   const field = t(`ice.field.${f.path[f.path.length - 1]}`);
+  if (item && point) return `${block} · ${t("ice.field.item", { n: item })} · ${t("ice.field.point", { n: point })} · ${field}`;
   return item ? `${block} · ${t("ice.field.item", { n: item })} · ${field}` : `${block} · ${field}`;
 }
 

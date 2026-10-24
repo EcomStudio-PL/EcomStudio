@@ -18,6 +18,8 @@ import { getPlatformAccess } from "@/lib/server/platform-access";
 import { pageMetadata, RESERVED_SLUGS } from "@/lib/server/cms-page";
 import { ProductSurface } from "@/components/home/product-surface";
 import { getActiveHomepage } from "@/lib/server/homepage";
+import { loadSlots } from "@/lib/server/media-slots";
+import { ABOUT_SLOT, blockSlotKeys, isAboutType, startCta } from "@/lib/about-page";
 
 /**
  * EVERY OTHER PUBLIC PAGE.
@@ -49,7 +51,24 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return { alternates: { canonical: "/" } };
   }
   const { locale } = await getDictionary();
-  return pageMetadata(page, locale, `/${slug}`);
+  const meta = pageMetadata(page, locale, `/${slug}`);
+  // O NAS V2: the share image is the page's own slot ("Edytuj stronę" → the
+  // hero's elements), else the page's SEO image, else GrovBase's default.
+  if (page.blocks.some((b) => b.visible && isAboutType(b.type))) {
+    const og = (await loadSlots(supabase, [ABOUT_SLOT.og])).get(ABOUT_SLOT.og);
+    const fromSlot = og && og.mediaType === "image" ? og.desktop : null;
+    const image = fromSlot
+      ? { url: fromSlot, ...(og?.desktopWidth && og?.desktopHeight ? { width: og.desktopWidth, height: og.desktopHeight } : {}) }
+      : meta.openGraph?.images ? null : { url: "/launch/og.jpg", width: 1200, height: 630 };
+    if (image) {
+      return {
+        ...meta,
+        openGraph: { ...meta.openGraph, images: [image] },
+        twitter: { ...meta.twitter, card: "summary_large_image", images: [image.url] },
+      };
+    }
+  }
+  return meta;
 }
 
 export default async function CmsPage({ params, searchParams }: PageProps) {
@@ -105,13 +124,25 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
-  const [media, data, global, nav, site] = await Promise.all([
+  // O NAS V2: the about sections' pictures are media slots — one read for the
+  // page, and none at all on a page without those sections.
+  const aboutKeys = visible.flatMap((b) => blockSlotKeys(b.type, b.content));
+  const hasAbout = visible.some((b) => isAboutType(b.type));
+  const [media, data, global, nav, site, slots, home] = await Promise.all([
     loadMediaIndex(supabase, collectMediaUrls(visible)),
     loadLiveData(supabase, new Set(visible.map((b) => b.type))),
     getGlobalSections(),
     getNavPages(),
     getPublicSite(supabase),
+    aboutKeys.length > 0 ? loadSlots(supabase, aboutKeys) : Promise.resolve(undefined),
+    hasAbout ? getActiveHomepage() : Promise.resolve(null),
   ]);
+  const start = hasAbout
+    ? startCta({
+      signedIn: Boolean(user), allowSignup: access.allowSignup, showAuth: access.showAuthEntry,
+      waitlist: access.waitlistEnabled, launchHome: home?.kind === "launch",
+    })
+    : undefined;
 
   const shell = {
     global, nav, site, locale, t,
@@ -130,7 +161,7 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
       <main className="flex-1">
         <BlockRenderer
           blocks={visible}
-          ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user) })}
+          ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user), slots, start })}
         />
       </main>
       {page.footerMode === "global" && <SiteFooter {...shell} />}

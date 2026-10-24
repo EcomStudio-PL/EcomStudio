@@ -513,7 +513,13 @@ const MEDIA = "https://orjkxijqpecnbzhxhfct.supabase.co/storage/v1/object/public
 /** The 1200×630 share card cut from the premiere artwork (public/launch). */
 const OG_IMAGE = "https://grovbase.com/launch/og.jpg";
 
-const ABOUT: SeedPage = {
+/**
+ * O NAS AS PUBLIC PAGES V1 RELEASED IT — kept verbatim, because migration
+ * 0148 is GENERATED from it (scripts/cms-seed-sql.ts --release) and a
+ * committed migration must regenerate byte for byte. The page itself is
+ * O NAS V2 below; 0151 replaces this one with it.
+ */
+export const ABOUT_V1: SeedPage = {
   slug: "o-nas",
   title: "O nas",
   navGroup: "company",
@@ -717,6 +723,343 @@ const ABOUT: SeedPage = {
         ctaUrl: "/",
         cta2Label: L("Zobacz cennik", "See pricing", "Preise ansehen"),
         cta2Url: "/plany",
+      },
+    },
+  ],
+};
+
+/**
+ * O NAS V2 — the about page as a product page: where GrovBase comes from, how
+ * an effect is made, what it believes, who it is for and who builds it.
+ *
+ * The nine sections are the about_* types (components/cms/about-sections.tsx);
+ * every picture is a media slot (lib/about-page.ts) chosen and framed in
+ * "Edytuj stronę", so no file is named here. Two things are deliberately
+ * SWITCHED OFF and carry a bracketed placeholder instead of an invented
+ * answer — the sixth value ("Twoje zdjęcia są Twoje") and the questions about
+ * photos and company details. A placeholder can never be published: the
+ * renderer drops any tile or question still holding "[…]", switched on or not.
+ *
+ * The hero keeps the analytics id `about.hero`: it is also 0148's "already on
+ * the new layout" marker, so a later run of 0148 can never put V1 back.
+ */
+const ABOUT: SeedPage = {
+  slug: "o-nas",
+  title: "O nas",
+  navGroup: "company",
+  navOrder: 10,
+  seo: {
+    pl: {
+      title: "O nas — GrovBase",
+      description: "GrovBase robi z prostego zdjęcia z telefonu gotowe materiały do sprzedaży na Allegro, Amazon i we własnym sklepie. Poznaj ludzi i zasady, które za tym stoją.",
+    },
+    en: {
+      title: "About us — GrovBase",
+      description: "GrovBase turns a simple phone photo into ready-to-sell material for Allegro, Amazon and your own shop. Meet the people and the principles behind it.",
+    },
+    de: {
+      title: "Über uns — GrovBase",
+      description: "GrovBase macht aus einem einfachen Handyfoto fertiges Verkaufsmaterial für Allegro, Amazon und den eigenen Shop. Lerne die Menschen und Grundsätze dahinter kennen.",
+    },
+  },
+  sections: [
+    {
+      type: "about_hero",
+      analyticsId: "about.hero",
+      style: { base: { paddingTop: "lg", paddingBottom: "md", width: "wide" } },
+      content: {
+        badge: L("O NAS", "ABOUT US", "ÜBER UNS"),
+        title: L(
+          "Dobre zdjęcie produktu nie powinno kosztować więcej niż marża na produkcie",
+          "A good product photo shouldn’t cost more than the margin on the product",
+          "Ein gutes Produktfoto sollte nicht mehr kosten als die Marge auf das Produkt",
+        ),
+        subtitle: L(
+          "GrovBase robi z prostego zdjęcia z telefonu gotowe materiały do sprzedaży. Bez studia, bez promptów i bez czekania na grafika.",
+          "GrovBase turns a simple phone photo into ready-to-sell material. No studio, no prompts and no waiting for a designer.",
+          "GrovBase macht aus einem einfachen Handyfoto fertiges Verkaufsmaterial. Ohne Studio, ohne Prompts und ohne Warten auf einen Grafiker.",
+        ),
+      },
+    },
+    {
+      type: "about_story",
+      analyticsId: "about.story",
+      anchor: "historia",
+      style: { base: { paddingTop: "lg", paddingBottom: "lg" } },
+      content: {
+        title: L("Skąd się wzięliśmy", "Where we come from", "Woher wir kommen"),
+        description: L(
+          "Od ponad pięciu lat robimy grafiki dla sprzedawców z Allegro i innych marketplace’ów. Popyt na dobre miniaturki i zdjęcia produktów był tak duży, że nie dało się przyjąć wszystkich zleceń, a sprzedawcy czekali dniami na coś, co powinno zająć minuty.\n\nNarzędzia AI, które testowaliśmy, dawały efekt „typowego AI”, wymagały pisania promptów albo robiły tylko jedną rzecz. Postanowiliśmy więc zamknąć nasz warsztat w aplikacji, z której każdy sprzedawca może skorzystać sam.",
+          "For more than five years we have been creating graphics for sellers on Allegro and other marketplaces. Demand for good thumbnails and product photos was so high that we couldn’t take on every order, and sellers waited days for something that should take minutes.\n\nThe AI tools we tested produced that “typical AI” look, required writing prompts or did only one thing. So we decided to put our workshop into an app that any seller can use on their own.",
+          "Seit mehr als fünf Jahren gestalten wir Grafiken für Händler auf Allegro und anderen Marktplätzen. Die Nachfrage nach guten Thumbnails und Produktfotos war so groß, dass wir nicht alle Aufträge annehmen konnten – und Händler tagelang auf etwas warteten, das Minuten dauern sollte.\n\nDie KI-Werkzeuge, die wir getestet haben, lieferten den typischen „KI-Look“, verlangten das Schreiben von Prompts oder konnten nur eine Sache. Also haben wir unsere Werkstatt in eine App gepackt, die jeder Händler selbst nutzen kann.",
+        ),
+        // No address: the button follows the platform's state — the sign-up
+        // dialog when sign-up is open, the waitlist before the launch.
+        ctaLabel: L("Wypróbuj za darmo", "Try it for free", "Kostenlos ausprobieren"),
+      },
+    },
+    {
+      type: "about_process",
+      analyticsId: "about.process",
+      anchor: "jak-to-dziala",
+      style: { base: { paddingTop: "lg", paddingBottom: "lg", background: "sunken" } },
+      content: {
+        badge: L("JAK TO DZIAŁA", "HOW IT WORKS", "SO FUNKTIONIERT ES"),
+        title: L("Projektuje grafik, wykonuje AI", "A designer designs, AI delivers", "Ein Grafiker gestaltet, die KI setzt um"),
+        items: [
+          {
+            icon: "pen",
+            title: L("Grafik projektuje efekt", "A designer designs the effect", "Ein Grafiker gestaltet den Effekt"),
+            description: L(
+              "Każde narzędzie ustawia grafik e-commerce: kompozycję, światło, cienie i wymagania marketplace’ów. To te same zasady, według których robimy grafiki ręcznie.",
+              "Every tool is set up by an e-commerce designer: composition, light, shadows and marketplace requirements. The same rules we follow when we make graphics by hand.",
+              "Jedes Werkzeug richtet ein E-Commerce-Grafiker ein: Komposition, Licht, Schatten und die Anforderungen der Marktplätze. Dieselben Regeln, nach denen wir Grafiken von Hand erstellen.",
+            ),
+          },
+          {
+            icon: "wand",
+            title: L("AI go wykonuje", "AI carries it out", "Die KI setzt ihn um"),
+            description: L(
+              "Do każdego zadania dobieramy model, który daje najlepszy efekt, i wymieniamy go, gdy pojawi się lepszy.",
+              "For every task we pick the model that gives the best result, and we replace it when a better one comes along.",
+              "Für jede Aufgabe wählen wir das Modell, das das beste Ergebnis liefert, und tauschen es aus, sobald es ein besseres gibt.",
+            ),
+          },
+          {
+            icon: "download",
+            title: L("Ty dostajesz gotowy plik", "You get a finished file", "Du bekommst eine fertige Datei"),
+            description: L(
+              "Wgrywasz zdjęcie, wybierasz efekt i pobierasz grafikę gotową do wystawienia oferty.",
+              "Upload a photo, choose an effect and download a graphic ready for your listing.",
+              "Foto hochladen, Effekt wählen und eine Grafik herunterladen, die bereit fürs Angebot ist.",
+            ),
+          },
+        ],
+      },
+    },
+    {
+      type: "about_importance",
+      analyticsId: "about.importance",
+      style: { base: { paddingTop: "lg", paddingBottom: "lg" } },
+      content: {
+        title: L("Dlaczego zdjęcie ma znaczenie", "Why the photo matters", "Warum das Foto zählt"),
+        description: L(
+          "Na liście ofert kupujący widzi najpierw miniaturkę, dopiero potem cenę i opis. Zdjęcie decyduje, czy w ogóle kliknie. A dobra sesja to termin, studio, fotograf, retusz i tydzień czekania – na produkt, który może się nie sprzedać. GrovBase skraca to do kilku minut, a koszt do ułamka.",
+          "In a list of offers the buyer sees the thumbnail first and only then the price and description. The photo decides whether they click at all. And a good shoot means a booking, a studio, a photographer, retouching and a week of waiting – for a product that might not sell. GrovBase cuts that to a few minutes and the cost to a fraction.",
+          "In einer Angebotsliste sieht der Käufer zuerst das Thumbnail, erst danach Preis und Beschreibung. Das Foto entscheidet, ob er überhaupt klickt. Und ein gutes Shooting heißt Termin, Studio, Fotograf, Retusche und eine Woche Warten – für ein Produkt, das sich vielleicht nicht verkauft. GrovBase verkürzt das auf wenige Minuten und die Kosten auf einen Bruchteil.",
+        ),
+        // The public page that shows what the tools make.
+        ctaLabel: L("Zobacz przykłady", "See examples", "Beispiele ansehen"),
+        ctaUrl: "/narzedzia",
+      },
+    },
+    {
+      type: "about_values",
+      analyticsId: "about.values",
+      anchor: "zasady",
+      style: { base: { paddingTop: "lg", paddingBottom: "lg", background: "sunken" } },
+      content: {
+        badge: L("NASZE ZASADY", "OUR PRINCIPLES", "UNSERE GRUNDSÄTZE"),
+        title: L("W co wierzymy", "What we believe", "Woran wir glauben"),
+        items: [
+          {
+            icon: "target",
+            title: L("Wierność przed kreatywnością", "Fidelity before creativity", "Treue vor Kreativität"),
+            description: L(
+              "Ładne zdjęcie, na którym produkt wygląda inaczej niż w rzeczywistości, to zwrot i zła opinia. Kształt, kolor i detal są ważniejsze niż efekt.",
+              "A pretty photo in which the product looks different than in reality means a return and a bad review. Shape, colour and detail matter more than the effect.",
+              "Ein schönes Foto, auf dem das Produkt anders aussieht als in Wirklichkeit, bedeutet eine Rücksendung und eine schlechte Bewertung. Form, Farbe und Details sind wichtiger als der Effekt.",
+            ),
+          },
+          {
+            icon: "zap",
+            title: L("Bez promptów", "No prompts", "Ohne Prompts"),
+            description: L(
+              "Sprzedawca ma sprzedawać, nie uczyć się pisania poleceń dla AI. Wgrywasz zdjęcie, wybierasz efekt, gotowe.",
+              "A seller should be selling, not learning to write instructions for AI. Upload a photo, choose an effect, done.",
+              "Ein Händler soll verkaufen, nicht lernen, Anweisungen für KI zu schreiben. Foto hochladen, Effekt wählen, fertig.",
+            ),
+          },
+          {
+            icon: "pen",
+            title: L("Zaprojektowane w praktyce", "Designed in practice", "In der Praxis entworfen"),
+            description: L(
+              "Efekty powstają na bazie tysięcy grafik wykonanych dla prawdziwych sprzedawców, a nie z myślą o ładnym demo.",
+              "Our effects are built on thousands of graphics made for real sellers, not with a pretty demo in mind.",
+              "Unsere Effekte basieren auf Tausenden Grafiken für echte Händler, nicht auf einer hübschen Demo.",
+            ),
+          },
+          {
+            icon: "layers",
+            title: L("Najlepszy model do zadania", "The best model for the job", "Das beste Modell für die Aufgabe"),
+            description: L(
+              "Modele AI zmieniają się co kilka miesięcy. Nie jesteśmy przywiązani do jednego dostawcy.",
+              "AI models change every few months. We are not tied to a single provider.",
+              "KI-Modelle ändern sich alle paar Monate. Wir sind an keinen einzelnen Anbieter gebunden.",
+            ),
+          },
+          {
+            icon: "eye",
+            title: L("Bez udawania", "No pretending", "Kein Vortäuschen"),
+            description: L(
+              "Funkcja, która jeszcze nie działa, jest oznaczona jako „wkrótce”. Nie pokazujemy przycisków, które nic nie robią.",
+              "A feature that doesn’t work yet is marked “coming soon”. We don’t show buttons that do nothing.",
+              "Eine Funktion, die noch nicht funktioniert, ist als „bald verfügbar“ gekennzeichnet. Wir zeigen keine Schaltflächen, die nichts tun.",
+            ),
+          },
+          {
+            // Switched off until its wording is approved — and never shown
+            // while it still holds the placeholder, switched on or not.
+            hidden: true,
+            icon: "lock",
+            title: L("Twoje zdjęcia są Twoje", "Your photos are yours", "Deine Fotos gehören dir"),
+            description: L("[treść do potwierdzenia]", "[content to be confirmed]", "[Inhalt zu bestätigen]"),
+          },
+        ],
+      },
+    },
+    {
+      type: "about_audience",
+      analyticsId: "about.audience",
+      anchor: "dla-kogo",
+      style: { base: { paddingTop: "lg", paddingBottom: "lg" } },
+      content: {
+        badge: L("DLA KOGO", "WHO IT’S FOR", "FÜR WEN"),
+        title: L("Dla każdego, kto sprzedaje online", "For everyone who sells online", "Für alle, die online verkaufen"),
+        items: [
+          {
+            slot: "about.audience.small",
+            icon: "bag",
+            title: L("Mali sprzedawcy", "Small sellers", "Kleine Händler"),
+            description: L(
+              "Prowadzisz sklep sam i nie masz budżetu na sesję dla każdego produktu.",
+              "You run your shop on your own and don’t have the budget for a shoot for every product.",
+              "Du führst deinen Shop allein und hast kein Budget für ein Shooting für jedes Produkt.",
+            ),
+            points: [
+              { icon: "clock", title: L("Miniaturka w kilka minut zamiast kilku dni", "A thumbnail in minutes instead of days", "Ein Thumbnail in Minuten statt Tagen") },
+              { icon: "coins", title: L("Koszt kilku złotych zamiast kilkudziesięciu", "A few złoty instead of dozens", "Ein paar Złoty statt Dutzender") },
+              { icon: "wand", title: L("Bez umiejętności graficznych", "No design skills needed", "Keine Grafikkenntnisse nötig") },
+              { icon: "gift", title: L("Darmowe kredyty na start", "Free credits to start", "Kostenlose Credits zum Start") },
+            ],
+          },
+          {
+            slot: "about.audience.large",
+            icon: "company",
+            title: L("Duzi sprzedawcy i marki", "Large sellers and brands", "Große Händler und Marken"),
+            description: L(
+              "Sprzedajesz w wielu kanałach i regularnie wprowadzasz nowe produkty.",
+              "You sell across many channels and launch new products regularly.",
+              "Du verkaufst über viele Kanäle und bringst regelmäßig neue Produkte heraus.",
+            ),
+            points: [
+              { icon: "layers", title: L("Spójne zdjęcia dla całego asortymentu", "Consistent photos across your whole range", "Einheitliche Fotos für das ganze Sortiment") },
+              { icon: "crop", title: L("Formaty pod Allegro, Amazon i własny sklep", "Formats for Allegro, Amazon and your own shop", "Formate für Allegro, Amazon und den eigenen Shop") },
+              { icon: "images", title: L("Wiele zdjęć w jednej generacji", "Many photos in one generation", "Viele Fotos in einer Generierung") },
+              { icon: "users", title: L("Plan dla zespołu", "A plan for your team", "Ein Plan für dein Team") },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      type: "about_team",
+      analyticsId: "about.team",
+      anchor: "zespol",
+      style: { base: { paddingTop: "lg", paddingBottom: "lg", background: "sunken" } },
+      content: {
+        badge: L("ZESPÓŁ", "TEAM", "TEAM"),
+        title: L("Kto za tym stoi", "Who’s behind it", "Wer dahintersteht"),
+        items: [
+          {
+            slot: "about.team.jakub",
+            value: "J",
+            title: L("Jakub", "Jakub", "Jakub"),
+            badge: L("Grafik e-commerce, współzałożyciel", "E-commerce designer, co-founder", "E-Commerce-Grafiker, Mitgründer"),
+            description: L(
+              "Od ponad pięciu lat projektuje miniaturki i zdjęcia produktów dla sprzedawców z marketplace’ów. W GrovBase odpowiada za to, jak wyglądają efekty każdego narzędzia.",
+              "For more than five years he has been designing thumbnails and product photos for marketplace sellers. At GrovBase he is responsible for how every tool’s effects look.",
+              "Seit mehr als fünf Jahren gestaltet er Thumbnails und Produktfotos für Marktplatz-Händler. Bei GrovBase verantwortet er, wie die Effekte jedes Werkzeugs aussehen.",
+            ),
+          },
+          {
+            slot: "about.team.marcel",
+            value: "M",
+            title: L("Marcel", "Marcel", "Marcel"),
+            badge: L("Technologia, współzałożyciel", "Technology, co-founder", "Technologie, Mitgründer"),
+            description: L(
+              "Od ponad sześciu lat projektuje i buduje sklepy internetowe i strony. W GrovBase odpowiada za aplikację i to, żeby wszystko działało szybko i bez błędów.",
+              "For more than six years he has been designing and building online shops and websites. At GrovBase he is responsible for the app and for everything working fast and without errors.",
+              "Seit mehr als sechs Jahren konzipiert und baut er Onlineshops und Websites. Bei GrovBase verantwortet er die App und dass alles schnell und fehlerfrei läuft.",
+            ),
+          },
+        ],
+      },
+    },
+    {
+      type: "about_faq",
+      analyticsId: "about.faq",
+      anchor: "faq",
+      style: { base: { paddingTop: "lg", paddingBottom: "md" } },
+      content: {
+        title: L("Masz pytania?", "Any questions?", "Noch Fragen?"),
+        items: [
+          {
+            title: L("Czym jest GrovBase?", "What is GrovBase?", "Was ist GrovBase?"),
+            description: L(
+              "GrovBase to aplikacja dla sprzedawców e-commerce, która z prostego zdjęcia produktu robi gotowe materiały do sprzedaży: miniaturki, retusz, packshoty i zdjęcia lifestyle. Wgrywasz zdjęcie, wybierasz efekt i pobierasz plik gotowy do oferty.",
+              "GrovBase is an app for e-commerce sellers that turns a simple product photo into ready-to-sell material: thumbnails, retouching, packshots and lifestyle photos. Upload a photo, choose an effect and download a file ready for your listing.",
+              "GrovBase ist eine App für E-Commerce-Händler, die aus einem einfachen Produktfoto fertiges Verkaufsmaterial macht: Thumbnails, Retusche, Packshots und Lifestyle-Fotos. Foto hochladen, Effekt wählen und eine angebotsfertige Datei herunterladen.",
+            ),
+          },
+          {
+            title: L("Kto stoi za GrovBase?", "Who is behind GrovBase?", "Wer steht hinter GrovBase?"),
+            description: L(
+              "GrovBase tworzą dwie osoby. Jakub jest grafikiem e-commerce i odpowiada za to, jak wyglądają efekty narzędzi. Marcel projektuje i buduje sklepy oraz aplikacje i odpowiada za technologię.",
+              "GrovBase is made by two people. Jakub is an e-commerce designer and is responsible for how the tools’ effects look. Marcel designs and builds shops and apps and is responsible for the technology.",
+              "GrovBase wird von zwei Personen entwickelt. Jakub ist E-Commerce-Grafiker und verantwortet, wie die Effekte der Werkzeuge aussehen. Marcel konzipiert und baut Shops und Apps und verantwortet die Technik.",
+            ),
+          },
+          {
+            title: L("Na jakich modelach AI pracujecie?", "Which AI models do you use?", "Mit welchen KI-Modellen arbeitet ihr?"),
+            description: L(
+              "Korzystamy z modeli kilku dostawców i do każdego narzędzia dobieramy ten, który daje w nim najlepszy efekt. Gdy pojawi się lepszy model, możemy go wymienić — sposób korzystania z aplikacji się nie zmienia.",
+              "We use models from several providers and, for each tool, pick the one that gives the best result there. When a better model appears we can switch to it — the way you use the app stays the same.",
+              "Wir nutzen Modelle mehrerer Anbieter und wählen für jedes Werkzeug dasjenige, das dort das beste Ergebnis liefert. Gibt es ein besseres Modell, können wir wechseln – die Bedienung der App bleibt gleich.",
+            ),
+          },
+          {
+            title: L("Czym różnicie się od innych narzędzi AI do zdjęć?", "How are you different from other AI photo tools?", "Was unterscheidet euch von anderen KI-Foto-Tools?"),
+            description: L(
+              "Efekty w GrovBase ustawia grafik e-commerce, więc nie musisz pisać promptów ani znać się na AI. Najważniejsza jest wierność produktu: kształt, kolory i detale mają pozostać takie, jak na Twoim zdjęciu.",
+              "The effects in GrovBase are set up by an e-commerce designer, so you don’t need to write prompts or know anything about AI. Product fidelity comes first: shape, colours and details should stay as they are in your photo.",
+              "Die Effekte in GrovBase richtet ein E-Commerce-Grafiker ein – du musst also keine Prompts schreiben und nichts über KI wissen. An erster Stelle steht die Produkttreue: Form, Farben und Details sollen so bleiben wie auf deinem Foto.",
+            ),
+          },
+          {
+            hidden: true,
+            title: L("Co dzieje się z moimi zdjęciami?", "What happens to my photos?", "Was passiert mit meinen Fotos?"),
+            description: L("[treść do potwierdzenia]", "[content to be confirmed]", "[Inhalt zu bestätigen]"),
+          },
+          {
+            hidden: true,
+            title: L("Dane firmy", "Company details", "Firmendaten"),
+            description: L("[nazwa firmy], [miasto], NIP [numer]", "[company name], [city], VAT ID [number]", "[Firmenname], [Stadt], USt-IdNr. [Nummer]"),
+          },
+        ],
+      },
+    },
+    {
+      type: "about_cta",
+      analyticsId: "about.cta",
+      style: { base: { paddingTop: "md", paddingBottom: "xl", width: "wide" } },
+      content: {
+        title: L("Sprzedawaj od pierwszego spojrzenia", "Sell from the first glance", "Verkaufe ab dem ersten Blick"),
+        subtitle: L("Gotowe zdjęcia produktów w kilka minut.", "Finished product photos in minutes.", "Fertige Produktfotos in wenigen Minuten."),
+        // No address: the platform's own start (sign-up or the waitlist).
+        ctaLabel: L("Zacznij za darmo", "Start for free", "Kostenlos starten"),
+        cta2Label: L("Napisz do nas", "Write to us", "Schreib uns"),
+        cta2Url: "/kontakt",
       },
     },
   ],

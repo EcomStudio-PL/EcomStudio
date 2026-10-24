@@ -20,11 +20,11 @@ import { disallowedTokens } from "@/lib/launch/fields";
 import { isLegalSlug } from "@/lib/legal/docs";
 import {
   ICE_LOCALES,
-  type IceAsset, type IceCmsPage, type IceCrop, type IceLocale, type IcePageInfo, type IceResult,
+  type IceAsset, type IceCmsPage, type IceCmsVisibilityInput, type IceCrop, type IceLocale, type IcePageInfo, type IceResult,
   type IceSlotState, type IceSlotWrite, type IceTextInfo, type IceTextState, type IceUsage, type IceVersion,
 } from "@/lib/ice/types";
 import { CONTENT_TAG } from "./overrides";
-import { blockFields, isUuid, valueAt } from "./cms";
+import { blockFields, blockSlots, blockToggles, isUuid, valueAt } from "./cms";
 import { ICE_HINT_COOKIE, editCookieName, editCookieValue, newNonce } from "./session";
 import {
   ASSET_COLUMNS, IceRefusal, authorNames, checkAsset, cleanPath, cmsPageAt, dbCode, iceRefusesPath, isLocale, requireIceAdmin, run,
@@ -79,6 +79,8 @@ async function cmsPageInfo(supabase: Client, row: CmsPageRow, path: string): Pro
     title: row.title,
     launch: row.kind === "launch",
     fields: blocks.flatMap((b) => blockFields(b, b.id ? base.get(b.id) ?? null : null)),
+    slots: blocks.flatMap((b) => blockSlots(b)),
+    toggles: blocks.flatMap((b) => blockToggles(b, b.id ? base.get(b.id) ?? null : null)),
   };
 }
 
@@ -490,10 +492,19 @@ export function pageHistory(rawPath: string): Promise<IceResult<(IceVersion & { 
     } else {
       const row = await cmsPageAt(supabase, path);
       if (!row) throw new IceRefusal("unsupported");
-      const { data, error } = await supabase.from("content_versions").select(cols).eq("target", "cms")
-        .like("key", `${row.id}:%`).order("created_at", { ascending: false }).limit(40);
-      if (error) throw new Error(error.message);
-      rows = (data ?? []) as VersionRow[];
+      // The page's own picture slots (O nas) are media_slots rows: their
+      // changes are "slot" versions, listed with the page's.
+      const slots = [...new Set(toBlocks(row.published_snapshot).flatMap((b) => blockSlots(b).map((x) => x.element.id)))];
+      const [a, b] = await Promise.all([
+        supabase.from("content_versions").select(cols).eq("target", "cms")
+          .like("key", `${row.id}:%`).order("created_at", { ascending: false }).limit(40),
+        slots.length
+          ? supabase.from("content_versions").select(cols).eq("target", "slot").in("key", slots).order("created_at", { ascending: false }).limit(40)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (a.error) throw new Error(a.error.message);
+      if (b.error) throw new Error(b.error.message);
+      rows = [...(a.data ?? []), ...(b.data ?? [])] as VersionRow[];
     }
     rows.sort((x, y) => (x.created_at < y.created_at ? 1 : -1));
     return withAuthors(supabase, rows.slice(0, 40));
@@ -691,6 +702,53 @@ export function cmsSave(input: {
     await logAudit(supabase, {
       actorId: adminId, action: "ice.cms.saved", entityType: "cms_block", entityId: input.blockId,
       before: { path: fullPath, value: expected }, after: { path: fullPath, value, action },
+    });
+    revalidateTag(CMS_TAG);
+    revalidatePath(page.is_homepage ? "/" : `/${page.slug}`);
+    return { updatedAt: data as string };
+  });
+}
+
+/**
+ * "Widoczność": one section, item or point of a published CMS page switched
+ * on or off, live — the same contract as cmsSave (cms_inline_visibility,
+ * 0150). Only a switch the page offers (blockToggles: the O nas sections);
+ * any other path is refused before the database is asked.
+ */
+export function cmsVisibility(input: IceCmsVisibilityInput): Promise<IceResult<{ updatedAt: string }>> {
+  return run(async () => {
+    const { supabase, adminId } = await requireIceAdmin();
+    if (!input || !isUuid(input.blockId)) throw new IceRefusal("block_missing");
+    if (typeof input.hidden !== "boolean") throw new IceRefusal("bad_input");
+    if (!Array.isArray(input.path) || input.path.length > 4 || !input.path.every((x) => typeof x === "string" && SEG.test(x))) {
+      throw new IceRefusal("bad_path");
+    }
+    const { data: block } = await supabase.from("cms_blocks").select("id, page_id").eq("id", input.blockId).maybeSingle();
+    if (!block) throw new IceRefusal("block_missing");
+    const { data: page } = await supabase.from("cms_pages")
+      .select("id, slug, title, kind, status, is_homepage, published_snapshot").eq("id", block.page_id).maybeSingle();
+    if (!page || page.status !== "published" || page.kind === "app") throw new IceRefusal("not_published");
+    if (isLegalSlug(page.slug)) throw new IceRefusal("unsupported");
+    const live = toBlocks(page.published_snapshot).find((b) => b.id === input.blockId);
+    if (!live) throw new IceRefusal("not_in_snapshot");
+    const toggle = blockToggles(live, null).find((x) => x.path.join("|") === input.path.join("|"));
+    if (!toggle) throw new IceRefusal("not_editable");
+    if (toggle.hidden === input.hidden) return { updatedAt: input.base ?? "" };
+
+    const where = input.path.length === 0 ? "sekcja" : input.path.join(".");
+    const label = `Edytor wizualny · ${input.hidden ? "ukryto" : "pokazano"} · ${live.type} · ${where}`;
+    const { data, error } = await supabase.rpc("cms_inline_visibility", {
+      p_block_id: input.blockId, p_path: input.path, p_hidden: input.hidden, p_label: label,
+      p_base: typeof input.base === "string" && input.base ? input.base : null,
+    });
+    if (error) {
+      const code = dbCode(error.message);
+      if (code === "noop") return { updatedAt: input.base ?? "" };
+      throw new IceRefusal(code);
+    }
+    await logAudit(supabase, {
+      actorId: adminId, action: "ice.cms.visibility", entityType: "cms_block", entityId: input.blockId,
+      before: { path: input.path, hidden: toggle.hidden }, after: { path: input.path, hidden: input.hidden },
     });
     revalidateTag(CMS_TAG);
     revalidatePath(page.is_homepage ? "/" : `/${page.slug}`);

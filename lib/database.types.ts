@@ -8258,6 +8258,16 @@ export type Database = {
         }
         Returns: string
       }
+      cms_inline_visibility: {
+        Args: {
+          p_block_id: string
+          p_path: string[]
+          p_hidden: boolean
+          p_label: string
+          p_base: string | null
+        }
+        Returns: string
+      }
       submit_contact_message: {
         Args: {
           p_email: string

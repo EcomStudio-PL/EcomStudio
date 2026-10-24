@@ -106,7 +106,10 @@ const FROZEN: readonly [string, string][] = [
   // Public pages V1: the launch branch now hands LaunchPage the site footer
   // (getGlobalSections + getNavPages, one <SiteFooter>); /home untouched.
   ["app/page.tsx", "9c4f5cb7c6c28a6e24e75b93625bdd00093d481145cb3d03bf9b5aee853bfc28"],
-  ["app/[slug]/page.tsx", "acc6b04382426e2df0aa75198da1dd4ce9ba9585c59db4a8a9d672eaeaf95cdb"],
+  // O nas V2: a CMS page with about_* sections reads their media slots and
+  // where its start button leads (one read each, none on any other page),
+  // and takes its share image from the about.seo.og slot; /start untouched.
+  ["app/[slug]/page.tsx", "cde8f6d1410ee0307523fcfe8f5c8e29e5fe0a9093b4d10078293d7ba0b2dba1"],
   ["lib/home-sections.ts", "d2a57f246d437d09545d3020943b613183e5c77668ebb4fd7122f612ad68cdb9"],
   ["lib/home-picks.ts", "c01b282598d0c5bff6768dee3bbf2f43429ba72ecf1ea3f040df41d274910fc6"],
   ["components/home/card-art.tsx", "b7c8b8bba3317e7fe64e9b9f29acfb11c7d91756a957416b4846a10a3b1b2faa"],

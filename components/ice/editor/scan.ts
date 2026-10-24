@@ -12,7 +12,8 @@ import type { IceCmsField, IceElement, IcePageInfo } from "@/lib/ice/types";
  *
  * Media: the registry's selectors (frames that already carry data-config-key,
  * data-ba-card, data-promo, data-tool-card, data-sample…) and, on a CMS page,
- * the <img> inside a section whose file is the field's file.
+ * the <img> inside a section whose file is the field's file, or the frame of
+ * a picture slot the page's sections paint (O nas).
  */
 
 export type TextRun = { node: Text; start: number; end: number };
@@ -120,6 +121,13 @@ export function scanPage(info: IcePageInfo, nonce: string): Target[] {
     texts.set(field.id, t);
   }
   targets.push(...texts.values());
+  // The page's picture slots (O nas): the frames carry data-config-key, as
+  // on /home, and open the same media panel.
+  for (const { element: e } of info.cms.slots) {
+    if (!e.dom) continue;
+    const els = Array.from(document.querySelectorAll<HTMLElement>(e.dom)).filter((el) => !el.closest(`[${UI_ATTR}]`));
+    if (els.length) targets.push({ kind: "media", uid: `m:${e.id}`, element: e, els });
+  }
   for (const f of fields) {
     if (f.kind !== "media" || !f.url) continue;
     const stem = fileStem(f.url);

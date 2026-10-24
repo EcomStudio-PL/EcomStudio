@@ -11,6 +11,7 @@ import { Btn, call, cls, errorText, pageLabel, roleLabel, sectionLabel, type Edi
 import { TextPanel } from "./text-panel";
 import { CmsMediaPanel, CmsTextPanel, cmsFieldLabel } from "./cms-panel";
 import { BulkGroupsPanel, ElementsPanel, PageHistoryPanel } from "./page-panels";
+import { VisibilityPanel } from "./visibility-panel";
 import { MediaPanel } from "./media-panel";
 import { PairPanel } from "./pair-panel";
 import { SamplesPanel } from "./samples-panel";
@@ -37,6 +38,8 @@ type Open =
   | { kind: "history" }
   | { kind: "bulkGroups" }
   | { kind: "bulk"; group: string }
+  /** "Widoczność": the switches of a CMS page's sections and items. */
+  | { kind: "visibility" }
   /** The launch page's galleries — one panel for all three; `key` is the
    *  section that was clicked (null: the toolbar button). */
   | { kind: "gallery"; key: GalleryKey | null };
@@ -74,6 +77,9 @@ function detachedTarget(info: IcePageInfo, uid: string): Target | null {
     if (f.kind === "text" && uid === `c:${f.id}`) return { kind: "cms", uid, field: f, runs: [] };
     if (f.kind === "media" && uid === `cm:${f.id}`) return { kind: "cmsMedia", uid, field: f, els: [] };
   }
+  // A picture slot with no frame on the page: the share image, or one in a
+  // section that is switched off.
+  for (const { element: e } of info.cms.slots) if (uid === `m:${e.id}`) return { kind: "media", uid, element: e, els: [] };
   // A gallery that is not on the page (empty, hidden, never published) is
   // still reachable from the list, a deep link or the builder.
   if (info.cms.launch) {
@@ -411,6 +417,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
       textSave: (input) => after(transport.textSave(input)),
       slotSave: (input) => after(transport.slotSave(input)),
       cmsSave: (input) => after(transport.cmsSave(input)),
+      cmsVisibility: (input) => after(transport.cmsVisibility(input)),
       // Registering an upload revalidates too (the library screen), and any
       // revalidation re-renders this page inside the action — unmarked.
       registerUpload: (input) => after(transport.registerUpload(input)),
@@ -449,6 +456,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
   const close = useCallback(() => setOpen(null), []);
   const found = targets.length;
   const bulkGroups = info?.kind === "registry" ? info.page.bulk ?? [] : [];
+  const hasToggles = info?.kind === "cms" && info.cms.toggles.length > 0;
 
   return (
     <>
@@ -466,6 +474,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
         </span>
         <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "elements" })}>{t("ice.bar.elements")}</Btn>
         {bulkGroups.length > 0 && <Btn small kind="ghost" onClick={() => openPanel({ kind: "bulkGroups" })}>{t("ice.bar.bulk")}</Btn>}
+        {hasToggles && <Btn small kind="ghost" onClick={() => openPanel({ kind: "visibility" })}>{t("ice.bar.visibility")}</Btn>}
         {hasGalleries(info, path) && (
           <Btn small kind="ghost" onClick={() => setOpen({ kind: "gallery", key: open?.kind === "gallery" ? open.key : null })}>
             {t("ice.bar.galleries")}
@@ -489,6 +498,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
       {ctx && open?.kind === "history" && <PageHistoryPanel ctx={ctx} onOpen={pickUid} onClose={close} />}
       {ctx && open?.kind === "bulkGroups" && <BulkGroupsPanel ctx={ctx} onPick={(g) => setOpen({ kind: "bulk", group: g })} onClose={close} />}
       {ctx && open?.kind === "bulk" && <BulkPanel key={open.group} ctx={ctx} groupKey={open.group} onClose={close} />}
+      {ctx && open?.kind === "visibility" && <VisibilityPanel ctx={ctx} onPick={pickUid} onClose={close} />}
       {ctx && open?.kind === "gallery" && hasGalleries(info, path) && (
         <GalleryPanel ctx={ctx} focusKey={isGalleryKey(open.key) ? open.key : null} onClose={close}
           onDirtyChange={(dirty) => { galleryDirty.current = dirty; }} />

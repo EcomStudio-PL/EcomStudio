@@ -33,8 +33,9 @@ export type IceSlotSpec = {
   frames?: { label: "wide" | "tablet" | "phone" | "tools"; ratio: string }[];
   /** A separate phone file is allowed (mobile_media_id). */
   mobile?: boolean;
-  /** Entity columns for a first write. */
-  entityType: "tool" | "workflow" | "category" | "global";
+  /** Entity columns for a first write. `section` = a CMS page's own
+   *  pictures (O nas: entity `about`). */
+  entityType: "tool" | "workflow" | "category" | "global" | "section";
   entityId: string;
   slotName: string;
 };
@@ -150,6 +151,33 @@ export type IceCmsField = {
   base: string | null;
 };
 
+/** A picture slot a CMS section paints (the O nas page): a media_slots row,
+ *  edited with the same panel as /home's — library, crop, phone file, clip. */
+export type IceCmsSlot = { blockId: string; blockType: string; element: IceElement };
+
+/**
+ * One switch of a CMS page ("Widoczność"): a whole section, one item of it
+ * (a tile, a card, a question) or one point of an item. Only the sections
+ * built for it have switches (lib/about-page.ts).
+ */
+export type IceCmsToggle = {
+  /** `<blockId>|<path joined by |>`; a section's own is `<blockId>|`. */
+  id: string;
+  blockId: string;
+  blockType: string;
+  /** [] = the section; ["items", "2"]; ["items", "0", "points", "1"]. */
+  path: string[];
+  /** What the list calls it: the item's title (or the section's heading) per
+   *  language, as published. */
+  label: Partial<Record<IceLocale, string>>;
+  hidden: boolean;
+  /** A text of it still holds a "[…]" placeholder: switched on, the page
+   *  still leaves it out until the text is written. */
+  placeholder: boolean;
+  /** The block's draft updated_at, for compare-and-set. */
+  base: string | null;
+};
+
 export type IceCmsPage = {
   pageId: string;
   slug: string;
@@ -157,6 +185,10 @@ export type IceCmsPage = {
   title: string;
   launch: boolean;
   fields: IceCmsField[];
+  /** Picture slots the page's sections paint (none on most CMS pages). */
+  slots: IceCmsSlot[];
+  /** Switches of the page's sections and items (none on most CMS pages). */
+  toggles: IceCmsToggle[];
 };
 
 export type IceResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string; current?: unknown };
@@ -249,6 +281,9 @@ export type IceTransport = {
   registerUpload: (input: { path: string; name: string }) => Promise<IceResult<IceAsset>>;
   cmsMap: (path: string) => Promise<IceResult<IceCmsPage>>;
   cmsSave: (input: { blockId: string; path: string[]; locale: IceLocale | null; value: string; expected: string | null; base: string | null; action?: "save" | "restore" }) => Promise<IceResult<{ updatedAt: string }>>;
+  /** Switch a section, an item or a point of a CMS page on or off — live,
+   *  with a page version, like cmsSave. */
+  cmsVisibility: (input: IceCmsVisibilityInput) => Promise<IceResult<{ updatedAt: string }>>;
   /* The launch page's galleries: draft → publish, with a history. */
   galleryState: (path: string) => Promise<IceResult<IceGalleryState>>;
   gallerySave: (input: IceGallerySaveInput) => Promise<IceResult<{ blockId: string; updatedAt: string }>>;
@@ -261,6 +296,8 @@ export type IceTransport = {
    *  real editor); a probe passes its own so nothing leaves the page. */
   putFile?: (path: string, file: File) => Promise<boolean>;
 };
+
+export type IceCmsVisibilityInput = { blockId: string; path: string[]; hidden: boolean; base: string | null };
 
 export type IceSlotWrite = {
   key: string;

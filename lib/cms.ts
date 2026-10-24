@@ -18,7 +18,22 @@ export type CmsItem = {
   badge?: LocaleText;
   /** Lucide icon name, matched against the small allowlist in cms-icons.ts. */
   icon?: string;
+  /**
+   * Switched off by an admin (O nas V2). The item stays in the content — it
+   * is edited, versioned and switched back on like any other — but the
+   * section types that honour it (lib/about-page.ts) drop it on the server,
+   * so a visitor's HTML never carries it.
+   */
+  hidden?: boolean;
+  /** A media slot this item paints (media_slots.slot_key) — only the keys
+   *  its section type declares are honoured (lib/about-page.ts). */
+  slot?: string;
+  /** A short list inside an item: the points of an "O nas" audience card. */
+  points?: CmsPoint[];
 };
+
+/** One point of an item's list — a line and its icon, hideable on its own. */
+export type CmsPoint = { title?: LocaleText; icon?: string; hidden?: boolean };
 
 export type CmsBlockContent = {
   badge?: LocaleText;
@@ -282,6 +297,14 @@ export const BLOCK_TYPES = [
    * side — one section, because two sections cannot share a row.
    */
   "page_hero", "contact_hub",
+  /*
+   * Added with O nas V2: the nine sections of the about page
+   * (components/cms/about-sections.tsx, lib/about-page.ts). Their pictures
+   * are media slots, framed in "Edytuj stronę"; their tiles, cards, points
+   * and questions can each be switched off without being deleted.
+   */
+  "about_hero", "about_story", "about_process", "about_importance", "about_values",
+  "about_audience", "about_team", "about_faq", "about_cta",
 ] as const;
 
 /**
@@ -306,6 +329,7 @@ export const SECTION_GROUPS: readonly { key: string; types: readonly string[] }[
   { key: "product", types: ["tools_grid", "models"] },
   { key: "forms", types: ["contact_hub", "contact", "contact_form", "newsletter"] },
   { key: "layout", types: ["spacer", "divider"] },
+  { key: "about", types: ["about_hero", "about_story", "about_process", "about_importance", "about_values", "about_audience", "about_team", "about_faq", "about_cta"] },
   { key: "advanced", types: ["custom_code"] },
 ] as const;
 

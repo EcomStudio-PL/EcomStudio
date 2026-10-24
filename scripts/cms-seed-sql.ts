@@ -18,7 +18,7 @@
  * layout and PUBLISHED, the footer gets its links, headings and brand line,
  * and the contact form's topic list gains `question`. See releaseSql().
  */
-import { SEED_PAGES, SEED_GLOBALS, FOOTER_BRAND_LINE, FOOTER_HEADINGS, FOOTER_ITEMS } from "../lib/cms-seed";
+import { ABOUT_V1, SEED_PAGES, SEED_GLOBALS, FOOTER_BRAND_LINE, FOOTER_HEADINGS, FOOTER_ITEMS } from "../lib/cms-seed";
 
 /** Postgres string literal. Doubling the quote is the whole of the escaping
  *  rule, and JSON.stringify has already handled everything inside the JSON. */
@@ -232,7 +232,9 @@ grant execute on function public.submit_contact_message(text, text, text, text, 
   to anon, authenticated;`);
 
   for (const slug of RELEASE_SLUGS) {
-    const page = SEED_PAGES.find((p) => p.slug === slug);
+    // 0148 released O nas V1. The seed has moved on to V2 (released by 0151,
+    // --about-v2 below); this committed migration keeps generating V1.
+    const page = slug === "o-nas" ? ABOUT_V1 : SEED_PAGES.find((p) => p.slug === slug);
     if (!page) throw new Error(`no seed page ${slug}`);
     const marker = page.sections[0]?.analyticsId;
     if (!marker) throw new Error(`${slug}: the first section needs an analyticsId (the release marker)`);
@@ -323,4 +325,105 @@ update public.cms_global_sections
   return `${parts.join("\n")}\n`;
 }
 
-process.stdout.write(process.argv.includes("--release") ? releaseSql() : `${out.join("\n")}\n`);
+/**
+ * O NAS V2 — `npm run cms:seed-sql -- --about-v2` prints migration 0151.
+ *
+ * The same four steps as releaseSql(), for one page, in one DO block:
+ *   1. the outgoing page is kept as a labelled version ("Przed O nas V2");
+ *   2. its sections are replaced by the nine about_* sections of the seed;
+ *   3. its menu group, order and SEO come from the seed;
+ *   4. it is published the way publishPage does (a 'publish' version, then
+ *      the page's published_snapshot).
+ * It runs once: a page that already has an `about_hero` section is left as
+ * it is, so applying it twice — or after an admin has started editing V2 —
+ * writes nothing. The V2 hero keeps the analytics id `about.hero`, which is
+ * 0148's own marker, so 0148 can never put V1 back over it either.
+ */
+function aboutV2Sql(): string {
+  const page = SEED_PAGES.find((p) => p.slug === "o-nas");
+  if (!page || page.sections[0]?.type !== "about_hero") throw new Error("the seed's O nas is not V2");
+  const values = page.sections.map((section, i) => `      (${i}, ${lit(section.type)}, ${json(section.content)}, ${json(section.style ?? {})}, ${section.anchor ? lit(section.anchor) : "null"}, ${section.analyticsId ? lit(section.analyticsId) : "null"})`).join(",\n");
+  return `-- 0151 — O NAS V2: the about page as a product page (nine about_* sections).
+--
+-- GENERATED from lib/cms-seed.ts by \`npm run cms:seed-sql -- --about-v2\`. Do
+-- not edit by hand: change the TypeScript and regenerate.
+--
+-- Content only: no table, no column, no function. The pictures are media
+-- slots (about.*), empty until an admin fills them in "Edytuj stronę"; the
+-- page draws neutral canvases until then. The sixth value and the questions
+-- about photos and company details are switched OFF and hold placeholders —
+-- the renderer never shows a "[…]" text, switched on or not.
+
+do $about$
+declare
+  v_page uuid;
+  v_seo jsonb;
+  v_snapshot jsonb;
+begin
+  insert into public.cms_pages (slug, title, status, kind)
+  values (${lit(page.slug)}, ${lit(page.title)}, 'draft', 'standard')
+  on conflict (slug) do nothing;
+  select id into v_page from public.cms_pages where slug = ${lit(page.slug)};
+
+  if exists (select 1 from public.cms_blocks b where b.page_id = v_page and b.type = 'about_hero') then
+    raise notice 'o-nas: already on the O nas V2 layout, nothing written';
+    return;
+  end if;
+
+  -- 1. Keep what is being replaced.
+  if exists (select 1 from public.cms_blocks b where b.page_id = v_page) then
+    insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, label)
+    select v_page,
+           coalesce((select max(v.version) from public.cms_page_versions v where v.page_id = v_page), 0) + 1,
+           (select jsonb_agg(${BLOCK_JSON("b")} order by b.sort_order)
+              from public.cms_blocks b where b.page_id = v_page),
+           coalesce((select p.seo from public.cms_pages p where p.id = v_page), '{}'::jsonb),
+           'manual',
+           'Przed O nas V2';
+  end if;
+
+  -- 2. The new sections.
+  delete from public.cms_blocks where page_id = v_page;
+  insert into public.cms_blocks (page_id, sort_order, type, content, style, anchor, analytics_id)
+  select v_page, v.sort_order, v.type, v.content, v.style, v.anchor, v.analytics_id
+  from (values
+${values}
+  ) as v(sort_order, type, content, style, anchor, analytics_id);
+
+  -- 3. Menu group, SEO, the site's own chrome.
+  v_seo := ${json(page.seo)};
+  update public.cms_pages
+     set nav_group = ${page.navGroup ? lit(page.navGroup) : "null"},
+         nav_order = ${page.navOrder},
+         seo = v_seo,
+         header_mode = 'global',
+         footer_mode = 'global',
+         updated_at = now()
+   where id = v_page;
+
+  -- 4. Publish, as publishPage does: the version first, then the page.
+  select jsonb_agg(${BLOCK_JSON("b")} order by b.sort_order)
+    into v_snapshot
+    from public.cms_blocks b where b.page_id = v_page;
+  insert into public.cms_page_versions (page_id, version, snapshot, seo, reason, label)
+  values (
+    v_page,
+    coalesce((select max(v.version) from public.cms_page_versions v where v.page_id = v_page), 0) + 1,
+    v_snapshot, v_seo, 'publish', 'O nas V2'
+  );
+  update public.cms_pages
+     set published_snapshot = v_snapshot,
+         status = 'published',
+         published_at = now(),
+         updated_at = now(),
+         scheduled_at = null
+   where id = v_page;
+end $about$;
+`;
+}
+
+process.stdout.write(
+  process.argv.includes("--release") ? releaseSql()
+    : process.argv.includes("--about-v2") ? aboutV2Sql()
+    : `${out.join("\n")}\n`,
+);

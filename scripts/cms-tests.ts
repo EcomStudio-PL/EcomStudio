@@ -441,7 +441,12 @@ const offered = SECTION_GROUPS.flatMap((g) => g.types);
 const unknown = offered.filter((t) => !(BLOCK_TYPES as readonly string[]).includes(t));
 check("every section the picker offers is a known type", unknown.length === 0, `${unknown}`);
 
-const rendered = [...renderer.matchAll(/case "([a-z_]+)":/g)].map((m) => m[1]);
+// The O nas sections are rendered in their own file (blocks.tsx hands every
+// about_* block to renderAboutBlock).
+const aboutRenderer = readFileSync("components/cms/about-sections.tsx", "utf8");
+const rendered = [...`${renderer}\n${aboutRenderer}`.matchAll(/case "([a-z_]+)":/g)].map((m) => m[1]);
+check("blocks.tsx hands every about_* block to the about renderer",
+  /if \(isAboutType\(block\.type\)\) return renderAboutBlock\(block, ctx, first\);/.test(renderer));
 const unrenderable = offered.filter((t) => !rendered.includes(t));
 check("every section the picker offers has a renderer", unrenderable.length === 0, `${unrenderable}`);
 

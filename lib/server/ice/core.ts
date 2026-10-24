@@ -48,7 +48,7 @@ export const isLocale = (v: unknown): v is IceLocale => v === "pl" || v === "en"
 export function dbCode(message: string | undefined): string {
   const m = message ?? "";
   for (const code of ["not_admin", "conflict", "noop", "invalid_text", "draft_diverged", "not_published",
-    "not_in_snapshot", "block_missing", "bad_path", "bad_action", "bad_writes"]) {
+    "not_in_snapshot", "block_missing", "bad_path", "bad_action", "bad_writes", "not_editable", "bad_input"]) {
     if (m.includes(code)) return code;
   }
   if (/violates check constraint/.test(m)) return "invalid";

@@ -5,6 +5,7 @@ import type { IceCmsField, IceElement, IceVersion } from "@/lib/ice/types";
 import { GALLERY_KEYS } from "@/lib/launch/gallery";
 import { galleryUid, type Target } from "./scan";
 import { cmsFieldLabel } from "./cms-panel";
+import { toggleLabel } from "./visibility-panel";
 import { Btn, Sheet, call, errorText, roleLabel, when, type EditorCtx } from "./shared";
 import s from "./editor.module.css";
 
@@ -31,6 +32,12 @@ export function entriesOf(ctx: EditorCtx, targets: Target[]): Entry[] {
       const uid = f.kind === "text" ? `c:${f.id}` : `cm:${f.id}`;
       return { uid, label: cmsFieldLabel(t, f), section: t(`ice.block.${f.blockType}`), found: found.has(uid), kind: f.kind };
     });
+  // The page's picture slots (O nas) — listed always: the share image has no
+  // frame on the page, and a switched-off section still has its pictures.
+  const slots: Entry[] = info.cms.slots.map(({ blockType, element: e }) => {
+    const uid = `m:${e.id}`;
+    return { uid, label: roleLabel(t, e), section: t(`ice.block.${blockType}`), found: found.has(uid), kind: e.kind };
+  });
   // The launch page's three galleries — listed always, painted or not: an
   // empty or hidden gallery is exactly the one that needs its pairs.
   const galleries: Entry[] = info.cms.launch && ctx.path === "/"
@@ -39,7 +46,7 @@ export function entriesOf(ctx: EditorCtx, targets: Target[]): Entry[] {
       return { uid, label: t(`ice.gallery.name.${key}`), section: t("ice.block.launch_gallery"), found: found.has(uid), kind: "gallery" };
     })
     : [];
-  return [...fields, ...galleries];
+  return [...fields, ...slots, ...galleries];
 }
 
 export function ElementsPanel({ ctx, targets, onPick, onClose }: {
@@ -102,7 +109,18 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
       if (e.kind === "text" && e.text) elements.set(e.text.key, e);
       for (const sl of e.slots ?? []) elements.set(sl.key, e);
     }
+  } else {
+    for (const { element: e } of info.cms.slots) for (const sl of e.slots ?? []) elements.set(sl.key, e);
   }
+  /** A switch of the page ("…:items.5.hidden", "…:visible"), if `key` is one. */
+  const cmsToggle = (key: string) => {
+    if (info.kind !== "cms") return undefined;
+    const [, blockId, path] = key.split(":");
+    const own = path === "visible" ? "" : path?.endsWith(".hidden") ? path.slice(0, -".hidden".length).split(".").join("|") : null;
+    return own === null ? undefined : info.cms.toggles.find((x) => x.blockId === blockId && x.path.join("|") === own);
+  };
+  const hiddenOf = (v: unknown): boolean | null =>
+    v && typeof v === "object" && typeof (v as { hidden?: unknown }).hidden === "boolean" ? (v as { hidden: boolean }).hidden : null;
   const cmsField = (key: string): IceCmsField | undefined => {
     if (info.kind !== "cms") return undefined;
     const [, blockId, path] = key.split(":");
@@ -117,6 +135,8 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
 
   const labelOf = (v: PageVersion) => {
     if (v.target === "cms") {
+      const toggle = cmsToggle(v.key);
+      if (toggle) return `${t("ice.vis.title")} · ${toggleLabel(t, toggle, ctx.locale)}`;
       const f = cmsField(v.key);
       return f ? cmsFieldLabel(t, f) : v.key;
     }
@@ -129,8 +149,14 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
       const e = elements.get(v.key);
       return e ? `m:${e.id}` : null;
     }
+    if (cmsToggle(v.key)) return null;
     const f = cmsField(v.key);
     return f ? (f.kind === "text" ? `c:${f.id}` : `cm:${f.id}`) : null;
+  };
+  const shownValue = (v: PageVersion, side: unknown) => {
+    const hidden = hiddenOf(side);
+    if (hidden !== null) return t(hidden ? "ice.vis.hidden" : "ice.vis.shown");
+    return valueOf(side) ?? (v.target === "text" ? t("ice.text.defaultShort") : "—");
   };
 
   /** Undo one text change: back to the value before it (null = default). */
@@ -169,8 +195,8 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
                 <span className={s.meta}>{when(v.createdAt, ctx.locale)}{v.author ? ` · ${v.author}` : ""} · {t(`ice.history.action.${v.action}`)}</span>
                 {v.target !== "slot" && (
                   <div className={s.diff}>
-                    <b>{t("ice.history.before")}</b><span>{valueOf(v.before) ?? (v.target === "text" ? t("ice.text.defaultShort") : "—")}</span>
-                    <b>{t("ice.history.after")}</b><span>{valueOf(v.after) ?? (v.target === "text" ? t("ice.text.defaultShort") : "—")}</span>
+                    <b>{t("ice.history.before")}</b><span>{shownValue(v, v.before)}</span>
+                    <b>{t("ice.history.after")}</b><span>{shownValue(v, v.after)}</span>
                   </div>
                 )}
                 <div className={s.row}>

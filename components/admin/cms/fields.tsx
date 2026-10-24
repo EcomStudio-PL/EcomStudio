@@ -10,7 +10,8 @@ import { FORM_HANDLERS } from "@/lib/cms-forms";
 import { FEATURE_GROUPS } from "@/lib/features";
 import { readField, toggleOn, writeField, type FieldDef } from "@/lib/cms-schema";
 import type { LinkTarget } from "@/lib/cms-links";
-import type { CmsBlockContent, CmsItem, LocaleText } from "@/lib/cms";
+import type { CmsBlockContent, CmsItem, CmsPoint, LocaleText } from "@/lib/cms";
+import { aboutSlotSpec, hasPlaceholder } from "@/lib/about-page";
 import { isCompletePair, readGalleryContent } from "@/lib/launch/gallery";
 import { IceEditButton } from "./visual-editor";
 import { LegalDocField } from "./legal-doc-field";
@@ -79,7 +80,13 @@ export function Field({ def, locale, content, onChange, onChangeWith, visible }:
 
   if (def.kind === "items") {
     return <ItemsField label={label} hint={hint} locale={locale} content={content} onChange={onChange}
-      field={def.key === "tiles" ? "tiles" : "items"} />;
+      field={def.key === "tiles" ? "tiles" : "items"} options={def.items} />;
+  }
+
+  // The section's pictures (O nas): media slots, not URLs in the block —
+  // listed with their shape, and where they are changed.
+  if (def.kind === "slots") {
+    return <SlotsSummary label={label} hint={hint} slots={def.slots ?? []} />;
   }
 
   // A whole legal document (the language on the tab), with its own editor.
@@ -347,15 +354,106 @@ function GallerySummary({ label, hint, content, visible }: {
   );
 }
 
+/**
+ * THE PICTURES OF AN O NAS SECTION. They are media slots — framed with a
+ * focal point and zoom, a separate phone file, a clip where allowed — so they
+ * are set where that machinery lives: "Edytuj stronę" (click the picture on
+ * the page) or Admin → Media → Sekcje aplikacji. This row only says which
+ * pictures the section has and in what shape; it stores nothing.
+ */
+function SlotsSummary({ label, hint, slots }: { label: string; hint?: string; slots: readonly string[] }) {
+  const { t } = useI18n();
+  return (
+    <div data-about-slots>
+      <Label>{label}</Label>
+      <ul className="space-y-1.5 rounded-xl border border-line bg-sunken/50 p-3 text-[12.5px]">
+        {slots.map((key) => {
+          const spec = aboutSlotSpec(key);
+          return (
+            <li key={key} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="font-medium text-ink">{spec ? t(`media.slot.${spec.label}`) : key}</span>
+              {spec && (
+                <span className="tabular-nums text-faint">
+                  {spec.ratio.replace("/", ":")} · {spec.width}×{spec.height} px{spec.video ? ` · ${t("cms.label.aboutVideoOk")}` : ""}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {hint && <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">{hint}</p>}
+      <a href="/admin/media?tab=sekcje" className="mt-1.5 inline-block text-[12px] font-semibold text-accent hover:underline">
+        {t("cms.label.aboutPicturesOpen")}
+      </a>
+    </div>
+  );
+}
+
+/** "[treść do potwierdzenia]" anywhere in a row (any language): the public
+ *  page leaves the row out whatever its switch says. */
+function rowHasPlaceholder(item: CmsItem): boolean {
+  const texts = [item.title, item.description, item.badge, ...(item.points ?? []).filter((p) => !p.hidden).map((p) => p.title)];
+  return texts.some((v) => Object.values((v ?? {}) as LocaleText).some((x) => hasPlaceholder(x)));
+}
+
+/** The points of one O nas card: a short line each, with an icon and its
+ *  own switch. */
+function PointsField({ points, locale, onChange }: {
+  points: CmsPoint[]; locale: Locale; onChange: (next: CmsPoint[] | undefined) => void;
+}) {
+  const { t } = useI18n();
+  const set = (next: CmsPoint[]) => onChange(next.length ? next : undefined);
+  const patch = (j: number, part: Partial<CmsPoint>) => set(points.map((p, k) => (k === j ? { ...p, ...part } : p)));
+  return (
+    <div className="rounded-lg border border-line/70 bg-surface/60 p-2.5" data-points-field>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-[11.5px] font-semibold text-muted">{t("cms.label.aboutPoints")}</span>
+        <Button size="sm" variant="secondary" onClick={() => set([...points, {}])}>
+          <Plus size={13} aria-hidden />{t("cms.label.aboutAddPoint")}
+        </Button>
+      </div>
+      <div className="space-y-1.5">
+        {points.map((p, j) => (
+          <div key={j} className="grid grid-cols-[auto_1fr] items-center gap-2 sm:grid-cols-[auto_1fr_9rem_auto]">
+            <label className="flex items-center" title={t("cms.label.itemVisible")}>
+              <input type="checkbox" checked={!p.hidden} aria-label={t("cms.label.itemVisible")}
+                className="h-4 w-4 accent-[rgb(var(--accent))]"
+                onChange={(e) => patch(j, { hidden: e.target.checked ? undefined : true })} />
+            </label>
+            <Input placeholder={t("cms.label.aboutPoint")} value={((p.title ?? {}) as LocaleText)[locale] ?? ""}
+              onChange={(e) => patch(j, { title: { ...((p.title ?? {}) as LocaleText), [locale]: e.target.value } })} />
+            <Select value={p.icon ?? ""} className="col-span-2 sm:col-span-1"
+              onChange={(e) => patch(j, { icon: e.target.value || undefined })}>
+              <option value="">{t("cms.label.itemIcon")}</option>
+              {CMS_ICON_NAMES.map((name) => <option key={name} value={name}>{name}</option>)}
+            </Select>
+            <div className="col-span-2 flex justify-end gap-0.5 sm:col-span-1">
+              <SmallBtn title={t("cms.moveUp")} disabled={j === 0}
+                onClick={() => { const n = [...points]; [n[j - 1], n[j]] = [n[j], n[j - 1]]; set(n); }}>
+                <ArrowUp size={14} />
+              </SmallBtn>
+              <SmallBtn title={t("common.delete")} onClick={() => set(points.filter((_, k) => k !== j))}>
+                <Trash2 size={14} />
+              </SmallBtn>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The repeatable list — cards, steps, questions, contact rows, gallery
  *  images, comparison lines. One editor for all of them, because they are one
  *  shape with different fields showing. */
-export function ItemsField({ label, hint, locale, content, onChange, field = "items" }: {
+export function ItemsField({ label, hint, locale, content, onChange, field = "items", options }: {
   label: string; hint?: string; locale: Locale; content: CmsBlockContent;
   onChange: (content: CmsBlockContent) => void;
   /** Which list of the section this edits. `tiles` is contact_hub's second
    *  list (its channels) beside `items` (its topics). */
   field?: "items" | "tiles";
+  /** O nas lists: a switch per row, points per row, no link or picture. */
+  options?: FieldDef["items"];
 }) {
   const { t } = useI18n();
   const items: CmsItem[] = content[field] ?? [];
@@ -380,8 +478,15 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
         {items.map((item, i) => (
           <div key={i} className="rounded-xl border border-line bg-sunken/50 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">
-                {i + 1}
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">{i + 1}</span>
+                {options?.hideable && (
+                  <label className="flex items-center gap-1.5 text-[11.5px] text-muted" data-item-visible={i}>
+                    <input type="checkbox" checked={!item.hidden} className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
+                      onChange={(e) => patch(i, { hidden: e.target.checked ? undefined : true })} />
+                    {t("cms.label.itemVisible")}
+                  </label>
+                )}
               </span>
               <div className="flex items-center gap-0.5">
                 <SmallBtn title={t("cms.moveUp")} disabled={i === 0}
@@ -403,9 +508,24 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
                 onChange={(e) => setText(i, "title", e.target.value)} />
               <Textarea rows={2} placeholder={t("cms.label.itemBody")} value={text(item, "description")}
                 onChange={(e) => setText(i, "description", e.target.value)} />
+              {options?.hideable && rowHasPlaceholder(item) && (
+                <p className="text-[11.5px] leading-relaxed text-warning" data-item-placeholder={i}>
+                  {t("cms.label.itemPlaceholder")}
+                </p>
+              )}
+              {item.slot && aboutSlotSpec(item.slot) && (
+                <p className="text-[11.5px] leading-relaxed text-faint" data-item-slot={item.slot}>
+                  {t("cms.label.itemSlot", { name: t(`media.slot.${aboutSlotSpec(item.slot)!.label}`) })}
+                </p>
+              )}
+              {options?.points && (
+                <PointsField points={item.points ?? []} locale={locale} onChange={(points) => patch(i, { points })} />
+              )}
               <div className="grid gap-2 sm:grid-cols-2">
-                <LinkInput value={item.url ?? ""} placeholder={t("cms.label.itemUrl")}
-                  onChange={(next) => patch(i, { url: next || undefined })} />
+                {!options?.plain && (
+                  <LinkInput value={item.url ?? ""} placeholder={t("cms.label.itemUrl")}
+                    onChange={(next) => patch(i, { url: next || undefined })} />
+                )}
                 {/* Stats render this instead of a title, and a comparison row
                     uses it for the other column — dropping it would make two
                     section types impossible to author. */}
@@ -420,13 +540,16 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
                 </Select>
               </div>
               {/* The picker, not a URL box: an image is chosen from the media
-                  library, and nobody should be pasting storage paths by hand. */}
-              <MediaPicker value={item.mediaUrl ?? ""} kind="any"
-                label={t("cms.label.itemMedia")}
-                onChange={(url) => patch(i, { mediaUrl: url || undefined })}
-                alt={((item.alt ?? {}) as LocaleText)[locale] ?? ""}
-                onAltChange={(next) =>
-                  patch(i, { alt: { ...((item.alt ?? {}) as LocaleText), [locale]: next } })} />
+                  library, and nobody should be pasting storage paths by hand.
+                  Not on an O nas row: its picture is a media slot. */}
+              {!options?.plain && (
+                <MediaPicker value={item.mediaUrl ?? ""} kind="any"
+                  label={t("cms.label.itemMedia")}
+                  onChange={(url) => patch(i, { mediaUrl: url || undefined })}
+                  alt={((item.alt ?? {}) as LocaleText)[locale] ?? ""}
+                  onAltChange={(next) =>
+                    patch(i, { alt: { ...((item.alt ?? {}) as LocaleText), [locale]: next } })} />
+              )}
             </div>
           </div>
         ))}

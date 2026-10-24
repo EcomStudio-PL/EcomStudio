@@ -12,6 +12,8 @@ import {
   getDraftBlocks, getGlobalDrafts, getNavPages, getPublicSite,
 } from "@/lib/server/public-site";
 import { collectMediaUrls, loadMediaIndex } from "@/lib/server/cms-media";
+import { loadSlots } from "@/lib/server/media-slots";
+import { blockSlotKeys } from "@/lib/about-page";
 import { loadLiveData } from "@/lib/server/cms-data";
 
 /**
@@ -55,7 +57,8 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
   if (page.kind === "app") redirect(`/?preview=${encodeURIComponent(slug)}`);
 
   const blocks = (await getDraftBlocks(supabase, slug)).filter((b) => b.visible);
-  const [media, data, global, nav, site] = await Promise.all([
+  const aboutKeys = blocks.flatMap((b) => blockSlotKeys(b.type, b.content));
+  const [media, data, global, nav, site, slots] = await Promise.all([
     loadMediaIndex(supabase, collectMediaUrls(blocks)),
     loadLiveData(supabase, new Set(blocks.map((b) => b.type))),
     // The DRAFT header and footer, so an edit to the global sections is
@@ -63,6 +66,8 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
     getGlobalDrafts(supabase),
     getNavPages(),
     getPublicSite(supabase),
+    // O nas V2: the about sections' media slots, as the live page paints them.
+    aboutKeys.length > 0 ? loadSlots(supabase, aboutKeys) : Promise.resolve(undefined),
   ]);
 
   const shell = { global, nav, site, locale, t, showAuth: true, signedIn: false };
@@ -86,7 +91,7 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
           // document whose language (the admin's interface language) is not
           // active yet shows its Polish draft here, with a note, instead of
           // the visitors' "coming soon" — the draft is what is being edited.
-          ctx={renderContext({ locale, t, media, data, admin: true, draftPreview: true, showAuth: true })}
+          ctx={renderContext({ locale, t, media, data, admin: true, draftPreview: true, showAuth: true, slots })}
         />
       </main>
       {footerMode === "global" && <SiteFooter {...shell} />}

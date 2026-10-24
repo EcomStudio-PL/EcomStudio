@@ -3,6 +3,9 @@ import { ArrowUpRight, Check, Clock, Gift, Mail, Minus, Quote, ShieldCheck, Spar
 import type { LucideIcon } from "lucide-react";
 import type { CmsBlock, CmsBlockContent, CmsItem } from "@/lib/cms";
 import { lt, safeUrl, sectionIsLive, videoEmbedUrl, PINNED_SECTIONS } from "@/lib/cms";
+import { isAboutType, type StartCta } from "@/lib/about-page";
+import type { SlotMap } from "@/lib/server/media-slots";
+import { renderAboutBlock } from "./about-sections";
 import { resolveStyle } from "@/lib/cms-style";
 import { sanitizeRichText, sanitizeHtml } from "@/lib/cms-sanitize";
 import { cmsIcon } from "@/lib/cms-icons";
@@ -61,6 +64,10 @@ export type RenderContext = {
   showAuth?: boolean;
   /** Decides which sections an "only for logged-out visitors" rule keeps. */
   signedIn?: boolean;
+  /** O nas V2: the page's resolved media slots (lib/about-page.ts). */
+  slots?: SlotMap;
+  /** O nas V2: where "Zacznij za darmo" leads right now. */
+  start?: StartCta;
 };
 
 export function BlockRenderer({ blocks, ctx }: { blocks: CmsBlock[]; ctx: RenderContext }) {
@@ -98,6 +105,8 @@ export function renderContext(input: {
   draftPreview?: boolean;
   showAuth?: boolean;
   signedIn?: boolean;
+  slots?: SlotMap;
+  start?: StartCta;
 }): RenderContext {
   return {
     locale: input.locale,
@@ -108,6 +117,8 @@ export function renderContext(input: {
     draftPreview: input.draftPreview,
     showAuth: input.showAuth,
     signedIn: input.signedIn,
+    slots: input.slots,
+    start: input.start,
   };
 }
 
@@ -192,6 +203,9 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
   const T = (k: keyof CmsBlockContent) => lt(c[k] as never, locale);
   const items = c.items ?? [];
   const img = (url: string | undefined) => metaFor(ctx.media, url);
+
+  // The about page's nine sections live in their own file.
+  if (isAboutType(block.type)) return renderAboutBlock(block, ctx, first);
 
   switch (block.type) {
     /* ── LAYOUT ─────────────────────────────────────────────────────────── */
