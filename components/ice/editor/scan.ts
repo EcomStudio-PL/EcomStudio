@@ -23,6 +23,10 @@ export type Target =
   | { kind: "cms"; uid: string; field: IceCmsField; runs: TextRun[] }
   | { kind: "media"; uid: string; element: IceElement; els: HTMLElement[] }
   | { kind: "cmsMedia"; uid: string; field: IceCmsField; els: HTMLElement[] }
+  /** Kontakt V2: an address of a CMS section (a channel's link, a FAQ link,
+   *  the company's NIP or e-mail). Never on the page as text — opened from
+   *  "Widoczność i kolejność" only. */
+  | { kind: "cmsLink"; uid: string; field: IceCmsField; els: HTMLElement[] }
   /** A PRZED/PO gallery section of the launch page ([data-launch-gallery]):
    *  the whole section, and the LAST thing a pointer can hit — a text or a
    *  picture inside it is always taken first. */

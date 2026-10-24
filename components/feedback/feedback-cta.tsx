@@ -1,5 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MessageSquarePlus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -117,6 +118,16 @@ export function FeedbackCTA() {
               before they press send. */}
           <p className="text-[11.5px] leading-snug text-faint">
             {t("feedback.context", { route: pathname ?? "—" })}
+          </p>
+          {/* Kontakt V2: the same report, with screenshots and a ticket
+              number, through the contact form — a bug opens it on "Problem
+              techniczny", anything else on "Inne". This dialog stays as it is. */}
+          <p className="text-[11.5px] leading-snug text-faint" data-feedback-contact>
+            {t("feedback.orContact")}{" "}
+            <Link href={kind === "bug" ? "/kontakt?temat=problem" : "/kontakt?temat=inne"}
+              className="font-medium text-muted underline underline-offset-2 hover:text-ink">
+              {t("feedback.contactPage")}
+            </Link>
           </p>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={close} disabled={pending}>

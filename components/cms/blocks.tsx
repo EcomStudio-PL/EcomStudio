@@ -6,6 +6,8 @@ import { lt, safeUrl, sectionIsLive, videoEmbedUrl, PINNED_SECTIONS } from "@/li
 import { isAboutType, type StartCta } from "@/lib/about-page";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { renderAboutBlock } from "./about-sections";
+import { isContactPageType, type ContactSite, type TicketTopic } from "@/lib/contact-page";
+import { renderContactPage } from "./contact-page";
 import { resolveStyle } from "@/lib/cms-style";
 import { sanitizeRichText, sanitizeHtml } from "@/lib/cms-sanitize";
 import { cmsIcon } from "@/lib/cms-icons";
@@ -68,6 +70,12 @@ export type RenderContext = {
   slots?: SlotMap;
   /** O nas V2: where "Zacznij za darmo" leads right now. */
   start?: StartCta;
+  /** Kontakt V2: the social profiles the site's settings name (a channel
+   *  card without a link of its own uses them). */
+  site?: ContactSite;
+  /** Kontakt V2: the topic `?temat=` asked for, and a signed-in customer's
+   *  own address to start the form with. */
+  contact?: { topic: TicketTopic | null; email: string };
 };
 
 export function BlockRenderer({ blocks, ctx }: { blocks: CmsBlock[]; ctx: RenderContext }) {
@@ -107,6 +115,8 @@ export function renderContext(input: {
   signedIn?: boolean;
   slots?: SlotMap;
   start?: StartCta;
+  site?: ContactSite;
+  contact?: { topic: TicketTopic | null; email: string };
 }): RenderContext {
   return {
     locale: input.locale,
@@ -119,6 +129,8 @@ export function renderContext(input: {
     signedIn: input.signedIn,
     slots: input.slots,
     start: input.start,
+    site: input.site,
+    contact: input.contact,
   };
 }
 
@@ -206,6 +218,8 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
 
   // The about page's nine sections live in their own file.
   if (isAboutType(block.type)) return renderAboutBlock(block, ctx, first);
+  // Kontakt V2: the whole contact page, in its own file.
+  if (isContactPageType(block.type)) return renderContactPage(block, ctx, first);
 
   switch (block.type) {
     /* ── LAYOUT ─────────────────────────────────────────────────────────── */

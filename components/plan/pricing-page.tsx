@@ -1,10 +1,10 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { initialBillingPeriod, type BillingPeriod } from "./pricing-model";
-import { CARD_ORDER, CARD_ORDER_PHONE, PRICING_PAGE } from "./pricing-config";
+import { CARD_ORDER, CARD_ORDER_PHONE, FAQ, PRICING_PAGE } from "./pricing-config";
 import { CheckoutNotice } from "./checkout-notice";
 import { PremiereBanner } from "./premiere-banner";
 import { PlanCards } from "./plan-cards";
@@ -38,6 +38,27 @@ export function PricingPage({ data, notice }: { data: PricingPageData; notice: s
     el.focus({ preventScroll: true });
   }, []);
   const toChange = useCallback(() => { setFaq("change"); go(A.faq); }, [go]);
+
+  // /plany#faq-<key> (the contact page's "Zanim napiszesz…" links): that
+  // question opens and comes into view. Only a question the page shows; any
+  // other hash is left to the browser.
+  const premiere = Boolean(data.premiere);
+  useEffect(() => {
+    const open = () => {
+      const key = /^#faq-([A-Za-z0-9_-]{1,40})$/.exec(window.location.hash)?.[1];
+      if (!key || !FAQ.some((f) => f.key === key && (f.when !== "premiere" || premiere))) return;
+      setFaq(key);
+      window.requestAnimationFrame(() => {
+        const el = document.getElementById(`faq-${key}`);
+        if (!el) return;
+        el.scrollIntoView({ block: "start" });
+        el.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+      });
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, [premiere]);
   const toPlans = useCallback(() => go(A.plans), [go]);
 
   const plans = data.plans;

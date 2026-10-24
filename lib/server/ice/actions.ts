@@ -4,7 +4,8 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { logAudit } from "@/lib/services/audit";
 import { usageCounts, mediaUsage } from "@/lib/services/media-slots";
 import { MEDIA_SLOT_TAG } from "@/lib/server/media-slots";
-import { CMS_TAG, toBlocks } from "@/lib/server/public-site";
+import { CMS_TAG, getPublicSite, toBlocks } from "@/lib/server/public-site";
+import { CONTACT_TOKENS, isContactPageType, linkValueOk, type ContactTextKey } from "@/lib/contact-page";
 import { isObjectFit, isObjectPosition } from "@/lib/media-slots";
 import { lookup } from "@/lib/i18n/t";
 import pl from "@/lib/i18n/dictionaries/pl.json";
@@ -20,7 +21,7 @@ import { disallowedTokens } from "@/lib/launch/fields";
 import { isLegalSlug } from "@/lib/legal/docs";
 import {
   ICE_LOCALES,
-  type IceAsset, type IceCmsPage, type IceCmsVisibilityInput, type IceCrop, type IceLocale, type IcePageInfo, type IceResult,
+  type IceAsset, type IceCmsMoveInput, type IceCmsPage, type IceCmsVisibilityInput, type IceCrop, type IceLocale, type IcePageInfo, type IceResult,
   type IceSlotState, type IceSlotWrite, type IceTextInfo, type IceTextState, type IceUsage, type IceVersion,
 } from "@/lib/ice/types";
 import { CONTENT_TAG } from "./overrides";
@@ -72,6 +73,8 @@ async function cmsPageInfo(supabase: Client, row: CmsPageRow, path: string): Pro
   const blocks = toBlocks(row.published_snapshot);
   const { data: drafts } = await supabase.from("cms_blocks").select("id, updated_at").eq("page_id", row.id);
   const base = new Map((drafts ?? []).map((b) => [b.id as string, b.updated_at as string]));
+  // Kontakt V2: a channel without its own link may use the site's profile.
+  const site = blocks.some((b) => isContactPageType(b.type)) ? await getPublicSite(supabase) : {};
   return {
     pageId: row.id,
     slug: row.slug,
@@ -80,7 +83,7 @@ async function cmsPageInfo(supabase: Client, row: CmsPageRow, path: string): Pro
     launch: row.kind === "launch",
     fields: blocks.flatMap((b) => blockFields(b, b.id ? base.get(b.id) ?? null : null)),
     slots: blocks.flatMap((b) => blockSlots(b)),
-    toggles: blocks.flatMap((b) => blockToggles(b, b.id ? base.get(b.id) ?? null : null)),
+    toggles: blocks.flatMap((b) => blockToggles(b, b.id ? base.get(b.id) ?? null : null, site)),
   };
 }
 
@@ -670,6 +673,24 @@ export function cmsSave(input: {
         const tokens = disallowedTokens(field.path[1], value);
         if (tokens.length > 0) throw new IceRefusal("text_token", { tokens });
       }
+      // Kontakt V2: {czas} and {numer} only where the page fills them in.
+      if (isContactPageType(live.type)) {
+        const key = (field.path[0] === "fields" ? field.path[1] : field.path.join(".")) as ContactTextKey | "subtitle";
+        const allowed = CONTACT_TOKENS[key] ?? [];
+        const tokens = [...value.matchAll(/\{([a-zA-Z_]+)\}/g)].map((m) => m[1]).filter((tk) => !allowed.includes(tk));
+        if (tokens.length > 0) throw new IceRefusal("text_token", { tokens });
+      }
+    } else if (field.kind === "link") {
+      // An address: no language, may be emptied (the element then leaves
+      // the page), and must be what its format says — a channel's link is
+      // judged by that channel's own kind.
+      fullPath = field.path;
+      if (typeof input.value !== "string") throw new IceRefusal("link_invalid");
+      value = input.value.trim();
+      const kind = field.format === "channel" ? valueAt(live.content, [field.path[0], field.path[1], "value"]) : undefined;
+      if (!field.format || !linkValueOk(field.format, value, typeof kind === "string" ? kind : undefined)) {
+        throw new IceRefusal("link_invalid");
+      }
     } else {
       fullPath = field.path;
       if (typeof input.value !== "string") throw new IceRefusal("asset_missing");
@@ -683,15 +704,16 @@ export function cmsSave(input: {
         : await supabase.from("media_assets").select("id, kind, mime, size_bytes, storage_path, external_url").eq("external_url", value).maybeSingle();
       checkAsset(asset as AssetFacts | null, "image", false);
     }
-    const expected = typeof input.expected === "string" ? input.expected : null;
     const shownNow = valueAt(live.content, fullPath);
-    if ((typeof shownNow === "string" ? shownNow : null) !== expected) {
-      throw new IceRefusal("conflict", { value: typeof shownNow === "string" ? shownNow : null });
-    }
+    const liveValue = typeof shownNow === "string" ? shownNow : null;
+    // An address never written and one cleared read the same in the editor.
+    const expected = typeof input.expected === "string" ? input.expected : null;
+    const same = field.kind === "link" ? (liveValue ?? "") === (expected ?? "") : liveValue === expected;
+    if (!same) throw new IceRefusal("conflict", { value: liveValue });
 
     const label = `Edytor wizualny · ${field.path.join(".")}${field.kind === "text" ? ` (${input.locale})` : ""}`;
     const { data, error } = await supabase.rpc("cms_inline_patch", {
-      p_block_id: input.blockId, p_path: fullPath, p_value: value, p_expected: expected, p_label: label,
+      p_block_id: input.blockId, p_path: fullPath, p_value: value, p_expected: liveValue, p_label: label,
       p_base: typeof input.base === "string" && input.base ? input.base : null, p_action: action,
     });
     if (error) {
@@ -701,7 +723,52 @@ export function cmsSave(input: {
     }
     await logAudit(supabase, {
       actorId: adminId, action: "ice.cms.saved", entityType: "cms_block", entityId: input.blockId,
-      before: { path: fullPath, value: expected }, after: { path: fullPath, value, action },
+      before: { path: fullPath, value: liveValue }, after: { path: fullPath, value, action },
+    });
+    revalidateTag(CMS_TAG);
+    revalidatePath(page.is_homepage ? "/" : `/${page.slug}`);
+    return { updatedAt: data as string };
+  });
+}
+
+/**
+ * Kontakt V2: one channel card or FAQ link moved to another place in its
+ * list, live — cms_inline_move (0153), the same contract as cmsSave. Only a
+ * list the page offers (blockToggles' `move`), only the contact section.
+ */
+export function cmsMove(input: IceCmsMoveInput): Promise<IceResult<{ updatedAt: string }>> {
+  return run(async () => {
+    const { supabase, adminId } = await requireIceAdmin();
+    if (!input || !isUuid(input.blockId)) throw new IceRefusal("block_missing");
+    if ((input.list !== "items" && input.list !== "tiles") || !Number.isInteger(input.from) || !Number.isInteger(input.to)
+        || input.from < 0 || input.to < 0 || input.from > 999 || input.to > 999) {
+      throw new IceRefusal("bad_path");
+    }
+    if (input.from === input.to) return { updatedAt: input.base ?? "" };
+    const { data: block } = await supabase.from("cms_blocks").select("id, page_id").eq("id", input.blockId).maybeSingle();
+    if (!block) throw new IceRefusal("block_missing");
+    const { data: page } = await supabase.from("cms_pages")
+      .select("id, slug, title, kind, status, is_homepage, published_snapshot").eq("id", block.page_id).maybeSingle();
+    if (!page || page.status !== "published" || page.kind === "app") throw new IceRefusal("not_published");
+    if (isLegalSlug(page.slug)) throw new IceRefusal("unsupported");
+    const live = toBlocks(page.published_snapshot).find((b) => b.id === input.blockId);
+    if (!live) throw new IceRefusal("not_in_snapshot");
+    const row = blockToggles(live, null).find((x) => x.move?.list === input.list && x.move.index === input.from);
+    if (!row?.move || input.to >= row.move.count) throw new IceRefusal("not_editable");
+
+    const label = `Edytor wizualny · kolejność · ${input.list} ${input.from + 1} → ${input.to + 1}`;
+    const { data, error } = await supabase.rpc("cms_inline_move", {
+      p_block_id: input.blockId, p_list: input.list, p_from: input.from, p_to: input.to, p_label: label,
+      p_base: typeof input.base === "string" && input.base ? input.base : null,
+    });
+    if (error) {
+      const code = dbCode(error.message);
+      if (code === "noop") return { updatedAt: input.base ?? "" };
+      throw new IceRefusal(code);
+    }
+    await logAudit(supabase, {
+      actorId: adminId, action: "ice.cms.moved", entityType: "cms_block", entityId: input.blockId,
+      before: { list: input.list, position: input.from }, after: { list: input.list, position: input.to },
     });
     revalidateTag(CMS_TAG);
     revalidatePath(page.is_homepage ? "/" : `/${page.slug}`);

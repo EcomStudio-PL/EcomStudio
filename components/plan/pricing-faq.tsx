@@ -33,7 +33,9 @@ export function PricingFaq({ premiere, open, onOpen }: {
           const button = `${base}-${item.key}-q`;
           const panel = `${base}-${item.key}-a`;
           return (
-            <div key={item.key} data-faq={item.key}>
+            // A stable anchor per question (/plany#faq-credits): the contact
+            // page links to them, and the page opens the one asked for.
+            <div key={item.key} data-faq={item.key} id={`faq-${item.key}`} className="scroll-mt-[calc(var(--header-h)+24px)]">
               <h3>
                 <button type="button" id={button} aria-expanded={expanded} aria-controls={panel}
                   onClick={() => onOpen(expanded ? null : item.key)}

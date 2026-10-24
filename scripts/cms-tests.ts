@@ -447,6 +447,10 @@ const aboutRenderer = readFileSync("components/cms/about-sections.tsx", "utf8");
 const rendered = [...`${renderer}\n${aboutRenderer}`.matchAll(/case "([a-z_]+)":/g)].map((m) => m[1]);
 check("blocks.tsx hands every about_* block to the about renderer",
   /if \(isAboutType\(block\.type\)\) return renderAboutBlock\(block, ctx, first\);/.test(renderer));
+// Kontakt V2: the contact page has its own file too (components/cms/contact-page.tsx).
+const contactHandOff = /if \(isContactPageType\(block\.type\)\) return renderContactPage\(block, ctx, first\);/.test(renderer);
+check("blocks.tsx hands the contact_page block to the contact renderer", contactHandOff);
+if (contactHandOff) rendered.push("contact_page");
 const unrenderable = offered.filter((t) => !rendered.includes(t));
 check("every section the picker offers has a renderer", unrenderable.length === 0, `${unrenderable}`);
 

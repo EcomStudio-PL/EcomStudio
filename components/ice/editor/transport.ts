@@ -1,6 +1,6 @@
 "use client";
 import {
-  iceAssetsAction, iceCmsMapAction, iceCmsSaveAction, iceCmsVisibilityAction, iceGalleryDiscardAction, iceGalleryPublishAction,
+  iceAssetsAction, iceCmsMapAction, iceCmsMoveAction, iceCmsSaveAction, iceCmsVisibilityAction, iceGalleryDiscardAction, iceGalleryPublishAction,
   iceGalleryRestoreAction, iceGallerySaveAction, iceGalleryStateAction, iceGalleryVersionsAction, iceHistoryAction,
   iceLibraryAction, icePageAction, icePageHistoryAction, iceRegisterUploadAction, iceSetEditAction, iceSlotSaveAction,
   iceSlotStateAction, iceTextSaveAction, iceTextStateAction, iceUploadTicketAction, iceUsageAction,
@@ -25,6 +25,7 @@ export const actionsTransport: IceTransport = {
   cmsMap: iceCmsMapAction,
   cmsSave: iceCmsSaveAction,
   cmsVisibility: iceCmsVisibilityAction,
+  cmsMove: iceCmsMoveAction,
   galleryState: iceGalleryStateAction,
   gallerySave: iceGallerySaveAction,
   galleryPublish: iceGalleryPublishAction,

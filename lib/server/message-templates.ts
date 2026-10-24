@@ -107,6 +107,9 @@ const SUBSCRIBER_PLACEHOLDERS = ["first_name", "name", "email", "date", "time"] 
  */
 const OPTIN_PLACEHOLDERS = ["email", "confirm_url", "expires_hours"] as const;
 
+/** What the contact confirmation may say (Kontakt V2). */
+const CONTACT_PLACEHOLDERS = ["ticket", "topic", "response_time", "email"] as const;
+
 /** Every editable message, grouped the way the panel lists them. */
 export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // Rejestracja
@@ -156,6 +159,15 @@ export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   entry("waitlist.optin_de", "email", "app", "tpl.waitlistOptinDe", "tpl.gMarketing", true, OPTIN_PLACEHOLDERS),
   // Poczta
   entry("mail.received", "telegram", "app", "tpl.newMail", "tpl.gMail", true, ["name", "email", "date", "time"]),
+  // Kontakt V2: the confirmation a person gets after sending the contact
+  // form, per language (lib/server/contact-tickets.ts). NO delivery switch
+  // and no name: it goes to an address nobody has proven yet (S9), and it
+  // carries what the person needs — the ticket number, the topic and when to
+  // expect an answer. The copy of their message is always appended by the
+  // code, under the template's words, as escaped paragraphs.
+  entry("contact.confirmation", "email", "app", "tpl.contactConfirm", "tpl.gMail", true, CONTACT_PLACEHOLDERS),
+  entry("contact.confirmation_en", "email", "app", "tpl.contactConfirmEn", "tpl.gMail", true, CONTACT_PLACEHOLDERS),
+  entry("contact.confirmation_de", "email", "app", "tpl.contactConfirmDe", "tpl.gMail", true, CONTACT_PLACEHOLDERS),
   // Płatności — templates ready, business hooks not built yet (no billing).
   entry("payment.received", "telegram", "app", "tpl.payment", "tpl.gPayments", false, SALES_PLACEHOLDERS),
   entry("payment.received", "email", "app", "tpl.payment", "tpl.gPayments", false, SALES_PLACEHOLDERS),
@@ -309,6 +321,30 @@ const DEFAULTS: Record<string, TemplateDef> = {
   // draws the button; on a real send the code replaces the URL with the
   // computed link whatever the template says. showFields stays off: the mail
   // goes to an unproven address, and the field table is an operator's dossier.
+  "contact.confirmation:email": { channel: "email", email: {
+    subject: "Otrzymaliśmy Twoją wiadomość — zgłoszenie #{{ticket}}",
+    heading: "Dziękujemy za wiadomość",
+    body: "Twoje zgłoszenie #{{ticket}} ({{topic}}) trafiło do zespołu GrovBase. Odpowiemy w ciągu {{response_time}} na ten adres e-mail. Poniżej znajdziesz kopię wiadomości.",
+    ctaLabel: "", ctaUrl: "",
+    footer: "GrovBase",
+    showLogo: true, showFields: true, showCta: false,
+  } },
+  "contact.confirmation_en:email": { channel: "email", email: {
+    subject: "We have received your message — ticket #{{ticket}}",
+    heading: "Thank you for your message",
+    body: "Your ticket #{{ticket}} ({{topic}}) has reached the GrovBase team. We will reply within {{response_time}} to this e-mail address. A copy of your message is below.",
+    ctaLabel: "", ctaUrl: "",
+    footer: "GrovBase",
+    showLogo: true, showFields: true, showCta: false,
+  } },
+  "contact.confirmation_de:email": { channel: "email", email: {
+    subject: "Wir haben deine Nachricht erhalten — Ticket #{{ticket}}",
+    heading: "Danke für deine Nachricht",
+    body: "Dein Ticket #{{ticket}} ({{topic}}) ist beim GrovBase-Team angekommen. Wir antworten innerhalb von {{response_time}} an diese E-Mail-Adresse. Unten findest du eine Kopie deiner Nachricht.",
+    ctaLabel: "", ctaUrl: "",
+    footer: "GrovBase",
+    showLogo: true, showFields: true, showCta: false,
+  } },
   "waitlist.optin:email": { channel: "email", email: {
     subject: "Potwierdź zapis na listę GrovBase",
     heading: "Potwierdź swój adres e-mail",
@@ -399,6 +435,10 @@ export const SAMPLE_DATA: Record<string, string> = {
   // one is computed per send and never shown in the panel.
   confirm_url: "https://grovbase.com/potwierdz-zapis#t=przyklad",
   expires_hours: "72",
+  // The contact confirmation's own (Kontakt V2).
+  ticket: "1001",
+  topic: "Problem techniczny",
+  response_time: "1 dnia roboczego",
 };
 
 /* ── channel renderers ──────────────────────────────────────────────────────*/

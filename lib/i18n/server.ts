@@ -30,6 +30,12 @@ export async function getDictionary(): Promise<{ locale: Locale; dict: Dictionar
   return { locale, dict: await layered(locale) };
 }
 
+/** The same dictionary in a language chosen by the caller, not the visitor's
+ *  cookie — a mail goes out in the language its recipient wrote in. */
+export async function getDictionaryFor(locale: Locale): Promise<Dictionary> {
+  return layered(locale);
+}
+
 /**
  * The slice of the dictionary a layout hands to the CLIENT.
  *

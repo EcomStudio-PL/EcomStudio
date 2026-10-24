@@ -19,6 +19,7 @@ import { pageMetadata, RESERVED_SLUGS } from "@/lib/server/cms-page";
 import { ProductSurface } from "@/components/home/product-surface";
 import { getActiveHomepage } from "@/lib/server/homepage";
 import { loadSlots } from "@/lib/server/media-slots";
+import { isContactPageType, topicFromParam } from "@/lib/contact-page";
 import { ABOUT_SLOT, blockSlotKeys, isAboutType, startCta } from "@/lib/about-page";
 
 /**
@@ -144,6 +145,13 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
     })
     : undefined;
 
+  // KONTAKT V2: the topic a link asked for (?temat=problem, from the
+  // footer's "Zgłoś błąd") and a signed-in customer's own address. Read per
+  // request — never inside the cached page — and only for that section.
+  const contact = visible.some((b) => isContactPageType(b.type))
+    ? { topic: topicFromParam((await searchParams).temat), email: user?.email ?? "" }
+    : undefined;
+
   const shell = {
     global, nav, site, locale, t,
     showAuth: access.showAuthEntry,
@@ -161,7 +169,10 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
       <main className="flex-1">
         <BlockRenderer
           blocks={visible}
-          ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user), slots, start })}
+          ctx={renderContext({
+            locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user), slots, start,
+            site, contact,
+          })}
         />
       </main>
       {page.footerMode === "global" && <SiteFooter {...shell} />}

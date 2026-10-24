@@ -38,11 +38,10 @@ import { CONTACT_EMAIL_PATTERN, CONTACT_TOPICS, isContactTopic } from "@/lib/cms
 import { fieldsFor } from "@/lib/cms-schema";
 import { CMS_FIELDS } from "@/lib/ice/registry";
 import { CMS_ICONS } from "@/lib/cms-icons";
-import { ABOUT_V1, SEED_PAGES, SEED_GLOBALS, FOOTER_ITEMS } from "@/lib/cms-seed";
+import { ABOUT_V1, CONTACT_V1, SEED_PAGES, SEED_GLOBALS, FOOTER_ITEMS } from "@/lib/cms-seed";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
 import { SiteFooter, footerLinks } from "@/components/cms/site-shell";
 import type { NavPage } from "@/lib/server/public-site";
-import { POST as contactPost } from "@/app/api/public/contact/route";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -58,10 +57,11 @@ const LOCALES: Locale[] = ["pl", "en", "de"];
 const markup = (locale: Locale, child: ReactElement) =>
   renderToStaticMarkup(createElement(I18nProvider, { locale, dict: DICTS[locale], children: child }));
 
-// These checks are about what Public pages V1 released (0148). O nas has since
-// moved on to V2 (scripts/about-page-tests.ts); its V1 seed is kept verbatim.
+// These checks are about what Public pages V1 released (0148). O nas and
+// Kontakt have since moved on to V2 (scripts/about-page-tests.ts,
+// scripts/contact-page-tests.ts); their V1 seeds are kept verbatim.
 const page = (slug: string) => {
-  const found = slug === "o-nas" ? ABOUT_V1 : SEED_PAGES.find((p) => p.slug === slug);
+  const found = slug === "o-nas" ? ABOUT_V1 : slug === "kontakt" ? CONTACT_V1 : SEED_PAGES.find((p) => p.slug === slug);
   if (!found) throw new Error(`no seed page ${slug}`);
   return found;
 };
@@ -298,69 +298,8 @@ section("D. THE COPY KEEPS THE BRIEF'S RULES; 0148 IS THE GENERATOR'S OUTPUT");
 }
 
 /* ── E ────────────────────────────────────────────────────────────────────── */
+// The contact ROUTE is Kontakt V2's now (tickets, attachments, server token):
+// scripts/contact-page-tests.ts covers it, including the V1 form's posts.
 
-section("E. THE CONTACT ROUTE (fake database — nothing is stored or sent)");
-void (async () => {
-  type Call = { fn: string; args: Record<string, unknown> };
-  const calls: Call[] = [];
-  let answer: Record<string, unknown> = { status: "created", id: "m1" };
-  (globalThis as unknown as { __prelaunchSession: unknown }).__prelaunchSession = {
-    client: {
-      auth: { getUser: async () => ({ data: { user: null } }) },
-      rpc: async (fn: string, args: Record<string, unknown>) => { calls.push({ fn, args }); return { data: answer, error: null }; },
-    },
-  };
-  let ip = 0;
-  const post = async (body: Record<string, unknown>, from = `198.51.100.${++ip}`) => {
-    const res = await contactPost(new Request("https://grovbase.com/api/public/contact", {
-      method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": from }, body: JSON.stringify(body),
-    }));
-    return { status: res.status, body: await res.json() as { ok?: boolean; error?: string } };
-  };
-  const good = { name: "Anna", email: "anna@example.com", topic: "question", message: "Dzień dobry, mam pytanie.", locale: "pl", elapsed: 6000 };
-
-  let r = await post(good);
-  check("a real message: 200 ok, stored through submit_contact_message as 'question'",
-    r.status === 200 && r.body.ok === true && calls.length === 1 && calls[0]!.fn === "submit_contact_message"
-    && calls[0]!.args.p_topic === "question" && calls[0]!.args.p_source === "website");
-  check("…with no IP in what is stored", !JSON.stringify(calls[0]!.args).includes("198.51.100."));
-
-  calls.length = 0;
-  r = await post({ ...good, elapsed: 400 });
-  check("sent 0.4 s after the form opened: refused as too_fast, nothing stored, never 'ok'",
-    r.status === 400 && r.body.ok === false && r.body.error === "too_fast" && calls.length === 0);
-  r = await post({ ...good, company: "ACME" });
-  check("the honeypot filled: a bot is told ok and nothing is stored", r.status === 200 && r.body.ok === true && calls.length === 0);
-  r = await post({ ...good, email: "anna@example" });
-  check("an incomplete address: 400 invalid, nothing stored", r.status === 400 && r.body.error === "invalid" && calls.length === 0);
-  r = await post({ ...good, message: "hej" });
-  check("a message under five characters: 400 invalid", r.status === 400 && r.body.error === "invalid" && calls.length === 0);
-  r = await post({ ...good, name: "   " });
-  check("no name: 400 invalid", r.status === 400 && r.body.error === "invalid" && calls.length === 0);
-
-  const { elapsed: _omit, ...older } = good;
-  void _omit;
-  r = await post(older);
-  check("a form cached before the time trap (no `elapsed`) still works", r.status === 200 && r.body.ok === true && calls.length === 1);
-  calls.length = 0;
-  r = await post({ ...good, topic: "<script>" });
-  check("a topic off the closed list is stored as 'other'", r.status === 200 && calls[0]?.args.p_topic === "other");
-
-  calls.length = 0;
-  answer = { status: "rate_limited" };
-  r = await post(good);
-  check("the database's per-address limit: 429 rate_limited (the form says so in words)",
-    r.status === 429 && r.body.error === "rate_limited");
-  answer = { status: "created", id: "m2" };
-
-  const burst: number[] = [];
-  for (let i = 0; i < 9; i++) burst.push((await post(good, "203.0.113.9")).status);
-  check("the ninth message within the hour from one address is refused before the database",
-    burst.slice(0, 8).every((s) => s === 200) && burst[8] === 429, burst.join(","));
-})().then(() => {
-  console.log(failures === 0 ? "\nAll public pages tests passed." : `\n${failures} FAILED`);
-  process.exit(failures === 0 ? 0 : 1);
-}, (e: unknown) => {
-  console.error(e);
-  process.exit(1);
-});
+console.log(failures === 0 ? "\nAll public pages tests passed." : `\n${failures} FAILED`);
+process.exit(failures === 0 ? 0 : 1);

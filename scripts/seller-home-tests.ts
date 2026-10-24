@@ -109,7 +109,10 @@ const FROZEN: readonly [string, string][] = [
   // O nas V2: a CMS page with about_* sections reads their media slots and
   // where its start button leads (one read each, none on any other page),
   // and takes its share image from the about.seo.og slot; /start untouched.
-  ["app/[slug]/page.tsx", "cde8f6d1410ee0307523fcfe8f5c8e29e5fe0a9093b4d10078293d7ba0b2dba1"],
+  // Kontakt V2: a page with a contact_page section reads ?temat= and the
+  // signed-in customer's own address for its form, and hands the site's
+  // social profiles to the renderer (already loaded for the footer).
+  ["app/[slug]/page.tsx", "8381f6f754dac1422fd7e23f0022a227bf1c29848bcd9df84ec23d44fe7951b5"],
   ["lib/home-sections.ts", "d2a57f246d437d09545d3020943b613183e5c77668ebb4fd7122f612ad68cdb9"],
   ["lib/home-picks.ts", "c01b282598d0c5bff6768dee3bbf2f43429ba72ecf1ea3f040df41d274910fc6"],
   ["components/home/card-art.tsx", "b7c8b8bba3317e7fe64e9b9f29acfb11c7d91756a957416b4846a10a3b1b2faa"],
@@ -127,7 +130,10 @@ const FROZEN: readonly [string, string][] = [
   ["app/(app)/layout.tsx", "70658a26afb3ff8b9b672e00de244bfeb369c140cc49701d36f95575856a5b9c"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
-  ["components/feedback/feedback-cta.tsx", "d2406baf43ee849094e94fe01cc9a1620c1e01a354cd62a6049832cc2c1690a2"],
+  // Kontakt V2: the dialog gained one line — a link to /kontakt?temat=problem
+  // (a bug) or ?temat=inne (anything else); the button and the dialog's own
+  // flow are unchanged.
+  ["components/feedback/feedback-cta.tsx", "a899c76259c51712f172f211d3c5caea5a2180e72ceffa2193cb774281800019"],
   ["middleware.ts", "4f7eb9dbae73a29d4a225b54f84dd509bc04ca7592fefa361b0b4a40e6864761"],
 ];
 for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync(file)) === digest);

@@ -73,6 +73,7 @@ const SUBJECTS: Readonly<Record<string, string>> = {
 const DESTINATIONS: Readonly<Record<string, { label: string; path: string }>> = {
   "user.registered": { label: "Otwórz listę użytkowników", path: "/admin/users" },
   "waitlist.signup": { label: "Otwórz listę oczekujących", path: "/admin/waitlist?view=pending" },
+  "contact.message": { label: "Otwórz zgłoszenia", path: "/admin/support/zgloszenia" },
 };
 
 const DEFAULT_DESTINATION = { label: "Otwórz panel GrovBase", path: "/admin" };
@@ -107,6 +108,12 @@ function safeHref(href: string): string | null {
 function subjectFor(payload: AdminEventPayload): string {
   const known = SUBJECTS[payload.eventType];
   if (known) return known;
+  // A contact ticket's headline IS its subject — "[Problem techniczny] #1042 –
+  // klient@example.com" — so an inbox sorts and searches by it as it stands.
+  if (payload.eventType === "contact.message") {
+    const title = clean(payload.title, TITLE_MAX);
+    if (title) return title;
+  }
   // The fallback still has to read like a subject and not like a log line, so
   // it reuses the payload's own headline and keeps the brand suffix.
   const title = clean(payload.title, TITLE_MAX);

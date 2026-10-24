@@ -11,6 +11,8 @@ import {
   popularityIsStale, readToolPopularity, refreshToolPopularity,
 } from "@/lib/server/tool-popularity";
 import { purgeTrialOriginals } from "@/lib/server/trial-watermark/unlock";
+import { retryConfirmations, sweepAttachments } from "@/lib/server/contact-tickets";
+import type { Database } from "@/lib/database.types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,6 +143,14 @@ export async function GET() {
   */
   const trialPurge = await purgeTrialOriginalsNow().catch(() => ({ error: "error" }));
 
+  /*
+    …and so are the contact tickets' leftovers (Kontakt V2): a customer
+    confirmation that failed is sent again (at most three tries, claimed so
+    two runs never send one twice — 0152), and upload slots nobody used are
+    removed from the private bucket. Session-less, behind the server token.
+  */
+  const contact = await contactHousekeeping().catch(() => ({ error: "error" }));
+
   if (!result.ok) {
     // A disabled or unconfigured integration is a state, not a server fault:
     // answering 500 would turn a normal "not set up yet" into a paging alert.
@@ -149,6 +159,7 @@ export async function GET() {
       blocksLifted: blocks.ok ? blocks.lifted : null,
       reconciled,
       trialPurge,
+      contact,
     }, { status: 200 });
   }
   /*
@@ -179,7 +190,17 @@ export async function GET() {
     reconciled,
     popularity,
     trialPurge,
+    contact,
   });
+}
+
+/** Kontakt V2: retries and the orphan sweep, with no session. Counts only. */
+async function contactHousekeeping() {
+  const anon = createAnonClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const [confirmations, swept] = await Promise.all([retryConfirmations(anon), sweepAttachments(anon)]);
+  return { confirmations, swept };
 }
 
 /**

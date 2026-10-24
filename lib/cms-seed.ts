@@ -1079,7 +1079,11 @@ const ABOUT: SeedPage = {
  */
 const CONTACT_MAIL = "mailto:contact@grovbase.com";
 
-const CONTACT: SeedPage = {
+/** Kontakt as Public pages V1 released it (0148): page_hero + contact_hub +
+ *  faq. Replaced by Kontakt V2 (CONTACT below, 0154); kept because 0148's
+ *  generator (scripts/cms-seed-sql.ts --release) must keep printing the
+ *  migration that is already applied. */
+export const CONTACT_V1: SeedPage = {
   slug: "kontakt",
   title: "Kontakt",
   navGroup: "company",
@@ -1214,6 +1218,139 @@ const CONTACT: SeedPage = {
             ),
           },
         ],
+      },
+    },
+  ],
+};
+
+/**
+ * KONTAKT V2 — one contact_page section (lib/contact-page.ts): the header,
+ * the channels, the FAQ links to /plany, the ticket form and the company
+ * tile. Every word below is editable in "Edytuj stronę"; the response time is
+ * ONE value (fields["reply.time"]) that the subtitle, the success card and the
+ * confirmation mail all say through {czas}.
+ *
+ * NOTHING HERE IS INVENTED. The e-mail channel is the mailbox GrovBase runs
+ * (contact@grovbase.com, see CONTACT_V1). Instagram and Facebook take the
+ * profiles from Ustawienia → public_site when the card has no link of its
+ * own; TikTok and YouTube have none yet — and a channel without a valid link
+ * is not on the page at all. The VAT-invoice question has no counterpart on
+ * /plany yet, so its tile has no link and stays off the page, marked
+ * "wymaga konfiguracji" in the editor. The company tile is off and empty
+ * until somebody types the real data.
+ */
+const CONTACT: SeedPage = {
+  slug: "kontakt",
+  title: "Kontakt",
+  navGroup: "company",
+  navOrder: 20,
+  seo: {
+    pl: {
+      title: "Kontakt — napisz do zespołu GrovBase",
+      description: "Pytanie o aplikację, płatności i faktury, problem techniczny albo współpraca? Napisz do zespołu GrovBase przez formularz lub na contact@grovbase.com.",
+    },
+    en: {
+      title: "Contact — write to the GrovBase team",
+      description: "A question about the app, payments and invoices, a technical problem or a partnership? Write to the GrovBase team through the form or at contact@grovbase.com.",
+    },
+    de: {
+      title: "Kontakt — schreib dem GrovBase-Team",
+      description: "Eine Frage zur App, zu Zahlungen und Rechnungen, ein technisches Problem oder eine Zusammenarbeit? Schreib dem GrovBase-Team über das Formular oder an contact@grovbase.com.",
+    },
+    ogImage: OG_IMAGE,
+  },
+  sections: [
+    {
+      type: "contact_page",
+      anchor: "formularz",
+      analyticsId: "contact.page",
+      style: { base: { width: "wide", paddingTop: "lg", paddingBottom: "lg" } },
+      content: {
+        badge: L("KONTAKT", "CONTACT", "KONTAKT"),
+        title: L("Napisz do nas", "Write to us", "Schreib uns"),
+        subtitle: L(
+          "Odpowiadamy w ciągu {czas}. Wybierz kanał, który jest dla Ciebie najwygodniejszy.",
+          "We reply within {czas}. Choose the channel that suits you best.",
+          "Wir antworten innerhalb von {czas}. Wähle den Kanal, der für dich am bequemsten ist.",
+        ),
+        items: [
+          {
+            value: "email",
+            title: L("E-mail", "E-mail", "E-Mail"),
+            description: L("Napisz bezpośrednio na nasz adres.", "Write straight to our address.", "Schreib direkt an unsere Adresse."),
+            url: CONTACT_MAIL,
+          },
+          {
+            value: "instagram",
+            title: L("Instagram", "Instagram", "Instagram"),
+            description: L("Napisz w wiadomości prywatnej", "Send us a direct message", "Schreib uns eine Direktnachricht"),
+          },
+          {
+            value: "facebook",
+            title: L("Facebook", "Facebook", "Facebook"),
+            description: L("Strona GrovBase na Facebooku", "GrovBase on Facebook", "GrovBase auf Facebook"),
+          },
+          {
+            value: "tiktok",
+            title: L("TikTok", "TikTok", "TikTok"),
+            description: L("Zobacz przykłady na żywo", "See live examples", "Sieh dir Live-Beispiele an"),
+          },
+          {
+            value: "youtube",
+            title: L("YouTube", "YouTube", "YouTube"),
+            description: L("Zobacz przykłady na żywo", "See live examples", "Sieh dir Live-Beispiele an"),
+          },
+        ],
+        tiles: [
+          { title: L("Jak działają kredyty?", "How do credits work?", "Wie funktionieren Credits?"), url: "/plany#faq-credits" },
+          { title: L("Jak kupić dodatkowe kredyty?", "How do I buy extra credits?", "Wie kaufe ich zusätzliche Credits?"), url: "/plany#faq-topups" },
+          { title: L("Czy subskrypcja odnawia się automatycznie?", "Does the subscription renew automatically?", "Verlängert sich das Abo automatisch?"), url: "/plany#faq-renewal" },
+          { title: L("Czy istnieje możliwość zwrotu?", "Is a refund possible?", "Ist eine Erstattung möglich?"), url: "/plany#faq-refunds" },
+          // No such question on /plany yet: no link, so no tile on the page.
+          { title: L("Jak otrzymać fakturę VAT?", "How do I get a VAT invoice?", "Wie erhalte ich eine Rechnung mit MwSt.?") },
+        ],
+        company: { hidden: true },
+        fields: {
+          "reply.time": L("1 dnia roboczego", "1 business day", "1 Werktag"),
+          "channels.title": L("Kanały kontaktu", "Contact channels", "Kontaktkanäle"),
+          "channel.messenger": L("Napisz na Messengerze", "Message us on Messenger", "Schreib uns im Messenger"),
+          "faq.title": L("Zanim napiszesz, sprawdź odpowiedzi", "Before you write, check the answers", "Bevor du schreibst: Hier findest du Antworten"),
+          "form.title": L("Formularz kontaktowy", "Contact form", "Kontaktformular"),
+          "form.topic": L("Czego dotyczy wiadomość?", "What is your message about?", "Worum geht es?"),
+          "topic.app": L("Pytanie o aplikację", "Question about the app", "Frage zur App"),
+          "topic.payments": L("Płatności i faktury", "Payments and invoices", "Zahlungen und Rechnungen"),
+          "topic.technical": L("Problem techniczny", "Technical problem", "Technisches Problem"),
+          "topic.cooperation": L("Współpraca / większe zamówienia", "Partnership / larger orders", "Zusammenarbeit / größere Aufträge"),
+          "topic.other": L("Inne", "Other", "Sonstiges"),
+          "form.name": L("Imię (opcjonalnie)", "First name (optional)", "Vorname (optional)"),
+          "form.email": L("E-mail", "E-mail", "E-Mail"),
+          "form.message": L("Wiadomość", "Message", "Nachricht"),
+          "form.generation": L("ID generacji lub link do niej (opcjonalnie)", "Generation ID or link to it (optional)", "Generierungs-ID oder Link dazu (optional)"),
+          "form.files": L("Załączniki (opcjonalnie)", "Attachments (optional)", "Anhänge (optional)"),
+          "form.filesHint": L(
+            "Do 3 plików JPG, PNG lub WebP, maks. 5 MB każdy.",
+            "Up to 3 JPG, PNG or WebP files, max. 5 MB each.",
+            "Bis zu 3 Dateien (JPG, PNG oder WebP), je max. 5 MB.",
+          ),
+          "form.nip": L("NIP (jeśli dotyczy faktury)", "Tax ID (if it concerns an invoice)", "USt-IdNr. (falls es um eine Rechnung geht)"),
+          // The clause the contact form has always carried (CONTACT_V1) — not new legal text.
+          "form.consent": L(
+            "Wysyłając wiadomość, zgadzasz się na przetwarzanie podanych danych w celu udzielenia odpowiedzi.",
+            "By sending this message you agree to your data being processed so that we can reply.",
+            "Mit dem Senden stimmst du der Verarbeitung deiner Daten zur Beantwortung zu.",
+          ),
+          "form.privacy": L("Polityka prywatności", "Privacy Policy", "Datenschutzerklärung"),
+          "form.submit": L("Wyślij wiadomość", "Send message", "Nachricht senden"),
+          "form.sending": L("Wysyłanie…", "Sending…", "Wird gesendet…"),
+          "success.title": L("Dziękujemy!", "Thank you!", "Danke!"),
+          "success.body": L("Odpowiemy w ciągu {czas}.", "We will reply within {czas}.", "Wir antworten innerhalb von {czas}."),
+          "success.ticket": L("Numer zgłoszenia: #{numer}", "Ticket number: #{numer}", "Ticketnummer: #{numer}"),
+          "success.backHome": L("Wróć na stronę główną", "Back to the home page", "Zurück zur Startseite"),
+          "success.backApp": L("Wróć do aplikacji", "Back to the app", "Zurück zur App"),
+          "firm.title": L("Dane firmy", "Company details", "Firmendaten"),
+          "email.copy": L("Kopiuj adres", "Copy address", "Adresse kopieren"),
+          "email.copied": L("Skopiowano", "Copied", "Kopiert"),
+        },
       },
     },
   ],

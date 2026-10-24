@@ -140,7 +140,13 @@ export type IceCmsField = {
   /** Path inside the block's content, without the locale: ["title"],
    *  ["items", "2", "description"], ["fields", "hero.h1"], ["mediaUrl"]. */
   path: string[];
-  kind: "text" | "media";
+  /** `link` (Kontakt V2): a plain, unlocalised address — a channel's URL, a
+   *  FAQ link, the company's NIP or e-mail — never painted as text, edited
+   *  from "Widoczność i kolejność" and checked by `format`. */
+  kind: "text" | "media" | "link";
+  format?: IceLinkFormat;
+  /** A channel's link: which channel (email, instagram, …) it belongs to. */
+  channel?: string;
   /** Split into paragraphs on blank lines when painted. */
   multiline: boolean;
   /** Text: the published value per language (absent = not written). */
@@ -150,6 +156,12 @@ export type IceCmsField = {
   /** The block's draft updated_at, for compare-and-set. */
   base: string | null;
 };
+
+/** What a `link` field must be (lib/contact-page.ts): a channel's profile
+ *  (its host decided by the channel's kind), a Messenger link, a FAQ link
+ *  (/plany#faq-<existing question>, a page of the site or https), a NIP or an
+ *  e-mail address. */
+export type IceLinkFormat = "channel" | "messenger" | "faq" | "nip" | "email";
 
 /** A picture slot a CMS section paints (the O nas page): a media_slots row,
  *  edited with the same panel as /home's — library, crop, phone file, clip. */
@@ -174,6 +186,12 @@ export type IceCmsToggle = {
   /** A text of it still holds a "[…]" placeholder: switched on, the page
    *  still leaves it out until the text is written. */
   placeholder: boolean;
+  /** Kontakt V2: why a switched-on element is still not on the page — a
+   *  channel without a valid link, a FAQ link to no existing question
+   *  ("wymaga konfiguracji"), the company tile without a name. */
+  note?: "no_link" | "needs_config" | "no_name";
+  /** Kontakt V2: its place in a list that can be reordered (cmsMove). */
+  move?: { list: "items" | "tiles"; index: number; count: number };
   /** The block's draft updated_at, for compare-and-set. */
   base: string | null;
 };
@@ -284,6 +302,9 @@ export type IceTransport = {
   /** Switch a section, an item or a point of a CMS page on or off — live,
    *  with a page version, like cmsSave. */
   cmsVisibility: (input: IceCmsVisibilityInput) => Promise<IceResult<{ updatedAt: string }>>;
+  /** Kontakt V2: one channel card or FAQ link moved to another place, live,
+   *  with a page version (cms_inline_move, 0153). */
+  cmsMove: (input: IceCmsMoveInput) => Promise<IceResult<{ updatedAt: string }>>;
   /* The launch page's galleries: draft → publish, with a history. */
   galleryState: (path: string) => Promise<IceResult<IceGalleryState>>;
   gallerySave: (input: IceGallerySaveInput) => Promise<IceResult<{ blockId: string; updatedAt: string }>>;
@@ -298,6 +319,8 @@ export type IceTransport = {
 };
 
 export type IceCmsVisibilityInput = { blockId: string; path: string[]; hidden: boolean; base: string | null };
+
+export type IceCmsMoveInput = { blockId: string; list: "items" | "tiles"; from: number; to: number; base: string | null };
 
 export type IceSlotWrite = {
   key: string;

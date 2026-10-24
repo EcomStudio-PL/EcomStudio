@@ -5,17 +5,23 @@ import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { SupportTabs } from "./tabs";
 
 export default async function AdminSupport() {
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const { data: threads } = await supabase.from("support_threads")
-    .select("id, subject, status, last_message_at, profiles(email, full_name)")
-    .order("status").order("last_message_at", { ascending: false }).limit(100);
+  const [{ data: threads }, { count: fresh }] = await Promise.all([
+    supabase.from("support_threads")
+      .select("id, subject, status, last_message_at, profiles(email, full_name)")
+      .order("status").order("last_message_at", { ascending: false }).limit(100),
+    // Kontakt V2: how many form tickets are still "Nowe", on the tab.
+    supabase.from("contact_messages").select("id", { count: "exact", head: true }).eq("status", "new"),
+  ]);
   return (
     <div>
       <PageHeader title={t("chat.adminTitle")} sub={t("chat.adminSub")} />
+      <SupportTabs active="threads" fresh={fresh ?? 0} t={t} />
       {(threads ?? []).length === 0 ? (
         <div className="panel rounded-2xl p-10 text-center">
           <p className="text-sm font-semibold">{t("chat.noThreads")}</p>

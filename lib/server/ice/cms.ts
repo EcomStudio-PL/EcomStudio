@@ -1,13 +1,16 @@
 import "server-only";
 import { headers } from "next/headers";
-import { CMS_FIELDS, CMS_MULTILINE, LAUNCH_TEXT_FIELDS, aboutSlotElement } from "@/lib/ice/registry";
+import { CMS_FIELDS, CMS_LINKS, CMS_MULTILINE, LAUNCH_TEXT_FIELDS, aboutSlotElement } from "@/lib/ice/registry";
 import { stegaMark, stegaStrip } from "@/lib/ice/stega";
 import { isLegalSlug } from "@/lib/legal/docs";
 import {
   ABOUT_HIDEABLE_ITEMS, ABOUT_POINT_ITEMS, blockSlotKeys, hasPlaceholder, isAboutType,
 } from "@/lib/about-page";
-import type { CmsBlockContent } from "@/lib/cms";
-import type { IceCmsField, IceCmsSlot, IceCmsToggle, IceLocale } from "@/lib/ice/types";
+import {
+  CONTACT_TEXT_KEYS, channelProblem, faqNeedsConfig, isContactPageType, type ContactSite,
+} from "@/lib/contact-page";
+import type { CmsBlockContent, CmsItem } from "@/lib/cms";
+import type { IceCmsField, IceCmsSlot, IceCmsToggle, IceLinkFormat, IceLocale } from "@/lib/ice/types";
 import { iceEditSessions } from "./session";
 
 /**
@@ -82,7 +85,7 @@ export function blockFields(block: CmsBlockLike, base: string | null): IceCmsFie
   if (!isUuid(block.id)) return [];
   const id = block.id;
   const out: IceCmsField[] = [];
-  const push = (path: string[], kind: "text" | "media") => {
+  const push = (path: string[], kind: "text" | "media" | "link", format?: IceLinkFormat) => {
     const raw = valueAt(block.content, path);
     out.push({
       id: `${id}|${path.join("|")}`,
@@ -91,9 +94,12 @@ export function blockFields(block: CmsBlockLike, base: string | null): IceCmsFie
       n: out.length,
       path,
       kind,
+      ...(format ? { format } : {}),
+      ...(format === "channel" && typeof valueAt(block.content, [path[0], path[1], "value"]) === "string"
+        ? { channel: valueAt(block.content, [path[0], path[1], "value"]) as string } : {}),
       multiline: kind === "text" && CMS_MULTILINE.has(path[path.length - 1]),
       values: kind === "text" ? localeValues(raw) : {},
-      ...(kind === "media" ? { url: typeof raw === "string" ? raw : "" } : {}),
+      ...(kind !== "text" ? { url: typeof raw === "string" ? raw : "" } : {}),
       base,
     });
   };
@@ -104,7 +110,12 @@ export function blockFields(block: CmsBlockLike, base: string | null): IceCmsFie
   const spec = CMS_FIELDS[block.type];
   if (!spec) return [];
   for (const s of spec.text) for (const p of expand(s, block.content)) push(p, "text");
+  // Kontakt V2: the section's own vocabulary, after the shared fields.
+  if (isContactPageType(block.type)) for (const k of CONTACT_TEXT_KEYS) push(["fields", k], "text");
   for (const s of spec.media) for (const p of expand(s, block.content)) push(p, "media");
+  // Addresses last: they are never painted, so they carry no marker number
+  // that the texts' numbering could depend on.
+  for (const l of CMS_LINKS[block.type] ?? []) for (const p of expand(l.path, block.content)) push(p, "link", l.format);
   return out;
 }
 
@@ -127,7 +138,8 @@ const anyPlaceholder = (v: unknown) => Object.values(localeValues(v)).some((x) =
  * point of an item that carries points. Listed hidden or not — a switched-off
  * tile is exactly the one that needs a way back.
  */
-export function blockToggles(block: CmsBlockLike, base: string | null): IceCmsToggle[] {
+export function blockToggles(block: CmsBlockLike, base: string | null, site: ContactSite = {}): IceCmsToggle[] {
+  if (isUuid(block.id) && isContactPageType(block.type)) return contactToggles(block, block.id, base, site);
   if (!isUuid(block.id) || !isAboutType(block.type)) return [];
   const id = block.id;
   const content = isBag(block.content) ? block.content : {};
@@ -237,4 +249,48 @@ export async function markPublishedPage<P extends { slug: string; blocks: CmsBlo
     console.warn("ice cms layer failed, rendering the published copy", e instanceof Error ? e.message : e);
     return page;
   }
+}
+
+/**
+ * Kontakt V2: the section, each channel card, each FAQ link and the company
+ * tile — with their place in the list (they can be reordered) and, for one
+ * that is switched on but still not on the page, why: a channel without a
+ * valid link, a FAQ link to no existing question, a company without a name.
+ */
+function contactToggles(block: CmsBlockLike, id: string, base: string | null, site: ContactSite): IceCmsToggle[] {
+  const content = isBag(block.content) ? block.content : {};
+  const out: IceCmsToggle[] = [{
+    id: `${id}|`, blockId: id, blockType: block.type, path: [], label: localeValues(content.title),
+    hidden: block.visible === false, placeholder: false, base,
+  }];
+  for (const list of ["items", "tiles"] as const) {
+    const rows = Array.isArray(content[list]) ? content[list] as unknown[] : [];
+    rows.forEach((raw, i) => {
+      const item = (isBag(raw) ? raw : {}) as CmsItem & Bag;
+      const path = [list, String(i)];
+      const problem = list === "items"
+        ? (channelProblem(item, site) === "url" ? "no_link" as const : undefined)
+        : (faqNeedsConfig(item) ? "needs_config" as const : undefined);
+      out.push({
+        id: `${id}|${path.join("|")}`, blockId: id, blockType: block.type, path, label: localeValues(item.title),
+        hidden: item.hidden === true,
+        placeholder: [item.title, item.description].some(anyPlaceholder),
+        ...(problem && item.hidden !== true ? { note: problem } : {}),
+        move: { list, index: i, count: rows.length },
+        base,
+      });
+    });
+  }
+  if (isBag(content.company)) {
+    const company = content.company as CmsItem & Bag;
+    const named = Object.values(localeValues(company.title)).some((v) => (v ?? "").trim() && !hasPlaceholder(v));
+    out.push({
+      id: `${id}|company`, blockId: id, blockType: block.type, path: ["company"], label: localeValues(company.title),
+      hidden: company.hidden === true,
+      placeholder: [company.title, company.description].some(anyPlaceholder),
+      ...(!named && company.hidden !== true ? { note: "no_name" as const } : {}),
+      base,
+    });
+  }
+  return out;
 }

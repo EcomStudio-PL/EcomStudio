@@ -32,7 +32,9 @@ export type FieldKind =
   // ── added with the legal documents (Legal documents V1) ──
   | "legaldoc" // a whole legal document per language — status, version, date, text (lib/legal/content.ts)
   // ── added with O nas V2 ──
-  | "slots";   // the section's pictures: media slots, listed with where to change them — stores NOTHING
+  | "slots"    // the section's pictures: media slots, listed with where to change them — stores NOTHING
+  // ── added with Kontakt V2 ──
+  | "company"; // the "Dane firmy" tile: name, address, NIP, e-mail and its switch (content.company)
 
 export type FieldDef = {
   /** A key of CmsBlockContent, or — for `launch` — a key inside content.fields. */
@@ -49,7 +51,12 @@ export type FieldDef = {
    *  "Widoczny" switch per row; `points` — a list of points per row (each
    *  switchable); `plain` — no link and no picture per row (the section's
    *  pictures are media slots, its links are not per item). */
-  items?: { hideable?: boolean; points?: boolean; plain?: boolean; slots?: readonly string[] };
+  items?: {
+    hideable?: boolean; points?: boolean; plain?: boolean; slots?: readonly string[];
+    /** Kontakt V2: `channels` — a kind, a name, a line, a link (and a
+     *  Messenger link for Facebook); `faq` — a question and its link. */
+    contact?: "channels" | "faq";
+  };
   /** slots: the media slot keys the section paints. */
   slots?: readonly string[];
 };
@@ -258,6 +265,53 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
   about_audience: [f("badge", "text", "badge"), HEADING, aboutItems("aboutCards", { hideable: true, points: true, slots: ABOUT_ITEM_SLOTS.about_audience }, "aboutCardsHint")],
   about_team: [f("badge", "text", "badge"), HEADING, aboutItems("aboutPeople", { hideable: true, slots: ABOUT_ITEM_SLOTS.about_team }, "aboutPeopleHint")],
   about_faq: [f("badge", "text", "badge"), HEADING, aboutItems("questions", { hideable: true }, "aboutFaqHint")],
+  /*
+   * KONTAKT V2 — the whole contact page (lib/contact-page.ts). One long form,
+   * top to bottom as the page reads; the dotted keys live in content.fields.
+   * {czas} is the response time, {numer} the ticket number.
+   */
+  contact_page: [
+    group("contactGroupHeader"),
+    f("badge", "text", "badge"), HEADING, f("subtitle", "textarea", "subheading", "contactTokenCzas"),
+    f("reply.time", "text", "contactReplyTime", "contactReplyTimeHint"),
+    group("contactGroupChannels", "contactChannelsHint"),
+    f("channels.title", "text", "contactChannelsTitle"),
+    { ...f("items", "items", "contactChannels"), items: { hideable: true, contact: "channels" } },
+    f("channel.messenger", "text", "contactMessengerLabel"),
+    f("email.copy", "text", "contactEmailCopy"),
+    f("email.copied", "text", "contactEmailCopied"),
+    group("contactGroupFaq", "contactFaqHint"),
+    f("faq.title", "text", "contactFaqTitle"),
+    { ...f("tiles", "items", "contactFaqLinks"), items: { hideable: true, contact: "faq" } },
+    group("contactGroupForm"),
+    f("form.title", "text", "contactFormTitle"),
+    f("form.topic", "text", "contactFormTopic"),
+    f("topic.app", "text", "contactTopicApp"),
+    f("topic.payments", "text", "contactTopicPayments"),
+    f("topic.technical", "text", "contactTopicTechnical"),
+    f("topic.cooperation", "text", "contactTopicCooperation"),
+    f("topic.other", "text", "contactTopicOther"),
+    f("form.name", "text", "contactFormName"),
+    f("form.email", "text", "contactFormEmail"),
+    f("form.message", "text", "contactFormMessage"),
+    f("form.generation", "text", "contactFormGeneration"),
+    f("form.files", "text", "contactFormFiles"),
+    f("form.filesHint", "text", "contactFormFilesHint"),
+    f("form.nip", "text", "contactFormNip"),
+    f("form.consent", "textarea", "contactFormConsent"),
+    f("form.privacy", "text", "contactFormPrivacy"),
+    f("form.submit", "text", "contactFormSubmit"),
+    f("form.sending", "text", "contactFormSending"),
+    group("contactGroupSuccess"),
+    f("success.title", "text", "contactSuccessTitle"),
+    f("success.body", "text", "contactSuccessBody", "contactTokenCzas"),
+    f("success.ticket", "text", "contactSuccessTicket", "contactTokenNumer"),
+    f("success.backHome", "text", "contactSuccessBackHome"),
+    f("success.backApp", "text", "contactSuccessBackApp"),
+    group("contactGroupCompany", "contactCompanyHint"),
+    f("firm.title", "text", "contactCompanyTitle"),
+    f("company", "company", "contactCompany"),
+  ],
   about_cta: [
     HEADING, f("subtitle", "textarea", "subheading"),
     f("ctaLabel", "text", "ctaLabel"), f("ctaUrl", "url", "ctaUrl", "aboutStartHint"),
@@ -461,7 +515,8 @@ export function splitFields(type: string, fields: FieldDef[]): {
   // The launch page is one long form by design — it IS the page, and every
   // field on it is used. Splitting it would hide half a page behind a toggle.
   // A gallery has a single row (its summary), which must not be folded away.
-  if (type === "launch" || type === "launch_gallery") return { quick: fields, advanced: [] };
+  // Kontakt V2 is the same kind of page: one form, every field in use.
+  if (type === "launch" || type === "launch_gallery" || type === "contact_page") return { quick: fields, advanced: [] };
   const extra = new Set(EXTRA_QUICK[type] ?? []);
   const quick = fields.filter((f) => ALWAYS_QUICK.has(f.key) || extra.has(f.key));
   const advanced = fields.filter((f) => !quick.includes(f));
@@ -489,8 +544,10 @@ const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler", "dat
  *  `{pl: …}` object over whatever key it names (for a gallery, its pairs).
  *  A legal document is here too: it IS stored, but not as one string per
  *  language — its own editor (components/admin/cms/legal-doc-field.tsx) reads
- *  and writes `content.doc` whole, and the generic path must never touch it. */
-const NOT_STORED = new Set<FieldKind>(["heading", "gallery", "legaldoc", "slots"]);
+ *  and writes `content.doc` whole, and the generic path must never touch it.
+ *  So is Kontakt's company tile: an object (content.company) with its own
+ *  editor (CompanyField in components/admin/cms/fields.tsx). */
+const NOT_STORED = new Set<FieldKind>(["heading", "gallery", "legaldoc", "slots", "company"]);
 
 /** A section switch as it reads: "1" on, "0" off, nothing stored → the
  *  section's own default. */

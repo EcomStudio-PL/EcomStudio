@@ -9,7 +9,7 @@ import { categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots
 import { PHOTO_TOOLS, TOOLS } from "@/lib/images/tools";
 import { LAUNCH_V2_BUILDER_ONLY, LAUNCH_V2_TEXT_FIELDS } from "@/lib/launch/fields";
 import { ABOUT_SLOTS } from "@/lib/about-page";
-import type { IceElement, IcePage, IceSection, IceSlotSpec } from "./types";
+import type { IceElement, IceLinkFormat, IcePage, IceSection, IceSlotSpec } from "./types";
 
 /**
  * THE INLINE EDITOR'S REGISTRY — every page the visual editor can open, and on
@@ -509,10 +509,32 @@ export const CMS_FIELDS: Readonly<Record<string, { text: string[]; media: string
   about_team: { text: ["badge", "title", "items.*.title", "items.*.badge", "items.*.description"], media: [] },
   about_faq: { text: ["badge", "title", "items.*.title", "items.*.description"], media: [] },
   about_cta: { text: ["title", "subtitle", "ctaLabel", "cta2Label"], media: [] },
+  // Kontakt V2: the header, each channel's name and line, each FAQ link's
+  // question, the company's name and address. The section's other words live
+  // in content.fields (CONTACT_TEXT_KEYS) and its addresses are CMS_LINKS.
+  contact_page: {
+    text: ["badge", "title", "subtitle", "items.*.title", "items.*.description", "tiles.*.title", "company.title", "company.description"],
+    media: [],
+  },
 };
 
 /** CMS text fields whose value is split into paragraphs on blank lines. */
 export const CMS_MULTILINE = new Set(["description"]);
+
+/**
+ * KONTAKT V2: the addresses of a section — plain values, edited in the
+ * editor's "Widoczność i kolejność" panel (they are not painted as text), each
+ * checked against its format before it is saved (lib/contact-page.ts).
+ */
+export const CMS_LINKS: Readonly<Record<string, readonly { path: string; format: IceLinkFormat }[]>> = {
+  contact_page: [
+    { path: "items.*.url", format: "channel" },
+    { path: "items.*.url2", format: "messenger" },
+    { path: "tiles.*.url", format: "faq" },
+    { path: "company.value", format: "nip" },
+    { path: "company.url", format: "email" },
+  ],
+};
 
 /**
  * The launch page's own copy ("/" when the premiere page is the homepage).

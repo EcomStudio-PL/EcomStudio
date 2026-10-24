@@ -1135,6 +1135,7 @@ async function sectionI() {
     ["galleryVersions", () => actions.galleryVersions({ key: "thumbs" })],
     ["galleryRestore", () => actions.galleryRestore({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
     ["cmsVisibility", () => actions.cmsVisibility({ blockId: B_HERO, path: [], hidden: true, base: null })],
+    ["cmsMove", () => actions.cmsMove({ blockId: B_HERO, list: "items", from: 0, to: 1, base: null })],
   ];
   const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths" && k !== "iceDbReady");
   const covered = new Set(CALLS.map(([n]) => n.replace(/\(.*\)$/, "")));
@@ -1180,6 +1181,7 @@ async function sectionI() {
       ["iceGalleryVersionsAction", () => wrappers.iceGalleryVersionsAction({ key: "thumbs" })],
       ["iceGalleryRestoreAction", () => wrappers.iceGalleryRestoreAction({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
       ["iceCmsVisibilityAction", () => wrappers.iceCmsVisibilityAction({ blockId: B_HERO, path: [], hidden: true, base: null })],
+      ["iceCmsMoveAction", () => wrappers.iceCmsMoveAction({ blockId: B_HERO, list: "items", from: 0, to: 1, base: null })],
     ];
     const names = Object.keys(wrappers);
     const results = await Promise.all(wrapperCalls.map(([, f]) => f()));

@@ -91,7 +91,7 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
           // document whose language (the admin's interface language) is not
           // active yet shows its Polish draft here, with a note, instead of
           // the visitors' "coming soon" — the draft is what is being edited.
-          ctx={renderContext({ locale, t, media, data, admin: true, draftPreview: true, showAuth: true, slots })}
+          ctx={renderContext({ locale, t, media, data, admin: true, draftPreview: true, showAuth: true, slots, site })}
         />
       </main>
       {footerMode === "global" && <SiteFooter {...shell} />}

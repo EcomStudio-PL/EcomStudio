@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { notify } from "@/lib/notify";
 import { hasInvisible } from "@/lib/ice/stega";
 import { ALLOWED_TOKENS, disallowedTokens } from "@/lib/launch/fields";
+import { CONTACT_TOKENS, linkValueOk } from "@/lib/contact-page";
 import type { IceAsset, IceCmsField, IceLocale, IceVersion } from "@/lib/ice/types";
 import type { Target } from "./scan";
 import { livePreview } from "./preview";
@@ -28,6 +29,14 @@ const valueOf = (v: unknown): string | null =>
 export function cmsFieldLabel(t: T, f: IceCmsField): string {
   const block = t(`ice.block.${f.blockType}`);
   if (f.blockType === "launch") return `${block} · ${t(`ice.launchField.${f.path[1].replace(/\./g, "_")}`)}`;
+  // Kontakt V2: the section's own words, a channel, a FAQ link, the company.
+  if (f.blockType === "contact_page") {
+    const last = f.path[f.path.length - 1];
+    if (f.path[0] === "fields") return `${block} · ${t(`ice.contactField.${f.path[1].replace(/\./g, "_")}`)}`;
+    if (f.path[0] === "items") return `${block} · ${t("ice.contact.channel", { n: Number(f.path[1]) + 1 })} · ${t(`ice.contact.f.${last}`)}`;
+    if (f.path[0] === "tiles") return `${block} · ${t("ice.contact.faqLink", { n: Number(f.path[1]) + 1 })} · ${t(`ice.contact.f.${last}`)}`;
+    if (f.path[0] === "company") return `${block} · ${t("ice.contact.company")} · ${t(`ice.contact.company_${last}`)}`;
+  }
   const item = f.path[0] === "items" ? Number(f.path[1]) + 1 : null;
   // An audience card's point: "Dla kogo · Element 1 · Punkt 2 · Tytuł".
   const point = item && f.path[2] === "points" ? Number(f.path[3]) + 1 : null;
@@ -44,6 +53,13 @@ function historyKey(ctx: EditorCtx, f: IceCmsField, locale: IceLocale | null): s
 /** A launch line's key ("hero.offer"), or null for any other CMS field. */
 const launchKey = (f: IceCmsField): string | null => (f.blockType === "launch" && f.path[0] === "fields" ? f.path[1] : null);
 
+/** The `{tokens}` a contact text may carry (lib/contact-page.ts). */
+function contactTokens(f: IceCmsField): readonly string[] | null {
+  if (f.blockType !== "contact_page") return null;
+  const key = f.path[0] === "fields" ? f.path[1] : f.path.join(".");
+  return (CONTACT_TOKENS as Record<string, readonly string[] | undefined>)[key] ?? [];
+}
+
 /**
  * Launch lines that may be left empty — the page then shows nothing there.
  * The inline editor never saves an empty line (`text_empty`), so these are
@@ -51,7 +67,7 @@ const launchKey = (f: IceCmsField): string | null => (f.blockType === "launch" &
  */
 const OPTIONAL_LAUNCH = new Set(["feature.1b", "feature.2b", "feature.3b", "creators.signature", "final.sub"]);
 
-function localProblem(value: string, multiline: boolean, key: string | null): string | null {
+function localProblem(value: string, multiline: boolean, key: string | null, allowed: readonly string[] | null = null): string | null {
   if (!value.trim()) return "text_empty";
   if (value.length > 2000) return "text_too_long";
   if (hasInvisible(value)) return "text_invisible";
@@ -59,6 +75,7 @@ function localProblem(value: string, multiline: boolean, key: string | null): st
   if (!multiline && /\n/.test(value)) return "text_newline";
   // The server refuses it too (lib/server/ice/actions.ts cmsSave).
   if (key && disallowedTokens(key, value).length > 0) return "text_token";
+  if (allowed && [...value.matchAll(/\{([a-zA-Z_]+)\}/g)].some((m) => !allowed.includes(m[1]))) return "text_token";
   return null;
 }
 
@@ -109,9 +126,10 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
     ? draft.replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/[\t ]+/g, " ").trim()).join("\n").replace(/\n{3,}/g, "\n\n").trim()
     : draft.replace(/[\t ]+/g, " ").trim();
   const key = launchKey(field);
-  const problem = localProblem(clean, field.multiline, key);
+  const contactAllowed = contactTokens(field);
+  const problem = localProblem(clean, field.multiline, key, contactAllowed);
   const changed = clean !== (live ?? "");
-  const tokens = key ? ALLOWED_TOKENS[key] ?? [] : [];
+  const tokens = key ? ALLOWED_TOKENS[key] ?? [] : contactAllowed ?? [];
   // A field painted as several paragraphs is previewed after saving only —
   // and so is a launch line with a {token}: the page shows it with the
   // approved value in place (or not at all), never the raw token.
@@ -308,5 +326,89 @@ export function CmsMediaPanel({ ctx, target, onClose }: { ctx: EditorCtx; target
           onPick={(a) => { setPicked(a); setLibrary(false); }} />
       )}
     </>
+  );
+}
+
+type CmsLink = Extract<Target, { kind: "cmsLink" }>;
+
+/**
+ * KONTAKT V2 — ONE ADDRESS OF THE CONTACT SECTION: a channel's profile, the
+ * Messenger link, a FAQ link, the company's NIP or e-mail. Not localised,
+ * never painted as text, live at once (cms_inline_patch) with a page version.
+ * Empty takes the element off the page; anything else must be what its
+ * format says — the server checks the same rule again.
+ */
+export function CmsLinkPanel({ ctx, target, onClose }: { ctx: EditorCtx; target: CmsLink; onClose: () => void }) {
+  const { t, transport } = ctx;
+  const field = liveField(ctx, target.field);
+  const live = field.url ?? "";
+  const [draft, setDraft] = useState(live);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const versions = useHistory(ctx, historyKey(ctx, field, null));
+  const clean = draft.trim();
+  const ok = field.format ? linkValueOk(field.format, clean, field.channel) : false;
+  const changed = clean !== live.trim();
+
+  const write = async (value: string, action: "save" | "restore") => {
+    setBusy(true);
+    setError(null);
+    const res = await call(transport.cmsSave({
+      blockId: field.blockId, path: field.path, locale: null, value, expected: live || null, base: field.base, action,
+    }));
+    setBusy(false);
+    if (!res.ok) {
+      setError(errorText(t, res.error));
+      if (res.error === "conflict") void ctx.reload();
+      return;
+    }
+    notify.success(t(action === "save" ? "ice.saved" : "ice.restored"));
+    void ctx.reload();
+    onClose();
+  };
+
+  return (
+    <Sheet t={t} title={cmsFieldLabel(t, field)} crumbs={`${ctx.pageLabel} · ${t("ice.cms.live")}`} onClose={onClose}
+      footer={
+        <>
+          <Btn kind="primary" disabled={!changed || !ok || busy} onClick={() => void write(clean, "save")}>
+            {busy ? t("ice.saving") : t("ice.cms.publish")}
+          </Btn>
+          <Btn onClick={onClose}>{t("ice.cancel")}</Btn>
+        </>
+      }
+    >
+      {error && <p className={s.error} role="alert">{error}</p>}
+      <div className={s.field}>
+        <span className={s.label}>{t("ice.text.current")}</span>
+        <p className={s.current}>{live || t("ice.contact.linkEmpty")}</p>
+      </div>
+      <label className={s.field}>
+        <span className={s.label}>{t("ice.text.new")}</span>
+        <input className={s.input} value={draft} inputMode={field.format === "nip" ? "text" : "url"} spellCheck={false}
+          data-ice-link={field.id} onChange={(e) => setDraft(e.target.value)} />
+      </label>
+      <p className={s.note}>{t(`ice.contact.linkHint.${field.format === "channel" ? `channel_${field.channel ?? "x"}` : field.format ?? "x"}`)}</p>
+      {changed && !ok && <p className={s.error}>{t("ice.error.link_invalid")}</p>}
+      <p className={s.meta}>{t("ice.contact.linkEmptyNote")}</p>
+      {versions && versions.length > 0 && (
+        <ul className={s.list}>
+          {versions.slice(0, 8).map((v) => (
+            <li key={v.id} className={s.item}>
+              <span className={s.meta}>{when(v.createdAt, ctx.locale)}{v.author ? ` · ${v.author}` : ""}</span>
+              <div className={s.diff}>
+                <b>{t("ice.history.before")}</b><span>{valueOf(v.before) || "—"}</span>
+                <b>{t("ice.history.after")}</b><span>{valueOf(v.after) || "—"}</span>
+              </div>
+              {valueOf(v.before) !== null && valueOf(v.before) !== live && (
+                <div className={s.row}>
+                  <Btn small disabled={busy} onClick={() => void write(valueOf(v.before) ?? "", "restore")}>{t("ice.history.restoreBefore")}</Btn>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Sheet>
   );
 }

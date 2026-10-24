@@ -9,7 +9,7 @@ import { UI_ATTR, galleryUid, hitTest, scanPage, targetElements, unionBox, type 
 import { actionsTransport } from "./transport";
 import { Btn, call, cls, errorText, pageLabel, roleLabel, sectionLabel, type EditorCtx, type T } from "./shared";
 import { TextPanel } from "./text-panel";
-import { CmsMediaPanel, CmsTextPanel, cmsFieldLabel } from "./cms-panel";
+import { CmsLinkPanel, CmsMediaPanel, CmsTextPanel, cmsFieldLabel } from "./cms-panel";
 import { BulkGroupsPanel, ElementsPanel, PageHistoryPanel } from "./page-panels";
 import { VisibilityPanel } from "./visibility-panel";
 import { MediaPanel } from "./media-panel";
@@ -51,7 +51,7 @@ const hasGalleries = (info: IcePageInfo | null, path: string) => info?.kind === 
 
 function labelOf(t: T, info: IcePageInfo, target: Target): string {
   if (target.kind === "gallery") return `${t("ice.gallery.title")} · ${t(`ice.gallery.name.${target.key}`)}`;
-  if (target.kind === "cms" || target.kind === "cmsMedia") return cmsFieldLabel(t, target.field);
+  if (target.kind === "cms" || target.kind === "cmsMedia" || target.kind === "cmsLink") return cmsFieldLabel(t, target.field);
   const section = sectionLabel(t, info, target.element.id);
   return section ? `${section} · ${roleLabel(t, target.element)}` : roleLabel(t, target.element);
 }
@@ -76,6 +76,7 @@ function detachedTarget(info: IcePageInfo, uid: string): Target | null {
   for (const f of info.cms.fields) {
     if (f.kind === "text" && uid === `c:${f.id}`) return { kind: "cms", uid, field: f, runs: [] };
     if (f.kind === "media" && uid === `cm:${f.id}`) return { kind: "cmsMedia", uid, field: f, els: [] };
+    if (f.kind === "link" && uid === `cl:${f.id}`) return { kind: "cmsLink", uid, field: f, els: [] };
   }
   // A picture slot with no frame on the page: the share image, or one in a
   // section that is switched off.
@@ -418,6 +419,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
       slotSave: (input) => after(transport.slotSave(input)),
       cmsSave: (input) => after(transport.cmsSave(input)),
       cmsVisibility: (input) => after(transport.cmsVisibility(input)),
+      cmsMove: (input) => after(transport.cmsMove(input)),
       // Registering an upload revalidates too (the library screen), and any
       // revalidation re-renders this page inside the action — unmarked.
       registerUpload: (input) => after(transport.registerUpload(input)),
@@ -487,6 +489,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
         open.target.kind === "text" ? <TextPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
         : open.target.kind === "cms" ? <CmsTextPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
         : open.target.kind === "cmsMedia" ? <CmsMediaPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
+        : open.target.kind === "cmsLink" ? <CmsLinkPanel key={open.target.uid} ctx={ctx} target={open.target} onClose={close} />
         // A gallery never opens as a target (select() routes it to its own
         // panel below); nothing is drawn for one here.
         : open.target.kind === "gallery" ? null

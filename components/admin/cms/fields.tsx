@@ -12,6 +12,7 @@ import { readField, toggleOn, writeField, type FieldDef } from "@/lib/cms-schema
 import type { LinkTarget } from "@/lib/cms-links";
 import type { CmsBlockContent, CmsItem, CmsPoint, LocaleText } from "@/lib/cms";
 import { aboutSlotSpec, hasPlaceholder } from "@/lib/about-page";
+import { CHANNEL_KINDS, channelProblem, faqNeedsConfig, isChannelKind } from "@/lib/contact-page";
 import { isCompletePair, readGalleryContent } from "@/lib/launch/gallery";
 import { IceEditButton } from "./visual-editor";
 import { LegalDocField } from "./legal-doc-field";
@@ -81,6 +82,11 @@ export function Field({ def, locale, content, onChange, onChangeWith, visible }:
   if (def.kind === "items") {
     return <ItemsField label={label} hint={hint} locale={locale} content={content} onChange={onChange}
       field={def.key === "tiles" ? "tiles" : "items"} options={def.items} />;
+  }
+
+  // Kontakt V2: the company tile, an object with its own four values.
+  if (def.kind === "company") {
+    return <CompanyField label={label} locale={locale} content={content} onChange={onChange} />;
   }
 
   // The section's pictures (O nas): media slots, not URLs in the block —
@@ -504,10 +510,44 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
               </div>
             </div>
             <div className="space-y-2">
-              <Input placeholder={t("cms.label.itemTitle")} value={text(item, "title")}
+              {/* Kontakt V2: a channel has a kind (which decides the icon and
+                  which addresses its link may point at); a FAQ link is a
+                  question and an address. */}
+              {options?.contact === "channels" && (
+                <Select value={isChannelKind(item.value) ? item.value : ""} aria-label={t("cms.label.contactChannelKind")}
+                  onChange={(e) => patch(i, { value: e.target.value || undefined })} data-item-channel={i}>
+                  <option value="">{t("cms.label.contactChannelKind")}</option>
+                  {CHANNEL_KINDS.map((k) => <option key={k} value={k}>{t(`cms.label.contactKind_${k}`)}</option>)}
+                </Select>
+              )}
+              <Input placeholder={t(options?.contact === "faq" ? "cms.label.contactFaqQuestion" : "cms.label.itemTitle")} value={text(item, "title")}
                 onChange={(e) => setText(i, "title", e.target.value)} />
-              <Textarea rows={2} placeholder={t("cms.label.itemBody")} value={text(item, "description")}
-                onChange={(e) => setText(i, "description", e.target.value)} />
+              {options?.contact !== "faq" && (
+                <Textarea rows={2} placeholder={t("cms.label.itemBody")} value={text(item, "description")}
+                  onChange={(e) => setText(i, "description", e.target.value)} />
+              )}
+              {options?.contact && (
+                <div className="space-y-2">
+                  <LinkInput value={item.url ?? ""}
+                    placeholder={t(options.contact === "faq" ? "cms.label.contactFaqUrl" : "cms.label.contactChannelUrl")}
+                    onChange={(next) => patch(i, { url: next || undefined })} />
+                  {options.contact === "channels" && item.value === "facebook" && (
+                    <LinkInput value={item.url2 ?? ""} placeholder={t("cms.label.contactMessengerUrl")}
+                      onChange={(next) => patch(i, { url2: next || undefined })} />
+                  )}
+                  {!item.hidden && options.contact === "channels" && channelProblem(item, {}) === "url"
+                    && !(item.value === "instagram" || item.value === "facebook") && (
+                    <p className="text-[11.5px] leading-relaxed text-warning" data-item-note={i}>{t("cms.label.contactNoLink")}</p>
+                  )}
+                  {!item.hidden && options.contact === "channels" && channelProblem(item, {}) === "url"
+                    && (item.value === "instagram" || item.value === "facebook") && (
+                    <p className="text-[11.5px] leading-relaxed text-faint" data-item-note={i}>{t("cms.label.contactSiteFallback")}</p>
+                  )}
+                  {options.contact === "faq" && faqNeedsConfig(item) && (
+                    <p className="text-[11.5px] leading-relaxed text-warning" data-item-note={i}>{t("cms.label.contactNeedsConfig")}</p>
+                  )}
+                </div>
+              )}
               {options?.hideable && rowHasPlaceholder(item) && (
                 <p className="text-[11.5px] leading-relaxed text-warning" data-item-placeholder={i}>
                   {t("cms.label.itemPlaceholder")}
@@ -535,6 +575,7 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
               {options?.points && (
                 <PointsField points={item.points ?? []} locale={locale} onChange={(points) => patch(i, { points })} />
               )}
+              {!options?.contact && (
               <div className="grid gap-2 sm:grid-cols-2">
                 {!options?.plain && (
                   <LinkInput value={item.url ?? ""} placeholder={t("cms.label.itemUrl")}
@@ -553,10 +594,11 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
                   {CMS_ICON_NAMES.map((name) => <option key={name} value={name}>{name}</option>)}
                 </Select>
               </div>
+              )}
               {/* The picker, not a URL box: an image is chosen from the media
                   library, and nobody should be pasting storage paths by hand.
                   Not on an O nas row: its picture is a media slot. */}
-              {!options?.plain && (
+              {!options?.plain && !options?.contact && (
                 <MediaPicker value={item.mediaUrl ?? ""} kind="any"
                   label={t("cms.label.itemMedia")}
                   onChange={(url) => patch(i, { mediaUrl: url || undefined })}
@@ -572,6 +614,50 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
             {t("cms.noItems")}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * KONTAKT V2 — "DANE FIRMY": name, address, NIP and e-mail of the company,
+ * and whether the tile is on the page. Off until real data is typed: the
+ * page draws the tile only when it is switched on AND has a name.
+ */
+function CompanyField({ label, locale, content, onChange }: {
+  label: string; locale: Locale; content: CmsBlockContent; onChange: (content: CmsBlockContent) => void;
+}) {
+  const { t } = useI18n();
+  const company: CmsItem = content.company ?? { hidden: true };
+  const set = (part: Partial<CmsItem>) => onChange({ ...content, company: { ...company, ...part } });
+  const text = (key: "title" | "description") => ((company[key] ?? {}) as LocaleText)[locale] ?? "";
+  const setText = (key: "title" | "description", value: string) =>
+    set({ [key]: { ...((company[key] ?? {}) as LocaleText), [locale]: value } });
+  const named = Boolean(text("title").trim() || ((company.title ?? {}) as LocaleText).pl?.trim());
+  return (
+    <div data-field-company className="rounded-xl border border-line bg-sunken/50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <Label>{label}</Label>
+        <label className="flex items-center gap-1.5 text-[11.5px] text-muted">
+          <input type="checkbox" checked={!company.hidden} className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
+            onChange={(e) => set({ hidden: e.target.checked ? undefined : true })} />
+          {t("cms.label.itemVisible")}
+        </label>
+      </div>
+      <div className="space-y-2">
+        <Input placeholder={t("cms.label.contactCompanyName")} value={text("title")} onChange={(e) => setText("title", e.target.value)} />
+        <Textarea rows={2} placeholder={t("cms.label.contactCompanyAddress")} value={text("description")}
+          onChange={(e) => setText("description", e.target.value)} />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input placeholder={t("cms.label.contactCompanyNip")} value={company.value ?? ""}
+            onChange={(e) => set({ value: e.target.value || undefined })} />
+          <Input placeholder={t("cms.label.contactCompanyEmail")} value={company.url ?? ""} type="email"
+            onChange={(e) => set({ url: e.target.value || undefined })} />
+        </div>
+        {!company.hidden && !named && (
+          <p className="text-[11.5px] leading-relaxed text-warning">{t("cms.label.contactCompanyNoName")}</p>
+        )}
+        <p className="text-[11.5px] leading-relaxed text-faint">{t("cms.label.contactCompanyHintRow")}</p>
       </div>
     </div>
   );

@@ -11,6 +11,9 @@ export type CmsItem = {
   /** Second image — the "after" of a comparison row, or a card's hover art. */
   media2Url?: string;
   url?: string;
+  /** A second link — a contact channel's "Napisz na Messengerze" beside its
+   *  Facebook page (Kontakt V2, lib/contact-page.ts). */
+  url2?: string;
   value?: string;
   /** Localized alternative text for mediaUrl. */
   alt?: LocaleText;
@@ -56,6 +59,9 @@ export type CmsBlockContent = {
    *  because `items` there is already the form's topics — the same shape and
    *  meaning they have in `contact_form`. */
   tiles?: CmsItem[];
+  /** contact_page: the "Dane firmy" tile — name (title), address
+   *  (description), NIP (value), e-mail (url) — off until real data exists. */
+  company?: CmsItem;
   /** Rich text: a very small, sanitized subset of HTML (headings, lists,
    *  links, bold, tables) — never a script and never a style attribute. */
   html?: LocaleText;
@@ -305,6 +311,13 @@ export const BLOCK_TYPES = [
    */
   "about_hero", "about_story", "about_process", "about_importance", "about_values",
   "about_audience", "about_team", "about_faq", "about_cta",
+  /*
+   * Added with Kontakt V2: the whole contact page in one section — header,
+   * channels, FAQ links, the ticket form and the company tile — because on a
+   * phone they interleave (channels and FAQ before the form, the company
+   * after it) and two sections cannot share a grid (lib/contact-page.ts).
+   */
+  "contact_page",
 ] as const;
 
 /**
@@ -327,7 +340,7 @@ export const SECTION_GROUPS: readonly { key: string; types: readonly string[] }[
   { key: "text", types: ["page_hero", "text", "rich_text", "legal", "workflow", "use_cases", "cards"] },
   { key: "media", types: ["media", "video", "showcase"] },
   { key: "product", types: ["tools_grid", "models"] },
-  { key: "forms", types: ["contact_hub", "contact", "contact_form", "newsletter"] },
+  { key: "forms", types: ["contact_page", "contact_hub", "contact", "contact_form", "newsletter"] },
   { key: "layout", types: ["spacer", "divider"] },
   { key: "about", types: ["about_hero", "about_story", "about_process", "about_importance", "about_values", "about_audience", "about_team", "about_faq", "about_cta"] },
   { key: "advanced", types: ["custom_code"] },

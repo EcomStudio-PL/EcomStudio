@@ -1480,46 +1480,88 @@ export type Database = {
       }
       contact_messages: {
         Row: {
+          account: Json
+          client: Json
+          confirmation_at: string | null
+          confirmation_attempts: number
+          confirmation_error: string | null
+          confirmation_status: string
           created_at: string
           email: string
+          generation_ref: string | null
           handled_at: string | null
           handled_by: string | null
           id: string
+          ip_hash: string | null
           locale: string
           message: string
+          message_hash: string | null
           metadata: Json
           name: string
+          nip: string | null
           source: string | null
           status: string
+          submission_id: string | null
+          ticket_no: number
           topic: string
+          updated_at: string
+          user_id: string | null
         }
         Insert: {
+          account?: Json
+          client?: Json
+          confirmation_at?: string | null
+          confirmation_attempts?: number
+          confirmation_error?: string | null
+          confirmation_status?: string
           created_at?: string
           email: string
+          generation_ref?: string | null
           handled_at?: string | null
           handled_by?: string | null
           id?: string
+          ip_hash?: string | null
           locale?: string
           message: string
+          message_hash?: string | null
           metadata?: Json
-          name: string
+          name?: string
+          nip?: string | null
           source?: string | null
           status?: string
+          submission_id?: string | null
+          ticket_no?: number
           topic?: string
+          updated_at?: string
+          user_id?: string | null
         }
         Update: {
+          account?: Json
+          client?: Json
+          confirmation_at?: string | null
+          confirmation_attempts?: number
+          confirmation_error?: string | null
+          confirmation_status?: string
           created_at?: string
           email?: string
+          generation_ref?: string | null
           handled_at?: string | null
           handled_by?: string | null
           id?: string
+          ip_hash?: string | null
           locale?: string
           message?: string
+          message_hash?: string | null
           metadata?: Json
           name?: string
+          nip?: string | null
           source?: string | null
           status?: string
+          submission_id?: string | null
+          ticket_no?: number
           topic?: string
+          updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -1527,6 +1569,63 @@ export type Database = {
             columns: ["handled_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_messages_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_attachments: {
+        Row: {
+          bound_at: string | null
+          created_at: string
+          expires_at: string
+          file_name: string | null
+          id: string
+          ip_hash: string
+          message_id: string | null
+          mime: string | null
+          object_path: string
+          size_bytes: number | null
+          submission_id: string
+        }
+        Insert: {
+          bound_at?: string | null
+          created_at?: string
+          expires_at?: string
+          file_name?: string | null
+          id?: string
+          ip_hash: string
+          message_id?: string | null
+          mime?: string | null
+          object_path: string
+          size_bytes?: number | null
+          submission_id: string
+        }
+        Update: {
+          bound_at?: string | null
+          created_at?: string
+          expires_at?: string
+          file_name?: string | null
+          id?: string
+          ip_hash?: string
+          message_id?: string | null
+          mime?: string | null
+          object_path?: string
+          size_bytes?: number | null
+          submission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_attachments_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "contact_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -8267,6 +8366,71 @@ export type Database = {
           p_base: string | null
         }
         Returns: string
+      }
+      cms_inline_move: {
+        Args: {
+          p_block_id: string
+          p_list: string
+          p_from: number
+          p_to: number
+          p_label: string
+          p_base: string | null
+        }
+        Returns: string
+      }
+      contact_reserve_uploads: {
+        Args: { p_token: string; p_submission: string; p_count: number; p_ip_hash: string }
+        Returns: Json
+      }
+      contact_submit: {
+        Args: {
+          p_token: string
+          p_submission: string
+          p_topic: string
+          p_name: string
+          p_email: string
+          p_message: string
+          p_locale?: string
+          p_nip?: string
+          p_generation?: string
+          p_account?: Json
+          p_client?: Json
+          p_ip_hash?: string
+          p_attachments?: Json
+          p_source?: string
+        }
+        Returns: Json
+      }
+      contact_confirmation_mark: {
+        Args: { p_token: string; p_id: string; p_status: string; p_error?: string }
+        Returns: undefined
+      }
+      contact_confirmations_due: {
+        Args: { p_token: string; p_limit?: number }
+        Returns: {
+          id: string
+          ticket_no: number
+          email: string
+          topic: string
+          message: string
+          locale: string
+        }[]
+      }
+      contact_attachments_expired: {
+        Args: { p_token: string; p_limit?: number }
+        Returns: string[]
+      }
+      contact_attachments_forget: {
+        Args: { p_token: string; p_paths: string[] }
+        Returns: number
+      }
+      contact_attachment_pending: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
+      contact_attachment_removable: {
+        Args: { p_name: string }
+        Returns: boolean
       }
       submit_contact_message: {
         Args: {

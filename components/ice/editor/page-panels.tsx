@@ -29,7 +29,7 @@ export function entriesOf(ctx: EditorCtx, targets: Target[]): Entry[] {
   const fields: Entry[] = info.cms.fields
     .filter((f) => (f.kind === "text" ? Object.values(f.values).some((v) => v && v.trim()) : Boolean(f.url)))
     .map((f) => {
-      const uid = f.kind === "text" ? `c:${f.id}` : `cm:${f.id}`;
+      const uid = f.kind === "text" ? `c:${f.id}` : f.kind === "link" ? `cl:${f.id}` : `cm:${f.id}`;
       return { uid, label: cmsFieldLabel(t, f), section: t(`ice.block.${f.blockType}`), found: found.has(uid), kind: f.kind };
     });
   // The page's picture slots (O nas) — listed always: the share image has no
@@ -137,6 +137,9 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
     if (v.target === "cms") {
       const toggle = cmsToggle(v.key);
       if (toggle) return `${t("ice.vis.title")} · ${toggleLabel(t, toggle, ctx.locale)}`;
+      // Kontakt V2: "…:items.order" / "…:tiles.order" — a move.
+      const order = /:(items|tiles)\.order$/.exec(v.key);
+      if (order) return t(order[1] === "items" ? "ice.contact.orderChannels" : "ice.contact.orderFaq");
       const f = cmsField(v.key);
       return f ? cmsFieldLabel(t, f) : v.key;
     }
@@ -149,13 +152,15 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
       const e = elements.get(v.key);
       return e ? `m:${e.id}` : null;
     }
-    if (cmsToggle(v.key)) return null;
+    if (cmsToggle(v.key) || /\.order$/.test(v.key)) return null;
     const f = cmsField(v.key);
-    return f ? (f.kind === "text" ? `c:${f.id}` : `cm:${f.id}`) : null;
+    return f ? (f.kind === "text" ? `c:${f.id}` : f.kind === "link" ? `cl:${f.id}` : `cm:${f.id}`) : null;
   };
   const shownValue = (v: PageVersion, side: unknown) => {
     const hidden = hiddenOf(side);
     if (hidden !== null) return t(hidden ? "ice.vis.hidden" : "ice.vis.shown");
+    const position = side && typeof side === "object" ? (side as { position?: unknown }).position : undefined;
+    if (typeof position === "number") return t("ice.contact.position", { n: position });
     return valueOf(side) ?? (v.target === "text" ? t("ice.text.defaultShort") : "—");
   };
 

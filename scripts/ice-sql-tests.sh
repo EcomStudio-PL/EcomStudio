@@ -1807,4 +1807,102 @@ select public.t_true('V20b (as a customer: no cms_blocks row is readable)', 'aut
   select count(*) = 0 from public.cms_blocks $q$);
 SQL
 
+# ── W. 0153 — the contact section in "Edytuj stronę": switches and order ───
+#
+# 0153 redefines cms_inline_visibility (0150's rules for about_* unchanged —
+# section V above ran against 0150 itself; W re-runs its key refusals against
+# 0153) and adds cms_inline_move. Applied verbatim, twice.
+W_MIGRATION="$ROOT/supabase/migrations/0153_cms_contact_editing.sql"
+if PGOPTIONS='-c client_min_messages=warning' "${PSQL[@]}" -1 -f "$W_MIGRATION" >/dev/null 2>"$ERR"; then
+  record 'W0  0153 applies on top of 0150 in one transaction' true ''
+else
+  record 'W0  0153 applies on top of 0150 in one transaction' false "$(tr '\n' ' ' < "$ERR")"
+fi
+if PGOPTIONS='-c client_min_messages=warning' "${PSQL[@]}" -1 -f "$W_MIGRATION" >/dev/null 2>"$ERR"; then
+  record 'W0b and again (re-runnable)' true ''
+else
+  record 'W0b and again (re-runnable)' false "$(tr '\n' ' ' < "$ERR")"
+fi
+"${PSQL[@]}" >/dev/null <<'SQL'
+insert into public.cms_pages (id, slug, title, status, published_snapshot, seo, published_at) values
+  ('f0000000-0000-0000-0000-0000000000c1', 'kontakt-w', 'Kontakt', 'published', jsonb_build_array(
+     jsonb_build_object('id', 'b0000000-0000-0000-0000-0000000000c1', 'type', 'contact_page', 'sort_order', 0, 'visible', true,
+       'content', '{"title":{"pl":"Napisz do nas"},"items":[{"value":"email","title":{"pl":"E-mail"}},{"value":"instagram","title":{"pl":"Instagram"}},{"value":"tiktok","title":{"pl":"TikTok"}}],"tiles":[{"title":{"pl":"Q1"},"url":"/plany#faq-credits"},{"title":{"pl":"Q2"}}],"company":{"hidden":true}}'::jsonb)),
+   '{"pl":{"title":"Kontakt"}}', now());
+insert into public.cms_blocks (id, page_id, type, sort_order, visible, content, updated_at)
+select (e.value->>'id')::uuid, 'f0000000-0000-0000-0000-0000000000c1', e.value->>'type', 0, true, e.value->'content', '2026-10-24 10:00:00+00'
+  from public.cms_pages p, jsonb_array_elements(p.published_snapshot) e where p.id = 'f0000000-0000-0000-0000-0000000000c1';
+
+select public.t_be('admin');
+-- 0150's refusals still hold under 0153.
+select public.t_raises('W1  an ordinary (non-about, non-contact) section is still not_editable', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a3', array[]::text[], true, null, null) $q$, 'not_editable');
+select public.t_raises('W1b about_* has no [company] and no [tiles, n]', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a2', array['company'], true, null, null) $q$, 'not_editable');
+select public.t_raises('W1c … nor tiles', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000a2', array['tiles','0'], true, null, null) $q$, 'not_editable');
+select public.t_raises('W1d points stay audience-only (a contact channel has none)', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array['items','0','points','0'], true, null, null) $q$, 'not_editable');
+select public.t_raises('W1e a field path (items.0.url) is bad_path', 'authenticated',
+  $q$ select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array['items','0','url'], true, null, null) $q$, 'bad_path');
+select public.t_true('W2  a channel switched off …', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array['items','2'], true, null, null) is not null $q$);
+select public.t_true('W2b a FAQ link switched off …', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array['tiles','1'], true, null, null) is not null $q$);
+select public.t_true('W2c the company tile switched ON …', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array['company'], false, null, null) is not null $q$);
+select public.t_true('W2d … draft and snapshot read exactly that, nothing else changed', 'authenticated', $q$
+  select (select content from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000c1')
+       = '{"title":{"pl":"Napisz do nas"},"items":[{"value":"email","title":{"pl":"E-mail"}},{"value":"instagram","title":{"pl":"Instagram"}},{"value":"tiktok","hidden":true,"title":{"pl":"TikTok"}}],"tiles":[{"title":{"pl":"Q1"},"url":"/plany#faq-credits"},{"title":{"pl":"Q2"},"hidden":true}],"company":{}}'::jsonb
+     and (select published_snapshot -> 0 -> 'content' from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000c1')
+       = (select content from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000c1')
+     and (select count(*) = 3 from public.content_versions
+           where key like 'f0000000-0000-0000-0000-0000000000c1:%' and key in (
+             'f0000000-0000-0000-0000-0000000000c1:b0000000-0000-0000-0000-0000000000c1:items.2.hidden',
+             'f0000000-0000-0000-0000-0000000000c1:b0000000-0000-0000-0000-0000000000c1:tiles.1.hidden',
+             'f0000000-0000-0000-0000-0000000000c1:b0000000-0000-0000-0000-0000000000c1:company.hidden')) $q$);
+select public.t_true('W2e the whole contact section can be switched off', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array[]::text[], true, null, null) is not null $q$);
+select public.t_true('W2f (and back on)', 'authenticated', $q$
+  select public.cms_inline_visibility('b0000000-0000-0000-0000-0000000000c1', array[]::text[], false, null, null) is not null $q$);
+
+-- cms_inline_move
+select public.t_be('customer');
+select public.t_raises('W3  a customer calling cms_inline_move is refused by its own check', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'items', 0, 1, null, null) $q$, 'not_admin');
+select public.t_be('anon');
+select public.t_raises('W3b anon cannot reach it at all', 'anon',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'items', 0, 1, null, null) $q$,
+  'permission denied for function cms_inline_move');
+select public.t_be('admin');
+select public.t_raises('W4  an unknown list is bad_path', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'company', 0, 1, null, null) $q$, 'bad_path');
+select public.t_raises('W4b out of range is bad_path', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'items', 0, 3, null, null) $q$, 'bad_path');
+select public.t_raises('W4c the same place is a noop', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'items', 1, 1, null, null) $q$, 'noop');
+select public.t_raises('W4d an about section cannot be reordered here', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000a2', 'items', 0, 0, null, null) $q$, 'not_editable');
+select public.t_raises('W4e a stale base is a conflict', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'items', 0, 1, null, '2000-01-01 00:00:00+00') $q$, 'conflict');
+insert into public.t_vars values ('w_versions', (select count(*)::text from public.cms_page_versions where page_id = 'f0000000-0000-0000-0000-0000000000c1'));
+select public.t_true('W5  the last channel moved to the top …', 'authenticated', $q$
+  select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'items', 2, 0, 'Edytor wizualny · kolejność', null) is not null $q$);
+select public.t_true('W5b … the list reads TikTok, E-mail, Instagram in the draft and the snapshot; one version, one history row', 'authenticated', $q$
+  select (select jsonb_agg(i -> 'title' ->> 'pl') from public.cms_blocks b, jsonb_array_elements(b.content -> 'items') i
+           where b.id = 'b0000000-0000-0000-0000-0000000000c1') = '["TikTok","E-mail","Instagram"]'::jsonb
+     and (select published_snapshot -> 0 -> 'content' from public.cms_pages where id = 'f0000000-0000-0000-0000-0000000000c1')
+       = (select content from public.cms_blocks where id = 'b0000000-0000-0000-0000-0000000000c1')
+     and (select count(*)::text from public.cms_page_versions where page_id = 'f0000000-0000-0000-0000-0000000000c1')
+       = (public.t_var('w_versions')::int + 1)::text
+     and (select count(*) = 1 from public.content_versions
+           where key = 'f0000000-0000-0000-0000-0000000000c1:b0000000-0000-0000-0000-0000000000c1:items.order'
+             and before = '{"position":3}' and after = '{"position":1}') $q$);
+select public.t_true('W5c (the builder edits the draft, unpublished)', 'authenticated', $q$
+  with u as (update public.cms_blocks set content = jsonb_set(content, '{title,pl}', '"Szkic"')
+              where id = 'b0000000-0000-0000-0000-0000000000c1' returning 1) select count(*) = 1 from u $q$);
+select public.t_raises('W5d a move over an unpublished draft is draft_diverged', 'authenticated',
+  $q$ select public.cms_inline_move('b0000000-0000-0000-0000-0000000000c1', 'tiles', 0, 1, null, null) $q$, 'draft_diverged');
+SQL
+
 scoreboard
