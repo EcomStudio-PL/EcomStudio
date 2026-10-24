@@ -80,9 +80,14 @@ const SCHEMA = {
   required: ["prompt"],
 };
 
-/** A forged fence in customer text would let it pose as a second block. */
-function fence(text: string): string {
-  const clean = text.split(DATA_OPEN).join("").split(DATA_CLOSE).join("");
+/** A forged fence in customer text would let it pose as a second block.
+ *  Removed until none is left: one pass would let a nested form
+ *  ("DANE_KLIENTDANE_KLIENTA>>>A>>>") rebuild a marker out of its halves. */
+export function fence(text: string): string {
+  let clean = text;
+  while (clean.includes(DATA_OPEN) || clean.includes(DATA_CLOSE)) {
+    clean = clean.split(DATA_OPEN).join("").split(DATA_CLOSE).join("");
+  }
   return `${DATA_OPEN}\n${clean}\n${DATA_CLOSE}`;
 }
 
@@ -217,11 +222,42 @@ export async function readSmartPromptBlockers(supabase: Client, opts: { withProv
   return { blockers: [...new Set(blockers)], service, config };
 }
 
+/**
+ * Whether a provider the feature would ask is switched on and HAS a stored
+ * credential — metadata only (the token-gated row), no key is opened. Cheap
+ * enough for every generator page view; the request itself still resolves the
+ * real key before charging. 'auto' asks the planner chain's own order.
+ */
+async function providerConfigured(supabase: Client, config: SmartPromptConfig): Promise<boolean> {
+  const token = dispatchToken();
+  if (!token) return false;
+  let order: string[] = [config.provider];
+  if (config.provider === "auto") {
+    const { data } = await supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle();
+    const cfg = (data?.value ?? {}) as { planner_provider?: unknown; planner_fallback?: unknown };
+    const capable = ["openai", "google"];
+    const primary = typeof cfg.planner_provider === "string" && capable.includes(cfg.planner_provider) ? cfg.planner_provider : "openai";
+    const fallback = typeof cfg.planner_fallback === "string" && capable.includes(cfg.planner_fallback) && cfg.planner_fallback !== primary
+      ? cfg.planner_fallback : null;
+    order = fallback ? [primary, fallback] : [primary];
+  }
+  const { data: rows } = await supabase.from("ai_providers").select("id, slug, active").in("slug", order);
+  for (const p of rows ?? []) {
+    if (!p.active) continue;
+    const { data: cred } = await supabase.rpc("provider_credential_read", { p_token: token, p_provider_id: p.id });
+    if (cred?.[0]) return true;
+  }
+  return false;
+}
+
 /** What the customer's editor shows. A price of 0 is never offered: a free
- *  paid call would be one nobody meant to configure. */
+ *  paid call would be one nobody meant to configure. Nor is a provider that
+ *  is off or has no key: a paid button that always fails is not an offer. */
 export async function readSmartPromptOffer(supabase: Client): Promise<SmartPromptOffer> {
-  const { blockers, service } = await readSmartPromptBlockers(supabase);
-  return { available: blockers.length === 0, credits: service?.credits ?? 0 };
+  const { blockers, service, config } = await readSmartPromptBlockers(supabase);
+  const credits = service?.credits ?? 0;
+  if (blockers.length > 0 || !config) return { available: false, credits };
+  return { available: await providerConfigured(supabase, config), credits };
 }
 
 /* ── the run ───────────────────────────────────────────────────────────── */

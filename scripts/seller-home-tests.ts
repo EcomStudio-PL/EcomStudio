@@ -724,7 +724,7 @@ const SMART_PIECES: readonly [string, string][] = [
     + "  const refPaths = useMemo(() => refs.map((r) => r.path).slice(0, MAX_REFS), [refs]);\n"
     + "  const smart = useSmartPrompt({\n"
     + "    value: prompt, onChange: setPrompt, offer: managed ? undefined : smartPrompt,\n"
-    + "    referencePaths: refPaths, balance, onBalance: setBalance,\n"
+    + "    referencePaths: refPaths, onBalance: setBalance,\n"
     + "  });\n\n", ""],
   ["  // Not while a rewrite is on its way: the text about to be replaced is not\n"
     + "  // the text the customer would be generating from.\n"

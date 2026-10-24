@@ -4593,7 +4593,8 @@
         "provider_failed": "The AI model did not respond — your credits were refunded. Please try again.",
         "empty_result": "The model returned no prompt — your credits were refunded.",
         "result_too_long": "The result exceeded 4,000 characters — your credits were refunded. Please try again.",
-        "no_workspace": "Workspace not found — please refresh the page."
+        "no_workspace": "Workspace not found — please refresh the page.",
+        "account_blocked": "Your account is temporarily paused — Smart prompt is unavailable. No credits were charged."
       }
     }
   },

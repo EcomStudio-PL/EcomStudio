@@ -122,7 +122,7 @@ export function GeneratorWorkspace({
   const refPaths = useMemo(() => refs.map((r) => r.path).slice(0, MAX_REFS), [refs]);
   const smart = useSmartPrompt({
     value: prompt, onChange: setPrompt, offer: managed ? undefined : smartPrompt,
-    referencePaths: refPaths, balance, onBalance: setBalance,
+    referencePaths: refPaths, onBalance: setBalance,
   });
 
   const perShot = unitPrice(model, effResolution, mode, effQuality);

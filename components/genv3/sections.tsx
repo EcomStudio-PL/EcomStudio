@@ -293,7 +293,9 @@ export function PromptSection({ value, onChange, max, smart }: {
               </button>
               {smart && <SmartPromptRestore smart={smart} />}
             </span>
-            <span className="ml-auto flex items-center gap-2">
+            {/* Wraps on its own too: on a 320px phone the pill and the counter
+                do not fit side by side, and the counter takes the next line. */}
+            <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1">
               {smart && <SmartPromptButton smart={smart} />}
               <span data-prompt-counter className={cn("text-[10.5px] font-medium tabular-nums", nearCap ? "text-accent2" : "text-faint")}>
                 {value.length}/{max}

@@ -9,6 +9,7 @@ import { syncPrice } from "@/lib/server/stripe-pricing";
 import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
 import { TRIAL_WATERMARK_SETTING_KEY } from "@/lib/trial-watermark/config";
 import { PRELAUNCH_SETTING_KEY } from "@/lib/server/prelaunch/campaign-config";
+import { SMART_PROMPT_SETTING_KEY } from "@/lib/smart-prompt";
 
 type Result = { ok: boolean; error?: string };
 
@@ -405,6 +406,9 @@ export async function saveSettingAction(key: string, value: Record<string, unkno
     // And the pre-launch campaign: only savePrelaunchCampaignAction writes it
     // (ranges, approvals, audit, a confirmed rewards switch-on).
     if (key === PRELAUNCH_SETTING_KEY) return { ok: false, error: "generic" };
+    // And Inteligentny prompt: only saveSmartPromptSettingsAction writes it
+    // (the server's own parser, audit by fingerprint).
+    if (key === SMART_PROMPT_SETTING_KEY) return { ok: false, error: "generic" };
     const { supabase } = await requireAdmin();
     const { data: existing } = await supabase.from("app_settings")
       .select("value").eq("key", key).maybeSingle();

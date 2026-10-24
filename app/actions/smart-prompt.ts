@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { dispatchToken } from "@/lib/server/server-token";
 import {
-  SMART_PROMPT_INSTRUCTION_MAX, SMART_PROMPT_PROVIDERS, SMART_PROMPT_SERVICE,
+  SMART_PROMPT_INSTRUCTION_MAX, SMART_PROMPT_PROVIDERS, SMART_PROMPT_SERVICE, SMART_PROMPT_SETTING_KEY,
   parseSmartPromptConfig, smartPromptDocument, type SmartPromptProvider,
 } from "@/lib/smart-prompt";
 
@@ -60,7 +60,7 @@ export async function saveSmartPromptSettingsAction(input: {
 
   const before = parseSmartPromptConfig(probe.data);
   const { error: settingsError } = await supabase.from("app_settings").upsert(
-    { key: "smart_prompt", value: smartPromptDocument(config) as never },
+    { key: SMART_PROMPT_SETTING_KEY, value: smartPromptDocument(config) as never },
     { onConflict: "key" },
   );
   if (settingsError) return { ok: false, error: "generic" };

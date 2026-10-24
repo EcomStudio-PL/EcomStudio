@@ -44,7 +44,9 @@ export function SmartPromptSettingsForm({ initial, defaultInstruction }: {
     });
   }
 
-  const modelPlaceholder = v.provider === "openai" ? "gpt-5-mini" : v.provider === "google" ? "gemini-flash-latest" : "";
+  // What an EMPTY field really runs: OpenAI walks gpt-5 → gpt-4.1 → gpt-4o,
+  // Google uses gemini-flash-latest (lib/ai/engine/vision.ts).
+  const modelPlaceholder = v.provider === "openai" ? "gpt-5" : v.provider === "google" ? "gemini-flash-latest" : "";
   return (
     <div className="space-y-4 text-[13px]" data-smart-prompt-settings>
       <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-raised/50 px-3 py-2.5">
@@ -61,7 +63,10 @@ export function SmartPromptSettingsForm({ initial, defaultInstruction }: {
             onChange={(e) => setCreditsRaw(e.target.value.replace(/[^\d]/g, "").slice(0, 4))} />
         </Label>
         <Label text={t("aicc.smart.field.provider")}>
-          <select className={field} value={v.provider} onChange={(e) => set("provider", e.target.value as SmartPromptProvider)}>
+          {/* A model id belongs to its provider: switching clears it, so a
+              Gemini id is never sent to OpenAI (or the other way round). */}
+          <select className={field} value={v.provider}
+            onChange={(e) => setV((p) => ({ ...p, provider: e.target.value as SmartPromptProvider, model: "" }))}>
             {SMART_PROMPT_PROVIDERS.map((p) => <option key={p} value={p}>{t(`aicc.smart.provider.${p}`)}</option>)}
           </select>
         </Label>

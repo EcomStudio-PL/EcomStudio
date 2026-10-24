@@ -13,6 +13,9 @@
  */
 
 export const SMART_PROMPT_SERVICE = "smart_prompt";
+/** The private app_settings row (migration 0149). Written only by
+ *  saveSmartPromptSettingsAction — never by the raw settings editor. */
+export const SMART_PROMPT_SETTING_KEY = "smart_prompt";
 /** Same cap as the editor (components/genv3/workspace.tsx PROMPT_MAX). */
 export const SMART_PROMPT_MAX = 4000;
 /** Shorter than this is not an idea a model can work from. */
@@ -44,7 +47,7 @@ export type SmartPromptConfig = {
 export const SMART_PROMPT_ERRORS = [
   "unauthenticated", "invalid_input", "too_short", "too_long", "unavailable",
   "insufficient_credits", "duplicate_request", "provider_failed", "empty_result",
-  "result_too_long", "maintenance", "no_workspace", "feature_unavailable",
+  "result_too_long", "maintenance", "no_workspace", "feature_unavailable", "account_blocked",
 ] as const;
 export type SmartPromptError = (typeof SMART_PROMPT_ERRORS)[number];
 

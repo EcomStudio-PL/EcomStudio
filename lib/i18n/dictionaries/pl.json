@@ -4593,7 +4593,8 @@
         "provider_failed": "Model AI nie odpowiedział — kredyty zostały zwrócone. Spróbuj ponownie.",
         "empty_result": "Model nie zwrócił promptu — kredyty zostały zwrócone.",
         "result_too_long": "Wynik przekroczył 4000 znaków — kredyty zostały zwrócone. Spróbuj ponownie.",
-        "no_workspace": "Nie znaleziono przestrzeni roboczej — odśwież stronę."
+        "no_workspace": "Nie znaleziono przestrzeni roboczej — odśwież stronę.",
+        "account_blocked": "Konto jest tymczasowo wstrzymane — Inteligentny prompt jest niedostępny. Nie pobrano kredytów."
       }
     }
   },

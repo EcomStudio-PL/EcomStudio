@@ -8,6 +8,7 @@ import { REGISTRATION_SETTINGS_KEY } from "@/lib/server/registration-config";
 import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
 import { TRIAL_WATERMARK_SETTING_KEY } from "@/lib/trial-watermark/config";
 import { PRELAUNCH_SETTING_KEY } from "@/lib/server/prelaunch/campaign-config";
+import { SMART_PROMPT_SETTING_KEY } from "@/lib/smart-prompt";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,10 @@ export default async function AdminSystem() {
     // are range-checked, audited and switched on behind a confirm there. Here
     // they would be bare number fields with no approval rules at all (S5).
     .filter((s) => s.key !== PRELAUNCH_SETTING_KEY)
+    // Inteligentny prompt likewise (AI → Generator → Podstawowe): its row is
+    // parsed strictly (a bad field switches the feature off for everyone) and
+    // the instruction is audited by fingerprint there, never edited raw here.
+    .filter((s) => s.key !== SMART_PROMPT_SETTING_KEY)
     .sort((a, b) => SECTION_ORDER.indexOf(a.key) - SECTION_ORDER.indexOf(b.key))
     .map((s) => ({ key: s.key, value: (s.value ?? {}) as Record<string, unknown> }));
   const isDev = SUPABASE_URL.includes("ezyhwkcrrysanbcbkzsq");

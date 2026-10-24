@@ -43,12 +43,11 @@ export function creditLabel(t: (key: string, vars?: Record<string, string | numb
   return t(few ? "genv3.smart.costFew" : "genv3.smart.costMany", { n });
 }
 
-export function useSmartPrompt({ value, onChange, offer, referencePaths, balance, onBalance }: {
+export function useSmartPrompt({ value, onChange, offer, referencePaths, onBalance }: {
   value: string;
   onChange: (v: string) => void;
   offer: SmartPromptOffer | undefined;
   referencePaths: string[];
-  balance: number;
   onBalance: (update: (b: number) => number) => void;
 }) {
   const { t } = useI18n();
@@ -75,13 +74,11 @@ export function useSmartPrompt({ value, onChange, offer, referencePaths, balance
   // anything the server might add later arrives here as "generic".
   const errorText = useCallback((code: ErrorCode) => t(`genv3.smart.err.${code}`), [t]);
 
+  // The balance shown here can lag the wallet (a generation in flight has
+  // already been charged on the server), so "enough credits" is the server's
+  // call: a refused request is free and comes back as insufficient_credits.
   const run = useCallback(async (intent: string, variationIndex: number) => {
     if (inFlight.current) return;
-    if (balance < credits) {
-      setError("insufficient_credits");
-      setStatus(errorText("insufficient_credits"));
-      return;
-    }
     inFlight.current = true;
     setBusy(true);
     setError(null);
@@ -100,28 +97,27 @@ export function useSmartPrompt({ value, onChange, offer, referencePaths, balance
         onChange(text);
         setSession({ originalIntent: intent, enhancedPrompt: text, variationIndex });
         const charged = typeof json.credits === "number" ? json.credits : credits;
-        if (typeof json.balance === "number") {
-          const next = json.balance;
-          onBalance(() => next);
-        } else {
-          onBalance((b) => Math.max(0, b - charged));
-        }
+        // A DELTA, like every other charge on this screen: Generate also
+        // subtracts its own total when it finishes, so an absolute wallet
+        // figure taken mid-generation would count that charge twice.
+        onBalance((b) => Math.max(0, b - charged));
         setStatus(t("genv3.smart.done", { n: variationIndex + 1, cost: creditLabel(t, charged) }));
       } else {
         const code: ErrorCode = typeof json.error === "string" && (SMART_PROMPT_ERRORS as readonly string[]).includes(json.error)
           ? (json.error as SmartPromptError) : "generic";
-        if (code === "unavailable" || code === "feature_unavailable" || code === "maintenance") setDown(true);
+        if (code === "unavailable" || code === "feature_unavailable" || code === "maintenance" || code === "account_blocked") setDown(true);
+        // Announced once, by the role="alert" line — not also by the live region.
         setError(code);
-        setStatus(errorText(code));
+        setStatus("");
       }
     } catch {
       setError("generic");
-      setStatus(errorText("generic"));
+      setStatus("");
     } finally {
       inFlight.current = false;
       setBusy(false);
     }
-  }, [balance, credits, errorText, onBalance, onChange, referencePaths, t]);
+  }, [credits, onBalance, onChange, referencePaths, t]);
 
   /** The main button. On an untouched rewrite it asks for another version of
    *  the SAME idea; otherwise the text in the field is the idea. */
@@ -234,7 +230,7 @@ export function SmartPromptRestore({ smart }: { smart: SmartPromptControls }) {
   return (
     <button type="button" data-smart-restore onClick={smart.restore} disabled={smart.busy}
       title={t("genv3.smart.restoreTitle")}
-      className="flex items-center gap-1 text-[10.5px] font-semibold text-faint transition-colors hover:text-accent focus-visible:text-accent focus-visible:outline-none disabled:opacity-50">
+      className="flex items-center gap-1 text-left text-[10.5px] font-semibold text-faint transition-colors hover:text-accent focus-visible:text-accent focus-visible:outline-none disabled:opacity-50">
       <RotateCcw size={11} aria-hidden />
       {t("genv3.smart.restore")}
     </button>
