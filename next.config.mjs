@@ -166,6 +166,12 @@ const nextConfig = {
     // itself stops a serverless request body, so accepting more here would only
     // trade the action's own "attachment too large" for an opaque platform 413.
     serverActions: { bodySizeLimit: '4.5mb' },
+    // THE BUILD WAS RUNNING OUT OF MEMORY ON VERCEL. Several deployments died
+    // with "out_of_memory" in `next build` (the webpack worker SIGKILLed) and
+    // passed on a retry of the same commit — the compile sits at the build
+    // container's ceiling. This lowers webpack's peak memory (string interning,
+    // no dual string-buffer caching) and changes nothing in what is built.
+    webpackMemoryOptimizations: true,
   },
   async headers() {
     return [
