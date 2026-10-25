@@ -1483,7 +1483,13 @@ function sectionG() {
   // engine/workflow.ts write their customer notification through one helper
   // (lib/server/user-notifications.ts) instead of a raw insert — the only
   // lines that changed there; no request byte moved (same three suites).
-  const BASE = process.env.THUMBNAIL_BASE ?? "e5f678d";
+  // Moved again to 2241a2e by Generacje w toku V2: generation.ts takes the
+  // plan's slot marker + an acceptance hook (job settings and a callback after
+  // the reservation), retouch.ts passes them through, app/api/retouch answers
+  // 202 once accepted and finishes in after(), components/retouch queues the
+  // batch and shows the shared tile, and the forensic/parity suites drain
+  // after(). No provider request byte moved (same three suites).
+  const BASE = process.env.THUMBNAIL_BASE ?? "2241a2e";
   const FROZEN = [
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",

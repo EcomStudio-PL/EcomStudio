@@ -476,7 +476,11 @@ async function main() {
       // Moved again to e5f678d by Powiadomienia V2: generation.ts and
       // engine/workflow.ts write their notification through one helper — the
       // only lines changed; the request is byte-identical (same suites).
-      diff = execSync(`git diff --name-only e5f678d -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
+      // Moved again to 2241a2e by Generacje w toku V2: the slot marker and the
+      // acceptance hook (generation.ts), the 202 answer + after() in the
+      // Retusz route, the queued batch and shared tile in its workspace; the
+      // request is byte-identical (test:retouchforensic).
+      diff = execSync(`git diff --name-only 2241a2e -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
     } catch (e) { diff = `git failed: ${String(e)}`; }
     check("no Retusz / provider / generation file differs from the release before this fix", diff === "", diff);
     check("no network request was made by this suite", fetches === 0, fetches);
