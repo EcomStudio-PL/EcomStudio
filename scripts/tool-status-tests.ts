@@ -484,7 +484,10 @@ async function main() {
       // acceptance hook (generation.ts), the 202 answer + after() in the
       // Retusz route, the queued batch and shared tile in its workspace; the
       // request is byte-identical (test:retouchforensic).
-      diff = execSync(`git diff --name-only 2241a2e -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
+      // Moved again to 6ebae96 by Generator UX V3: the Retusz workspace took
+      // the shared frame and Generate bar; the request is byte-identical
+      // (test:retouchforensic).
+      diff = execSync(`git diff --name-only 6ebae96 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
     } catch (e) { diff = `git failed: ${String(e)}`; }
     check("no Retusz / provider / generation file differs from the release before this fix", diff === "", diff);
     check("no network request was made by this suite", fetches === 0, fetches);

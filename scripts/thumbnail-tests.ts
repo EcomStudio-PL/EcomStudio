@@ -1489,7 +1489,12 @@ function sectionG() {
   // 202 once accepted and finishes in after(), components/retouch queues the
   // batch and shows the shared tile, and the forensic/parity suites drain
   // after(). No provider request byte moved (same three suites).
-  const BASE = process.env.THUMBNAIL_BASE ?? "2241a2e";
+  // Moved again to 6ebae96 by Generator UX V3: components/retouch/workspace.tsx
+  // took the shared tool frame and Generate bar (size as segments, format as
+  // tiles — same values and defaults), and the forensic suite's panel check
+  // follows that markup. The request body is the same literal and no provider
+  // request byte moved (same three suites).
+  const BASE = process.env.THUMBNAIL_BASE ?? "6ebae96";
   const FROZEN = [
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",
