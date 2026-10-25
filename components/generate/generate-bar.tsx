@@ -203,19 +203,26 @@ export function useBarLine({ unavailable, invalid, limit, cost, balance, session
   const { t, locale } = useI18n();
   const viewer = useToolViewer();
   const first = barPriority({ unavailable: !!unavailable, invalid: !!invalid, limit: !!limit });
-  if (first === "unavailable") return <BarLine icon={<Ban size={13} />} tone="warn" data="unavailable">{unavailable}</BarLine>;
-  if (first === "invalid") return <BarLine icon={<Info size={13} />} data="invalid">{invalid}</BarLine>;
-  if (first === "limit" && limit) {
+  const higher = first === "unavailable" ? <BarLine icon={<Ban size={13} />} tone="warn" data="unavailable">{unavailable}</BarLine>
+    : first === "invalid" ? <BarLine icon={<Info size={13} />} data="invalid">{invalid}</BarLine>
+      : first === "limit" && limit ? (
+        <BarLine icon={<Layers size={13} />} tone="warn" data="limit">
+          {shortLimit(t, locale, limit.max)}
+          {limit.plan !== "agency" && <BarAction href="/plan" data="raise">{t("inflight.raiseLimit")}</BarAction>}
+        </BarLine>
+      ) : null;
+  // The account's state, from the one Public Tools rule, as ONE line with the
+  // same dialogs and actions behind it. It stays mounted while a more urgent
+  // line holds the slot (its reports, its open dialog), drawn only when first.
+  if (viewer) {
     return (
-      <BarLine icon={<Layers size={13} />} tone="warn" data="limit">
-        {shortLimit(t, locale, limit.max)}
-        {limit.plan !== "agency" && <BarAction href="/plan" data="raise">{t("inflight.raiseLimit")}</BarAction>}
-      </BarLine>
+      <>
+        {higher}
+        <ToolNotice variant="line" cost={cost} balance={balance} session={session} hidden={higher !== null} />
+      </>
     );
   }
-  // The account's state, from the one Public Tools rule, as ONE line with the
-  // same dialogs and actions behind it.
-  if (viewer) return <ToolNotice variant="line" cost={cost} balance={balance} session={session} />;
+  if (higher) return higher;
   const missing = Math.max(0, cost - balance);
   if (missing > 0 && !session?.guest) {
     return (

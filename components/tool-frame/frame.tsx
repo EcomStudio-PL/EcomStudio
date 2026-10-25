@@ -39,8 +39,10 @@ type FrameValue = {
   /** Where the tutorial button goes (the gallery portals it in). */
   helpSlot: HTMLElement | null;
   setHelpSlot: (el: HTMLElement | null) => void;
-  /** The server accepted a job: on a phone, show the results it will become. */
-  accepted: () => void;
+  /** The server accepted a job: on a phone, show the results it will become —
+   *  unless the customer has touched the screen since `since` (the click's
+   *  `performance.now()`): someone already editing again is not pulled away. */
+  accepted: (since?: number) => void;
 };
 
 const FrameContext = createContext<FrameValue | null>(null);
@@ -78,8 +80,21 @@ export function useToolFrameController(): FrameValue {
     });
   }, []);
 
-  const accepted = useCallback(() => {
-    if (window.matchMedia(PHONE).matches) setView("results");
+  // The last touch, click or key anywhere on the page.
+  const lastInput = useRef(0);
+  useEffect(() => {
+    const mark = () => { lastInput.current = performance.now(); };
+    document.addEventListener("pointerdown", mark, true);
+    document.addEventListener("keydown", mark, true);
+    return () => {
+      document.removeEventListener("pointerdown", mark, true);
+      document.removeEventListener("keydown", mark, true);
+    };
+  }, []);
+  const accepted = useCallback((since?: number) => {
+    if (!window.matchMedia(PHONE).matches) return;
+    if (since !== undefined && lastInput.current > since) return;
+    setView("results");
   }, [setView]);
 
   return useMemo<FrameValue>(() => ({ view, setView, results, setResults, helpSlot, setHelpSlot, accepted }),

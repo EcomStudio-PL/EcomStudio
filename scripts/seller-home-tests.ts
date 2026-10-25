@@ -828,7 +828,7 @@ check("the generator workspace has exactly ONE /home receiver (and its import)",
 // Re-pinned by Generator UX V3 (was 6937614c… with the earlier tasks' pieces
 // taken out): the rewrite described above.
 check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring, and the Public Tools V1 session)",
-  sha(ws.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "3801efd1ec63d28e7dae7007b32dcf2b404d191d1a970b5e4abfa548e85b857b");
+  sha(ws.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "42e5e976582c1d0056638953c7322d2da0fec5f7292e33bd9a5b011df201ba1d");
 check("…which feeds the screen's own upload and starts nothing", /useHomeHandoff\(\(file\) => \{ void upload\(\[file\], "refs"\); \}\)/.test(RECEIVER)
   && !/generate\(|fetch\(/.test(RECEIVER));
 check("/home has no generation path: no AI route, no provider, no prompt",

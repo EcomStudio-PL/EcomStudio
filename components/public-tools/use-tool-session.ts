@@ -150,24 +150,34 @@ export function useToolSession<S>({ settings, sources, apply, memberDraft }: Too
   useEffect(() => {
     if (!facts || !tool) return;
     let cancelled = false;
+    // The member's own working draft, and only theirs.
+    const putMine = (mine: Awaited<ReturnType<typeof loadDraft<S>>>) => {
+      if (!mine || mine.draft.owner !== memberOwner) return;
+      restoring.current = true;
+      latest.current.apply(mine.draft.settings, mine.files, mine.ids);
+      setPartial(mine.files.length < mine.draft.fileCount);
+      setRestored(true);
+      window.setTimeout(() => { restoring.current = false; }, 0);
+    };
     void loadDraft<S>(tool).then(async (found) => {
       if (cancelled) return;
-      if (!found && memberSlot) {
-        // Nothing waiting from a visit or a checkout: the member's own
-        // working draft, and only theirs.
-        const mine = await loadDraft<S>(memberSlot);
-        if (cancelled) return;
-        ready.current = true;
-        if (!mine || mine.draft.owner !== memberOwner) return;
-        restoring.current = true;
-        latest.current.apply(mine.draft.settings, mine.files, mine.ids);
-        setPartial(mine.files.length < mine.draft.fileCount);
-        setRestored(true);
-        window.setTimeout(() => { restoring.current = false; }, 0);
+      const mine = memberSlot ? await loadDraft<S>(memberSlot) : null;
+      if (cancelled) return;
+      ready.current = true;
+      // Another account's working draft in this browser (a shared device):
+      // never shown — and not kept on the device for its remaining hours.
+      if (memberSlot && mine && mine.draft.owner !== memberOwner) void deleteDraft(memberSlot);
+      // A visit's or a checkout's preparation (the tool's own key) is put back
+      // only while it is NEWER than the member's working draft: once restored,
+      // the work is saved to the member's slot, so an older copy left under
+      // the tool's key must never come back over it on a later visit.
+      const mineFresh = !!mine && mine.draft.owner === memberOwner;
+      if (found && mineFresh && mine.draft.savedAt >= found.draft.savedAt) {
+        void deleteDraft(tool);
+        putMine(mine);
         return;
       }
-      ready.current = true;
-      if (!found) return;
+      if (!found) { putMine(mine); return; }
       const { draft, files, ids } = found;
       const put = () => {
         restoring.current = true;
@@ -189,7 +199,9 @@ export function useToolSession<S>({ settings, sources, apply, memberDraft }: Too
       setOffer({
         meta: draft,
         accept: put,
-        discard: () => { setOffer(null); void deleteDraft(tool); },
+        // Turned down: the member's own draft (if any) is still theirs — it
+        // is put back rather than left to be overwritten by the next save.
+        discard: () => { setOffer(null); void deleteDraft(tool); putMine(mine); },
       });
     });
     return () => { cancelled = true; };
@@ -240,7 +252,10 @@ export function useToolSession<S>({ settings, sources, apply, memberDraft }: Too
     await save();
     track("tool_auth_modal_open", { tool_id: tool, source: "generate" });
     track("tool_signup_started", { tool_id: tool, source: "generate" });
-    auth?.open("register", path, { intent: "tool" });
+    // Back to the very address the visitor is on — with its ?tryb= — so a
+    // screen with two modes reopens on the one they were working in.
+    const here = window.location.pathname === path ? `${path}${window.location.search}` : path;
+    auth?.open("register", here, { intent: "tool" });
   }, [guest, save, tool, track, auth, path]);
 
   // A run never drops the member's working draft (Generator UX V3): only the

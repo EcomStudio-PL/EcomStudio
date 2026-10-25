@@ -126,10 +126,11 @@ export function GeneratorWorkspace({
   const switchTab = useCallback((next: StudioTab, how: "push" | "replace" = "push") => {
     setTab(next);
     const url = new URL(window.location.href);
-    if (url.searchParams.get("tryb") === next) return;
+    // Already the address's mode (with or without ?tryb=): no entry for Back.
+    if ((parseTab(url.searchParams.get("tryb")) ?? fallbackTab) === next) return;
     url.searchParams.set("tryb", next);
     window.history[how === "push" ? "pushState" : "replaceState"](null, "", `${url.pathname}${url.search}${url.hash}`);
-  }, []);
+  }, [fallbackTab]);
   const managed = tab === "grovshot";
   const toolKey = managed ? "prompts" : "generator";
 
@@ -174,6 +175,8 @@ export function GeneratorWorkspace({
   /** Slots claimed by uploads that have not reached state yet, per pool. */
   const reserved = useRef<{ refs: number; insp: number }>({ refs: 0, insp: 0 });
   const inFlight = useRef(0);
+  /** "Wyczyść" bumps it: a restore still putting photos back stops there. */
+  const restoreEpoch = useRef(0);
   const submitting = useRef(false);
 
   // ── gallery feed ──────────────────────────────────────────────────────
@@ -263,6 +266,15 @@ export function GeneratorWorkspace({
 
   async function restorePhotos(files: File[], ids: string[]) {
     if (files.length === 0) return;
+    const epoch = restoreEpoch.current;
+    // The restored photos hold their places while they come back: a photo
+    // dropped meanwhile is counted against the cap, and kept.
+    const want = {
+      refs: Math.min(MAX_REFS, ids.filter((id) => !id.startsWith(INSP)).length),
+      insp: customData ? Math.min(INSP_MAX, ids.filter((id) => id.startsWith(INSP)).length) : 0,
+    };
+    reserved.current.refs += want.refs;
+    reserved.current.insp += want.insp;
     inFlight.current += 1;
     setUploading(true);
     try {
@@ -270,6 +282,7 @@ export function GeneratorWorkspace({
       const nextRefs: UploadedRef[] = [];
       const nextInsp: UploadedRef[] = [];
       for (let i = 0; i < files.length; i++) {
+        if (epoch !== restoreEpoch.current) return;
         const id = ids[i] ?? "";
         const isInsp = id.startsWith(INSP);
         const raw = isInsp ? id.slice(INSP.length) : id;
@@ -281,10 +294,19 @@ export function GeneratorWorkspace({
         if (isInsp) { if (nextInsp.length < INSP_MAX && customData) nextInsp.push(ref); }
         else if (nextRefs.length < MAX_REFS) { nextRefs.push(ref); keyMap.set(raw, ref.key); }
       }
-      setRefs(nextRefs);
-      setInsp(nextInsp);
+      if (epoch !== restoreEpoch.current) return;
+      // In front of anything added while they came back (a drop, a paste, a
+      // photo handed over from /home) — never instead of it.
+      const merge = (restored: UploadedRef[], cap: number) => (prev: UploadedRef[]) => {
+        const seen = new Set(restored.map((r) => r.key));
+        return [...restored, ...prev.filter((r) => !seen.has(r.key))].slice(0, cap);
+      };
+      setRefs(merge(nextRefs, MAX_REFS));
+      setInsp(merge(nextInsp, INSP_MAX));
       setGrov((g) => ({ ...g, plan: remapPhotos(g.plan, keyMap) }));
     } finally {
+      reserved.current.refs -= want.refs;
+      reserved.current.insp -= want.insp;
       inFlight.current -= 1;
       if (inFlight.current === 0) setUploading(false);
     }
@@ -386,6 +408,7 @@ export function GeneratorWorkspace({
   async function generateManaged() {
     if (submitting.current) return;
     submitting.current = true;
+    const clickedAt = performance.now();
     session.ran();
     setPreparing(true);
     setStageLabel(t("genv3.stagePrepare"));
@@ -428,7 +451,7 @@ export function GeneratorWorkspace({
         })),
         onAccepted: (out) => {
           setBalance((b) => Math.max(0, b - (out.credits || perShot)));
-          if (!shown) { shown = true; frame.accepted(); }
+          if (!shown) { shown = true; frame.accepted(clickedAt); }
         },
         onRefused: (out) => {
           if (refused) return;
@@ -460,6 +483,7 @@ export function GeneratorWorkspace({
   async function generateCustom() {
     if (submitting.current) return;
     submitting.current = true;
+    const clickedAt = performance.now();
     session.ran();
     setStageLabel(t("inflight.sending"));
     try {
@@ -470,7 +494,12 @@ export function GeneratorWorkspace({
             modelId: model?.id, prompt: stw.prompt.trim(),
             aspectRatio: effRatio, resolution: effResolution, quality: effQuality, quantity: effCount,
             // Only the photos this model takes (the panel greys the rest).
-            referencePaths: refs.map((r) => r.path).slice(0, Math.min(usable, MAX_REFS)),
+            // Only the photos this mode uses travel (the server would trim to
+            // the same first X) — what the job records is then what the image
+            // was made from, for "Popraw" too. A model that takes no product
+            // photo keeps receiving them as before: it ignores them, and a
+            // retake still has the product to hold on to.
+            referencePaths: refs.map((r) => r.path).slice(0, usable > 0 ? Math.min(usable, MAX_REFS) : MAX_REFS),
             referenceImageIds: [],
             inspirationPaths: insp.map((r) => r.path).slice(0, INSP_MAX),
           },
@@ -480,7 +509,7 @@ export function GeneratorWorkspace({
       if (out.ok) {
         setBalance((b) => Math.max(0, b - out.credits));
         gate.flash();
-        frame.accepted();
+        frame.accepted(clickedAt);
       } else if (out.error === "concurrency_limit") {
         toast.error(limitText(t, locale, out.limit ?? gate.limit?.max ?? 1));
       } else {
@@ -514,11 +543,11 @@ export function GeneratorWorkspace({
     && (session.guest || missing === 0)
     && (managed ? engineAvailable : promptOk);
   const line = useBarLine({
-    unavailable: managed && !engineAvailable ? t("psess.unavailable") : null,
+    unavailable: models.length === 0 ? t("generator.noModelsTitle") : managed && !engineAvailable ? t("psess.unavailable") : null,
     invalid: refs.length === 0 ? t("genv3.needPhotos")
       : uploading ? t("bar.uploading")
         : !managed && !promptOk ? t("genv3.needPrompt")
-          : !managed && smart.busy ? t("bar.rewriting")
+          : smart.busy ? t("bar.rewriting")
             : null,
     limit: gate.atLimit && gate.limit && !session.guest ? gate.limit : null,
     cost: total, balance, session,
@@ -627,6 +656,7 @@ export function GeneratorWorkspace({
       <RotateCcw size={14} aria-hidden className="shrink-0 text-accent" />
       <p className="min-w-0 flex-1">{t("genv3.restored")}</p>
       <button type="button" data-studio-clear onClick={() => {
+        restoreEpoch.current += 1;
         void session.clear();
         setRefs([]); setInsp([]); setGrov(grovDefaults()); setStw(stworzDefaults());
       }} className="shrink-0 font-semibold text-accent transition-opacity hover:opacity-75">
@@ -642,7 +672,18 @@ export function GeneratorWorkspace({
       usableNote={usable === 0 ? t("genv3.photosUnusedAll") : usable === 1 ? t("genv3.photosUsedOne") : t("genv3.photosUsed", { n: usable })} />
   );
 
-  const panel = managed ? (
+  // One mode has no model to offer while the other does: its card says so
+  // (the tabs stay, the other mode is one click away).
+  const panel = models.length === 0 ? (
+    <>
+      {restoredBanner}
+      {photos}
+      <div data-no-models className="py-4 text-center">
+        <p className="font-display text-base font-semibold">{t("generator.noModelsTitle")}</p>
+        <p className="mx-auto mt-1.5 max-w-sm text-[12.5px] leading-relaxed text-muted">{t("generator.noModelsBody")}</p>
+      </div>
+    </>
+  ) : managed ? (
     <>
       {restoredBanner}
       <ToolDraftBanner session={session} />

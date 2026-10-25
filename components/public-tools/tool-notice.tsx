@@ -44,7 +44,7 @@ function missingKey(base: string, n: number): string {
   return n === 1 ? `${base}One` : base;
 }
 
-export function ToolNotice({ cost, balance, session, className, variant = "card" }: {
+export function ToolNotice({ cost, balance, session, className, variant = "card", hidden = false }: {
   cost: number;
   balance: number;
   /** For saving the work before the checkout takes the member away. */
@@ -55,6 +55,12 @@ export function ToolNotice({ cost, balance, session, className, variant = "card"
    * ONE short line above a tool's Generate bar instead of a card under it.
    */
   variant?: "card" | "line";
+  /**
+   * The line's slot is taken by something more urgent (the Generate bar's one
+   * line): the notice stays MOUNTED — what it has reported, the bonus it saw
+   * claimed, an open plan/top-up dialog — and only its line is not drawn.
+   */
+  hidden?: boolean;
 }) {
   const viewer = useToolViewer();
   const { t } = useI18n();
@@ -80,24 +86,26 @@ export function ToolNotice({ cost, balance, session, className, variant = "card"
   // Each restricting state is reported once per page, not once per render.
   const reported = useRef(new Set<string>());
   useEffect(() => {
-    if (!viewer || !state) return;
+    if (!viewer || !state || hidden) return;
     const name = state.code === "B2" ? "tool_state_b2_shown" : state.code === "C" ? "tool_state_c_shown"
       : state.code === "D" ? "tool_state_d_shown" : null;
     if (!name || reported.current.has(name)) return;
     reported.current.add(name);
     trackEvent(name, { tool_id: viewer.tool, state: state.code === "B2" ? state.step : state.code.toLowerCase() });
-  }, [state, viewer]);
+  }, [state, viewer, hidden]);
 
   if (!viewer || !state) return null;
 
   if (variant === "line") {
+    const billing = <BillingDialog kind={dialog} missing={state.code === "C" || state.code === "D" ? state.missing : 0} onClose={() => setDialog(null)} session={session} />;
+    if (hidden) return billing;
     return (
       <NoticeLine state={state} claimed={claimed} watermark={!!viewer.trialWatermark && cost > 0}
         email={viewer.email ?? null} onBilling={(kind) => {
           trackEvent(kind === "plan" ? "tool_choose_plan_click" : "tool_topup_click", { tool_id: viewer.tool });
           setDialog(kind);
         }}
-        dialog={<BillingDialog kind={dialog} missing={state.code === "C" || state.code === "D" ? state.missing : 0} onClose={() => setDialog(null)} session={session} />}
+        dialog={billing}
       />
     );
   }

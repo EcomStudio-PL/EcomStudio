@@ -102,8 +102,8 @@ section("C. Product photos Stwórz really sends");
     && gen.includes("(inspWanted.length > 0 ? Math.min(2, inspWanted.length) : 0)")
     && gen.includes("const productBudget = reserved > 0 ? Math.max(1, maxRefs - reserved) : maxRefs;"));
   const ws = read("components/genv3/workspace.tsx");
-  check("C8 Stwórz sends only the usable photos; GrovShot all of them",
-    /referencePaths: refs\.map\(\(r\) => r\.path\)\.slice\(0, Math\.min\(usable, MAX_REFS\)\)/.test(ws)
+  check("C8 Stwórz sends only the usable photos (a model that takes none keeps them for the retake); GrovShot all of them",
+    /referencePaths: refs\.map\(\(r\) => r\.path\)\.slice\(0, usable > 0 \? Math\.min\(usable, MAX_REFS\) : MAX_REFS\)/.test(ws)
     && /const usable = managed \? MAX_REFS : customPhotoBudget\(model, insp\.length\)/.test(ws));
 }
 
@@ -134,10 +134,20 @@ section("D. The draft");
   check("D6 garbage is the defaults", same(readStudioDraft(null, defaults, "grovshot"), defaults) && same(readStudioDraft("x", defaults, "stworz"), defaults));
   check("D7 ?tryb= reads only the two modes", parseTab("grovshot") === "grovshot" && parseTab("stworz") === "stworz" && parseTab("admin") === null && parseTab(null) === null);
   const session = read("components/public-tools/use-tool-session.ts");
+  const ws = read("components/genv3/workspace.tsx");
   check("D8 a run drops only the visit's slot, never the member's working draft",
     /const ran = useCallback\(\(\) => \{[\s\S]{0,120}void deleteDraft\(tool\);\n {2}\}, \[tool\]\);/.test(session));
   check("D9 the member's draft is read back only by its owner", /mine\.draft\.owner !== memberOwner/.test(session));
   check("D10 \"Wyczyść\" removes both slots and does not re-save the reset", /deleteDraft\(memberSlot\)/.test(session) && /setClearTick/.test(session));
+  check("D12 an older visit/checkout draft never comes back over a newer member draft",
+    /mine\.draft\.savedAt >= found\.draft\.savedAt/.test(session) && /discard: \(\) => \{ setOffer\(null\); void deleteDraft\(tool\); putMine\(mine\); \}/.test(session));
+  check("D13 another account's draft in this browser is deleted on sight, never shown",
+    /if \(memberSlot && mine && mine\.draft\.owner !== memberOwner\) void deleteDraft\(memberSlot\);/.test(session));
+  check("D14 a visitor signs in back to the same address, ?tryb= included",
+    /const here = window\.location\.pathname === path \? `\$\{path\}\$\{window\.location\.search\}` : path;/.test(session));
+  check("D15 restored photos go in FRONT of photos added meanwhile; Wyczyść stops a running restore",
+    /return \[\.\.\.restored, \.\.\.prev\.filter\(\(r\) => !seen\.has\(r\.key\)\)\]\.slice\(0, cap\);/.test(ws)
+    && /if \(epoch !== restoreEpoch\.current\) return;/.test(ws) && /restoreEpoch\.current \+= 1;/.test(ws));
   check("D11 the member slot's name carries no account id (it is reported to analytics)",
     /draftKey = "studio:generator"|draftKey: "studio:generator"|"studio:generator"/.test(read("components/genv3/studio-page.tsx")));
 }
@@ -150,6 +160,11 @@ section("E. The bar's one line");
   check("E2 then the form", barPriority({ ...all, unavailable: false }) === "invalid");
   check("E3 then the plan's limit", barPriority({ unavailable: false, invalid: false, limit: true }) === "limit");
   check("E4 then the account (address, survey, plan, credits)", barPriority({ unavailable: false, invalid: false, limit: false }) === "account");
+  const bar = read("components/generate/generate-bar.tsx");
+  const notice = read("components/public-tools/tool-notice.tsx");
+  check("E5 the account line stays MOUNTED behind a more urgent one (one report per page, an open dialog stays open)",
+    /<ToolNotice variant="line" cost=\{cost\} balance=\{balance\} session=\{session\} hidden=\{higher !== null\} \/>/.test(bar)
+    && /if \(!viewer \|\| !state \|\| hidden\) return;/.test(notice) && /if \(hidden\) return billing;/.test(notice));
 }
 
 /* ── F ─────────────────────────────────────────────────────────────────── */
@@ -174,6 +189,9 @@ section("F. The wiring");
     retouchBody.includes("body: { sourcePath: p.path, resolution, format, expectedOutputs: outputsPerRun },")
     && !/aspect_ratio|image_size|response_format/.test(retouchBody));
   check("F6 the old mode switch (two pages) is gone", (() => { try { read("components/generator/mode-switch.tsx"); return false; } catch { return true; } })());
+  const frame = read("components/tool-frame/frame.tsx");
+  check("F8 a phone moves to Wyniki on acceptance only if nothing was touched since the click",
+    /if \(since !== undefined && lastInput\.current > since\) return;/.test(frame) && (read("components/genv3/workspace.tsx").match(/frame\.accepted\(clickedAt\)/g) ?? []).length === 2);
   const css = read("app/globals.css");
   check("F7 the phone's app dock steps aside for a tool's own bar", /\.app-shell:has\(\[data-tool-dock\]\) > nav\.fixed/.test(css));
 }
