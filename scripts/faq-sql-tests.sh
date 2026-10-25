@@ -288,9 +288,9 @@ select public.t_true('I9  a kept answer carries the brief text as its draft', 'p
 select public.t_true('I10 the import is history (external), the counts start at zero', 'postgres', $q$
   select (select count(*) >= 40 from public.content_versions where target = 'faq' and action = 'external')
      and (select bool_and(helpful_count = 0 and unhelpful_count = 0) from public.faq_items) $q$);
-select public.t_true('I11 the snapshot kept what the import read', 'postgres', $q$
-  select count(*) = 4 from public.faq_import_snapshots
-   where source in ('o-nas:about_faq', 'kontakt:contact_page', 'faq:page', 'plany:dictionary') $q$);
+select public.t_true('I11 the snapshot kept what the import read (O nas, Kontakt, /faq)', 'postgres', $q$
+  select count(*) = 3 and bool_and(data is not null) from public.faq_import_snapshots
+   where source in ('o-nas:about_faq', 'kontakt:contact_page', 'faq:page') $q$);
 
 -- ── T. THE TEXT RULE ───────────────────────────────────────────────────
 select public.t_true('T1  faq_text_ok: placeholders fail, links and plain text pass', 'postgres', $q$
