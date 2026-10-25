@@ -4,6 +4,7 @@ import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { generateFromConcept } from "@/lib/server/concept-generation";
+import { acceptedBody, answerAtAcceptance, clientId } from "@/lib/server/inflight-accept";
 import { QUALITIES, type Quality } from "@/lib/ai/types";
 
 export const maxDuration = 300;
@@ -38,8 +39,10 @@ export async function POST(request: Request) {
   let modelId: string | undefined;
   let instruction: string | undefined;
   let quality: Quality | undefined;
+  let requestId: string | null = null;
   try {
-    const body = (await request.json()) as { conceptId?: string; modelId?: string; instruction?: string; quality?: string };
+    const body = (await request.json()) as { conceptId?: string; modelId?: string; instruction?: string; quality?: string; requestId?: unknown };
+    requestId = clientId(body.requestId);
     conceptId = typeof body.conceptId === "string" ? body.conceptId : "";
     if (typeof body.modelId === "string" && /^[0-9a-f-]{36}$/.test(body.modelId)) modelId = body.modelId;
     if (typeof body.instruction === "string" && body.instruction.trim()) instruction = body.instruction.slice(0, 600);
@@ -50,10 +53,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
   }
 
-  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId, { modelId, instruction, quality });
+  // Generacje w toku V2: answered at acceptance, finished after the
+  // response. The shots of one GrovBase session are ONE operation for the
+  // plan's limit — the batch is the concept's own session, set server-side.
+  const first = await answerAtAcceptance("concept", (onAccepted) => generateFromConcept(supabase, user.id, workspace.id, conceptId, {
+    modelId, instruction, quality,
+    track: { slot: { tool: "prompts", batch: conceptId, request: requestId ?? undefined }, onAccepted },
+  }));
+  if ("accepted" in first) return NextResponse.json(acceptedBody(first.accepted), { status: 202 });
+  const result = first.result;
   const status = result.ok ? 200
     : result.error === "insufficient_credits" ? 402
       : result.error === "already_running" ? 409
-        : result.error === "not_found" ? 404 : 400;
+        : result.error === "concurrency_limit" ? 429
+          : result.error === "not_found" ? 404 : 400;
   return NextResponse.json(result, { status });
 }

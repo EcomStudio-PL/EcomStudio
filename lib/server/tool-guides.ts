@@ -62,6 +62,8 @@ export function defaultGuideContent(tool: GuideToolKey): GuideContent {
       title: perLocale(`${base}.starter.title`),
       body: perLocale(`${base}.starter.body`),
     },
+    // Drag & drop zdjęć V2: the same line on every reorderable grid.
+    hints: { reorder: perLocale("dnd.hint") },
   };
 }
 
@@ -144,6 +146,19 @@ export function resolveGuide(tool: GuideToolKey, locale: Locale, saved: Publishe
 /** One tool's guide for one language: the published row and its pictures.
  *  null when the saved guides could not be read — no guide beats a guide the
  *  admin may have switched off. */
+/**
+ * The line under the tool's reorderable photo grid, in this language: the
+ * admin's wording (this language, else Polish), `null` when the admin saved
+ * it empty (hidden), `undefined` when nothing is saved — the shipped line.
+ */
+export async function loadReorderHint(tool: GuideToolKey, locale: Locale): Promise<string | null | undefined> {
+  const saved = await publishedGuide(tool);
+  const reorder = saved && saved !== "failed" ? saved.hints?.reorder : undefined;
+  if (!reorder || typeof reorder !== "object") return undefined;
+  const text = (reorder[locale] ?? "").trim() || (reorder.pl ?? "").trim();
+  return text || null;
+}
+
 export async function loadGuide(supabase: Client, tool: GuideToolKey, locale: Locale): Promise<ResolvedGuide | null> {
   const [saved, slots] = await Promise.all([publishedGuide(tool), loadSlots(supabase, guideImageKeys(tool))]);
   return saved === "failed" ? null : resolveGuide(tool, locale, saved, slots);

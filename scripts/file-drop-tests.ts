@@ -178,8 +178,13 @@ console.log("L. the copy each tool shows is its own");
   const up = read("components/genv3/uploader.tsx");
   const lb = read("components/ui/image-lightbox.tsx");
   check("preview: opt-in prop on PhotoUploader", /preview\?: boolean/.test(up));
+  // Drag & drop zdjęć V2 moved the thumbnails into the shared sortable grid;
+  // the thumbnail still opens the preview (never right after a drag), × still
+  // only removes — by the photo's index in the customer's own array.
+  const grid = read("components/genv3/sortable-grid.tsx");
   check("preview: the thumbnail opens it, the remove button never does",
-    /data-photo-preview/.test(up) && /onClick=\{\(e\) => \{ e\.stopPropagation\(\); onRemove\(i\); \}\}/.test(up));
+    /data-photo-preview/.test(grid) && /onClick=\{\(\) => \{ if \(!sortable\.consumeClick\(\)\) setViewIndex\(at\); \}\}/.test(grid)
+    && /onClick=\{\(e\) => \{ e\.stopPropagation\(\); onRemove\(at\); \}\}/.test(grid) && /<SortablePhotoGrid/.test(up));
   check("preview: shows only the display url (never the File, the path or the bytes)",
     /images=\{items\.map\(\(r\) => \(\{ key: r\.key, src: r\.url \}\)\)\}/.test(up));
   check("preview: the lightbox never revokes, uploads, fetches or reorders",

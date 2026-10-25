@@ -4,6 +4,7 @@ import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import { slotRefusal } from "@/lib/server/slot-refusal";
 import { notifyGenerationDone, notifyGenerationFailed } from "@/lib/server/user-notifications";
 import { recordProviderCalls } from "@/lib/server/ai-usage";
 import { withProviderLimit } from "@/lib/server/provider-router";
@@ -140,7 +141,7 @@ export type StartBody = {
 
 export type StartResult =
   | { ok: true; runId: string; created: boolean; quote: ThumbnailQuote }
-  | { ok: false; error: string; quote?: ThumbnailQuote; missingCredits?: number; blockers?: string[] };
+  | { ok: false; error: string; quote?: ThumbnailQuote; missingCredits?: number; blockers?: string[]; limit?: number };
 
 /**
  * Validate, price and record a run. Nothing is charged here: the first paid
@@ -213,7 +214,9 @@ export async function startThumbnailRun(
     } as unknown as Json,
   });
   const out = (error ? null : data) as { id?: string; created?: boolean; error?: string } | null;
-  if (!out) return { ok: false, error: "run_create_failed" };
+  // The plan's parallel-generation limit refuses the run before it exists
+  // (0161) — nothing was charged; the customer is told why.
+  if (!out) return { ...(slotRefusal(error?.message) ?? { ok: false, error: "run_create_failed" }), quote };
   if (out.error) return { ok: false, error: out.error };
   if (!out.id) return { ok: false, error: "run_create_failed" };
   return { ok: true, runId: out.id, created: Boolean(out.created), quote };

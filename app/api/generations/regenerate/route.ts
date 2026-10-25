@@ -94,11 +94,15 @@ export async function POST(request: Request) {
   if (job.prompt_id && job.prompt_origin !== "custom") {
     const result = await generateFromConcept(supabase, user.id, workspace.id, job.prompt_id, {
       modelId, instruction: instruction || undefined, markedImagePath, quality: jobQuality,
+      // A retake is a generation in progress like any other: it takes the
+      // plan's slot (Generacje w toku V2) and shows as a tile until done.
+      track: { slot: { tool: "prompts", batch: job.prompt_id } },
     });
     const status = result.ok ? 200
       : result.error === "insufficient_credits" ? 402
         : result.error === "already_running" ? 409
-          : result.error === "not_found" ? 404 : 400;
+          : result.error === "concurrency_limit" ? 429
+            : result.error === "not_found" ? 404 : 400;
     return NextResponse.json(result, { status });
   }
 
@@ -200,7 +204,10 @@ export async function POST(request: Request) {
     parentJobId: job.id,
     promptOrigin: "custom",
     maxAttempts,
+    slot: { tool: "generator", batch: crypto.randomUUID() },
   });
   await engine.finish(result);
-  return NextResponse.json(result, { status: result.ok ? 200 : result.error === "insufficient_credits" ? 402 : 400 });
+  return NextResponse.json(result, {
+    status: result.ok ? 200 : result.error === "insufficient_credits" ? 402 : result.error === "concurrency_limit" ? 429 : 400,
+  });
 }

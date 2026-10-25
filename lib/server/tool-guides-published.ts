@@ -22,6 +22,8 @@ export type PublishedGuide = {
   /** The admin's copy for the parts that are on; null = the shipped default. */
   tutorial: GuideContent["tutorial"] | null;
   starter: GuideContent["starter"] | null;
+  /** Lines on the tool's screen (0161); null / absent = none saved. */
+  hints?: GuideContent["hints"] | null;
 };
 
 /**
@@ -37,10 +39,19 @@ export type PublishedGuide = {
 const readPublished = unstable_cache(
   async (): Promise<Record<string, PublishedGuide>> => {
     const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data, error } = await anon.rpc("tool_guides_published");
+    const [{ data, error }, hintsRes] = await Promise.all([
+      anon.rpc("tool_guides_published"),
+      anon.rpc("tool_guide_hints"),
+    ]);
     if (error) {
       if (error.code === "PGRST202" || error.code === "42883") return {};
       throw new Error(`tool_guides_published: ${error.code ?? ""} ${error.message}`);
+    }
+    // The hints function arrives with 0161; before it (or on a failed read)
+    // every tool simply shows the shipped line.
+    const hintsOf = new Map<string, GuideContent["hints"]>();
+    for (const row of hintsRes.error ? [] : hintsRes.data ?? []) {
+      if (row.hints && typeof row.hints === "object" && !Array.isArray(row.hints)) hintsOf.set(row.tool_key, row.hints as GuideContent["hints"]);
     }
     const out: Record<string, PublishedGuide> = {};
     for (const row of data ?? []) {
@@ -50,6 +61,7 @@ const readPublished = unstable_cache(
         version: row.tutorial_version,
         tutorial: (row.tutorial as GuideContent["tutorial"] | null) ?? null,
         starter: (row.starter as GuideContent["starter"] | null) ?? null,
+        hints: hintsOf.get(row.tool_key) ?? null,
       };
     }
     return out;

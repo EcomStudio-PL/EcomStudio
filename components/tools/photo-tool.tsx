@@ -27,6 +27,9 @@ import { StarterGallery } from "@/components/tool-guide/lazy";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
 import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
 import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { reorder } from "@/components/genv3/sortable-photos";
+import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { isGuideTool } from "@/lib/tool-guides";
 
 /** Photos running at once — Retusz's figure: a batch, not ten simultaneous
  *  requests from one seller (Photoroom's own default is 60 a minute). */
@@ -128,6 +131,8 @@ export function PhotoToolWorkspace({
 
   // ── photos ────────────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<UploadedRef[]>([]);
+  const guideKey = `tool_${tool}`;
+  const reorderHint = useReorderHint(isGuideTool(guideKey) ? guideKey : "generator");
   const [uploading, setUploading] = useState(false);
   /** Per uploaded path: does the photo already have a transparent background? */
   const [clear, setClear] = useState<Record<string, boolean>>({});
@@ -545,6 +550,9 @@ export function PhotoToolWorkspace({
               if (gone && !jobs.some((j) => j.url === gone.url) && !items.some((it) => it.sourceUrl === gone.url)) release(gone.url);
               setPhotos((prev) => prev.filter((_, j) => j !== i));
             }}
+            // Drag & drop zdjęć V2: the batch runs in this order.
+            onMove={(from, to) => setPhotos((prev) => reorder(prev, from, to))}
+            reorderHint={reorderHint}
             label={t("photoTool.photos", { n: PHOTO_MAX_PHOTOS })}
           />}
 

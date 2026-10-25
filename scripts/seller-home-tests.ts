@@ -143,7 +143,10 @@ const FROZEN: readonly [string, string][] = [
   // off-panel "ready" toast are mounted under the header. Ulubione V2: the
   // shell carries `data-favorite-ring` (the admin's ring switch, read in the
   // same batch). Nothing else moved.
-  ["app/(app)/layout.tsx", "a5fb3828f91ace64ff69e0d557b50e8e80b62dcc2a1e966eee35bb872c19093e"],
+  // Generacje w toku V2: one more client component mounted beside the toast,
+  // <InflightTitle /> (the "(2) GrovBase" tab prefix and the batch pump). It
+  // renders nothing and touches no metadata.
+  ["app/(app)/layout.tsx", "7c8191c821bb07927acb4a7e16bc3c43e70fb77ec065a6453e75ae57f38da7fc"],
   // Public Tools V1 (activation): a visitor's pages wear the same dock; with
   // `guest`, the account slots open the sign-in dialog in place. A member's
   // dock (no `guest`) renders and behaves exactly as before.
@@ -212,13 +215,14 @@ check("…the shared media components and tool-thumb are byte-identical to the l
 // on a page that carries a visitor's tool block ([data-public-tool-seo]) —
 // one selector change; /home's rules and the launch page's are untouched.
 // Ulubione V2 added ONE block after `.card-rail` (the favourite's own red,
-// the shared heart, the ring and its admin switch). Taken out, the file is
-// the same bytes as before.
+// the shared heart, the ring and its admin switch), and Generacje w toku V2
+// its in-progress tile right after it, inside the same span. Taken out, the
+// file is the same bytes as before.
 {
   const css = readFileSync("app/globals.css", "utf8");
   const a = css.indexOf("\n/* ── ULUBIONE V2 ");
   const b = css.indexOf("\n/* ── AUTH FORMS ON A PHONE");
-  check("…globals.css is the reviewed Pre-launch Landing V2 version (+ the Public Tools V1 lock exception, + the Ulubione V2 block)",
+  check("…globals.css is the reviewed Pre-launch Landing V2 version (+ the Public Tools V1 lock exception, + the Ulubione V2 and Generacje w toku V2 blocks)",
     a > 0 && b > a && sha(css.slice(0, a) + css.slice(b)) === "8f024ebf826afd750357e2e33559e9be1fc7e7c30e77592b2fcfafc974f1ed73");
 }
 check("/home requires a session (middleware's protected paths)", isProtectedPath("/home") && isProtectedPath("/dashboard"));
@@ -742,7 +746,12 @@ check("no database change in this redesign: b631919..f579637 touches no migratio
 section("11. AI REQUESTS, STRIPE, /plan, /tools AND RETUSZ ARE UNCHANGED");
 const ENGINE: readonly [string, string][] = [
   ["lib/ai/providers/google-request.ts", "ebec5219ae0f40e51071c4305115c430f818573235f38737cfe71829d69a88d1"],
-  ["lib/server/concept-generation.ts", "788361ea576b19dc0ef58d325b63199cdeb51b24a4bf3b64bd1e111d55cf8341"],
+  // Re-pinned by Generacje w toku V2 (here and in fashion.ts and the two
+  // routes below): the plan's slot marker and the acceptance hook pass through
+  // to runGeneration, and the routes answer 202 once the job is accepted and
+  // finish it in after(). No prompt, model, provider or request byte changes —
+  // the forensic and parity suites hold the requests.
+  ["lib/server/concept-generation.ts", "afc720c4d54937712b396d1cbfb994d335ef7b71274e86d8e2c41988840d62ec"],
   ["lib/server/prompt-engine.ts", "5ce9bf1074f34e8852cd06a6440e0c9640a4471049617493d3b1b506e74baf22"],
   // Re-pinned by the photo-tools task (four Photoroom panels: pinned provider,
   // sandbox gating, deliver + alreadyDelivered hooks, presets). Retusz never
@@ -751,20 +760,23 @@ const ENGINE: readonly [string, string][] = [
   // free allowance and the charge — a trial workspace is refused a paid tool
   // (0 calls, 0 credits). No provider request byte changes.
   ["lib/server/image-tools.ts", "ac473b62ebbc13138de61e38293b970fab2127d5a395a9f56d1dbeaf9618a8a2"],
-  ["lib/server/fashion.ts", "dcde79b33cd35e9789caa3bbc9cc4ddbf406f570d9f02ee3fe7232ad069ab139"],
+  ["lib/server/fashion.ts", "43147c3ec1602fb3afbdb94d698fc2a13732f7edc2fec1a4716c4fd59af343a8"],
   ["app/api/prompts/generate/route.ts", "37db9bd3798b9bd5c4c4fc3bdf1056d57dec296f12754fd52bd9f5f97e204b5e"],
-  ["app/api/concepts/generate/route.ts", "59ac0b7670179062229aae68505186bd2513953bd1ecad1e555bedf45f588e21"],
+  ["app/api/concepts/generate/route.ts", "7e9b4a0069bfc227e1aaec8f9189e84ef188a063930385dbc849f820fd1c0075"],
   // Re-pinned by the trial-watermark task: the route passes its own start
   // time (routeStartedAt) so the trial-image gate counts the hybrid engine's
   // analysis too. Nothing else; no request byte changes.
-  ["app/api/generate/route.ts", "ad9f9d53cd6118cd02b9aff650bf5fbee7066339098052debbeb598b8b9f904e"],
+  ["app/api/generate/route.ts", "5d1d820fad55b6f14913a51ef54fee0609e29124401f8742cce2a36959176c6e"],
   // Re-pinned by the photo-tools task: the white_bg / ai_* screens' own
   // switches also gate this endpoint.
   ["app/api/tools/run/route.ts", "8bf75acfde6ebcd36b3fbcb70318f3f081559b8c04b80ef434cb22fbe17114c6"],
   // Re-pinned by the Miniaturka task: one OPT-IN prop (`onMove`, photo order
   // arrows). No other caller passes it, so every other uploader renders and
   // uploads exactly as before.
-  ["components/genv3/uploader.tsx", "38e173c9aaa9e6d18656bf56f550a66f46219d4b0f9b302a2aceacf498754053"],
+  // Drag & drop V2: the arrows became the shared reorderable grid
+  // (SortablePhotoGrid) — still opt-in through `onMove`; uploading, intake and
+  // the file limits are untouched.
+  ["components/genv3/uploader.tsx", "57bf13636e515d4b798bda2d39e82f5479c1602341602620e40e4d88f2d0808e"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],
   ["lib/services/credits.ts", "1a25606a89ca4ebc6f2640542f59b9185da4595ebad973b69be9f82932cb74fb"],
@@ -773,12 +785,13 @@ for (const [file, digest] of ENGINE) check(`${file} unchanged`, sha(readFileSync
 // lib/server/gallery.ts — re-pinned by the trial-watermark task (each item
 // carries its trial state). Ulubione V2 APPENDED one read, the favourites
 // counter (countFavoriteAssets); with it taken out the projection is the
-// same bytes as before.
+// same bytes as before. Generacje w toku V2 added one optional filter
+// (`jobIds`: a tile turning into its own results) — re-pinned for that alone.
 {
   const g = readFileSync("lib/server/gallery.ts", "utf8");
   const cut = g.indexOf("\n/**\n * ULUBIONE V2 — how many liked pictures");
   check("lib/server/gallery.ts unchanged (but for the appended favourites counter)",
-    cut > 0 && sha(g.slice(0, cut)) === "0a4c1513cd00ac6c86e1e92cfcc2cd93af2715a22267fdfd37c261c39373dfa2");
+    cut > 0 && sha(g.slice(0, cut)) === "20d848f41571c7c76463cfc9a24dd7ba8c1e4e393bd6400eaac5b1f655034c28");
 }
 // The generator workspace gained ONE receiver (in the first redesign) and
 // nothing else: with those lines taken out it is byte-identical to before.
@@ -799,9 +812,20 @@ const SMART_PIECES: readonly [string, string][] = [
     + "    value: prompt, onChange: setPrompt, offer: managed ? undefined : smartPrompt,\n"
     + "    referencePaths: refPaths, onBalance: setBalance,\n"
     + "  });\n\n", ""],
+  // Generacje w toku V2 moved the hold from `busy` to `sending` + the plan's
+  // gate (the lines between the two comments); the smart hold is unchanged.
   ["  // Not while a rewrite is on its way: the text about to be replaced is not\n"
     + "  // the text the customer would be generating from.\n"
-    + "  const canGenerate = !!model && !busy && !smart.busy && ", "  const canGenerate = !!model && !busy && "],
+    + "  // Generacje w toku V2: a click in flight (the POST, or GrovBase's planner\n"
+    + "  // pass) and the plan's limit are the only things that hold the button —\n"
+    + "  // never a generation that is merely running.\n"
+    + "  const sending = stageLabel !== \"\" || preparing;\n"
+    + "  const canGenerate = !!model && !sending && !gate.added && !gate.atLimit && !smart.busy && ",
+  "  // Generacje w toku V2: a click in flight (the POST, or GrovBase's planner\n"
+    + "  // pass) and the plan's limit are the only things that hold the button —\n"
+    + "  // never a generation that is merely running.\n"
+    + "  const sending = stageLabel !== \"\" || preparing;\n"
+    + "  const canGenerate = !!model && !sending && !gate.added && !gate.atLimit && "],
   [" max={PROMPT_MAX} smart={smart} />", " max={PROMPT_MAX} />"],
 ];
 check("…the Inteligentny prompt wiring is all present (a vanished piece is not a pass)", SMART_PIECES.every(([piece]) => ws.includes(piece)));
@@ -810,8 +834,12 @@ const wsBefore = SMART_PIECES.reduce((src, [piece, was]) => src.replace(piece, w
 // local photo stand-ins instead of uploads, Generate through session.gate (the
 // sign-in dialog for a visitor, the same run for a member), the draft banner,
 // the account notice beside the price. No request a member sends changed.
+// Re-pinned by Generacje w toku V2 + Drag & drop V2 (was 8ad2fb3e…): Generuj
+// sends a frozen snapshot through the shared in-flight store (custom) or the
+// batch queue (GrovBase), the plan's limit gate, and the photo order moves
+// (brief refIndex follows). The prompt text and the request body are the same.
 check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring, and the Public Tools V1 session)",
-  sha(wsBefore.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "8ad2fb3e895d1ea26992c54fb52b6ec4581338eda680179512bfae6aa87c0db8");
+  sha(wsBefore.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "6937614cc204b5bc05ff7d179ce3c29e49939f6ce77739835d3531beab3fc1af");
 check("…which feeds the screen's own upload and starts nothing", /useHomeHandoff\(\(file\) => \{ void upload\(\[file\], "refs"\); \}\)/.test(RECEIVER)
   && !/generate\(|fetch\(/.test(RECEIVER));
 check("/home has no generation path: no AI route, no provider, no prompt",
@@ -834,7 +862,11 @@ check("the no-credits dialog only links to the existing checkout intent and /pla
   /planCheckoutHref\(pro\.id, "monthly"\)/.test(code("components/seller-home/no-credits-modal.tsx"))
   && !/stripe|fetch\(|checkout\./i.test(code("components/seller-home/no-credits-modal.tsx").replace(/planCheckoutHref/g, "")));
 const RETUSZ: readonly [string, string][] = [
-  ["lib/server/retouch.ts", "fee74d0e4795110812d4019a3525ac2d9f83420ab3ad616515bb56b39e410d3e"],
+  // Re-pinned by Generacje w toku V2: one optional `track` (the plan's slot and
+  // the acceptance hook) handed to runGeneration, and `limit` on the refusal.
+  // The Gemini request, prompt, delivery and price are untouched — the
+  // forensic suite still matches the golden request byte for byte.
+  ["lib/server/retouch.ts", "5652e766f8a49f166e795f68a62c481b142028ee61f021a6ce073256a5f3952d"],
   ["lib/server/retouch-delivery.ts", "52d62017201d4c62227c13dbcb84deb5834615ef78bbcf800eda1ad63ca01e54"],
   // Re-pinned by Public Tools V1: the page's metadata and a visitor's branch
   // (the same workspace, priced through the server's own read, no wallet).

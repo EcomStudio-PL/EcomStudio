@@ -165,7 +165,19 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     { status: 200, headers: { "content-type": "application/json" } });
 }) as typeof fetch;
 
-const g = globalThis as unknown as { __fidelityEngine?: EngineConfig | null; __forensicClient?: unknown; __forensicUser?: { id: string } | null; __fidelityLedger?: string[] };
+const g = globalThis as unknown as {
+  __fidelityEngine?: EngineConfig | null; __forensicClient?: unknown; __forensicUser?: { id: string } | null; __fidelityLedger?: string[];
+  /** The next/server stub's `after()` queue (scripts/stubs/forensic-next-server.ts). */
+  __afterQueue?: ((() => unknown) | Promise<unknown>)[];
+};
+/** Run what the route left for after its response (Generacje w toku V2). */
+async function drainAfter() {
+  const queue = g.__afterQueue ?? [];
+  while (queue.length > 0) {
+    const task = queue.shift()!;
+    await (typeof task === "function" ? task() : task);
+  }
+}
 function engine(over: Partial<EngineConfig>): EngineConfig {
   return {
     toolKey: "retouch", mode: "grovbase", serviceSlug: "image_edit", allowModelChoice: false,
@@ -181,8 +193,15 @@ async function click(db: Db, body: Row) {
   const res = await retouchRoute(new Request("https://grovbase.test/api/retouch", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   }));
-  const json = await res.json() as Row;
+  const answer = await res.json() as Row;
+  // GENERACJE W TOKU V2: an accepted click is answered 202 and the SAME call
+  // finishes after the response — drained here, so everything below still
+  // inspects the one request it made and the job it closed.
+  await drainAfter();
   const job = [...db.jobs.values()].pop() ?? {};
+  const json: Row = answer.accepted === true
+    ? { ...answer, ok: job.status === "completed", ...(job.status === "completed" ? {} : { error: job.error_class ?? job.error_message }) }
+    : answer;
   return { status: res.status, json, job, pr: ((job.settings ?? {}) as Row).provider_request as Row | undefined, run: db.engineRuns[db.engineRuns.length - 1] ?? {} };
 }
 
@@ -201,9 +220,14 @@ async function main() {
 
   console.log("\nU0  THE PANEL — what the browser sends on 'Retuszuj'");
   const ui = read("components/retouch/workspace.tsx");
-  const uiBody = /fetch\("\/api\/retouch",[\s\S]*?body: JSON\.stringify\((\{[^)]*\})\)/.exec(ui)?.[1] ?? "";
-  check("the panel POSTs { sourcePath, resolution, format, expectedOutputs } — no prompt",
-    uiBody.replace(/\s+/g, " ") === "{ sourcePath: job.path, resolution, format, expectedOutputs: outputsPerRun }", uiBody);
+  // Generacje w toku V2: the panel freezes each photo's request as its tile's
+  // snapshot and the shared store sends it, adding ONLY the request's own ids
+  // (requestId, the click's batch) — never a prompt, a model or a price.
+  const uiBody = /endpoint: "\/api\/retouch",[\s\S]*?body: (\{[^}]*\})/.exec(ui)?.[1] ?? "";
+  const store = read("lib/inflight/store.ts");
+  const sendBody = /const body: Record<string, unknown> = \{ \.\.\.input\.snapshot\.body, requestId \};\n\s*if \(input\.batch\) body\.batch = input\.batch;\n\s*if \(input\.snapshot\.endpoint === "\/api\/thumbnail"\) body\.attempt = requestId;/.test(store);
+  check("the panel POSTs { sourcePath, resolution, format, expectedOutputs } (+ the request's ids only) — no prompt",
+    uiBody.replace(/\s+/g, " ") === "{ sourcePath: p.path, resolution, format, expectedOutputs: outputsPerRun }" && sendBody, uiBody);
   check("the panel renders the quality + format pickers again (default 2K, 'original'); the locked note is gone",
     /testId="resolution"/.test(ui) && /testId="format"/.test(ui) && /useState\(\(\) => \(resolutions\.includes\("2K"\) \? "2K"/.test(ui)
     && /useState\("original"\)/.test(ui) && !/data-retouch-settings-locked|settingsLocked/.test(ui));
@@ -230,7 +254,7 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: PROMPT, promptVersion: 5 });
     // The panel's default click: 2K, "Oryginalny".
     const { status, json, job, pr, run } = await click(db, { sourcePath: SRC, resolution: "2K", format: "original", expectedOutputs: 1 });
-    check("the route answered 200 ok", status === 200 && json.ok === true, json);
+    check("the route accepted the click (202) and the same call finished ok", status === 202 && json.accepted === true && json.ok === true, json);
     check("exactly ONE HTTP request left GrovBase", wire.length === 1, wire.length);
     const B = wire[0]?.body ?? "";
     const A = baselineBody({ prompt: PROMPT, image: photo, mimeType: "image/jpeg" });
@@ -318,8 +342,8 @@ async function main() {
       const out = (((job.settings ?? {}) as Row).provider_output ?? []) as Row[];
       const [dw, dh] = deliveredDims[c.name[0]!]!;
       console.log(`    ${c.name}: provider body sha256 ${sha(B).slice(0, 16)}… · delivered ${out[0]?.stored_width}×${out[0]?.stored_height} · credits ${json.credits}`);
-      check(`${c.name}: 200 ok, exactly ONE request (fallback ON + Próby 3 in the panel), store:false`,
-        status === 200 && json.ok === true && wire.length === 1 && sent.store === false && sent.model === "gemini-3-pro-image", { status, n: wire.length, json });
+      check(`${c.name}: accepted (202) and ok, exactly ONE request (fallback ON + Próby 3 in the panel), store:false`,
+        status === 202 && json.ok === true && wire.length === 1 && sent.store === false && sent.model === "gemini-3-pro-image", { status, n: wire.length, json });
       check(`${c.name}: PROVIDER REQUEST == GOLDEN good request BYTE FOR BYTE (sha256 50d96cdd…)`,
         B === golden && sha(B) === GOLDEN_PRE_PATCH_BODY_SHA256, { sha: sha(B) });
       check(`${c.name}: response_modalities ["image"] SAME; response_format / image_size / aspect_ratio / generation_config ABSENT`,

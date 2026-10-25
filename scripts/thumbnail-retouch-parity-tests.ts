@@ -127,7 +127,20 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     { status: 200, headers: { "content-type": "application/json" } });
 }) as typeof fetch;
 
-const g = globalThis as unknown as { __fidelityEngine?: EngineConfig | null; __forensicClient?: unknown; __forensicUser?: { id: string } | null; __fidelityLedger?: string[] };
+const g = globalThis as unknown as {
+  __fidelityEngine?: EngineConfig | null; __forensicClient?: unknown; __forensicUser?: { id: string } | null; __fidelityLedger?: string[];
+  /** The next/server stub's `after()` queue (scripts/stubs/forensic-next-server.ts). */
+  __afterQueue?: ((() => unknown) | Promise<unknown>)[];
+};
+/** Generacje w toku V2: the route answers at acceptance and finishes the
+ *  same call after its response — run that part before looking at the wire. */
+async function drainAfter() {
+  const queue = g.__afterQueue ?? [];
+  while (queue.length > 0) {
+    const task = queue.shift()!;
+    await (typeof task === "function" ? task() : task);
+  }
+}
 const engine = (prompt: string): EngineConfig => ({
   toolKey: "retouch", mode: "grovbase", serviceSlug: "image_edit", allowModelChoice: false,
   fallbackEnabled: false, timeoutMs: 120_000, maxAttempts: 1, primaryModelId: PRO_ID, fallbackModelId: null,
@@ -174,8 +187,9 @@ async function main() {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ sourcePath: SRC, resolution: "2K", format: "original", expectedOutputs: 1 }),
     }));
+    await drainAfter();
     const wireA = wire;
-    check("/retusz: the route answered 200 with one request", res.status === 200 && wireA.length === 1, { status: res.status, n: wireA.length });
+    check("/retusz: the route accepted the click (202) and sent one request", res.status === 202 && wireA.length === 1, { status: res.status, n: wireA.length });
 
     // B: exactly Miniaturka's call.
     const dbB: Db = { files: new Map([[SRC, photo]]), jobs: new Map(), engineRuns: [] };

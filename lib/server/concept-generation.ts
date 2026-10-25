@@ -2,7 +2,7 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { getUsableModels, type UsableModel } from "@/lib/ai/router";
 import { effectiveQuality, modelQualities, priceFor, priceForResolution, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
-import { runGeneration } from "@/lib/server/generation";
+import { runGeneration, type GenerationTrack } from "@/lib/server/generation";
 import { toolMaxAttempts } from "@/lib/server/ai-engine";
 import { decryptConceptPayload } from "@/lib/server/prompt-engine";
 import { promptKeyring } from "@/lib/server/prompt-vault";
@@ -20,7 +20,7 @@ import { promptKeyring } from "@/lib/server/prompt-vault";
 
 export type ConceptGenerateOutput =
   | { ok: true; jobId: string; images: { url: string; path: string }[]; credits: number }
-  | { ok: false; error: string; missingCredits?: number };
+  | { ok: false; error: string; missingCredits?: number; limit?: number };
 
 /**
  * The ORDERED model chain the concept engine generates with.
@@ -155,7 +155,13 @@ export function originCost(
 
 export async function generateFromConcept(
   supabase: Client, userId: string, workspaceId: string, conceptId: string,
-  opts?: { modelId?: string; instruction?: string; markedImagePath?: string; quality?: Quality },
+  opts?: {
+    modelId?: string; instruction?: string; markedImagePath?: string; quality?: Quality;
+    /** Generacje w toku V2: the click's slot (its batch is ALWAYS this
+     *  concept's server-issued session — the shots of one session are one
+     *  operation) and the acceptance hook. */
+    track?: GenerationTrack;
+  },
 ): Promise<ConceptGenerateOutput & { modelName?: string }> {
   // The concept row is readable by the member (title, refs, status) — the
   // GrovBase prompt within it is ciphertext until this exact point; a
@@ -291,6 +297,7 @@ export async function generateFromConcept(
     promptOrigin: origin,
     costOverride: credits,
     maxAttempts,
+    ...(opts?.track ? { slot: { ...opts.track.slot, batch: session.id }, onAccepted: opts.track.onAccepted } : {}),
   });
   if (!result.ok) return result;
 

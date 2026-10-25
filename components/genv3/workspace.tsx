@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +24,12 @@ import type { SessionPreviewMap } from "@/components/genv3/sections";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
 import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
 import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { frozenSnapshot as frozen, submitTracked } from "@/lib/inflight/store";
+import { enqueueBatch } from "@/lib/inflight/queue";
+import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { reorder } from "@/components/genv3/sortable-photos";
+import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { limitText } from "@/components/inflight/inflight-tile";
 
 /** Reference photos the seller may drop in for one generation session. */
 const MAX_REFS = 10;
@@ -76,7 +82,7 @@ export function GeneratorWorkspace({
   /** Inteligentny prompt: price + whether to offer it (custom mode only). */
   smartPrompt?: SmartPromptOffer;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const managed = mode === "managed";
   const firstModel = models[0];
 
@@ -98,7 +104,6 @@ export function GeneratorWorkspace({
   const [choices, setChoices] = useState<Record<string, string>>(() =>
     Object.fromEntries((variant?.controls ?? []).filter((c) => c.initial).map((c) => [c.key, c.initial!])));
   const [uploading, setUploading] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [stageLabel, setStageLabel] = useState("");
   const [balance, setBalance] = useState(credits);
   const adhocFolder = useRef(`adhoc-${Math.random().toString(36).slice(2, 10)}`);
@@ -110,8 +115,15 @@ export function GeneratorWorkspace({
 
   // ── Gallery feed (fresh results prepend; the gallery fetches the rest) ─
   const [freshItems, setFreshItems] = useState<GalleryItem[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
   const knownAssets = useRef(new Set<string>(initialItems.map((i) => i.assetId)));
+
+  // ── Generacje w toku V2: the button's limit, "Dodano ✓", the balance ───
+  const gate = useInflightGate();
+  /** The tool's own "drag to reorder" line (Admin → its guide), or the default. */
+  const reorderHint = useReorderHint(managed ? "prompts" : "generator");
+  useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
+  /** GrovBase only: the hidden planner pass before the shots are sent. */
+  const [preparing, setPreparing] = useState(false);
 
   // ── Capability snapping ────────────────────────────────────────────────
   const model = useMemo(() => models.find((m) => m.id === modelId) ?? firstModel, [models, modelId, firstModel]);
@@ -281,6 +293,24 @@ export function GeneratorWorkspace({
     await upload(files, "insp");
   }
 
+  /**
+   * Move one reference photo (Drag & drop zdjęć V2) AND keep every shot row
+   * pointing at the photo it chose: `refIndex` is positional, so the rows
+   * follow their photo to its new place instead of re-aiming at a neighbour.
+   */
+  function moveRef(from: number, to: number) {
+    const prev = refs;
+    const next = reorder(prev, from, to);
+    const at = new Map(next.map((r, i) => [r.key, i + 1]));
+    setRefs(next);
+    setBriefs((rows) => rows.map((b) => {
+      if (!b?.refIndex) return b;
+      const key = prev[b.refIndex - 1]?.key;
+      const moved = key ? at.get(key) : undefined;
+      return moved ? { ...b, refIndex: moved } : b;
+    }));
+  }
+
   /** Remove one reference photo AND keep every shot row pointing at the photo
    *  it actually chose: `refIndex` is positional, so dropping a photo from the
    *  middle would otherwise silently re-aim later rows at their neighbour. */
@@ -312,13 +342,20 @@ export function GeneratorWorkspace({
     return known && known !== `studio.err.${code}` ? known : t("common.error");
   }, [t]);
 
-  // ── MANAGED: prepare hidden concepts, then generate them all ───────────
+  // ── MANAGED: prepare hidden concepts, then send them all ───────────────
+  /*
+   * GENERACJE W TOKU V2. The planner pass is the one wait the panel shows
+   * ("Przygotowuję ujęcia…"); after it every shot is a job of its own,
+   * queued at module level and sent two at a time (the pace it always had),
+   * each shown as a tile the moment the server accepts it. The panel is free
+   * again as soon as the shots are queued — leaving the page does not stop
+   * them, and the next session can be prepared while these render.
+   */
   async function generateManaged() {
     if (submitting.current) return;
     submitting.current = true;
     session.ran();
-    setBusy(true);
-    setPendingCount(effCount);
+    setPreparing(true);
     setStageLabel(t("genv3.stagePrepare"));
     try {
       const prep = await fetch("/api/prompts/generate", {
@@ -361,46 +398,29 @@ export function GeneratorWorkspace({
       const queue = (concepts ?? []).map((c) => c.id);
       if (queue.length === 0) { toast.error(t("common.error")); return; }
 
-      let done = 0;
-      let failed = 0;
-      let insufficient = false;
-      let cursor = 0;
-      setStageLabel(t("genv3.stageGenerate", { done: 0, total: queue.length }));
-      const worker = async () => {
-        while (!insufficient) {
-          const i = cursor++;
-          if (i >= queue.length) return;
-          try {
-            const res = await fetch("/api/concepts/generate", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ conceptId: queue[i], modelId: model?.id, quality: effQuality }),
-            });
-            const json = await res.json() as { ok: boolean; error?: string; credits?: number; images?: unknown[] };
-            if (json.ok) {
-              done++;
-              setBalance((b) => Math.max(0, b - (json.credits ?? perShot)));
-              await absorbLatest(1);
-            } else if (json.error === "insufficient_credits") {
-              insufficient = true;
-            } else {
-              failed++;
-            }
-          } catch { failed++; }
-          setPendingCount((p) => Math.max(0, p - 1));
-          setStageLabel(t("genv3.stageGenerate", { done, total: queue.length }));
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker));
-      if (insufficient) toast.error(t("studio.err.insufficient_credits"));
-      else if (failed > 0 && done === 0) toast.error(t("genv3.allFailed"));
-      else if (failed > 0) toast.warning(t("genv3.someFailed", { n: failed }));
-      else toast.success(t("genv3.batchDone", { n: done }));
+      const preview = refs[0]?.url ?? null;
+      let refused = false;
+      // The shots of one session are ONE operation for the plan's limit; the
+      // server groups them by the session itself.
+      enqueueBatch({
+        batchId: prepJson.sessionId,
+        items: queue.map((conceptId) => ({
+          snapshot: frozen({ endpoint: "/api/concepts/generate", credits: perShot, body: { conceptId, modelId: model?.id, quality: effQuality } }),
+          tool: "prompts", operation: null, expected: 1, ratio: effRatio, preview,
+        })),
+        onAccepted: (out) => setBalance((b) => Math.max(0, b - (out.credits || perShot))),
+        onRefused: (out) => {
+          if (refused) return;
+          refused = true;
+          toast.error(out.error === "insufficient_credits" ? t("studio.err.insufficient_credits") : errText(out.error));
+        },
+      });
+      gate.flash();
     } catch {
       toast.error(t("common.error"));
     } finally {
-      setPendingCount(0);
+      setPreparing(false);
       setStageLabel("");
-      setBusy(false);
       submitting.current = false;
     }
   }
@@ -415,38 +435,44 @@ export function GeneratorWorkspace({
   }
 
   // ── CUSTOM: the customer's own prompt, verbatim ────────────────────────
+  /*
+   * GENERACJE W TOKU V2. One click = one job, answered the moment the server
+   * accepts it (charged, inside the plan's limit). The request the click
+   * sent is frozen into the tile's snapshot — "Spróbuj ponownie" repeats
+   * exactly that, whatever the panel shows by then — and the panel itself is
+   * left exactly as it was, ready for the next click.
+   */
   async function generateCustom() {
     if (submitting.current) return;
     submitting.current = true;
     session.ran();
-    setBusy(true);
-    setPendingCount(effCount);
-    setStageLabel(t("genv3.stageGenerateSimple"));
+    setStageLabel(t("inflight.sending"));
     try {
-      const res = await fetch("/api/generate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelId: model?.id, prompt: prompt.trim(),
-          aspectRatio: effRatio, resolution: effResolution, quality: effQuality, quantity: effCount,
-          referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
-          referenceImageIds: [],
-          inspirationPaths: insp.map((r) => r.path).slice(0, 5),
+      const out = await submitTracked({
+        snapshot: frozen({
+          endpoint: "/api/generate", credits: total,
+          body: {
+            modelId: model?.id, prompt: prompt.trim(),
+            aspectRatio: effRatio, resolution: effResolution, quality: effQuality, quantity: effCount,
+            referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
+            referenceImageIds: [],
+            inspirationPaths: insp.map((r) => r.path).slice(0, 5),
+          },
         }),
+        tool: "generator", operation: null, expected: effCount, ratio: effRatio, preview: refs[0]?.url ?? null,
       });
-      const json = await res.json() as { ok: boolean; error?: string; images?: unknown[] };
-      if (json.ok) {
-        setBalance((b) => Math.max(0, b - total));
-        await absorbLatest(effCount);
-        toast.success(t("studio.done"));
+      if (out.ok) {
+        setBalance((b) => Math.max(0, b - out.credits));
+        gate.flash();
+      } else if (out.error === "concurrency_limit") {
+        toast.error(limitText(t, locale, out.limit ?? gate.limit?.max ?? 1));
       } else {
-        toast.error(errText(json.error));
+        toast.error(errText(out.error));
       }
     } catch {
       toast.error(t("common.error"));
     } finally {
-      setPendingCount(0);
       setStageLabel("");
-      setBusy(false);
       submitting.current = false;
     }
   }
@@ -458,7 +484,7 @@ export function GeneratorWorkspace({
    * at the panel instead of at the small tile.
    */
   const dragging = useFileDrop({
-    enabled: !busy,
+    enabled: true,
     onDrop: (files, event) => {
       if (files.length === 0) { toast.error(t("products.invalidType")); return; }
       const target = (event.target as Element | null)?.closest?.("[data-drop-target]");
@@ -471,7 +497,11 @@ export function GeneratorWorkspace({
   // A visitor's Generate is the sign-in dialog: their (absent) balance never greys it out.
   // Not while a rewrite is on its way: the text about to be replaced is not
   // the text the customer would be generating from.
-  const canGenerate = !!model && !busy && !smart.busy && !uploading && refs.length > 0
+  // Generacje w toku V2: a click in flight (the POST, or GrovBase's planner
+  // pass) and the plan's limit are the only things that hold the button —
+  // never a generation that is merely running.
+  const sending = stageLabel !== "" || preparing;
+  const canGenerate = !!model && !sending && !gate.added && !gate.atLimit && !smart.busy && !uploading && refs.length > 0
     && (session.guest || missing === 0)
     && (managed ? engineAvailable : prompt.trim().length > 2);
   const generate = () => void session.gate(managed ? generateManaged : generateCustom);
@@ -543,6 +573,8 @@ export function GeneratorWorkspace({
             uploading={uploading}
             onUpload={(files) => upload(files, "refs")}
             onRemove={removeRef}
+            onMove={moveRef}
+            reorderHint={reorderHint}
           />
           {managed ? (
             <>
@@ -564,6 +596,8 @@ export function GeneratorWorkspace({
                 disabled={!model?.supportsRefs}
                 onUpload={(files) => upload(files, "insp")}
                 onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
+                onMove={(from, to) => setInsp((prev) => reorder(prev, from, to))}
+                reorderHint={reorderHint}
                 // The GrovBase library is an account's (it reads the library
                 // table); a visitor uploads their own inspiration.
                 onOpenLibrary={session.guest ? undefined : () => setLibraryOpen(true)}
@@ -607,8 +641,10 @@ export function GeneratorWorkspace({
           total={total}
           balance={balance}
           missing={missing}
-          busy={busy}
+          busy={sending}
           busyLabel={stageLabel}
+          added={gate.added}
+          limitNote={gate.atLimit && gate.limit && !session.guest ? <LimitNote max={gate.limit.max} plan={gate.limit.plan} /> : undefined}
           canGenerate={canGenerate}
           engineUnavailable={managed && !engineAvailable}
           needsPhotos={refs.length === 0}
@@ -628,8 +664,9 @@ export function GeneratorWorkspace({
           initialCursor={initialCursor}
           freshItems={freshItems}
           onFresh={setFreshItems}
-          pendingCount={pendingCount}
+          pendingCount={0}
           pendingRatio={effRatio}
+          inflight={{ tools: [managed ? "prompts" : "generator"] }}
           models={models}
           balance={balance}
           onBalance={setBalance}

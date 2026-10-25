@@ -209,7 +209,7 @@ async function main() {
   check("attempts cap applies to the primary AND every fallback", /const attemptsFor = \(_candidateId: string\) => maxAttempts;/.test(gsrc));
   check("Retusz stays one model, one attempt, one request", /const maxAttempts = strict \? 1 :/.test(gsrc) && /strict \? \[input\.modelId\]/.test(gsrc));
   check("generator route passes the panel's attempts", /toolMaxAttempts\(supabase, "generator"\)/.test(code("app/api/generate/route.ts"))
-    && /maxAttempts,\n\s*\}\);/.test(code("app/api/generate/route.ts")));
+    && /maxAttempts,\n\s*\}\)/.test(code("app/api/generate/route.ts")));
   check("custom retake passes the panel's attempts", /toolMaxAttempts\(supabase, "generator"\)/.test(code("app/api/generations/regenerate/route.ts")));
   check("GrovShot passes the panel's attempts", /toolMaxAttempts\(supabase, "prompts"\)/.test(code("lib/server/concept-generation.ts"))
     && /costOverride: credits,\n\s*maxAttempts,/.test(code("lib/server/concept-generation.ts")));

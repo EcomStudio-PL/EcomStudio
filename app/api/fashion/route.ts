@@ -5,6 +5,7 @@ import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runFashionTool } from "@/lib/server/fashion";
+import { acceptedBody, answerAtAcceptance, clientId } from "@/lib/server/inflight-accept";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FASHION_HINT_MAX } from "@/lib/fashion-tools";
 import type { FeatureKey } from "@/lib/features";
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
 
   let body: {
     tool?: unknown; inputs?: unknown; resolution?: unknown; format?: unknown; hint?: unknown; expectedOutputs?: unknown;
+    batch?: unknown; requestId?: unknown;
   } = {};
   try { body = (await request.json()) as typeof body; } catch { /* validated below */ }
 
@@ -87,12 +89,19 @@ export async function POST(request: Request) {
   const format = typeof body.format === "string" ? body.format.slice(0, 12) : undefined;
   const hint = typeof body.hint === "string" ? body.hint.slice(0, FASHION_HINT_MAX) : undefined;
 
-  const result = await runFashionTool(supabase, user.id, workspace.id, {
+  // Generacje w toku V2: answered at acceptance (inside the plan's limit,
+  // charged), finished after the response; a refusal answers here.
+  const requestId = clientId(body.requestId);
+  const slot = { tool: config.toolKey, batch: clientId(body.batch) ?? requestId ?? crypto.randomUUID(), request: requestId ?? undefined };
+  const first = await answerAtAcceptance("fashion", (onAccepted) => runFashionTool(supabase, user.id, workspace.id, {
     tool: config.key, inputs, resolution, format, hint,
     quotedOutputs: typeof body.expectedOutputs === "number" && Number.isInteger(body.expectedOutputs) ? body.expectedOutputs : undefined,
-  });
+    track: { slot, onAccepted },
+  }));
+  if ("accepted" in first) return NextResponse.json(acceptedBody(first.accepted), { status: 202 });
+  const result = first.result;
   // Workflow ON: the run is started and charged; it is driven after this
   // response, and the panel polls its status instead of holding a request.
   if (result.ok && "pending" in result) driveAfterResponse(supabase, result.runId, startedAt);
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  return NextResponse.json(result, { status: result.ok ? 200 : result.error === "concurrency_limit" ? 429 : 400 });
 }

@@ -161,7 +161,9 @@ export type PresentedNotification = {
 const looksLikeCode = (s: string) => /^[a-z0-9]+([._:-][a-z0-9]+)*$/i.test(s.trim()) && !/\s/.test(s.trim());
 
 /** Generation titles: per tool where the grammar needs it, else generic. */
-function generationTitle(kind: "done" | "failed", tool: unknown, t: T): string {
+/** "Miniaturka gotowa" / "Nie udało się wykonać retuszu" — also the title of
+ *  a finished or failed in-progress tile (Generacje w toku V2). */
+export function generationTitle(kind: "done" | "failed", tool: unknown, t: T): string {
   if (typeof tool === "string" && TITLED_TOOLS.has(tool)) return t(`notif.v2.${kind}.${tool}`);
   const name = toolName(tool, t);
   return name ? t(`notif.v2.${kind}.named`, { tool: name }) : t(`notif.v2.${kind}.any`);

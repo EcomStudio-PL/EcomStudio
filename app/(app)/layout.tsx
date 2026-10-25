@@ -37,6 +37,7 @@ import { readBell } from "@/lib/server/user-notifications";
 import { favoriteRingEnabled } from "@/lib/server/appearance";
 import { ImportantBanner } from "@/components/layout/important-banner";
 import { GenerationToast } from "@/components/layout/generation-toast";
+import { InflightTitle } from "@/components/inflight/inflight-section";
 
 export default async function AppLayout({ children, searchParams }: {
   children: React.ReactNode;
@@ -267,6 +268,7 @@ export default async function AppLayout({ children, searchParams }: {
             the header — never over it, the dock or a tool's panel. */}
         <ImportantBanner initial={bell} />
         <GenerationToast initial={bell} />
+        <InflightTitle />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone

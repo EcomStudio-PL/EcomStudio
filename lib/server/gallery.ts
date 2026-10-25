@@ -118,6 +118,9 @@ export type GalleryFilter = {
    * the product-name search below does).
    */
   assetType?: "image" | "video" | null;
+  /** Only the results of these jobs (an in-progress tile turning into its
+   *  result, Generacje w toku V2). At most 30. */
+  jobIds?: string[];
 };
 
 const SELECT_BASE = `
@@ -201,6 +204,7 @@ export async function listGalleryItems(
     query = query.is("generation_jobs.settings->>operation", null);
   }
   if (filter.favorite) query = query.eq("favorite", true);
+  if (filter.jobIds) query = query.in("job_id", filter.jobIds.slice(0, 30));
   // KEYSET, ON THE KEY THE INDEX WAS BUILT FOR. `generations_ws_created_idx`
   // is (workspace_id, created_at desc, id desc); paginating on created_at
   // ALONE silently drops every row that ties on the boundary timestamp —

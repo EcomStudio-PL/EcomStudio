@@ -4,6 +4,7 @@ import type { Client } from "@/lib/services/workspace";
 import { engineToolConfigured, isPending, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { fashionTool, type FashionToolConfig } from "@/lib/fashion-tools";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
+import type { GenerationTrack } from "@/lib/server/generation";
 
 /**
  * MODA — the tools' server half.
@@ -139,13 +140,15 @@ export type FashionRunInput = {
   hint?: string;
   /** Results per run the panel showed the price for (Workflow ON). */
   quotedOutputs?: number;
+  /** Generacje w toku V2: the plan's slot and the acceptance hook. */
+  track?: GenerationTrack;
 };
 
 export type FashionRunResult =
   | { ok: true; jobId: string; url: string; path: string; credits: number }
   /** Workflow ON: the run was started and charged; poll /api/engine/runs/{runId}. */
   | { ok: true; pending: true; runId: string; jobId: string | null; credits: number; expected: number }
-  | { ok: false; error: string; missingCredits?: number };
+  | { ok: false; error: string; missingCredits?: number; limit?: number };
 
 /** Every path a run was given, in pool order — the order the provider sees. */
 function orderedPaths(config: FashionToolConfig, inputs: Record<string, string[]>): string[] {
@@ -228,6 +231,7 @@ export async function runFashionTool(
       promptOrigin: "ecomstudio",
       costOverride: fashionPrice(model, resolution),
       operation: config.operation,
+      ...(input.track ? { slot: input.track.slot, onAccepted: input.track.onAccepted } : {}),
     },
   });
 

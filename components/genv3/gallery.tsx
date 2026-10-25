@@ -23,11 +23,16 @@ import { useTrialUnlock } from "@/components/trial-watermark/unlock-dialog";
 import { TrialLockButton, TrialLockChip, useTrialDays } from "@/components/trial-watermark/lock";
 import { FavoriteButton, FavoriteRing } from "@/components/media/favorite-button";
 import { useFavoriteToggle } from "@/lib/favorites/use-favorite-toggle";
+import { takeSettled } from "@/lib/inflight/store";
+import { InflightRow, tileAspect, useInflightTiles, type InflightScope } from "@/components/inflight/inflight-section";
+import { InflightTileView } from "@/components/inflight/inflight-tile";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
 
 /** Most images one "Pobierz wybrane" may pack — the ZIP endpoint's own cap. */
 const SELECT_MAX = 60;
+/** How long a result that came out of an in-progress tile wears "Nowe". */
+const FRESH_MS = 8_000;
 
 /**
  * Run a bulk action over the picks a few at a time. Sixty sequential round
@@ -63,7 +68,7 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, guideTool,
+  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, guideTool, inflight,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
@@ -85,6 +90,9 @@ export function GenerationGallery({
    *  Rarely needed: a tool's gallery already says so through `operation`, and
    *  the generators' galleries are known by their route (guideToolForPath). */
   guideTool?: GuideToolKey;
+  /** Generacje w toku V2: whose in-progress tiles lead this gallery. Absent:
+   *  none (and `pendingCount` keeps its old skeletons). */
+  inflight?: InflightScope;
   /*
    * `fillEmpty` used to be here: it let the empty state stretch to the
    * column's height and centre itself in it, so a tool page's two columns
@@ -135,6 +143,21 @@ export function GenerationGallery({
   const fetchSeq = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDefault = filter.session === "all" && !filter.fav && !filter.q && filter.order === "desc";
+
+  // GENERACJE W TOKU V2. In-progress tiles lead the grid on the default view;
+  // under a filter (or the list view, or oldest-first) they get their own
+  // "W trakcie" row above it instead of being mixed into what the filter
+  // shows. A finished tile hands its results over ONCE, marked "Nowe" for a
+  // few seconds, in the place the tile held.
+  const tiles = useInflightTiles(inflight);
+  const settle = useCallback((id: string) => {
+    const done = takeSettled(id);
+    if (!done || done.items.length === 0) return;
+    const ids = new Set(done.items.map((i) => i.assetId));
+    onFresh((prev) => [...done.items.map((i) => ({ ...i, fresh: true })), ...prev.filter((p) => !ids.has(p.assetId))]);
+    setTimeout(() => onFresh((prev) => prev.map((p) => (ids.has(p.assetId) ? { ...p, fresh: false } : p))), FRESH_MS);
+  }, [onFresh]);
+  const tilesInGrid = isDefault && view === "grid";
 
   // THE TOOL'S GUIDE: its tutorial (button + first-visit dialog) and the
   // example effects that stand in for an empty gallery. Asked for after this
@@ -675,7 +698,8 @@ export function GenerationGallery({
         </div>
       )}
 
-      {merged.length === 0 && pendingCount === 0 && !loading ? (
+      {!tilesInGrid && <InflightRow tiles={tiles} onSettled={settle} />}
+      {merged.length === 0 && pendingCount === 0 && (tiles.length === 0 || !tilesInGrid) && !loading ? (
         // Nothing to show. On a tool with a guide, and only when there truly
         // are no results (not a filter hiding them, not a failed read, not a
         // page still to load), the tool's example effects take this place.
@@ -711,6 +735,11 @@ export function GenerationGallery({
         // in the row ends. Density still decides the column count and nothing
         // else — a 16:9 stays 16:9 at every step of the slider.
         <div style={grid.style} data-gallery-grid className="gallery-justified">
+          {tilesInGrid && tiles.map((tile) => (
+            <div key={`inflight-${tile.id}`} style={grid.itemStyle(tileAspect(tile))} className="min-w-0">
+              <InflightTileView tile={tile} aspect={tileAspect(tile)} onSettled={settle} />
+            </div>
+          ))}
           {Array.from({ length: pendingCount }, (_, i) => (
             <div key={`pending-${i}`} style={grid.itemStyle(pendingAspect)}>
               <div className="skeleton w-full rounded-xl" style={{ aspectRatio: aspectCss(pendingAspect) }} />

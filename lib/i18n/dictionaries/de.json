@@ -783,6 +783,8 @@
     "annualPrice": "Jahrespreis",
     "limitProducts": "Produkt-Limit",
     "limitGenerations": "Generierungs-Limit / Monat",
+    "limitConcurrent": "Parallele Generierungen",
+    "limitConcurrentHint": "Wie viele Generierungen ein Konto mit diesem Plan gleichzeitig laufen haben kann (1–50). Vom Server geprüft.",
     "featuresLabel": "Plan-Leistungen",
     "featuresHint": "Die Werte, die die Preisseite vergleicht. -1 bedeutet unbegrenzt.",
     "recommended": "Empfohlen",
@@ -2911,7 +2913,9 @@
       "price_changed": "Der Preis hat sich geändert — lade die Seite neu. Es wurden keine Credits abgebucht.",
       "trial_check_failed": "Dein Tarif konnte gerade nicht geprüft werden. Es wurde nichts berechnet — versuche es gleich noch einmal.",
       "trial_workflow_unavailable": "Dieser Werkzeugmodus ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
-      "trial_tool_unavailable": "Dieses Werkzeug ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet."
+      "trial_tool_unavailable": "Dieses Werkzeug ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
+      "concurrency_limit": "Das ist das Limit deines Plans — die nächste Generierung kannst du starten, sobald eine fertig ist.",
+      "network": "Verbindung fehlgeschlagen. Falls die Generierung gestartet ist, siehst du sie in der Galerie."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -5998,6 +6002,9 @@
     "guide.untitled": "Datei ohne Namen",
     "guide.unknownPhoto": "Datei nicht in der Bibliothek verfügbar",
     "guide.starter.heading": "Startgalerie",
+    "guide.reorderHint.heading": "Hinweis unter den Fotos",
+    "guide.reorderHint.note": "Eine kurze Zeile unter Fotos, die sich ziehen lassen (Reihenfolge = Reihenfolge an die KI). Leer lassen blendet ihn aus.",
+    "guide.reorderHint.label": "Hinweistext",
     "guide.starter.title": "Titel der Startgalerie",
     "guide.starter.body": "Beschreibung der Startgalerie",
     "guide.starter.image": "Foto des Beispielergebnisses",
@@ -11921,5 +11928,50 @@
       "headline": "Online-Editor für Produktfotos",
       "lead": "Ändere den Hintergrund, füge einen Schatten hinzu, stelle Format, Helligkeit und Ausschnitt an einem Ort ein und lade die fertige Datei herunter."
     }
+  },
+  "inflight": {
+    "toolAny": "Generierung",
+    "queued": "In der Warteschlange",
+    "stage": {
+      "generate": "Wird generiert…",
+      "retouch": "Fotos werden retuschiert",
+      "compose": "Komposition wird erstellt",
+      "finish": "Finales Rendering"
+    },
+    "step": "Schritt {n}/{m}",
+    "sending": "Wird gesendet…",
+    "added": "Hinzugefügt",
+    "cancel": "Abbrechen",
+    "cancelFailed": "Abbrechen nicht möglich — der Auftrag hat womöglich schon begonnen.",
+    "remove": "Entfernen",
+    "slow": "Dauert länger als üblich. Du kannst die Seite schließen — wir sagen Bescheid, wenn es fertig ist.",
+    "usuallySec": "Meist ca. {n} s",
+    "usuallyMin": "Meist ca. {n} Min.",
+    "cancelledTitle": "Abgebrochen",
+    "cancelled": "Vor dem Start abgebrochen — es wurden keine Credits abgebucht.",
+    "refunded": "Deine Credits sind wieder auf deinem Konto.",
+    "refundPending": "Die Rückerstattung der Credits läuft.",
+    "retry": "Erneut versuchen",
+    "retryTitle": "Erneut versuchen?",
+    "retryBody": "Wir starten dieselbe Generierung — dieselben Einstellungen und Fotos in derselben Reihenfolge. Kosten: {n} Cr.",
+    "retryConfirm": "Starten · {n} Cr.",
+    "repriced": "Die aktuellen Kosten betragen {n} Cr. (bereits bezahlte Retuschen werden wiederverwendet). Bitte erneut bestätigen.",
+    "photosGone": "Die Originalfotos sind nicht mehr verfügbar. Füge sie im Tool erneut hinzu.",
+    "limit": {
+      "one": "Du hast {n} Generierung in Arbeit. Das ist das Limit deines Plans. Die nächste kannst du starten, sobald sie fertig ist.",
+      "other": "Du hast {n} Generierungen in Arbeit. Das ist das Limit deines Plans. Die nächste kannst du starten, sobald eine fertig ist."
+    },
+    "raiseLimit": "Limit erhöhen",
+    "tileAria": "{tool}: in Arbeit, {time}",
+    "row": "In Arbeit"
+  },
+  "dnd": {
+    "hint": "Ziehen, um die Reihenfolge zu ändern.",
+    "primary": "Hauptfoto",
+    "handle": "Foto {n} von {count}. Leertaste drücken, um die Position zu ändern.",
+    "lifted": "Foto {n} aufgenommen. Pfeiltasten verschieben, Leertaste legt ab, Escape bricht ab.",
+    "moved": "Foto {n} — Position {m}.",
+    "dropped": "Foto {n} auf Position {m} verschoben.",
+    "cancelled": "Verschieben abgebrochen. Foto {n} bleibt auf Position {m}."
   }
 }

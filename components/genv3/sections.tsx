@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Label, Textarea } from "@/components/ui/input";
+import { SortablePhotoGrid } from "@/components/genv3/sortable-grid";
 import { Dropdown } from "@/components/ui/dropdown";
 import { InfoHint } from "@/components/ui/hint";
 import { RatioValue, ratioOptions } from "@/components/genv3/ratio-options";
@@ -37,12 +38,15 @@ export function SectionLabel({ children, optional, hint }: {
 
 /* ── Zdjęcia produktu ─────────────────────────────────────────────────── */
 
-export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }: {
+export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove, onMove, reorderHint }: {
   refs: UploadedRef[];
   uploading: boolean;
   max: number;
   onUpload: (files: File[]) => void;
   onRemove: (index: number) => void;
+  /** Drag & drop zdjęć V2: the photos' order is the order they are sent in. */
+  onMove?: (from: number, to: number) => void;
+  reorderHint?: string | null;
 }) {
   const { t } = useI18n();
   // Heading carries the limit, nothing else — no help glyph, and `compact`
@@ -61,6 +65,11 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
       dropTarget="refs"
       onFiles={onUpload}
       onRemove={onRemove}
+      onMove={onMove}
+      // The first product photo is the one a model with fewer reference
+      // slots always keeps (lib/server/generation.ts trims from the end).
+      primaryLabel
+      reorderHint={reorderHint}
       label={t("genv3.photos", { n: max })}
     />
   );
@@ -787,13 +796,17 @@ const INSP_MAX = 5;
  * now two tiles where there was one.
  */
 export function InspirationSection({
-  items, uploading, disabled, onUpload, onRemove, onOpenLibrary,
+  items, uploading, disabled, onUpload, onRemove, onMove, reorderHint, onOpenLibrary,
 }: {
   items: UploadedRef[];
   uploading: boolean;
   disabled?: boolean;
   onUpload: (files: File[]) => void;
   onRemove: (index: number) => void;
+  /** Drag & drop zdjęć V2: inspiration is sent in this order (the first two
+   *  go to the model). Never labelled "Główne". */
+  onMove?: (from: number, to: number) => void;
+  reorderHint?: string | null;
   /** Opens the GrovBase library. Omitted → only the upload tile is offered. */
   onOpenLibrary?: () => void;
 }) {
@@ -860,18 +873,8 @@ export function InspirationSection({
       </div>
 
       {items.length > 0 && (
-        <div className="mt-2 grid grid-cols-5 gap-2 [&>*]:min-w-0">
-          {items.map((r, i) => (
-            <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-              <button type="button" aria-label={t("common.delete")}
-                onClick={() => onRemove(i)}
-                className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
-                <X size={10} aria-hidden />
-              </button>
-            </div>
-          ))}
+        <div className="mt-2">
+          <SortablePhotoGrid items={items} onMove={onMove} onRemove={onRemove} gridClass="grid-cols-5" reorderHint={reorderHint} />
         </div>
       )}
     </section>
@@ -903,7 +906,7 @@ function InspTile({ icon: Icon, label, onClick, disabled, busy }: {
 
 export function CostSummary({
   perShot, total, balance, missing, busy, busyLabel, canGenerate,
-  engineUnavailable, needsPhotos, needsPrompt, onGenerate, status,
+  engineUnavailable, needsPhotos, needsPrompt, onGenerate, status, added, limitNote,
 }: {
   perShot: number; total: number; balance: number; missing: number;
   busy: boolean; busyLabel: string; canGenerate: boolean;
@@ -917,6 +920,11 @@ export function CostSummary({
    * Absent: exactly as before.
    */
   status?: { notice: React.ReactNode; balance: React.ReactNode };
+  /** Generacje w toku V2: "Dodano ✓" for a moment after the server accepted. */
+  added?: boolean;
+  /** Generacje w toku V2: the plan's limit is reached — said in place of the
+   *  balance line, with the way to raise it. */
+  limitNote?: React.ReactNode;
 }) {
   const { t, locale } = useI18n();
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
@@ -956,7 +964,7 @@ export function CostSummary({
           </p>
         </div>
       </div>
-      {status ? (
+      {limitNote ? limitNote : status ? (
         note ? <p className="mt-2 text-center text-[11px] text-muted">{note}</p>
           : <p className="mt-2 text-center text-[10.5px]">{status.balance}</p>
       ) : missing > 0 ? (
@@ -971,13 +979,15 @@ export function CostSummary({
       )}
       <button type="button" disabled={!canGenerate} onClick={onGenerate}
         data-generate-cta
-        aria-label={busy && busyLabel ? busyLabel : `${t("genv3.generateCta")} · ${n(total)} ${t("genv3.credits")}`}
+        aria-label={added ? t("inflight.added") : busy && busyLabel ? busyLabel : `${t("genv3.generateCta")} · ${n(total)} ${t("genv3.credits")}`}
         className={cn(
           "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
           !canGenerate && "cursor-not-allowed opacity-55",
         )}>
-        {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-        {busy && busyLabel ? (
+        {added ? <Check size={14} aria-hidden /> : busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
+        {added ? (
+          <span data-generate-added>{t("inflight.added")}</span>
+        ) : busy && busyLabel ? (
           <span className="truncate">{busyLabel}</span>
         ) : (
           <>

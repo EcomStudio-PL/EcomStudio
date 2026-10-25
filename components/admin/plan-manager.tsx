@@ -24,7 +24,7 @@ export type PlanRow = {
   stripe_synced_at?: string | null;
 };
 
-type Limits = { max_products?: number; max_generations_monthly?: number };
+type Limits = { max_products?: number; max_generations_monthly?: number; concurrent_generations?: number };
 
 /**
  * The i18n key for a capability's label, so the editor never hardcodes copy.
@@ -173,6 +173,14 @@ export function PlanManager({ plans }: { plans: PlanRow[] }) {
                 <Label>{t("admin.limitGenerations")}</Label>
                 <Input type="number" min={0} value={limits.max_generations_monthly ?? 0}
                   onChange={(e) => setEditing({ ...editing, limits: { ...limits, max_generations_monthly: num(e.target.value) } })} />
+              </div>
+              <div>
+                {/* Generacje w toku V2: how many generations this plan runs at
+                    once — enforced by the database (0161), read live. */}
+                <Label>{t("admin.limitConcurrent")}</Label>
+                <Input type="number" min={1} max={50} value={limits.concurrent_generations ?? 1} data-plan-concurrent
+                  onChange={(e) => setEditing({ ...editing, limits: { ...limits, concurrent_generations: Math.min(50, Math.max(1, num(e.target.value) || 1)) } })} />
+                <p className="mt-1 text-[11px] leading-snug text-faint">{t("admin.limitConcurrentHint")}</p>
               </div>
             </div>
             <div>

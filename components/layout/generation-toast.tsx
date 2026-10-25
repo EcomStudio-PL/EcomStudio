@@ -12,9 +12,9 @@ import { notify } from "@/lib/notify";
  *
  * Only for results that arrive DURING this visit: everything already in the
  * bell when the page loaded is the baseline and never toasts, so a refresh or
- * an old result never brings one back. On the tool's own panel nothing is
- * shown — the panel already has the result. Activity only: the badge is
- * untouched.
+ * an old result never brings one back. On the tool's own panel and in the
+ * library nothing is shown — the in-progress tile there already turns into
+ * the result. Activity only: the badge is untouched.
  */
 export function GenerationToast({ initial }: { initial?: BellPayload }) {
   const { t, locale } = useI18n();
@@ -39,6 +39,9 @@ export function GenerationToast({ initial }: { initial?: BellPayload }) {
       if (n.read_at) continue;
       const panel = toolPath(n.meta.tool);
       if (panel && (pathname === panel || pathname.startsWith(`${panel}/`))) continue;
+      // Generacje w toku V2: the library shows the same tile turning into the
+      // result — a toast on top of it would say the same thing twice.
+      if (pathname === "/library" || pathname.startsWith("/library/")) continue;
       const p = presentNotification(n, t, locale);
       const href = p.link && !p.link.external ? p.link.href : "/library";
       notify.success(p.title, {

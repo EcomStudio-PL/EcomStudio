@@ -7,12 +7,19 @@ import { runGeneration, type GenerateInput } from "@/lib/server/generation";
 import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { toolMaxAttempts } from "@/lib/server/ai-engine";
 import { QUALITIES, type Quality } from "@/lib/ai/types";
+import { acceptedBody, answerAtAcceptance, clientId } from "@/lib/server/inflight-accept";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 /** Real generation endpoint. Auth + workspace membership via Supabase RLS;
- *  the server recomputes cost and owns the whole charge/refund lifecycle. */
+ *  the server recomputes cost and owns the whole charge/refund lifecycle.
+ *
+ *  GENERACJE W TOKU V2: it answers 202 the moment the click is ACCEPTED (job
+ *  written inside the plan's limit, charge taken) and finishes the same call
+ *  after the response — the panel shows a tile and stays free for the next
+ *  click. A refusal (no credits, the limit, bad input) still answers here,
+ *  synchronously, exactly as before. */
 export async function POST(request: Request) {
   const routeStartedAt = Date.now();
   const supabase = await createClient();
@@ -29,8 +36,8 @@ export async function POST(request: Request) {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
 
-  let body: GenerateInput;
-  try { body = (await request.json()) as GenerateInput; }
+  let body: GenerateInput & { batch?: unknown; requestId?: unknown };
+  try { body = (await request.json()) as GenerateInput & { batch?: unknown; requestId?: unknown }; }
   catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }
 
   // WHITELISTED input — this endpoint serves the customer's own prompt
@@ -59,8 +66,12 @@ export async function POST(request: Request) {
   ]);
   if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
 
-  const result = await runGeneration(supabase, user.id, workspace.id, {
+  const requestId = clientId(body.requestId);
+  const slot = { tool: "generator", batch: clientId(body.batch) ?? requestId ?? crypto.randomUUID(), request: requestId ?? undefined };
+  const first = await answerAtAcceptance("generate", (onAccepted) => runGeneration(supabase, user.id, workspace.id, {
     routeStartedAt,
+    slot,
+    onAccepted,
     modelId: String(body.modelId ?? ""),
     prompt: String(body.prompt ?? ""),
     enginePrompt: engine.enginePrompt ?? undefined,
@@ -82,7 +93,8 @@ export async function POST(request: Request) {
     referenceImageIds: (body.referenceImageIds ?? []).filter((x) => typeof x === "string"),
     inspirationPaths: (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5),
     maxAttempts,
-  });
-  await engine.finish(result);
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  }), (result) => engine.finish(result));
+  if ("accepted" in first) return NextResponse.json(acceptedBody(first.accepted), { status: 202 });
+  const result = first.result;
+  return NextResponse.json(result, { status: result.ok ? 200 : result.error === "concurrency_limit" ? 429 : 400 });
 }

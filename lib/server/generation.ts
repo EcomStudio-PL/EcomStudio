@@ -19,6 +19,7 @@ import { prepareReferenceImage, referenceFingerprint, type PreparedReference } f
 import { promptDigest } from "@/lib/server/prompt-digest";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import { slotRefusal } from "@/lib/server/slot-refusal";
 import { readTokenPrices, readUnitPrices, recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
 import { imageCallCost, sumKnownCosts } from "@/lib/ai/usage-cost";
 import { deliverRetouch, isRetouchDeliverySize, type RetouchDelivered } from "@/lib/server/retouch-delivery";
@@ -138,13 +139,50 @@ export type GenerateInput = {
    *  trial-image gate counts from it. Absent (or later than this call): this
    *  function's own start. */
   routeStartedAt?: number;
+  /**
+   * GENERACJE W TOKU V2 — the click is ACCEPTED. Called once, the moment the
+   * job exists and the charge is taken (the ledger checked the balance), and
+   * before any reference is downloaded or any provider is called. A route
+   * that passes it answers the browser right here and lets this function
+   * finish after the response (lib/server/inflight-accept.ts) — the work is
+   * the same either way; only the waiting moves to the tile.
+   */
+  onAccepted?: (accepted: GenerationAccepted) => void;
+  /**
+   * The plan's parallel-generation limit (migration 0161). A customer-facing
+   * route marks its job with the click's batch; the database counts the
+   * marked jobs and refuses one over the limit BEFORE the row exists — so
+   * before any charge. Internal jobs carry no slot and are never counted.
+   */
+  slot?: GenerationSlot;
+};
+
+/** What a customer route records on its job for the limit and the tile. */
+export type GenerationSlot = {
+  /** The tool the tile names ("generator", "retouch", "fashion_*" …). */
+  tool: string;
+  /** One click's jobs share it (a Retusz batch, a GrovBase session). */
+  batch: string;
+  /** The browser's own id for this request, so a lost answer is recoverable. */
+  request?: string;
+};
+
+/** A customer route's limit slot and acceptance hook, carried by the tool
+ *  helpers (Retusz, Moda, the GrovBase concepts) into runGeneration. */
+export type GenerationTrack = {
+  slot: GenerationSlot;
+  onAccepted?: (accepted: GenerationAccepted) => void;
+};
+
+export type GenerationAccepted = {
+  jobId: string; credits: number; startedAt: string; quantity: number;
 };
 
 export type GenerateOutput =
   // `productId` is null for the generator's normal, catalogue-free path — the
   // type says so rather than asserting a string that is not there.
   | { ok: true; jobId: string; productId: string | null; images: { url: string; path: string }[]; credits: number; networkBoundary?: Record<string, unknown> }
-  | { ok: false; error: string; missingCredits?: number; networkBoundary?: Record<string, unknown> };
+  | { ok: false; error: string; missingCredits?: number; limit?: number; networkBoundary?: Record<string, unknown> };
 
 const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 
@@ -398,7 +436,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // the correction would be rendered with NO product photo attached and
     // the Product Lock would be lost silently.
     reference_paths: input.referencePaths.slice(0, MAX_REFERENCE_PATHS),
+    slot: input.slot ?? undefined,
   };
+  const startedAtIso = new Date().toISOString();
   const { data: job, error: jobError } = await supabase.from("generation_jobs").insert({
     workspace_id: workspaceId, product_id: productId, user_id: userId, model_id: model.id,
     prompt_text: input.hidePromptText ? null : promptText, aspect_ratio: aspectRatio, quantity,
@@ -408,11 +448,17 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     prompt_session_id: input.promptSessionId ?? null,
     prompt_origin: input.promptOrigin ?? null,
     parent_job_id: input.parentJobId ?? null,
-    status: "processing", started_at: new Date().toISOString(),
+    status: "processing", started_at: startedAtIso,
     reference_image_ids: input.referenceImageIds.slice(0, MAX_REFERENCE_PATHS),
     settings: jobSettings as never,
   }).select("id").single();
-  if (jobError || !job) return { ok: false, error: "job_create_failed" };
+  if (jobError || !job) {
+    // The plan's limit, refused by the database before the row existed —
+    // nothing was charged (0161).
+    const limit = slotRefusal(jobError?.message);
+    if (limit) return limit;
+    return { ok: false, error: "job_create_failed" };
+  }
 
   const idempotencyKey = generationIdempotencyKey(workspaceId, {
     modelId: input.modelId,
@@ -470,6 +516,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     await supabase.from("generation_jobs").update({ status: "failed", error_message: usage.error }).eq("id", job.id);
     return { ok: false, error };
   }
+  // ACCEPTED: the job exists and is paid for. Nothing has gone to a provider.
+  input.onAccepted?.({ jobId: job.id, credits: cost, startedAt: startedAtIso, quantity });
 
   /**
    * REFERENCE IMAGES — downloaded once, fitted PER CANDIDATE.

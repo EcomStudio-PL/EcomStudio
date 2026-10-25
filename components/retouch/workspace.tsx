@@ -1,9 +1,8 @@
 "use client";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/notify";
-import { Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
-import { awaitEngineRun } from "@/lib/engine-run-client";
+import { Check, Sparkles, Wand2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
@@ -16,21 +15,18 @@ import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
 import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
 import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { frozenSnapshot } from "@/lib/inflight/store";
+import { enqueueBatch } from "@/lib/inflight/queue";
+import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { limitText } from "@/components/inflight/inflight-tile";
+import { reorder } from "@/components/genv3/sortable-photos";
+import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
 
 /** Photos one batch may carry. */
 const MAX_PHOTOS = 10;
 /** Retouches running at once: enough to feel like a batch, few enough that a
  *  provider does not see ten simultaneous requests from one seller. */
 const CONCURRENCY = 2;
-
-type JobState = {
-  key: string;
-  path: string;
-  /** Local preview of the SOURCE, so a card can show what is being worked on. */
-  url: string;
-  status: "queued" | "processing" | "completed" | "failed";
-  error?: string;
-};
 
 /**
  * RETUSZ ZDJĘĆ — the tool's screen.
@@ -41,7 +37,12 @@ type JobState = {
  *
  * Every photo is its own request, so six photos are six independent jobs:
  * one provider failure refunds and reports itself and leaves the other five
- * results alone, and its card offers a retry for that one image.
+ * results alone, and its tile offers a retry for that one image.
+ *
+ * GENERACJE W TOKU V2: a click queues its photos (two at a time, as before)
+ * and the panel is free at once — each photo shows as a tile in the gallery
+ * from the moment the server accepts it, with its real status and clock,
+ * here and in the library.
  */
 export function RetouchWorkspace({
   workspaceId, credits, available, resolutions, ratios, pricing, outputsPerRun = 1, initialItems, initialCursor,
@@ -66,8 +67,6 @@ export function RetouchWorkspace({
   const [uploading, setUploading] = useState(false);
   const [resolution, setResolution] = useState(() => (resolutions.includes("2K") ? "2K" : resolutions[0] ?? "1K"));
   const [format, setFormat] = useState("original");
-  const [jobs, setJobs] = useState<JobState[]>([]);
-  const [busy, setBusy] = useState(false);
   const [balance, setBalance] = useState(credits);
   const [freshItems, setFreshItems] = useState<GalleryItem[]>([]);
   const knownAssets = useRef(new Set<string>(initialItems.map((i) => i.assetId)));
@@ -75,6 +74,9 @@ export function RetouchWorkspace({
   const reserved = useRef(0);
   const inFlight = useRef(0);
   const running = useRef(false);
+  const gate = useInflightGate();
+  const reorderHint = useReorderHint("retouch");
+  useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
   const perImage = (pricing[resolution] ?? Object.values(pricing)[0] ?? 0) * Math.max(1, outputsPerRun);
   const total = perImage * photos.length;
@@ -133,7 +135,7 @@ export function RetouchWorkspace({
   }
 
   const dragging = useFileDrop({
-    enabled: !busy,
+    enabled: true,
     onDrop: (files) => {
       if (files.length === 0) { toast.error(t("products.invalidType")); return; }
       void upload(files);
@@ -158,88 +160,45 @@ export function RetouchWorkspace({
     return known && known !== `studio.err.${code}` ? known : t("common.error");
   }, [t]);
 
-  /** Retouch ONE photo. Used by the batch and by a card's own retry. */
-  const retouchOne = useCallback(async (job: JobState) => {
-    setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "processing", error: undefined } : j));
-    try {
-      const res = await fetch("/api/retouch", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourcePath: job.path, resolution, format, expectedOutputs: outputsPerRun }),
-      });
-      const json = await res.json() as {
-        ok: boolean; error?: string; credits?: number; pending?: boolean; runId?: string; expected?: number;
-      };
-      if (json.ok && json.pending && json.runId) {
-        // WORKFLOW ON: charged once for the whole run; results arrive as the
-        // run finishes. Whatever is not delivered is refunded by the server.
-        const charged = json.credits ?? 0;
-        setBalance((b) => Math.max(0, b - charged));
-        const fin = await awaitEngineRun(json.runId);
-        const expected = Math.max(1, json.expected ?? 1);
-        const delivered = fin.status === "ok" || fin.status === "partial" ? fin.images.length : 0;
-        const refund = Math.round((charged * Math.max(0, expected - delivered)) / expected);
-        if (refund > 0) setBalance((b) => b + refund);
-        if (delivered > 0) {
-          await absorb(delivered);
-          setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "completed" } : j));
-          return true;
-        }
-        setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: errText(fin.error ?? undefined) } : j));
-        return false;
-      }
-      if (json.ok) {
-        setBalance((b) => Math.max(0, b - (json.credits ?? perImage)));
-        await absorb(1);
-        setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "completed" } : j));
-        return true;
-      }
-      setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: errText(json.error) } : j));
-      return false;
-    } catch {
-      setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: t("common.error") } : j));
-      return false;
-    }
-  }, [resolution, format, perImage, outputsPerRun, absorb, errText, t]);
-
-  async function retouchAll() {
+  /**
+   * ONE CLICK: every photo becomes its own job, queued two at a time. The
+   * request of each photo is frozen here — the size, format and photo of
+   * THIS click — so a later change in the panel never reaches it, and a
+   * tile's "Spróbuj ponownie" repeats exactly that photo.
+   */
+  function retouchAll() {
     // Guarded against the double click that would otherwise pay twice.
     if (running.current || photos.length === 0) return;
     running.current = true;
     session.ran();
-    setBusy(true);
-    const batch: JobState[] = photos.map((p) => ({ key: `${p.path}-${Date.now()}`, path: p.path, url: p.url, status: "queued" }));
-    setJobs(batch);
-    let done = 0, failed = 0;
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < batch.length) {
-        const job = batch[cursor++];
-        const ok = await retouchOne(job);
-        if (ok) done++; else failed++;
-      }
-    };
-    try {
-      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batch.length) }, worker));
-      if (failed > 0 && done === 0) toast.error(t("retouch.allFailed"));
-      else if (failed > 0) toast.warning(t("retouch.someFailed", { n: failed }));
-      else toast.success(t("retouch.done", { n: done }));
-    } finally {
-      setBusy(false);
-      running.current = false;
-    }
-  }
-
-  async function retry(job: JobState) {
-    if (running.current) return;
-    running.current = true;
-    setBusy(true);
-    try { await retouchOne(job); } finally { setBusy(false); running.current = false; }
+    let refused = false;
+    enqueueBatch({
+      maxInFlight: CONCURRENCY,
+      items: photos.map((p) => ({
+        snapshot: frozenSnapshot({
+          endpoint: "/api/retouch", credits: perImage,
+          body: { sourcePath: p.path, resolution, format, expectedOutputs: outputsPerRun },
+        }),
+        tool: "retouch", operation: "image_retouch", expected: Math.max(1, outputsPerRun),
+        ratio: format === "original" ? null : format, preview: p.url,
+      })),
+      onAccepted: (out) => setBalance((b) => Math.max(0, b - (out.credits || perImage))),
+      onRefused: (out) => {
+        if (refused) return;
+        refused = true;
+        toast.error(out.error === "concurrency_limit"
+          ? limitText(t, locale, out.limit ?? gate.limit?.max ?? 1)
+          : errText(out.error));
+      },
+    });
+    gate.flash();
+    // A short lock, not a wait: the next click is possible a moment later.
+    setTimeout(() => { running.current = false; }, 600);
   }
 
   // A visitor's Generate is always the sign-in dialog, so their balance (none)
   // does not grey it out; a member's is the server-checked wallet, as before.
-  const canRun = available && !busy && !uploading && photos.length > 0 && (session.guest || missing === 0);
-  const pending = jobs.filter((j) => j.status !== "completed");
+  const canRun = available && !gate.added && !gate.atLimit && !uploading && photos.length > 0 && (session.guest || missing === 0);
 
   return (
     <div className={cn(
@@ -262,6 +221,9 @@ export function RetouchWorkspace({
             zone
             onFiles={upload}
             onRemove={(i) => setPhotos((prev) => prev.filter((_, j) => j !== i))}
+            // The order the batch is sent in (and the guest draft keeps).
+            onMove={(from, to) => setPhotos((prev) => reorder(prev, from, to))}
+            reorderHint={reorderHint}
             label={t("retouch.photos", { n: MAX_PHOTOS })}
           />
 
@@ -341,7 +303,9 @@ export function RetouchWorkspace({
               </p>
             </div>
           </div>
-          {viewer ? (
+          {gate.atLimit && gate.limit && !session.guest ? (
+            <LimitNote max={gate.limit.max} plan={gate.limit.plan} />
+          ) : viewer ? (
             // The status card below the button says what is missing and what
             // to do; here only the empty state and the member's balance.
             photos.length === 0 ? (
@@ -360,14 +324,18 @@ export function RetouchWorkspace({
             <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
           )}
           <button type="button" disabled={!canRun} onClick={() => void session.gate(retouchAll)} data-retouch-cta
-            aria-label={`${t("retouch.cta")} · ${n(total)} ${t("genv3.credits")}`}
+            aria-label={gate.added ? t("inflight.added") : `${t("retouch.cta")} · ${n(total)} ${t("genv3.credits")}`}
             className={cn(
               "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
               !canRun && "cursor-not-allowed opacity-55",
             )}>
-            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            <span>{t("retouch.cta")}</span>
-            {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
+            {gate.added ? <Check size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
+            {gate.added ? <span data-generate-added>{t("inflight.added")}</span> : (
+              <>
+                <span>{t("retouch.cta")}</span>
+                {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
+              </>
+            )}
           </button>
           {viewer && photos.length > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
         </div>
@@ -375,31 +343,6 @@ export function RetouchWorkspace({
 
       {/* ── RIGHT: the jobs in flight, then everything already retouched ── */}
       <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        {pending.length > 0 && (
-          <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-retouch-jobs>
-            {pending.map((job) => (
-              <div key={job.key} data-retouch-job={job.status}
-                className="flex items-center gap-3 rounded-xl border border-line bg-surface/60 p-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={job.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover opacity-70" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-[12.5px] font-semibold">
-                    {job.status !== "failed" && <Loader2 size={12} className="animate-spin text-accent" aria-hidden />}
-                    {t(`retouch.status_${job.status}`)}
-                  </span>
-                  {job.error && <span className="mt-0.5 block text-[11px] leading-snug text-danger">{job.error}</span>}
-                </span>
-                {job.status === "failed" && (
-                  <button type="button" onClick={() => retry(job)} disabled={busy} data-retouch-retry
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
-                    <RefreshCw size={12} aria-hidden />{t("retouch.retry")}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
         <GenerationGallery
           initialItems={initialItems}
           initialCursor={initialCursor}
@@ -412,6 +355,7 @@ export function RetouchWorkspace({
           onBalance={setBalance}
           onAbsorb={absorb}
           operation="image_retouch"
+          inflight={{ tools: ["retouch"] }}
           emptyTitle={t("retouch.emptyTitle")}
           emptyBody={t("retouch.emptyBody")}
         />

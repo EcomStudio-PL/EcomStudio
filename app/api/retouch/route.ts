@@ -5,6 +5,7 @@ import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runRetouch } from "@/lib/server/retouch";
+import { acceptedBody, answerAtAcceptance, clientId } from "@/lib/server/inflight-accept";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -17,6 +18,12 @@ export const dynamic = "force-dynamic";
  * none of the three appears in the request or the response. A batch is the
  * client calling this once per photo, so one failure refunds and reports
  * only itself.
+ *
+ * GENERACJE W TOKU V2: the photo is answered 202 the moment its job is
+ * accepted (inside the plan's limit — the photos of one click share its
+ * `batch` — and charged) and the same call finishes after the response.
+ * Job/status integration only: the Gemini request, the prompt, the 2K/4K
+ * delivery and the price are untouched.
  */
 export async function POST(request: Request) {
   const startedAt = Date.now();
@@ -39,8 +46,14 @@ export async function POST(request: Request) {
   let resolution: string | undefined;
   let format: string | undefined;
   let quotedOutputs: number | undefined;
+  let batch: string | null = null;
+  let requestId: string | null = null;
   try {
-    const body = (await request.json()) as { sourcePath?: string; resolution?: string; format?: string; expectedOutputs?: unknown };
+    const body = (await request.json()) as {
+      sourcePath?: string; resolution?: string; format?: string; expectedOutputs?: unknown; batch?: unknown; requestId?: unknown;
+    };
+    batch = clientId(body.batch);
+    requestId = clientId(body.requestId);
     if (typeof body.expectedOutputs === "number" && Number.isInteger(body.expectedOutputs)) quotedOutputs = body.expectedOutputs;
     sourcePath = typeof body.sourcePath === "string" ? body.sourcePath : "";
     if (typeof body.resolution === "string") resolution = body.resolution.slice(0, 8);
@@ -55,9 +68,13 @@ export async function POST(request: Request) {
     && /^[\w\-./]+$/.test(sourcePath);
   if (!valid) return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
 
-  const result = await runRetouch(supabase, user.id, workspace.id, { sourcePath, resolution, format, quotedOutputs });
+  const slot = { tool: "retouch", batch: batch ?? requestId ?? crypto.randomUUID(), request: requestId ?? undefined };
+  const first = await answerAtAcceptance("retouch", (onAccepted) =>
+    runRetouch(supabase, user.id, workspace.id, { sourcePath, resolution, format, quotedOutputs, track: { slot, onAccepted } }));
+  if ("accepted" in first) return NextResponse.json(acceptedBody(first.accepted), { status: 202 });
+  const result = first.result;
   // Workflow ON: the run is started and charged; it is driven after this
   // response, and the panel polls its status instead of holding a request.
   if (result.ok && "pending" in result) driveAfterResponse(supabase, result.runId, startedAt);
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  return NextResponse.json(result, { status: result.ok ? 200 : result.error === "concurrency_limit" ? 429 : 400 });
 }

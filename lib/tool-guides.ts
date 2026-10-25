@@ -186,6 +186,10 @@ export type GuideStepContent = { title: LocaleText; body: LocaleText; art: Guide
 export type GuideContent = {
   tutorial: { title: LocaleText; body: LocaleText; steps: GuideStepContent[] };
   starter: { title: LocaleText; body: LocaleText };
+  /** Short lines on the tool's own screen. `reorder` is the line under a
+   *  reorderable photo grid (Drag & drop zdjęć V2): saved empty = hidden;
+   *  absent = the shipped default. */
+  hints?: { reorder?: LocaleText };
 };
 
 export const GUIDE_LIMITS = {
@@ -195,6 +199,7 @@ export const GUIDE_LIMITS = {
   stepBody: 400,
   starterTitle: 80,
   starterBody: 240,
+  reorderHint: 120,
 } as const;
 
 export type GuideProblem =
@@ -265,7 +270,25 @@ export function normalizeGuideContent(input: unknown): { ok: true; content: Guid
   const sBody = field(sta.body, GUIDE_LIMITS.starterBody, false);
   if (typeof sBody === "string") return { ok: false, problem: sBody };
 
-  return { ok: true, content: { tutorial: { title: tTitle, body: tBody, steps }, starter: { title: sTitle, body: sBody } } };
+  // The reorder line: optional, and an explicitly empty one is kept as such
+  // (it hides the line), which is why `hints` is written whenever it is sent.
+  const rawHints = (src as { hints?: unknown }).hints;
+  let hints: GuideContent["hints"];
+  if (rawHints !== undefined && rawHints !== null) {
+    if (typeof rawHints !== "object" || Array.isArray(rawHints)) return { ok: false, problem: "shape" };
+    const reorder = field((rawHints as { reorder?: unknown }).reorder, GUIDE_LIMITS.reorderHint, false);
+    if (typeof reorder === "string") return { ok: false, problem: reorder };
+    hints = { reorder };
+  }
+
+  return {
+    ok: true,
+    content: {
+      tutorial: { title: tTitle, body: tBody, steps },
+      starter: { title: sTitle, body: sBody },
+      ...(hints ? { hints } : {}),
+    },
+  };
 }
 
 /* ── WHAT THE CUSTOMER'S SCREEN RECEIVES ───────────────────────────────── */
@@ -304,6 +327,9 @@ export type GuideResponse = {
   /** Has this user finished something in this tool before (their own
    *  jobs)? null = unknown. */
   usedBefore: boolean | null;
+  /** The line under a reorderable photo grid: the admin's wording, null =
+   *  hidden by the admin, undefined = the shipped default. */
+  reorderHint?: string | null;
 };
 
 /* ── THE TWO DECISIONS ─────────────────────────────────────────────────── */

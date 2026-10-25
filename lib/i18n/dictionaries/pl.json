@@ -783,6 +783,8 @@
     "annualPrice": "Cena roczna",
     "limitProducts": "Limit produktów",
     "limitGenerations": "Limit generacji / mies.",
+    "limitConcurrent": "Równoległe generacje",
+    "limitConcurrentHint": "Ile generacji jednocześnie może mieć w toku konto z tym planem (1–50). Sprawdzane przez serwer.",
     "featuresLabel": "Możliwości planu",
     "featuresHint": "Wartości, które porównuje cennik. -1 oznacza bez limitu.",
     "recommended": "Polecany",
@@ -2911,7 +2913,9 @@
       "price_changed": "Cena się zmieniła — odśwież stronę, aby zobaczyć aktualną. Kredyty nie zostały pobrane.",
       "trial_check_failed": "Nie udało się teraz sprawdzić Twojego planu. Nic nie zostało pobrane — spróbuj ponownie za chwilę.",
       "trial_workflow_unavailable": "Ten tryb narzędzia jest dostępny w płatnym planie. Nic nie zostało pobrane.",
-      "trial_tool_unavailable": "To narzędzie jest dostępne w płatnym planie. Nic nie zostało pobrane."
+      "trial_tool_unavailable": "To narzędzie jest dostępne w płatnym planie. Nic nie zostało pobrane.",
+      "concurrency_limit": "To limit Twojego planu — kolejną generację uruchomisz, gdy któraś się zakończy.",
+      "network": "Nie udało się połączyć. Jeśli generacja wystartowała, zobaczysz ją w galerii."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -5998,6 +6002,9 @@
     "guide.untitled": "Plik bez nazwy",
     "guide.unknownPhoto": "Plik niedostępny w bibliotece",
     "guide.starter.heading": "Galeria startowa",
+    "guide.reorderHint.heading": "Podpowiedź przy zdjęciach",
+    "guide.reorderHint.note": "Krótka linia pod zdjęciami, które można przeciągać (kolejność zdjęć = kolejność wysyłki do AI). Puste pole ukrywa podpowiedź.",
+    "guide.reorderHint.label": "Tekst podpowiedzi",
     "guide.starter.title": "Tytuł galerii startowej",
     "guide.starter.body": "Opis galerii startowej",
     "guide.starter.image": "Zdjęcie przykładowego efektu",
@@ -11921,5 +11928,52 @@
       "headline": "Edytor zdjęć produktowych online",
       "lead": "Zmień tło, dodaj cień, ustaw format, jasność i kadr w jednym miejscu, a potem pobierz gotowy plik."
     }
+  },
+  "inflight": {
+    "toolAny": "Generacja",
+    "queued": "W kolejce",
+    "stage": {
+      "generate": "Generowanie…",
+      "retouch": "Retusz zdjęć",
+      "compose": "Układanie kompozycji",
+      "finish": "Finalny render"
+    },
+    "step": "etap {n}/{m}",
+    "sending": "Wysyłanie…",
+    "added": "Dodano",
+    "cancel": "Anuluj",
+    "cancelFailed": "Nie udało się anulować — zadanie mogło już wystartować.",
+    "remove": "Usuń",
+    "slow": "Trwa dłużej niż zwykle. Możesz zamknąć stronę, damy znać, gdy będzie gotowe.",
+    "usuallySec": "Zwykle ok. {n} s",
+    "usuallyMin": "Zwykle ok. {n} min",
+    "cancelledTitle": "Anulowano",
+    "cancelled": "Anulowano przed startem — kredyty nie zostały pobrane.",
+    "refunded": "Kredyty wróciły na Twoje konto.",
+    "refundPending": "Zwrot kredytów jest w toku.",
+    "retry": "Spróbuj ponownie",
+    "retryTitle": "Spróbować ponownie?",
+    "retryBody": "Uruchomimy tę samą generację — te same ustawienia i zdjęcia, w tej samej kolejności. Koszt: {n} kr.",
+    "retryConfirm": "Uruchom · {n} kr.",
+    "repriced": "Aktualny koszt to {n} kr. (opłacone już retusze zostaną użyte ponownie). Potwierdź jeszcze raz.",
+    "photosGone": "Oryginalne zdjęcia nie są już dostępne. Dodaj je ponownie w narzędziu.",
+    "limit": {
+      "one": "Masz {n} generację w toku. To limit Twojego planu. Kolejną uruchomisz, gdy ta się zakończy.",
+      "few": "Masz {n} generacje w toku. To limit Twojego planu. Kolejną uruchomisz, gdy któraś się zakończy.",
+      "many": "Masz {n} generacji w toku. To limit Twojego planu. Kolejną uruchomisz, gdy któraś się zakończy.",
+      "other": "Masz {n} generacji w toku. To limit Twojego planu. Kolejną uruchomisz, gdy któraś się zakończy."
+    },
+    "raiseLimit": "Zwiększ limit",
+    "tileAria": "{tool}: w toku, {time}",
+    "row": "W trakcie"
+  },
+  "dnd": {
+    "hint": "Przeciągnij, aby zmienić kolejność.",
+    "primary": "Główne",
+    "handle": "Zdjęcie {n} z {count}. Naciśnij spację, aby zmienić jego pozycję.",
+    "lifted": "Zdjęcie {n} podniesione. Strzałki zmieniają pozycję, spacja upuszcza, Escape anuluje.",
+    "moved": "Zdjęcie {n} — pozycja {m}.",
+    "dropped": "Zdjęcie {n} przeniesione na pozycję {m}.",
+    "cancelled": "Przenoszenie anulowane. Zdjęcie {n} zostaje na pozycji {m}."
   }
 }

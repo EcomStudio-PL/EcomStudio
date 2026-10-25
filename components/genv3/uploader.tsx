@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Upload, X } from "lucide-react";
+import { ImagePlus, Loader2, Upload } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { UploadedRef } from "@/components/genv3/types";
@@ -9,6 +9,7 @@ import {
 } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop as useSharedFileDrop } from "@/components/ui/file-drop";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
+import { SortablePhotoGrid } from "@/components/genv3/sortable-grid";
 
 export const UPLOAD_ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
 
@@ -85,7 +86,7 @@ export const DropOverlay = FileDropOverlay;
  */
 export function PhotoUploader({
   items, max, uploading, label, hint, counter = true, compact, capturePaste, dropTarget,
-  onFiles, onRemove, onMove, columns = 4, zone, zoneLabel, zoneDense, preview,
+  onFiles, onRemove, onMove, columns = 4, zone, zoneLabel, zoneDense, preview, primaryLabel, reorderHint,
 }: {
   items: UploadedRef[];
   max: number;
@@ -130,10 +131,18 @@ export function PhotoUploader({
   zoneDense?: boolean;
   onFiles: (files: File[]) => void;
   onRemove: (index: number) => void;
-  /** Opt-in ORDER: each tile shows its position and two arrows that move it
-   *  one place earlier / later. For a tool where the order of the photos is
+  /** Opt-in ORDER (Drag & drop zdjęć V2): each tile shows its position and
+   *  can be dragged (mouse, a long press on touch, or the keyboard on its
+   *  number) to another place. For a tool where the order of the photos is
    *  part of what is sent. Absent → tiles render exactly as before. */
   onMove?: (from: number, to: number) => void;
+  /** "Główne" on the first photo — only where the TOOL treats the first one
+   *  as the main photo (never for inspiration). */
+  primaryLabel?: boolean;
+  /** The line under a reorderable grid ("Przeciągnij, aby zmienić
+   *  kolejność."). The tool's own wording from Admin → its guide; an empty
+   *  string hides it; absent = the default. */
+  reorderHint?: string | null;
   columns?: 4 | 5;
   /** THE BIG ZONE. With nothing uploaded yet the block is one wide dropzone —
    *  icon, "Import", "0 / 10 zdjęć" — instead of a row of empty tiles: ten
@@ -156,6 +165,7 @@ export function PhotoUploader({
   const bigZone = !!zone && items.length === 0;
   const [viewIndex, setViewIndex] = useState<number | null>(null);
   const closePreview = useCallback(() => setViewIndex(null), []);
+
 
   const take = useCallback((list: FileList | File[] | null | undefined) => {
     const { files } = normalizeFiles(list);
@@ -222,64 +232,24 @@ export function PhotoUploader({
           )}
         </button>
       ) : (
-      <div className={cn("grid gap-2 [&>*]:min-w-0", columns === 5 ? "grid-cols-5" : "grid-cols-4 sm:grid-cols-5")}>
-        {items.map((r, i) => (
-          <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
-            {preview ? (
-              <button type="button" onClick={() => setViewIndex(i)} data-photo-preview
-                aria-label={t("genv3.thumbAria", { n: i + 1 })}
-                className="block h-full w-full cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-              </button>
-            ) : (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-            )}
-            <button type="button" aria-label={t("common.delete")}
-              onClick={(e) => { e.stopPropagation(); onRemove(i); }}
-              className="absolute right-1 top-1 z-10 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
-              <X size={10} aria-hidden />
+      <SortablePhotoGrid items={items} onMove={onMove} onRemove={onRemove}
+        onOpen={preview ? setViewIndex : undefined}
+        gridClass={columns === 5 ? "grid-cols-5" : "grid-cols-4 sm:grid-cols-5"}
+        primaryLabel={primaryLabel} reorderHint={reorderHint}
+        trailing={!full ? (
+            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
+              aria-label={t("genv3.addPhotos")}
+              className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors duration-200 hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent">
+              {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Upload size={16} aria-hidden />}
+              <span className="px-1 text-center text-[10px] font-semibold leading-tight">{t("genv3.addPhotos")}</span>
             </button>
-            {onMove && (
-              <>
-                <span data-photo-order aria-hidden
-                  className="pointer-events-none absolute left-1 top-1 z-10 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black/60 px-1 text-[10px] font-semibold tabular-nums text-white">
-                  {i + 1}
-                </span>
-                {/* Always visible: a phone has no hover to reveal them. */}
-                <span className="absolute inset-x-1 bottom-1 z-10 flex justify-between">
-                  <button type="button" disabled={i === 0} data-photo-move="earlier"
-                    aria-label={t("genv3.moveEarlier", { n: i + 1 })}
-                    onClick={(e) => { e.stopPropagation(); onMove(i, i - 1); }}
-                    className="rounded-full bg-black/60 p-0.5 text-white transition-opacity disabled:opacity-0">
-                    <ChevronLeft size={12} aria-hidden />
-                  </button>
-                  <button type="button" disabled={i === items.length - 1} data-photo-move="later"
-                    aria-label={t("genv3.moveLater", { n: i + 1 })}
-                    onClick={(e) => { e.stopPropagation(); onMove(i, i + 1); }}
-                    className="rounded-full bg-black/60 p-0.5 text-white transition-opacity disabled:opacity-0">
-                    <ChevronRight size={12} aria-hidden />
-                  </button>
-                </span>
-              </>
-            )}
-          </div>
-        ))}
-        {!full && (
-          <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-            aria-label={t("genv3.addPhotos")}
-            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors duration-200 hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent">
-            {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Upload size={16} aria-hidden />}
-            <span className="px-1 text-center text-[10px] font-semibold leading-tight">{t("genv3.addPhotos")}</span>
-          </button>
-        )}
-      </div>
+        ) : null} />
       )}
 
       {!compact && (
         <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{hint ?? t("genv3.uploadWays")}</p>
       )}
+
 
       {preview && (
         <ImageLightbox images={items.map((r) => ({ key: r.key, src: r.url }))}

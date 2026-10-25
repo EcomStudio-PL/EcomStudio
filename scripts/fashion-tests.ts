@@ -529,8 +529,11 @@ console.log("\nG. A DOUBLE CLICK CANNOT START TWO PAID BATCHES");
 check("the guard is a ref, not state", /const running = useRef\(false\)/.test(panel));
 check("and it is checked before anything is spent",
   /if \(running\.current \|\| runCount === 0\) return;/.test(panel));
-check("the button is disabled while a batch is in flight",
-  /disabled=\{!canRun\}/.test(panel) && /!busy/.test(panel));
+// Generacje w toku V2: a batch in flight no longer locks the panel — the
+// double click is still refused (the ref above, a short lock), the button
+// rests for "Dodano ✓", and the plan's limit holds it when reached.
+check("the button rests for 'Dodano ✓' and at the plan's limit, not for a whole batch",
+  /disabled=\{!canRun\}/.test(panel) && /!gate\.added && !gate\.atLimit/.test(panel) && !/!busy/.test(panel));
 check("a run needs every required pool filled",
   /emptyRequired/.test(panel) && /runCount > 0/.test(panel));
 

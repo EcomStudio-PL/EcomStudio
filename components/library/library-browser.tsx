@@ -22,6 +22,9 @@ import { patchAsset, type TrialAssetPatch } from "@/components/trial-watermark/m
 import { FavoriteButton, FavoriteRing } from "@/components/media/favorite-button";
 import { useFavoriteToggle } from "@/lib/favorites/use-favorite-toggle";
 import { favoriteCountAction } from "@/app/actions/favorites";
+import { takeSettled } from "@/lib/inflight/store";
+import { InflightRow, tileAspect, useInflightTiles } from "@/components/inflight/inflight-section";
+import { InflightTileView } from "@/components/inflight/inflight-tile";
 
 /**
  * BIBLIOTEKA — the asset manager.
@@ -500,6 +503,18 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
   const tile = DENSITY[density];
   const empty = booted && !loading && items.length === 0;
 
+  // GENERACJE W TOKU V2: every tool's in-progress tiles, on the photo shelf.
+  // The same tiles the tools show, with the same status and clock; they lead
+  // the grid on the default view and get their own "W trakcie" row when a
+  // filter or another order is on. A finished one joins the shelf in place.
+  const tiles = useInflightTiles(shelf === "image" ? "all" : undefined);
+  const tilesInGrid = view === "grid" && !favOnly && order === "desc";
+  const settle = useCallback((id: string) => {
+    const done = takeSettled(id);
+    if (!done || done.items.length === 0) return;
+    setItems((prev) => mergeHead(done.items, prev));
+  }, []);
+
   // THE GALLERY'S ROW HEIGHT. The density slider used to be a column WIDTH;
   // in a justified layout the honest unit is a row HEIGHT, so the same five
   // steps are read that way. `gallery-justified` in globals.css shortens the
@@ -650,10 +665,16 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
           still the MINIMUM column width and still the only thing that
           decides how many columns there are; it does not touch any tile's
           shape. Two columns are pinned on a phone, as before. */}
-      {empty ? (
+      {!tilesInGrid && <InflightRow tiles={tiles} onSettled={settle} />}
+      {empty && !(tilesInGrid && tiles.length > 0) ? (
         <EmptyShelf shelf={shelf} favOnly={favOnly} t={t} />
       ) : view === "grid" ? (
         <div style={grid.style} data-library-grid className="gallery-justified">
+          {tilesInGrid && tiles.map((tile) => (
+            <div key={`inflight-${tile.id}`} style={grid.itemStyle(tileAspect(tile))} className="min-w-0">
+              <InflightTileView tile={tile} aspect={tileAspect(tile)} onSettled={settle} />
+            </div>
+          ))}
           {items.map((item) => (
             <Tile
               key={item.assetId}

@@ -597,6 +597,49 @@ async function sectionE() {
   check("E2 the composition got the RETOUCHED images, in order", rec.sunburst.length === 1 && rec.sunburst[0].spec.images.length === 3);
   check("E2 run ok; Retusz billed by Retusz, the composition once", r2.status === "ok" && thumbStarts().length === 1 && r2.credits === 3 * 7 + 20);
 
+  // E2b — DRAG & DROP ZDJĘĆ V2: the order is the customer's, whatever order
+  // the Retusz passes FINISH in. Four distinct photos A B C D; the fake Retusz
+  // makes each one a different image and answers after a controlled delay so
+  // they complete B, A, D, C (two at a time: [A,B] then [C,D]). The
+  // composition must still receive retouched A, B, C, D — in that order.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(4);
+  {
+    const delays = new Map(photos.map((p, i) => [p, [40, 5, 30, 2][i]!]));
+    const finished: string[] = [];
+    const outs = new Map<string, Buffer>();
+    for (const [i, p] of photos.entries()) outs.set(p, await png(40 + i * 3, 40, [30 * i, 200 - 30 * i, 90]));
+    const delayed = async (_s: unknown, userId: string, ws: string, input: RetouchInput): Promise<RetouchResult> => {
+      rec.retouch.push({ ...input });
+      await new Promise((r) => setTimeout(r, delays.get(input.sourcePath) ?? 0));
+      const out = outs.get(input.sourcePath)!;
+      const jobId = id("rjob");
+      const path = `${ws}/${jobId}/0.png`;
+      db().storage.set(`generation-assets:${path}`, out);
+      tableRows("generation_jobs").push({ id: jobId, workspace_id: ws, user_id: userId, status: "completed", credits_charged: 7,
+        created_at: iso(db().now), settings: { operation: "image_retouch", reference_paths: [input.sourcePath],
+          provider_output: [{ stored_path: path, stored_sha256: createHash("sha256").update(out).digest("hex") }] } });
+      const genId = id("gen");
+      tableRows("generations").push({ id: genId, job_id: jobId, workspace_id: ws });
+      tableRows("generation_assets").push({ id: id("asset"), generation_id: genId, storage_path: path });
+      finished.push(input.sourcePath);
+      return { ok: true, generationId: null, jobId, url: `https://signed/${path}`, path, credits: 7 };
+    };
+    const s2b = await start(photos, true);
+    const r2b = await driveToEnd((s2b as { runId: string }).runId, depsFor(rec, delayed));
+    const label = (p: string) => "ABCD"[photos.indexOf(p)];
+    check("E2b the Retusz passes really finished out of order (B, A, D, C)", finished.map(label).join("") === "BADC", finished.map(label).join(""));
+    const sentSha = (rec.sunburst[0]?.spec.images ?? []).map((im) => createHash("sha256").update(im.bytes).digest("hex"));
+    const wantSha = photos.map((p) => createHash("sha256").update(outs.get(p)!).digest("hex"));
+    check("E2b the composition got retouched A, B, C, D — the customer's order, not the finishing order",
+      r2b.status === "ok" && sentSha.length === 4 && sentSha.join() === wantSha.join(), sentSha.map((h) => wantSha.indexOf(h)).join(","));
+    const job2b = tableRows("generation_jobs").find((j) => (j.settings as Row)?.operation === "ecommerce_thumbnail");
+    const inputs = (((job2b?.settings as Row)?.provider_request as Row)?.inputs ?? []) as Row[];
+    check("E2b what is stored about the request lists the inputs in that same order",
+      inputs.length === 4 && inputs.every((x, i) => x.index === i && x.sent_sha256 === wantSha[i]), JSON.stringify(inputs.map((x) => x.index)));
+  }
+
   // E3 — a Retusz pass fails: stop there, keep what succeeded, no composition.
   setupEnv();
   rec = { retouch: [], sunburst: [] };
@@ -1373,8 +1416,15 @@ async function sectionH() {
   check("H7 no 'Jak powstaje miniaturka' tile, no stage list, no intermediate Retusz grid in the panel",
     !/thumb\.cardTitle|thumb\.cardBody|thumb\.cardHint|thumb\.stage\.|data-thumbnail-stages|data-thumbnail-retouched|thumb\.runTitle|function Stages/.test(ui)
     && !("cardTitle" in pl.thumb) && !("stage" in pl.thumb) && !("retouched" in pl.thumb));
-  check("H7 one calm working state: 'Tworzymy Twoją miniaturkę…' with a spinner, no fake percentage",
-    String(pl.thumb.working) === "Tworzymy Twoją miniaturkę…" && /data-thumbnail-working/.test(ui) && /t\("thumb\.working"\)/.test(ui) && !/%\s*<|progress=|percent/i.test(ui));
+  // Generacje w toku V2: a run in progress is the shared tile in the gallery
+  // (components/inflight/inflight-tile.tsx), with the SERVER's coarse stage
+  // (thumbnail_runs_active, 0161) — never a timer-driven step, never a
+  // percentage; the panel itself shows no stage list of its own.
+  const tile = readFileSync("components/inflight/inflight-tile.tsx", "utf8");
+  check("H7 the run in progress is the shared tile (real stage, server clock), no fake percentage anywhere",
+    /inflight=\{\{ tools: \["ecommerce_thumbnail"\] \}\}/.test(ui) && !/data-thumbnail-working/.test(ui)
+    && /inflight\.stage\.\$\{tile\.stage\}/.test(tile)
+    && !/%\s*<|progress=|percent/i.test((ui + tile).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
   check("H7 the Retusz toggle keeps its cost notice; the price summary stays",
     /thumb\.retouchBody/.test(ui) && /thumb\.retouchPrice/.test(ui) && /data-thumbnail-summary/.test(ui));
 

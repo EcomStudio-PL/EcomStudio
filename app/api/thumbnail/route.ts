@@ -4,8 +4,11 @@ import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { startThumbnailRun, type StartBody } from "@/lib/server/thumbnail/run";
+import { driveThumbnailAfterResponse } from "@/lib/server/thumbnail/drive";
 
 export const runtime = "nodejs";
+// The start request also drives the run's first invocation, after the response.
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 /**
@@ -17,8 +20,13 @@ export const dynamic = "force-dynamic";
  * catalogue (`price_changed` if the shown total is stale), checks the balance,
  * and records the run — nothing is charged here. The model, the prompt and
  * the price list never appear in the request or the response.
+ *
+ * GENERACJE W TOKU V2: the run is created inside the plan's parallel limit
+ * (refused before it exists — `concurrency_limit`) and starts moving at once,
+ * driven after this response; the panel and the library only watch it.
  */
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
@@ -34,5 +42,8 @@ export async function POST(request: Request) {
   let body: StartBody = {};
   try { body = (await request.json()) as StartBody; } catch { /* validated below */ }
   const result = await startThumbnailRun(supabase, user.id, workspace.id, body);
-  return NextResponse.json(result, { status: result.ok ? 200 : result.error === "insufficient_credits" ? 402 : 400 });
+  if (result.ok && result.created) driveThumbnailAfterResponse(supabase, user.id, workspace.id, result.runId, startedAt);
+  return NextResponse.json(result, {
+    status: result.ok ? 200 : result.error === "insufficient_credits" ? 402 : result.error === "concurrency_limit" ? 429 : 400,
+  });
 }

@@ -7329,6 +7329,10 @@ export type Database = {
       }
       announcement_withdraw: { Args: { p_id: string }; Returns: Json }
       notification_bell: { Args: { p_limit?: number }; Returns: Json }
+      generation_duration_estimates: { Args: never; Returns: Json }
+      generation_limit_state: { Args: { p_workspace_id: string }; Returns: Json }
+      thumbnail_runs_active: { Args: { p_workspace_id: string }; Returns: Json }
+      tool_guide_hints: { Args: never; Returns: { tool_key: string; hints: Json }[] }
       feature_interest_counts: {
         Args: never
         Returns: { feature_key: string; interested: number }[]

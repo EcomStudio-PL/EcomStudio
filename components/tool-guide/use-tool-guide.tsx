@@ -18,6 +18,23 @@ import { useIsGuest } from "@/components/public-tools/tool-viewer";
  * the starter-gallery decision needs. A failed fetch leaves everything as it
  * was before this feature — no button, no example effects, no dialog.
  */
+/**
+ * ONE READ of a tool's guide for everything on its screen that asks within a
+ * few seconds of each other (the gallery's tutorial, the photo grid's reorder
+ * line). Not a cache beyond that: a screen opened later asks again, so a
+ * tutorial marked seen is never re-offered from a stale answer.
+ */
+const guideReads = new Map<string, { at: number; read: Promise<(GuideResponse & { ok?: boolean }) | null> }>();
+export function fetchToolGuide(tool: GuideToolKey): Promise<(GuideResponse & { ok?: boolean }) | null> {
+  const hit = guideReads.get(tool);
+  if (hit && Date.now() - hit.at < 5_000) return hit.read;
+  const read = fetch(`/api/tool-guides?tool=${encodeURIComponent(tool)}`, { cache: "no-store", credentials: "same-origin" })
+    .then((r) => (r.ok ? r.json() as Promise<GuideResponse & { ok?: boolean }> : null))
+    .catch(() => null);
+  guideReads.set(tool, { at: Date.now(), read });
+  return read;
+}
+
 export function useToolGuide(requested: GuideToolKey | null, opts: { compactLabel?: boolean } = {}): {
   response: GuideResponse | null;
   /** Still asking: the empty gallery waits for the answer rather than
@@ -48,9 +65,8 @@ export function useToolGuide(requested: GuideToolKey | null, opts: { compactLabe
     setPending(true);
     setResponse(null);
     autoDone.current = false;
-    fetch(`/api/tool-guides?tool=${encodeURIComponent(tool)}`, { cache: "no-store", credentials: "same-origin" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json: (GuideResponse & { ok?: boolean }) | null) => {
+    fetchToolGuide(tool)
+      .then((json) => {
         if (!alive) return;
         if (json?.ok) {
           setResponse({ guide: json.guide, seen: json.seen, live: json.live, hasResults: json.hasResults, usedBefore: json.usedBefore ?? null });

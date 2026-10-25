@@ -76,6 +76,9 @@ type Form = {
   tutorial: { title: Text3; body: Text3 };
   steps: StepForm[];
   starter: { title: Text3; body: Text3; imageId: string | null };
+  /** Drag & drop zdjęć V2: the line under the tool's reorderable photo grid
+   *  (empty in every language = hidden on the tool's screen). */
+  reorderHint: Text3;
 };
 
 type FieldProblem = Extract<GuideProblem, "required" | "too_long" | "markup" | "invisible">;
@@ -171,6 +174,7 @@ function fieldsOf(form: Form, hasStarter: boolean): { value: Text3; max: number;
       { value: form.starter.title, max: GUIDE_LIMITS.starterTitle, required: true },
       { value: form.starter.body, max: GUIDE_LIMITS.starterBody, required: false },
     ] : []),
+    { value: form.reorderHint, max: GUIDE_LIMITS.reorderHint, required: false },
   ];
 }
 
@@ -188,6 +192,7 @@ function contentOf(form: Form, hasStarter: boolean): GuideContent {
       steps: form.steps.map((s) => ({ title: s.title, body: s.body, art: s.art })),
     },
     starter: { title: starterTitle, body: form.starter.body },
+    hints: { reorder: form.reorderHint },
   };
 }
 
@@ -215,6 +220,8 @@ function initialForm(initial: ToolGuideEditorProps["initial"], defaults: GuideCo
     tutorial: { title: text3(content.tutorial.title), body: text3(content.tutorial.body) },
     steps: stepsFrom(content, initial.stepImages, (i) => `i${i}`),
     starter: { title: text3(content.starter.title), body: text3(content.starter.body), imageId: initial.starterImage },
+    // A guide saved before this field existed shows the shipped line.
+    reorderHint: text3(content.hints?.reorder ?? defaults.hints?.reorder ?? {}),
   };
 }
 
@@ -350,6 +357,7 @@ export function ToolGuideEditor({ tool, defaults, initial, status, library, cata
       tutorial: { title: text3(defaults.tutorial.title), body: text3(defaults.tutorial.body) },
       steps: stepsFrom(defaults, f.steps.map((s) => s.imageId), () => fresh()),
       starter: { ...f.starter, title: text3(defaults.starter.title), body: text3(defaults.starter.body) },
+      reorderHint: text3(defaults.hints?.reorder ?? {}),
     }));
     setConfirmReset(false);
   }
@@ -788,6 +796,16 @@ export function ToolGuideEditor({ tool, defaults, initial, status, library, cata
           <p className="rounded-xl bg-raised px-3.5 py-2.5 text-[12.5px] text-muted">{t("aicc.guide.starter.none")}</p>
         </section>
       )}
+
+      {/* ── PODPOWIEDŹ PRZY ZDJĘCIACH (Drag & drop zdjęć V2) ─────────── */}
+      <section aria-labelledby={`${ids}-hint`} className="space-y-2 border-t border-line pt-5" data-guide-reorder-hint>
+        <h3 id={`${ids}-hint`} className="font-display text-[15px] font-semibold">{t("aicc.guide.reorderHint.heading")}</h3>
+        <p className="text-[12px] leading-relaxed text-muted">{t("aicc.guide.reorderHint.note")}</p>
+        <TextField id={fid("rh")} label={`${t("aicc.guide.reorderHint.label")} · ${L}`} lang={lang}
+          value={form.reorderHint[lang]} max={GUIDE_LIMITS.reorderHint}
+          problem={fieldProblem(form.reorderHint, GUIDE_LIMITS.reorderHint, false)}
+          onChange={(v) => edit((f) => ({ ...f, reorderHint: inLang(f.reorderHint, v) }))} />
+      </section>
 
       {/* ── D. PODGLĄD I PUBLIKACJA ───────────────────────────────────── */}
       <div className="space-y-3 border-t border-line pt-5">

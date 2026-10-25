@@ -432,7 +432,9 @@ function sectionC() {
   check("the charge goes through the ledger (startUsage/failUsage/completeUsage)", /startUsage\(/.test(server) && /failUsage\(/.test(server) && /completeUsage\(/.test(server));
   const ws = read("components/genv3/workspace.tsx");
   check("Generate still sends the visible text and nothing else", /modelId: model\?\.id, prompt: prompt\.trim\(\),/.test(ws) && !/enhanced|smart\./.test(ws.split("async function generateCustom")[1].split("}\n\n")[0]));
-  check("Generate is held while a rewrite is in flight", /!busy && !smart\.busy/.test(ws));
+  // Generacje w toku V2: "busy" became the click in flight (`sending`); the
+  // rewrite still holds the button.
+  check("Generate is held while a rewrite is in flight", /!sending && !gate\.added && !gate\.atLimit && !smart\.busy/.test(ws));
   check("the /api/generate route does not know this feature", !/smart/i.test(read("app/api/generate/route.ts")));
   check("Product Lock text untouched by the feature", !/product-lock|fidelity/.test(server.split("\n").filter((l) => l.startsWith("import")).join("\n")));
   const sql = read("supabase/migrations/0149_smart_prompt.sql");

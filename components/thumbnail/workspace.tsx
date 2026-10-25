@@ -2,28 +2,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Download, ImageIcon, Loader2, Maximize2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { Check, Loader2, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { useHomeHandoff } from "@/lib/home-handoff";
-import { saveImageFrom } from "@/lib/save-image";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
-import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { Switch } from "@/components/ui/record";
 import { cn } from "@/lib/utils";
 import { humanizeKey } from "@/lib/i18n/t";
 import { THUMBNAIL_OPERATION, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/lib/thumbnail/config";
 import type { ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
-import type { ThumbnailRunView } from "@/lib/server/thumbnail/status";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
 import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
 import { useToolViewer } from "@/components/public-tools/tool-viewer";
-
-const POLL_MS = 2500;
-const TERMINAL = new Set(["ok", "failed"]);
+import { frozenSnapshot, submitTracked } from "@/lib/inflight/store";
+import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { limitText } from "@/components/inflight/inflight-tile";
+import { reorder } from "@/components/genv3/sortable-photos";
+import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
 
 /**
  * MINIATURKA — the tool's screen.
@@ -36,10 +35,14 @@ const TERMINAL = new Set(["ok", "failed"]);
  *      made (its steps, models, intermediate files) is never shown here
  *   E  the finished 2560×2560 file: preview, zoom, download, in the library
  *
- * The run lives on the server (lib/server/thumbnail/run.ts): this screen
- * drives it one request at a time and can be closed and reopened — the run
- * still in progress is picked up again on load. One click is one run: the
- * button locks, and the click's own id makes a double submit the same run.
+ * The run lives on the server (lib/server/thumbnail/run.ts), and since
+ * Generacje w toku V2 the server also DRIVES it: the click that starts it
+ * keeps it moving after its answer, and any status read picks it up again.
+ * This screen only starts runs — each one a tile in the gallery with its
+ * real stage ("Retusz zdjęć · etap 1/3") and clock, here and in the library —
+ * and is free again at once: photos, their order and the Retusz choice stay
+ * as they were for the next one. The click's own id makes a double submit
+ * the same run.
  */
 export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   workspaceId: string;
@@ -52,26 +55,23 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   const [uploading, setUploading] = useState(false);
   const [retouch, setRetouch] = useState(false);
   const [balance, setBalance] = useState(credits);
-  const [run, setRun] = useState<ThumbnailRunView | null>(null);
-  // The run whose driving stopped before it finished (connection lost):
-  // shown with a way to resume, never as a silent spinner.
-  const [stalled, setStalled] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  /** The click's POST, until the server answers (a second or two). */
+  const [sending, setSending] = useState(false);
   const [freshItems, setFreshItems] = useState<GalleryItem[]>([]);
-  const [view, setView] = useState<{ images: { key: string; src: string }[]; index: number } | null>(null);
   const knownAssets = useRef(new Set<string>(data.initialItems.map((i) => i.assetId)));
   const folder = useRef(`thumbnail-${Math.random().toString(36).slice(2, 10)}`);
   const reserved = useRef(0);
   const inFlight = useRef(0);
-  const driving = useRef<string | null>(null);
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
+  const gate = useInflightGate();
+  const reorderHint = useReorderHint("ecommerce_thumbnail");
+  useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
   const retouchOn = retouch && data.retouch.available;
   const quote = useMemo(() => quoteTotal({
     photos: photos.length, retouch: retouchOn, retouchUnit: data.retouch.unit, thumbnailCredits: data.thumbnailCredits ?? 0,
   }), [photos.length, retouchOn, data.retouch.unit, data.thumbnailCredits]);
   const missing = Math.max(0, quote.total - balance);
-  const active = run !== null && !TERMINAL.has(run.status);
 
   /*
     PUBLIC TOOLS V1. A visitor's photos (their order included) stay in the
@@ -130,20 +130,15 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   useHomeHandoff((file) => { void upload([file]); });
 
   const dragging = useFileDrop({
-    enabled: !busy && !active,
+    enabled: true,
     onDrop: (files) => {
       if (files.length === 0) { toast.error(t("products.invalidType")); return; }
       void upload(files);
     },
   });
 
-  const move = (from: number, to: number) => setPhotos((prev) => {
-    if (to < 0 || to >= prev.length) return prev;
-    const next = [...prev];
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    return next;
-  });
+  // Drag & drop zdjęć V2: the order the photos are sent to the composition.
+  const move = (from: number, to: number) => setPhotos((prev) => reorder(prev, from, to));
 
   // ── results into the gallery the moment they exist ─────────────────────
   const absorb = useCallback(async (expect: number) => {
@@ -170,138 +165,44 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
     return t("common.error");
   }, [t]);
 
-  // ── D · drive the run: one request at a time, a cheap poll for the view ──
-  const drive = useCallback(async (runId: string) => {
-    if (driving.current === runId) return;
-    driving.current = runId;
-    setBusy(true);
-    setStalled(null);
-    let stop = false;
-    const poll = setInterval(async () => {
-      if (stop) return;
-      try {
-        const res = await fetch(`/api/thumbnail/runs/${runId}`, { cache: "no-store" });
-        const json = await res.json() as { ok: boolean; run?: ThumbnailRunView };
-        if (json.ok && json.run && !stop) setRun(json.run);
-      } catch { /* the advance call reports too */ }
-    }, POLL_MS);
-    let last: ThumbnailRunView | null = null;
-    let misses = 0;
-    try {
-      for (let i = 0; i < 400; i++) {
-        let json: { ok: boolean; run?: ThumbnailRunView; advanced?: string; error?: string } | null = null;
-        try {
-          const res = await fetch(`/api/thumbnail/runs/${runId}`, { method: "POST", cache: "no-store" });
-          json = await res.json();
-        } catch {
-          json = null;
-        }
-        if (!json?.ok || !json.run) {
-          if (json?.error === "not_found" || ++misses >= 8) break;
-          await new Promise((r) => setTimeout(r, 4000));
-          continue;
-        }
-        misses = 0;
-        last = json.run;
-        setRun(json.run);
-        if (TERMINAL.has(json.run.status)) break;
-        // Another tab drives it, or the run waits for its next slot.
-        if (json.advanced === "busy" || json.advanced === "yield") await new Promise((r) => setTimeout(r, json?.advanced === "busy" ? 3000 : 600));
-      }
-    } finally {
-      stop = true;
-      clearInterval(poll);
-      driving.current = null;
-      setBusy(false);
-    }
-    if (!last) { toast.error(t("common.error")); return; }
-    if (!TERMINAL.has(last.status)) { setStalled(runId); return; }
-    if (last.status === "ok") {
-      toast.success(t("thumb.done"));
-      await absorb(1);
-    } else if (last.status === "failed") {
-      if (last.error === "cancelled") toast.message(t("thumb.cancelled"));
-      else toast.error(errText(last.error));
-    }
-    // Charges happened server-side, step by step: the wallet is re-read.
-    router.refresh();
-  }, [absorb, errText, router, t]);
-
-  // A run still in progress when the page was opened is picked up again.
-  useEffect(() => {
-    if (data.openRunId) void drive(data.openRunId);
-  }, [data.openRunId, drive]);
   useEffect(() => { setBalance(credits); }, [credits]);
 
-  const start = useCallback(async (opts?: { reuseFrom: ThumbnailRunView }) => {
-    if (busy || driving.current) return;
-    const source = opts?.reuseFrom;
-    const paths = source ? source.photos : photos.map((p) => p.path);
-    const withRetouch = source ? source.retouch : retouchOn;
+  // ── D · start a run: the server takes it from here ──────────────────────
+  const start = useCallback(async () => {
+    if (sending) return;
+    const paths = photos.map((p) => p.path);
     if (paths.length === 0) return;
     session.ran();
-    const reused = source && source.retouch ? source.retouchedCount : 0;
-    const total = quoteTotal({
-      photos: paths.length, retouch: withRetouch, retouchUnit: data.retouch.unit,
-      thumbnailCredits: data.thumbnailCredits ?? 0, reused,
-    }).total;
-    setBusy(true);
+    setSending(true);
     try {
-      const res = await fetch("/api/thumbnail", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          photos: paths, retouch: withRetouch, quotedTotal: total, attempt: crypto.randomUUID(),
-          ...(source ? { reuseFrom: source.id } : {}),
+      const out = await submitTracked({
+        // The run is these photos, in THIS order, with THIS Retusz choice —
+        // frozen: a retry repeats exactly them.
+        snapshot: frozenSnapshot({
+          endpoint: "/api/thumbnail", credits: quote.total,
+          body: { photos: paths, retouch: retouchOn, quotedTotal: quote.total },
         }),
+        tool: "ecommerce_thumbnail", operation: THUMBNAIL_OPERATION, expected: 1, ratio: "1:1",
+        preview: photos[0]?.url ?? null,
       });
-      const json = await res.json() as { ok: boolean; runId?: string; error?: string; missingCredits?: number };
-      if (!json.ok || !json.runId) {
-        if (json.error === "price_changed") { toast.error(t("thumb.priceChanged")); router.refresh(); }
-        else if (json.error === "insufficient_credits") toast.error(t("studio.missing", { n: json.missingCredits ?? 0 }));
-        else toast.error(errText(json.error));
-        setBusy(false);
+      if (out.ok) {
+        gate.flash();
         return;
       }
-      setBusy(false);
-      void drive(json.runId);
+      if (out.error === "price_changed") { toast.error(t("thumb.priceChanged")); router.refresh(); }
+      else if (out.error === "insufficient_credits") toast.error(t("studio.missing", { n: out.missingCredits ?? 0 }));
+      else if (out.error === "concurrency_limit") toast.error(limitText(t, locale, out.limit ?? gate.limit?.max ?? 1));
+      else toast.error(errText(out.error));
     } catch {
       toast.error(t("common.error"));
-      setBusy(false);
+    } finally {
+      setSending(false);
     }
-  }, [busy, photos, retouchOn, data.retouch.unit, data.thumbnailCredits, drive, errText, router, t, session]);
-
-  async function cancel() {
-    if (!run) return;
-    try {
-      const res = await fetch(`/api/thumbnail/runs/${run.id}/cancel`, { method: "POST" });
-      const json = await res.json() as { ok: boolean; state?: string };
-      if (json.ok && json.state === "requested") setRun((r) => r ? { ...r, cancelling: true } : r);
-      // Closed at once (nobody was driving it): show its final state now.
-      if (json.ok && (json.state === "cancelled" || json.state === "finished")) {
-        const fresh = await fetch(`/api/thumbnail/runs/${run.id}`, { cache: "no-store" });
-        const view = await fresh.json() as { ok: boolean; run?: ThumbnailRunView };
-        if (view.ok && view.run) setRun(view.run);
-        setStalled(null);
-        router.refresh();
-      }
-    } catch { /* the next poll shows the state */ }
-  }
-
-  function reset() {
-    setRun(null);
-    setPhotos([]);
-    folder.current = `thumbnail-${Math.random().toString(36).slice(2, 10)}`;
-  }
+  }, [sending, photos, retouchOn, quote.total, errText, router, t, locale, session, gate]);
 
   // A visitor's Generate is the sign-in dialog: their (absent) balance never greys it out.
-  const canRun = data.ready && !busy && !active && !uploading && photos.length > 0 && (session.guest || missing === 0)
-    && (!retouch || data.retouch.available);
-  const reusedCredits = run && run.status === "failed" && run.error !== "cancelled"
-    ? quoteTotal({
-        photos: run.photos.length, retouch: run.retouch, retouchUnit: data.retouch.unit,
-        thumbnailCredits: data.thumbnailCredits ?? 0, reused: run.retouch ? run.retouchedCount : 0,
-      }).total
-    : null;
+  const canRun = data.ready && !sending && !gate.added && !gate.atLimit && !uploading && photos.length > 0
+    && (session.guest || missing === 0) && (!retouch || data.retouch.available);
 
   return (
     <div className={cn(
@@ -323,9 +224,10 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
             capturePaste
             compact
             zone
-            onFiles={(files) => { if (!active) void upload(files); }}
-            onRemove={(i) => { if (!active) setPhotos((prev) => prev.filter((_, j) => j !== i)); }}
-            onMove={active ? undefined : move}
+            onFiles={(files) => { void upload(files); }}
+            onRemove={(i) => { setPhotos((prev) => prev.filter((_, j) => j !== i)); }}
+            onMove={move}
+            reorderHint={reorderHint}
             label={t("thumb.photos", { n: data.maxPhotos })}
           />
 
@@ -348,7 +250,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
                 </span>
               </span>
               <Switch checked={retouchOn} onChange={setRetouch} label={t("thumb.retouchTitle")}
-                disabled={!data.retouch.available || active || busy} />
+                disabled={!data.retouch.available} />
             </div>
           </section>
 
@@ -384,10 +286,12 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
 
         {/* D — the footer: price, balance, the one button */}
         <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
-          {viewer ? (
+          {gate.atLimit && gate.limit && !session.guest ? (
+            <LimitNote max={gate.limit.max} plan={gate.limit.plan} className="text-center text-[11px] leading-snug text-muted" />
+          ) : viewer ? (
             // The status card below the button says what is missing and what
             // to do (Public Tools V1); here only the empty state and the balance.
-            photos.length === 0 && !active ? (
+            photos.length === 0 ? (
               <p className="text-center text-[11px] text-muted">{t("thumb.needPhotos")}</p>
             ) : (
               <p className="text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
@@ -397,118 +301,33 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
               {t("studio.missing", { n: missing })}{" · "}
               <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
             </p>
-          ) : photos.length === 0 && !active ? (
+          ) : photos.length === 0 ? (
             <p className="text-center text-[11px] text-muted">{t("thumb.needPhotos")}</p>
           ) : (
             <p className="text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
           )}
           <button type="button" disabled={!canRun} onClick={() => void session.gate(() => start())} data-thumbnail-cta
-            aria-label={`${t("thumb.cta")} · ${n(quote.total)} ${t("genv3.credits")}`}
+            aria-label={gate.added ? t("inflight.added") : `${t("thumb.cta")} · ${n(quote.total)} ${t("genv3.credits")}`}
             className={cn(
               "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
               !canRun && "cursor-not-allowed opacity-55",
             )}>
-            {busy || active ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            <span>{t("thumb.cta")}</span>
-            {quote.total > 0 && photos.length > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(quote.total)}</span></>}
+            {gate.added ? <Check size={14} aria-hidden /> : sending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
+            {gate.added ? <span data-generate-added>{t("inflight.added")}</span> : (
+              <>
+                <span>{t("thumb.cta")}</span>
+                {quote.total > 0 && photos.length > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(quote.total)}</span></>}
+              </>
+            )}
           </button>
-          {viewer && photos.length > 0 && !active && (
+          {viewer && photos.length > 0 && (
             <ToolNotice cost={quote.total} balance={balance} session={session} className="mt-2.5" />
           )}
         </div>
       </div>
 
-      {/* ── RIGHT: the run, the result, then every Miniaturka made before ── */}
+      {/* ── RIGHT: runs in progress (tiles), then every Miniaturka made ─── */}
       <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        {run && (
-          <section className="panel mb-3 rounded-2xl p-4 sm:p-5" data-thumbnail-run={run.status}>
-            {/* Working: one calm state — never how the thumbnail is made. */}
-            {!TERMINAL.has(run.status) && (
-              <div className="flex flex-wrap items-center gap-3" data-thumbnail-working>
-                <Loader2 size={18} className="shrink-0 animate-spin text-accent" aria-hidden />
-                <p className="min-w-0 flex-1 text-[14px] font-semibold tracking-tight" role="status" aria-live="polite">
-                  {t("thumb.working")}
-                </p>
-                <button type="button" onClick={() => void cancel()} disabled={run.cancelling} data-thumbnail-cancel
-                  className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-60">
-                  {run.cancelling ? t("thumb.cancelling") : t("thumb.cancel")}
-                </button>
-              </div>
-            )}
-
-            {stalled === run.id && !TERMINAL.has(run.status) && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-raised px-3 py-2 text-[12.5px]" data-thumbnail-stalled>
-                <span className="min-w-0 flex-1 text-muted">{t("thumb.connectionLost")}</span>
-                <button type="button" onClick={() => void drive(run.id)}
-                  className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold transition-colors hover:bg-surface">
-                  {t("thumb.resume")}
-                </button>
-              </div>
-            )}
-
-            {run.status === "ok" && run.result && (
-              <div data-thumbnail-result>
-                <button type="button" onClick={() => setView({ images: [{ key: "result", src: run.result!.url }], index: 0 })}
-                  className="group relative block w-full max-w-[560px] overflow-hidden rounded-xl bg-white ring-1 ring-line"
-                  aria-label={t("thumb.zoom")}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={run.result.url} alt="" className="aspect-square h-auto w-full object-contain" />
-                  <span className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white opacity-80 group-hover:opacity-100">
-                    <Maximize2 size={14} aria-hidden />
-                  </span>
-                </button>
-                <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
-                  <span className="font-semibold tabular-nums text-ink">
-                    {t("thumb.resultSize", { w: run.result.width ?? data.target, h: run.result.height ?? data.target })}
-                  </span>
-                  <Link href="/library" className="inline-flex items-center gap-1 font-semibold text-accent hover:opacity-75">
-                    <ImageIcon size={12} aria-hidden />{t("thumb.saved")}
-                  </Link>
-                </p>
-                <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">{t("thumb.qcNote")}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" data-thumbnail-download
-                    onClick={() => { void saveImageFrom(run.result!.url, { filename: `miniaturka-${run.result!.width ?? data.target}.png` }).catch(() => toast.error(t("common.error"))); }}
-                    className="cta flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-[12.5px] font-semibold">
-                    <Download size={14} aria-hidden />{t("thumb.download")}
-                  </button>
-                  <button type="button" onClick={() => setView({ images: [{ key: "result", src: run.result!.url }], index: 0 })}
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3.5 text-[12.5px] font-semibold text-muted hover:bg-raised hover:text-ink">
-                    <Maximize2 size={14} aria-hidden />{t("thumb.zoom")}
-                  </button>
-                  <button type="button" onClick={reset} data-thumbnail-again
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3.5 text-[12.5px] font-semibold text-muted hover:bg-raised hover:text-ink">
-                    <RefreshCw size={14} aria-hidden />{t("thumb.again")}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {run.status === "failed" && (
-              <div className="rounded-xl bg-[rgb(var(--danger)/0.06)] px-3.5 py-3" data-thumbnail-error>
-                <p className="text-[12.5px] font-semibold text-danger">
-                  {run.error === "cancelled" ? t("thumb.cancelled") : errText(run.error)}
-                </p>
-                {run.retouch && run.retouchedCount > 0 && (
-                  <p className="mt-1 text-[11.5px] text-muted">{t("thumb.retouchKept", { n: run.retouchedCount })}</p>
-                )}
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  {reusedCredits !== null && data.ready && (
-                    <button type="button" disabled={busy} onClick={() => void start({ reuseFrom: run })} data-thumbnail-retry
-                      className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
-                      <RefreshCw size={12} aria-hidden />{t("thumb.retry", { n: n(reusedCredits) })}
-                    </button>
-                  )}
-                  <button type="button" onClick={reset}
-                    className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted hover:bg-raised hover:text-ink">
-                    {t("thumb.again")}
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
         <GenerationGallery
           initialItems={data.initialItems}
           initialCursor={data.initialCursor}
@@ -521,13 +340,12 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
           onBalance={setBalance}
           onAbsorb={absorb}
           operation={THUMBNAIL_OPERATION}
+          inflight={{ tools: ["ecommerce_thumbnail"] }}
           emptyTitle={t("thumb.emptyTitle")}
           emptyBody={t("thumb.emptyBody")}
         />
       </div>
 
-      <ImageLightbox images={view?.images ?? []} index={view ? view.index : null}
-        onIndex={(i) => setView((v) => v ? { ...v, index: i } : v)} onClose={() => setView(null)} />
     </div>
   );
 }

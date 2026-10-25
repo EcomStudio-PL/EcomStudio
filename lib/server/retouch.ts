@@ -6,6 +6,7 @@ import type { AspectRatio, Resolution } from "@/lib/ai/types";
 import { getAdapter } from "@/lib/ai/registry";
 import { GEMINI_IMAGE_ASPECT_RATIOS } from "@/lib/ai/providers/google-request";
 import { RETOUCH_DELIVERY_SIZES } from "@/lib/server/retouch-delivery";
+import type { GenerationTrack } from "@/lib/server/generation";
 
 /**
  * RETUSZ ZDJĘĆ — GrovBase's own retouch pass.
@@ -187,13 +188,17 @@ export type RetouchInput = {
   format?: string;
   /** Results per run the panel showed the price for. */
   quotedOutputs?: number;
+  /** Generacje w toku V2: the plan's slot and the acceptance hook. Job/status
+   *  integration only — neither reaches the Gemini request, the prompt, the
+   *  delivery or the price. */
+  track?: GenerationTrack;
 };
 
 export type RetouchResult =
   | { ok: true; generationId: string | null; jobId: string; url: string; path: string; credits: number }
   /** Workflow ON: the run was started and charged; poll /api/engine/runs/{runId}. */
   | { ok: true; pending: true; runId: string; jobId: string | null; credits: number; expected: number }
-  | { ok: false; error: string; missingCredits?: number };
+  | { ok: false; error: string; missingCredits?: number; limit?: number };
 
 /**
  * Retouch ONE image. One call, one job, one credit reservation — a batch is
@@ -248,6 +253,7 @@ export async function runRetouch(
       promptOrigin: "ecomstudio",
       costOverride: retouchPrice(model, resolution),
       operation: RETOUCH_OPERATION,
+      ...(input.track ? { slot: input.track.slot, onAccepted: input.track.onAccepted } : {}),
     },
   });
 

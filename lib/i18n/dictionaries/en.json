@@ -783,6 +783,8 @@
     "annualPrice": "Annual price",
     "limitProducts": "Product limit",
     "limitGenerations": "Generation limit / mo",
+    "limitConcurrent": "Parallel generations",
+    "limitConcurrentHint": "How many generations an account on this plan can have in progress at once (1–50). Enforced by the server.",
     "featuresLabel": "Plan capabilities",
     "featuresHint": "The values the pricing page compares. -1 means unlimited.",
     "recommended": "Recommended",
@@ -2911,7 +2913,9 @@
       "price_changed": "The price has changed — refresh the page to see the current one. No credits were taken.",
       "trial_check_failed": "Your plan could not be checked just now. Nothing was charged — please try again in a moment.",
       "trial_workflow_unavailable": "This tool mode is available on a paid plan. Nothing was charged.",
-      "trial_tool_unavailable": "This tool is available on a paid plan. Nothing was charged."
+      "trial_tool_unavailable": "This tool is available on a paid plan. Nothing was charged.",
+      "concurrency_limit": "That's your plan's limit — you can start the next generation when one finishes.",
+      "network": "Couldn't connect. If the generation started, you'll see it in the gallery."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -5998,6 +6002,9 @@
     "guide.untitled": "Untitled file",
     "guide.unknownPhoto": "File not available in the library",
     "guide.starter.heading": "Starter gallery",
+    "guide.reorderHint.heading": "Hint under the photos",
+    "guide.reorderHint.note": "A short line under photos that can be dragged (photo order = the order sent to the AI). Leave it empty to hide it.",
+    "guide.reorderHint.label": "Hint text",
     "guide.starter.title": "Starter gallery title",
     "guide.starter.body": "Starter gallery description",
     "guide.starter.image": "Example result photo",
@@ -11921,5 +11928,50 @@
       "headline": "Online product photo editor",
       "lead": "Change the background, add a shadow, set the format, brightness and framing in one place, then download the finished file."
     }
+  },
+  "inflight": {
+    "toolAny": "Generation",
+    "queued": "Queued",
+    "stage": {
+      "generate": "Generating…",
+      "retouch": "Retouching photos",
+      "compose": "Composing",
+      "finish": "Final render"
+    },
+    "step": "step {n}/{m}",
+    "sending": "Sending…",
+    "added": "Added",
+    "cancel": "Cancel",
+    "cancelFailed": "Could not cancel — the job may have already started.",
+    "remove": "Remove",
+    "slow": "Taking longer than usual. You can close the page — we'll let you know when it's ready.",
+    "usuallySec": "Usually about {n} s",
+    "usuallyMin": "Usually about {n} min",
+    "cancelledTitle": "Cancelled",
+    "cancelled": "Cancelled before it started — no credits were taken.",
+    "refunded": "Your credits are back in your account.",
+    "refundPending": "The credit refund is in progress.",
+    "retry": "Try again",
+    "retryTitle": "Try again?",
+    "retryBody": "We'll run the same generation — the same settings and photos, in the same order. Cost: {n} cr.",
+    "retryConfirm": "Run · {n} cr.",
+    "repriced": "The current cost is {n} cr. (retouches already paid for are reused). Please confirm again.",
+    "photosGone": "The original photos are no longer available. Add them again in the tool.",
+    "limit": {
+      "one": "You have {n} generation in progress. That's your plan's limit. You can start the next one when it finishes.",
+      "other": "You have {n} generations in progress. That's your plan's limit. You can start the next one when one finishes."
+    },
+    "raiseLimit": "Raise the limit",
+    "tileAria": "{tool}: in progress, {time}",
+    "row": "In progress"
+  },
+  "dnd": {
+    "hint": "Drag to change the order.",
+    "primary": "Main",
+    "handle": "Photo {n} of {count}. Press Space to change its position.",
+    "lifted": "Photo {n} picked up. Arrow keys move it, Space drops it, Escape cancels.",
+    "moved": "Photo {n} — position {m}.",
+    "dropped": "Photo {n} moved to position {m}.",
+    "cancelled": "Move cancelled. Photo {n} stays at position {m}."
   }
 }

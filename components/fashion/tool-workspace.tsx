@@ -1,9 +1,8 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/notify";
-import { Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
-import { awaitEngineRun } from "@/lib/engine-run-client";
+import { Check, Sparkles, Wand2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
@@ -17,6 +16,13 @@ import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
 import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
 import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { frozenSnapshot } from "@/lib/inflight/store";
+import { enqueueBatch } from "@/lib/inflight/queue";
+import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { limitText } from "@/components/inflight/inflight-tile";
+import { reorder } from "@/components/genv3/sortable-photos";
+import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { isGuideTool } from "@/lib/tool-guides";
 
 /**
  * MODA — one panel for every tool in the category.
@@ -61,10 +67,8 @@ type JobState = {
   key: string;
   /** The storage paths this job was built from, by pool. */
   inputs: Record<string, string[]>;
-  /** Local preview of the leading source, so a card shows what is being made. */
+  /** Local preview of the leading source, so a tile shows what is being made. */
   url: string;
-  status: "queued" | "processing" | "completed" | "failed";
-  error?: string;
 };
 
 type Pools = Record<string, UploadedRef[]>;
@@ -99,8 +103,6 @@ export function FashionToolWorkspace({
     () => (resolutions.includes("2K") ? "2K" : resolutions[0] ?? "1K"));
   const [format, setFormat] = useState(config.defaultFormat);
   const [hint, setHint] = useState("");
-  const [jobs, setJobs] = useState<JobState[]>([]);
-  const [busy, setBusy] = useState(false);
   const [balance, setBalance] = useState(credits);
   const [freshItems, setFreshItems] = useState<GalleryItem[]>([]);
 
@@ -109,6 +111,10 @@ export function FashionToolWorkspace({
   const reserved = useRef<Record<string, number>>({});
   const inFlight = useRef(0);
   const running = useRef(false);
+  // Generacje w toku V2: the plan's limit, "Dodano ✓", the server's balance.
+  const gate = useInflightGate();
+  const reorderHint = useReorderHint(isGuideTool(config.toolKey) ? config.toolKey : "generator");
+  useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
   /**
    * HOW MANY RESULTS THIS RUN PRODUCES.
@@ -213,7 +219,7 @@ export function FashionToolWorkspace({
    *  drop target is ambiguous, and guessing wrong puts a person's photograph
    *  in the garment pool. The per-block targets below stay exact. */
   const dragging = useFileDrop({
-    enabled: !busy,
+    enabled: true,
     onDrop: (files) => {
       if (files.length === 0) { toast.error(t("products.invalidType")); return; }
       void upload(config.slots[0]!.key, files);
@@ -244,55 +250,6 @@ export function FashionToolWorkspace({
     return known && known !== `studio.err.${code}` ? known : t("common.error");
   }, [t]);
 
-  const runOne = useCallback(async (job: JobState) => {
-    setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "processing", error: undefined } : j));
-    try {
-      const res = await fetch("/api/fashion", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tool: config.key,
-          inputs: job.inputs,
-          resolution: config.showResolution ? resolution : undefined,
-          format: config.showFormat ? format : undefined,
-          hint: config.showHint ? hint.trim().slice(0, FASHION_HINT_MAX) : undefined,
-          expectedOutputs: outputsPerRun,
-        }),
-      });
-      const json = await res.json() as {
-        ok: boolean; error?: string; credits?: number; pending?: boolean; runId?: string; expected?: number;
-      };
-      if (json.ok && json.pending && json.runId) {
-        // WORKFLOW ON: charged once for the whole run; results arrive as the
-        // run finishes. Whatever is not delivered is refunded by the server.
-        const charged = json.credits ?? 0;
-        setBalance((b) => Math.max(0, b - charged));
-        const fin = await awaitEngineRun(json.runId);
-        const expected = Math.max(1, json.expected ?? 1);
-        const delivered = fin.status === "ok" || fin.status === "partial" ? fin.images.length : 0;
-        const refund = Math.round((charged * Math.max(0, expected - delivered)) / expected);
-        if (refund > 0) setBalance((b) => b + refund);
-        if (delivered > 0) {
-          await absorb(delivered);
-          setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "completed" } : j));
-          return true;
-        }
-        setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: errText(fin.error ?? undefined) } : j));
-        return false;
-      }
-      if (json.ok) {
-        setBalance((b) => Math.max(0, b - (json.credits ?? perImage)));
-        await absorb(1);
-        setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "completed" } : j));
-        return true;
-      }
-      setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: errText(json.error) } : j));
-      return false;
-    } catch {
-      setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: t("common.error") } : j));
-      return false;
-    }
-  }, [config, resolution, format, hint, perImage, outputsPerRun, absorb, errText, t]);
-
   /**
    * Build the batch. Each job carries one photograph from every pool: index i
    * of each, with a shorter pool reusing its last entry — one garment against
@@ -309,49 +266,54 @@ export function FashionToolWorkspace({
       }
       const lead = pools[config.slots[0]!.key] ?? [];
       const preview = lead[Math.min(i, lead.length - 1)];
-      return { key: `${config.key}-${i}-${stamp}`, inputs, url: preview?.url ?? "", status: "queued" as const };
+      return { key: `${config.key}-${i}-${stamp}`, inputs, url: preview?.url ?? "" };
     });
   }, [config, pools, runCount]);
 
-  async function runAll() {
+  /**
+   * ONE CLICK (Generacje w toku V2): every combination is its own job, queued
+   * two at a time, each frozen with THIS click's inputs and settings — a
+   * tile's "Spróbuj ponownie" repeats exactly it. The panel stays as it is.
+   */
+  function runAll() {
     // Guarded against the double click that would otherwise pay twice.
     if (running.current || runCount === 0) return;
     running.current = true;
     session.ran();
-    setBusy(true);
-    const batch = buildBatch();
-    setJobs(batch);
-    let done = 0, failed = 0;
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < batch.length) {
-        const job = batch[cursor++]!;
-        const ok = await runOne(job);
-        if (ok) done++; else failed++;
-      }
-    };
-    try {
-      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batch.length) }, worker));
-      if (failed > 0 && done === 0) toast.error(t("fashion.allFailed"));
-      else if (failed > 0) toast.warning(t("fashion.someFailed", { n: failed }));
-      else toast.success(t("fashion.done", { n: done }));
-    } finally {
-      setBusy(false);
-      running.current = false;
-    }
-  }
-
-  async function retry(job: JobState) {
-    if (running.current) return;
-    running.current = true;
-    setBusy(true);
-    try { await runOne(job); } finally { setBusy(false); running.current = false; }
+    let refused = false;
+    enqueueBatch({
+      maxInFlight: CONCURRENCY,
+      items: buildBatch().map((job) => ({
+        snapshot: frozenSnapshot({
+          endpoint: "/api/fashion", credits: perImage,
+          body: {
+            tool: config.key,
+            inputs: job.inputs,
+            resolution: config.showResolution ? resolution : undefined,
+            format: config.showFormat ? format : undefined,
+            hint: config.showHint ? hint.trim().slice(0, FASHION_HINT_MAX) : undefined,
+            expectedOutputs: outputsPerRun,
+          },
+        }),
+        tool: config.toolKey, operation: config.operation, expected: Math.max(1, outputsPerRun),
+        ratio: config.showFormat ? format : null, preview: job.url || null,
+      })),
+      onAccepted: (out) => setBalance((b) => Math.max(0, b - (out.credits || perImage))),
+      onRefused: (out) => {
+        if (refused) return;
+        refused = true;
+        toast.error(out.error === "concurrency_limit"
+          ? limitText(t, locale, out.limit ?? gate.limit?.max ?? 1)
+          : errText(out.error));
+      },
+    });
+    gate.flash();
+    setTimeout(() => { running.current = false; }, 600);
   }
 
   // A visitor's Generate is always the sign-in dialog, so their balance (none)
   // does not grey it out; a member's is the server-checked wallet, as before.
-  const canRun = available && !busy && !uploading && runCount > 0 && (session.guest || missing === 0);
-  const pending = jobs.filter((j) => j.status !== "completed");
+  const canRun = available && !gate.added && !gate.atLimit && !uploading && runCount > 0 && (session.guest || missing === 0);
   const ctaLabel = t(`wf.moda.${config.key}.cta`);
 
   /**
@@ -446,6 +408,10 @@ export function FashionToolWorkspace({
               zoneDense={config.denseZones}
               onFiles={(files) => void upload(slot.key, files)}
               onRemove={(i) => removeAt(slot.key, i)}
+              // Each pool keeps its own order — a garment never trades places
+              // with a person.
+              onMove={slot.max > 1 ? (from, to) => setPools((prev) => ({ ...prev, [slot.key]: reorder(prev[slot.key] ?? [], from, to) })) : undefined}
+              reorderHint={reorderHint}
               label={config.numberedSteps && slot.zoneLabelKey
                 ? `${index + 1}. ${t(slot.zoneLabelKey)}`
                 : t(slot.labelKey, { n: slot.max })}
@@ -601,7 +567,9 @@ export function FashionToolWorkspace({
               </p>
             </div>
           </div>
-          {viewer ? (
+          {gate.atLimit && gate.limit && !session.guest ? (
+            <LimitNote max={gate.limit.max} plan={gate.limit.plan} />
+          ) : viewer ? (
             // The status card below the button says what is missing and what
             // to do; here only what the tool still needs and the balance.
             emptyRequired.length > 0 ? (
@@ -624,14 +592,18 @@ export function FashionToolWorkspace({
             <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
           )}
           <button type="button" disabled={!canRun} onClick={() => void session.gate(runAll)} data-fashion-cta
-            aria-label={`${ctaLabel} · ${n(total)} ${t("genv3.credits")}`}
+            aria-label={gate.added ? t("inflight.added") : `${ctaLabel} · ${n(total)} ${t("genv3.credits")}`}
             className={cn(
               "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
               !canRun && "cursor-not-allowed opacity-55",
             )}>
-            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            <span>{ctaLabel}</span>
-            {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
+            {gate.added ? <Check size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
+            {gate.added ? <span data-generate-added>{t("inflight.added")}</span> : (
+              <>
+                <span>{ctaLabel}</span>
+                {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
+              </>
+            )}
           </button>
           {viewer && runCount > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
         </div>
@@ -651,33 +623,6 @@ export function FashionToolWorkspace({
           Same classes as /retusz now, so the next person comparing them finds
           them identical instead of nearly identical. */}
       <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        {pending.length > 0 && (
-          <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-fashion-jobs>
-            {pending.map((job) => (
-              <div key={job.key} data-fashion-job={job.status}
-                className="flex items-center gap-3 rounded-xl border border-line bg-surface/60 p-2">
-                {job.url
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={job.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover opacity-70" />
-                  : <span className="h-14 w-14 shrink-0 rounded-lg bg-raised" aria-hidden />}
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-[12.5px] font-semibold">
-                    {job.status !== "failed" && <Loader2 size={12} className="animate-spin text-accent" aria-hidden />}
-                    {t(`fashion.status_${job.status}`)}
-                  </span>
-                  {job.error && <span className="mt-0.5 block text-[11px] leading-snug text-danger">{job.error}</span>}
-                </span>
-                {job.status === "failed" && (
-                  <button type="button" onClick={() => retry(job)} disabled={busy} data-fashion-retry
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
-                    <RefreshCw size={12} aria-hidden />{t("retouch.retry")}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
         <GenerationGallery
           initialItems={initialItems}
           initialCursor={initialCursor}
@@ -690,6 +635,7 @@ export function FashionToolWorkspace({
           onBalance={setBalance}
           onAbsorb={absorb}
           operation={config.operation}
+          inflight={{ tools: [config.toolKey] }}
           emptyTitle={t("fashion.emptyTitle")}
           emptyBody={t(`wf.moda.${config.key}.empty`)}
         />
