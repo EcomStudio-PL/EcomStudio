@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/notify";
 import {
   Check, Download, Heart, LayoutGrid, List, Loader2, Megaphone, Minus,
-  Plus, RefreshCw, Search, Sparkles, SquareDashedMousePointer, Sun, Trash2, X,
+  Plus, RefreshCw, Search, SlidersHorizontal, Sparkles, SquareDashedMousePointer, Sun, Trash2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -26,6 +26,11 @@ import { useFavoriteToggle } from "@/lib/favorites/use-favorite-toggle";
 import { takeSettled } from "@/lib/inflight/store";
 import { InflightRow, tileAspect, useInflightTiles, type InflightScope } from "@/components/inflight/inflight-section";
 import { InflightTileView } from "@/components/inflight/inflight-tile";
+import { HelpPortal, useToolFrame } from "@/components/tool-frame/frame";
+import { BottomSheet } from "@/components/mobile/sheet";
+import { Segmented } from "@/components/ui/segmented";
+import { Switch } from "@/components/ui/record";
+import { useIsGuest } from "@/components/public-tools/tool-viewer";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
 
@@ -163,10 +168,38 @@ export function GenerationGallery({
   // example effects that stand in for an empty gallery. Asked for after this
   // gallery has painted; until it answers, nothing here changes.
   const pathname = usePathname();
+  // Generator UX V3: inside a tool frame the tutorial is the "?" beside the
+  // tool's name (portalled there); elsewhere it keeps its place above the grid.
+  const frame = useToolFrame();
   const guide = useToolGuide(
     guideTool ?? (operation ? guideToolForOperation(operation) : guideToolForPath(pathname)),
-    { compactLabel: !operation },
+    { compactLabel: !operation, icon: !!frame },
   );
+  const inlineGuide = frame ? null : guide.button;
+
+  // "Wyniki (24)" on a phone: the database's count of this gallery's results
+  // (never the loaded tiles), read again when results arrive or are deleted.
+  const guest = useIsGuest();
+  const [deletions, setDeletions] = useState(0);
+  const setResults = frame?.setResults;
+  useEffect(() => {
+    if (!setResults || guest) return;
+    let alive = true;
+    const id = window.setTimeout(() => {
+      const p = new URLSearchParams({ count: "1" });
+      if (operation) p.set("op", operation);
+      fetch(`/api/generations?${p.toString()}`, { cache: "no-store" })
+        .then((r) => r.json() as Promise<{ ok: boolean; total?: number | null }>)
+        .then((json) => { if (alive) setResults(json.ok && typeof json.total === "number" ? json.total : null); })
+        .catch(() => undefined);
+    }, freshItems.length + deletions === 0 ? 0 : 600);
+    return () => { alive = false; window.clearTimeout(id); };
+  }, [setResults, guest, operation, freshItems.length, deletions]);
+
+  // ── the phone's filter bar: one row, a sheet for the rest ─────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [sheet, setSheet] = useState<Filter | null>(null);
+  const activeFilters = (filter.session !== "all" ? 1 : 0) + (filter.fav ? 1 : 0) + (filter.order !== "desc" ? 1 : 0);
 
   const buildUrl = useCallback((f: Filter, cur: string | null) => {
     const p = new URLSearchParams();
@@ -380,6 +413,7 @@ export function GenerationGallery({
       setItems(drop);
       onFresh(drop);
       setDetailsId(null);
+      setDeletions((d) => d + 1);
     }
     setBulkBusy(null);
     setSelection(new Set());
@@ -459,6 +493,7 @@ export function GenerationGallery({
       setItems(drop);
       onFresh(drop);
       setDetailsId(null);
+      setDeletions((d) => d + 1);
       // Every asset of that generation is gone — none may stay picked.
       const gone = new Set(merged.filter((i) => i.generationId === item.generationId).map((i) => i.assetId));
       setPicked((prev) => new Set([...prev].filter((id) => !gone.has(id))));
@@ -506,17 +541,18 @@ export function GenerationGallery({
       {/* The tutorial button sits above the gallery until the toolbar row has
           room for it — `lg` on the generators, `xl` on a tool's narrower
           gallery column — because that row must stay one row. */}
-      {guide.button && <div className={cn("mb-2 flex justify-end", operation ? "xl:hidden" : "lg:hidden")}>{guide.button}</div>}
+      <HelpPortal>{frame ? guide.button : null}</HelpPortal>
+      {inlineGuide && <div className={cn("mb-2 flex justify-end", operation ? "xl:hidden" : "lg:hidden")}>{inlineGuide}</div>}
       {/* ONE toolbar row: session chips on the left, view/search/filter/sort
           on the right, every control the same 36px height on a shared centre
           line. Below `lg` the two groups wrap onto their own rows instead of
           being squeezed. */}
-      <div data-gallery-toolbar className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div data-gallery-toolbar className="mb-3 hidden min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 md:flex">
         {/* On a tool's gallery the button is this group's only control from
             `xl` up: no scroll to make room for, so no extra 2px either. */}
         <div className={cn("thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1",
           operation && guide.button ? "xl:pb-0" : null)}>
-          {guide.button && <span className={operation ? "hidden xl:contents" : "hidden lg:contents"}>{guide.button}</span>}
+          {inlineGuide && <span className={operation ? "hidden xl:contents" : "hidden lg:contents"}>{inlineGuide}</span>}
           {/* Session chips belong to the generator: a retouch has no session
               type, so a tool's gallery does not offer two dead filters. */}
           {!operation && chips.map((c) => {
@@ -638,6 +674,123 @@ export function GenerationGallery({
           </select>
         </div>
       </div>
+
+      {/* THE PHONE'S ROW (Generator UX V3): search, Filtry (with how many are
+          on), selection mode — and the categories as one sideways row under
+          it. Everything else lives in the sheet. Same state as the desktop
+          toolbar above; only the controls differ. */}
+      <div data-gallery-toolbar-phone className="mb-3 md:hidden">
+        {searchOpen ? (
+          <div className="flex items-center gap-1.5">
+            <div className="relative min-w-0 flex-1">
+              <Search size={14} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+              <input autoFocus value={filter.q} onChange={(e) => applyFilter({ q: e.target.value })}
+                placeholder={t("genv3.searchPh")} aria-label={t("genv3.searchLabel")} data-gallery-search
+                className="h-10 w-full rounded-xl border border-line bg-sunken/60 pl-8 pr-2 text-[13px] font-medium outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)]" />
+            </div>
+            <button type="button" aria-label={t("genv3.searchClose")} data-gallery-search-close
+              onClick={() => { setSearchOpen(false); if (filter.q) applyFilter({ q: "" }); }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line text-muted hover:text-ink">
+              <X size={15} aria-hidden />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button type="button" aria-label={t("genv3.searchOpen")} data-gallery-search-open onClick={() => setSearchOpen(true)}
+              className={cn("relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors",
+                filter.q ? "border-[rgb(var(--accent)/0.5)] text-accent" : "border-line text-faint hover:text-ink")}>
+              <Search size={15} aria-hidden />
+            </button>
+            <button type="button" data-gallery-filters onClick={() => setSheet(filter)} aria-haspopup="dialog"
+              className={cn("flex h-10 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-semibold transition-colors",
+                activeFilters > 0 ? "border-[rgb(var(--accent)/0.5)] text-ink" : "border-line text-muted hover:text-ink")}>
+              <SlidersHorizontal size={14} aria-hidden />
+              {t("genv3.filters")}
+              {activeFilters > 0 && (
+                <span data-gallery-filter-count className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold tabular-nums text-white">{activeFilters}</span>
+              )}
+            </button>
+            <span className="min-w-0 flex-1" />
+            <button type="button" aria-pressed={selecting} data-select-toggle
+              aria-label={selecting ? t("genv3.selectOff") : t("genv3.selectOn")}
+              onClick={() => selecting ? exitSelection() : setSelection(new Set(), true)}
+              className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors",
+                selecting ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent" : "border-line text-faint hover:text-ink")}>
+              <SquareDashedMousePointer size={15} aria-hidden />
+            </button>
+          </div>
+        )}
+        {!operation && (
+          <div className="thin-scroll -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5" data-gallery-pills>
+            {chips.map((c) => {
+              const on = filter.session === c.key;
+              return (
+                <button key={c.key} type="button" aria-pressed={on} onClick={() => applyFilter({ session: c.key })}
+                  className={cn("flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+                    on ? "is-selected text-ink" : "border-line text-muted")}>
+                  {c.icon && <c.icon size={13} aria-hidden className={on ? "text-accent" : "text-faint"} />}
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {sheet && (
+        <BottomSheet open onClose={() => setSheet(null)} title={t("genv3.filtersTitle")}
+          footer={(
+            <div className="flex gap-2">
+              <button type="button" data-filters-clear
+                onClick={() => setSheet({ ...sheet, session: "all", fav: false, order: "desc" })}
+                className="flex h-11 flex-1 items-center justify-center rounded-xl border border-line text-[13.5px] font-semibold text-muted hover:text-ink">
+                {t("genv3.clearFilters")}
+              </button>
+              <button type="button" data-filters-apply
+                onClick={() => { applyFilter({ session: sheet.session, fav: sheet.fav, order: sheet.order }); setSheet(null); }}
+                className="cta flex h-11 flex-[2] items-center justify-center rounded-xl text-[13.5px] font-semibold">
+                {t("genv3.showResults")}
+              </button>
+            </div>
+          )}>
+          <div className="space-y-5 px-1 pb-3" data-filters-sheet>
+            <section>
+              <p className="mb-2 text-[13px] font-semibold">{t("genv3.sortLabel")}</p>
+              <Segmented label={t("genv3.sortLabel")} value={sheet.order}
+                onChange={(v) => setSheet({ ...sheet, order: v as Filter["order"] })}
+                options={[{ value: "desc", label: t("genv3.sortNewest") }, { value: "asc", label: t("genv3.sortOldest") }]} />
+            </section>
+            <label className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2 text-[13px] font-semibold">
+                <Heart size={14} aria-hidden className="text-favorite" />{t("genv3.onlyFav")}
+              </span>
+              <Switch checked={sheet.fav} onChange={(v) => setSheet({ ...sheet, fav: v })} label={t("genv3.onlyFav")} />
+            </label>
+            {!operation && (
+              <section>
+                <p className="mb-2 text-[13px] font-semibold">{t("genv3.categories")}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {chips.map((c) => (
+                    <button key={c.key} type="button" aria-pressed={sheet.session === c.key}
+                      onClick={() => setSheet({ ...sheet, session: c.key })}
+                      className={cn("flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold",
+                        sheet.session === c.key ? "is-selected text-ink" : "border-line text-muted")}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            {view === "grid" && (
+              <section>
+                <p className="mb-2 text-[13px] font-semibold">{t("genv3.densityLabel")}</p>
+                <Segmented label={t("genv3.densityLabel")} value={String(density)}
+                  onChange={(v) => changeDensity(Number(v))}
+                  options={[[0, "S"], [2, "M"], [4, "L"]].map(([step, short]) => ({ value: String(step), label: String(short) }))} />
+              </section>
+            )}
+          </div>
+        </BottomSheet>
+      )}
 
       {/* THE BAR EXISTS ONLY WHEN SOMETHING IS PICKED. "Wybrano: 0" is not
           information, and an empty strip above the grid is just a hole — so

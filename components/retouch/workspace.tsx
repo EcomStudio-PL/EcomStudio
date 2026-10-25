@@ -1,26 +1,27 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { toast } from "@/lib/notify";
-import { Check, Sparkles, Wand2 } from "lucide-react";
+import { Sparkles, Wand2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
-import { Dropdown } from "@/components/ui/dropdown";
 import { InfoHint } from "@/components/ui/hint";
-import { RatioValue, ratioIcon, ratioName } from "@/components/genv3/ratio-options";
+import { ratioName } from "@/components/genv3/ratio-options";
+import { Segmented } from "@/components/ui/segmented";
+import { FormatTiles, PanelSection, fmtDefault, useDeltaMeta } from "@/components/genv3/controls";
 import { cn } from "@/lib/utils";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
-import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
-import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { ToolDraftBanner } from "@/components/public-tools/tool-notice";
 import { frozenSnapshot } from "@/lib/inflight/store";
 import { enqueueBatch } from "@/lib/inflight/queue";
-import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { useInflightGate } from "@/components/inflight/use-inflight-gate";
 import { limitText } from "@/components/inflight/inflight-tile";
 import { reorder } from "@/components/genv3/sortable-photos";
-import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { useFormatUses, useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
+import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 
 /** Photos one batch may carry. */
 const MAX_PHOTOS = 10;
@@ -63,6 +64,9 @@ export function RetouchWorkspace({
   initialCursor: string | null;
 }) {
   const { t, locale } = useI18n();
+  const frame = useToolFrameController();
+  const formatUses = useFormatUses("retouch");
+  const delta = useDeltaMeta();
   const [photos, setPhotos] = useState<UploadedRef[]>([]);
   const [uploading, setUploading] = useState(false);
   const [resolution, setResolution] = useState(() => (resolutions.includes("2K") ? "2K" : resolutions[0] ?? "1K"));
@@ -89,7 +93,6 @@ export function RetouchWorkspace({
     dialog — and once signed in the same photos go through `upload` below like
     any picked by hand. Without a viewer (no provider) nothing changes.
   */
-  const viewer = useToolViewer();
   const session = useToolSession({
     settings: { resolution, format },
     sources: photos.map(refSource),
@@ -172,6 +175,7 @@ export function RetouchWorkspace({
     running.current = true;
     session.ran();
     let refused = false;
+    let shown = false;
     enqueueBatch({
       maxInFlight: CONCURRENCY,
       items: photos.map((p) => ({
@@ -182,7 +186,10 @@ export function RetouchWorkspace({
         tool: "retouch", operation: "image_retouch", expected: Math.max(1, outputsPerRun),
         ratio: format === "original" ? null : format, preview: p.url,
       })),
-      onAccepted: (out) => setBalance((b) => Math.max(0, b - (out.credits || perImage))),
+      onAccepted: (out) => {
+        setBalance((b) => Math.max(0, b - (out.credits || perImage)));
+        if (!shown) { shown = true; frame.accepted(); }
+      },
       onRefused: (out) => {
         if (refused) return;
         refused = true;
@@ -198,168 +205,101 @@ export function RetouchWorkspace({
 
   // A visitor's Generate is always the sign-in dialog, so their balance (none)
   // does not grey it out; a member's is the server-checked wallet, as before.
-  const canRun = available && !gate.added && !gate.atLimit && !uploading && photos.length > 0 && (session.guest || missing === 0);
+  const canRun = available && !gate.atLimit && !uploading && photos.length > 0 && (session.guest || missing === 0);
+  const line = useBarLine({
+    unavailable: !available ? t("retouch.unavailable") : null,
+    invalid: photos.length === 0 ? t("retouch.needPhotos") : uploading ? t("bar.uploading") : null,
+    limit: gate.atLimit && gate.limit && !session.guest ? gate.limit : null,
+    cost: total, balance, session,
+  });
+  const recommendedRes = resolutions.includes("2K") ? "2K" : resolutions[0] ?? "";
+  const priceAt = (r: string) => (pricing[r] ?? 0) * Math.max(1, outputsPerRun);
 
   return (
-    <div className={cn(
-      "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
-      "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
-    )}>
-      <DropOverlay show={dragging} title={t("retouch.dropTitle")} sub={t("retouch.dropSub")} />
+    <ToolFrame frame={frame} tools={["retouch"]} back={{ href: "/tools", label: t("nav.allTools") }}
+      title={<h1 className="truncate text-[15px] font-semibold tracking-tight">{t("retouch.title")}</h1>}>
+      <ToolColumns
+        cols="lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)]"
+        overlay={<DropOverlay show={dragging} title={t("retouch.dropTitle")} sub={t("retouch.dropSub")} />}
+        panel={(
+          <>
+            <ToolDraftBanner session={session} />
+            <PhotoUploader
+              preview
+              items={photos}
+              max={MAX_PHOTOS}
+              uploading={uploading}
+              capturePaste
+              compact
+              zone
+              onFiles={upload}
+              onRemove={(i) => setPhotos((prev) => prev.filter((_, j) => j !== i))}
+              // The order the batch is sent in (and the guest draft keeps).
+              onMove={(from, to) => setPhotos((prev) => reorder(prev, from, to))}
+              reorderHint={reorderHint}
+              label={t("retouch.photos", { n: MAX_PHOTOS })}
+            />
 
-      {/* ── LEFT: the whole tool, in six rows ───────────────────────────── */}
-      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-        <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
-          <ToolDraftBanner session={session} />
-          <PhotoUploader
-            preview
-            items={photos}
-            max={MAX_PHOTOS}
-            uploading={uploading}
-            capturePaste
-            compact
-            zone
-            onFiles={upload}
-            onRemove={(i) => setPhotos((prev) => prev.filter((_, j) => j !== i))}
-            // The order the batch is sent in (and the guest draft keeps).
-            onMove={(from, to) => setPhotos((prev) => reorder(prev, from, to))}
-            reorderHint={reorderHint}
-            label={t("retouch.photos", { n: MAX_PHOTOS })}
+            {/* ── What the tool does: one line of copy, no card. ─────────── */}
+            <section data-retouch-what>
+              <p className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight">
+                <Sparkles size={14} aria-hidden className="text-accent" />
+                {t("retouch.cardTitle")}
+                <InfoHint text={t("retouch.cardHint")} />
+              </p>
+              <p className="mt-1 text-[12px] leading-relaxed text-muted">{t("retouch.cardBody")}</p>
+            </section>
+
+            {/* The two settings, as they are offered — the delivered file's
+                size and shape only (lib/server/retouch-delivery.ts); nothing
+                here reaches the request sent to the model. */}
+            <PanelSection title={t("genv3.resolution")} data="resolution">
+              <Segmented label={t("genv3.resolution")} value={resolution}
+                onChange={(v) => { setResolution(v); session.touched(); }}
+                options={resolutions.map((r) => ({ value: r, label: r, meta: delta(priceAt(r), priceAt(recommendedRes), r === recommendedRes) }))} />
+            </PanelSection>
+            <PanelSection title={t("genv3.format")} data="format">
+              <FormatTiles label={t("genv3.format")} value={format}
+                onChange={(v) => { setFormat(v); session.touched(); }}
+                options={[
+                  { value: "original", label: t("retouch.formatOriginal"), icon: <Wand2 size={16} aria-hidden />,
+                    use: formatUses?.original ?? fmtDefault(t, "original") ?? t("retouch.formatOriginalSub") },
+                  ...ratios.map((r) => ({ value: r, ratio: r, label: ratioName(t, r), use: formatUses?.[r] ?? fmtDefault(t, r) })),
+                ]} />
+            </PanelSection>
+          </>
+        )}
+        bar={(
+          <GenerateBar
+            label={t("retouch.cta")}
+            total={total}
+            breakdown={[t("bar.photos", { n: n(photos.length), p: n(perImage) })]}
+            state={gate.added ? "added" : "idle"}
+            blocked={!canRun}
+            onGenerate={() => void session.gate(retouchAll)}
+            line={line}
+            ctaAttrs={{ "data-retouch-cta": true }}
           />
-
-          <section>
-            <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
-              <div className="rounded-xl border border-line bg-sunken/50 p-2">
-                <Dropdown
-                  testId="resolution"
-                  label={t("genv3.resolution")}
-                  value={resolution}
-                  options={resolutions.map((r) => ({
-                    value: r, label: r, meta: t("genv3.creditsShort", { n: (pricing[r] ?? 0) * Math.max(1, outputsPerRun) }),
-                  }))}
-                  onChange={(v) => { setResolution(v); session.touched(); }}
-                  panelWidth={210}
-                />
-              </div>
-              <div className="rounded-xl border border-line bg-sunken/50 p-2">
-                <Dropdown
-                  testId="format"
-                  label={t("genv3.format")}
-                  value={format}
-                  options={[
-                    {
-                      value: "original",
-                      label: t("retouch.formatOriginal"),
-                      sub: t("retouch.formatOriginalSub"),
-                      icon: <Wand2 size={13} aria-hidden />,
-                    },
-                    ...ratios.map((r) => ({
-                      value: r, label: ratioName(t, r), icon: ratioIcon(r),
-                    })),
-                  ]}
-                  onChange={(v) => { setFormat(v); session.touched(); }}
-                  panelWidth={262}
-                  renderValue={() => format === "original" ? (
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <Wand2 size={13} aria-hidden className="shrink-0 text-muted" />
-                      <span className="min-w-0 truncate">{t("retouch.formatOriginal")}</span>
-                    </span>
-                  ) : <RatioValue t={t} ratio={format} />}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* ── What the tool does, in one card. No prompt, no engine. ──── */}
-          <section className="rounded-xl border border-[rgb(var(--accent)/0.3)] bg-accent-soft/25 p-3">
-            <p className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
-              <Sparkles size={14} aria-hidden className="text-accent" />
-              {t("retouch.cardTitle")}
-              <InfoHint text={t("retouch.cardHint")} />
-            </p>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">{t("retouch.cardBody")}</p>
-          </section>
-
-          {!available && (
-            <p className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted">
-              {t("retouch.unavailable")}
-            </p>
-          )}
-        </div>
-
-        {/* ── The footer: two figures, a hairline, the action ───────────── */}
-        <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
-          <div className="grid grid-cols-2 divide-x divide-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]">
-            <div className="min-w-0 px-2 text-center">
-              <p className="text-[10px] font-medium leading-tight text-faint">{t("retouch.costPer")}</p>
-              <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
-                {n(perImage)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
-              </p>
-            </div>
-            <div className="min-w-0 px-2 text-center">
-              <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costTotal")}</p>
-              <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
-                {n(total)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
-              </p>
-            </div>
-          </div>
-          {gate.atLimit && gate.limit && !session.guest ? (
-            <LimitNote max={gate.limit.max} plan={gate.limit.plan} />
-          ) : viewer ? (
-            // The status card below the button says what is missing and what
-            // to do; here only the empty state and the member's balance.
-            photos.length === 0 ? (
-              <p className="mt-2 text-center text-[11px] text-muted">{t("retouch.needPhotos")}</p>
-            ) : (
-              <p className="mt-2 text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
-            )
-          ) : missing > 0 ? (
-            <p className="mt-2 text-center text-[11px] font-medium text-danger">
-              {t("studio.missing", { n: missing })}{" · "}
-              <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
-            </p>
-          ) : photos.length === 0 ? (
-            <p className="mt-2 text-center text-[11px] text-muted">{t("retouch.needPhotos")}</p>
-          ) : (
-            <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
-          )}
-          <button type="button" disabled={!canRun} onClick={() => void session.gate(retouchAll)} data-retouch-cta
-            aria-label={gate.added ? t("inflight.added") : `${t("retouch.cta")} · ${n(total)} ${t("genv3.credits")}`}
-            className={cn(
-              "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
-              !canRun && "cursor-not-allowed opacity-55",
-            )}>
-            {gate.added ? <Check size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            {gate.added ? <span data-generate-added>{t("inflight.added")}</span> : (
-              <>
-                <span>{t("retouch.cta")}</span>
-                {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
-              </>
-            )}
-          </button>
-          {viewer && photos.length > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
-        </div>
-      </div>
-
-      {/* ── RIGHT: the jobs in flight, then everything already retouched ── */}
-      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        <GenerationGallery
-          initialItems={initialItems}
-          initialCursor={initialCursor}
-          freshItems={freshItems}
-          onFresh={setFreshItems}
-          pendingCount={0}
-          pendingRatio="1:1"
-          models={[]}
-          balance={balance}
-          onBalance={setBalance}
-          onAbsorb={absorb}
-          operation="image_retouch"
-          inflight={{ tools: ["retouch"] }}
-          emptyTitle={t("retouch.emptyTitle")}
-          emptyBody={t("retouch.emptyBody")}
-        />
-      </div>
-    </div>
+        )}
+        gallery={(
+          <GenerationGallery
+            initialItems={initialItems}
+            initialCursor={initialCursor}
+            freshItems={freshItems}
+            onFresh={setFreshItems}
+            pendingCount={0}
+            pendingRatio="1:1"
+            models={[]}
+            balance={balance}
+            onBalance={setBalance}
+            onAbsorb={absorb}
+            operation="image_retouch"
+            inflight={{ tools: ["retouch"] }}
+            emptyTitle={t("retouch.emptyTitle")}
+            emptyBody={t("retouch.emptyBody")}
+          />
+        )}
+      />
+    </ToolFrame>
   );
 }

@@ -362,3 +362,26 @@ export async function countFavoriteAssets(
     .eq("generations.generation_jobs.status", "completed");
   return error ? null : count ?? 0;
 }
+
+/**
+ * GENERATOR UX V3 — "Wyniki (24)": how many results a tool's gallery holds,
+ * for the phone's Utwórz / Wyniki switch. Counted by the database over the
+ * same set the gallery pages through (this workspace, the tool's own
+ * operation — or every result for the generator, which passes none), never
+ * from the tiles that happen to be loaded. Null when it cannot be read: the
+ * switch then shows no number rather than a wrong one.
+ */
+export async function countGalleryResults(
+  supabase: Client, workspaceId: string, operation: string | null,
+): Promise<number | null> {
+  let query = supabase
+    .from("generation_assets")
+    .select("id, generations!inner(workspace_id, generation_jobs!inner(status, settings))", { count: "exact", head: true })
+    .in("asset_type", ["image", "video"])
+    .eq("generations.workspace_id", workspaceId)
+    .eq("generations.generation_jobs.status", "completed");
+  if (operation && operation !== "none") query = query.eq("generations.generation_jobs.settings->>operation", operation);
+  else if (operation === "none") query = query.is("generations.generation_jobs.settings->>operation", null);
+  const { count, error } = await query;
+  return error ? null : count ?? 0;
+}

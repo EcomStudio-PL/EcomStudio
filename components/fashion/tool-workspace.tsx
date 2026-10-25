@@ -1,27 +1,28 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { toast } from "@/lib/notify";
-import { Check, Sparkles, Wand2 } from "lucide-react";
+import { Sparkles, Wand2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
-import { Dropdown } from "@/components/ui/dropdown";
 import { InfoHint } from "@/components/ui/hint";
-import { RatioValue, ratioIcon, ratioName } from "@/components/genv3/ratio-options";
+import { ratioName } from "@/components/genv3/ratio-options";
+import { Segmented } from "@/components/ui/segmented";
+import { FormatTiles, PanelSection, fmtDefault, useDeltaMeta } from "@/components/genv3/controls";
 import { FASHION_HINT_MAX, type FashionSlotKey, type FashionToolConfig } from "@/lib/fashion-tools";
 import { cn } from "@/lib/utils";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
-import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
-import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { ToolDraftBanner } from "@/components/public-tools/tool-notice";
 import { frozenSnapshot } from "@/lib/inflight/store";
 import { enqueueBatch } from "@/lib/inflight/queue";
-import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { useInflightGate } from "@/components/inflight/use-inflight-gate";
 import { limitText } from "@/components/inflight/inflight-tile";
 import { reorder } from "@/components/genv3/sortable-photos";
-import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { useFormatUses, useReorderHint } from "@/components/tool-guide/use-reorder-hint";
+import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
+import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 import { isGuideTool } from "@/lib/tool-guides";
 
 /**
@@ -75,7 +76,7 @@ type Pools = Record<string, UploadedRef[]>;
 
 export function FashionToolWorkspace({
   config, workspaceId, credits, available, resolutions, ratios, pricing, outputsPerRun = 1,
-  initialItems, initialCursor,
+  initialItems, initialCursor, back, title,
 }: {
   config: FashionToolConfig;
   workspaceId: string;
@@ -93,8 +94,12 @@ export function FashionToolWorkspace({
   outputsPerRun?: number;
   initialItems: GalleryItem[];
   initialCursor: string | null;
+  back: { href: string; label: string };
+  title: string;
 }) {
   const { t, locale } = useI18n();
+  const frame = useToolFrameController();
+  const delta = useDeltaMeta();
 
   const [pools, setPools] = useState<Pools>(() =>
     Object.fromEntries(config.slots.map((slot) => [slot.key, [] as UploadedRef[]])));
@@ -114,6 +119,7 @@ export function FashionToolWorkspace({
   // Generacje w toku V2: the plan's limit, "Dodano ✓", the server's balance.
   const gate = useInflightGate();
   const reorderHint = useReorderHint(isGuideTool(config.toolKey) ? config.toolKey : "generator");
+  const formatUses = useFormatUses(isGuideTool(config.toolKey) ? config.toolKey : "generator");
   useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
   /**
@@ -146,7 +152,6 @@ export function FashionToolWorkspace({
     pools through `upload` below, like any picked by hand. Without a viewer (no
     provider) nothing changes.
   */
-  const viewer = useToolViewer();
   // `upload` is declared below and reaches the restore through a ref: a saved
   // preparation is put back once, when the panel mounts.
   const uploadRef = useRef<(slotKey: FashionSlotKey, files: File[]) => Promise<void>>(async () => {});
@@ -281,6 +286,7 @@ export function FashionToolWorkspace({
     running.current = true;
     session.ran();
     let refused = false;
+    let shown = false;
     enqueueBatch({
       maxInFlight: CONCURRENCY,
       items: buildBatch().map((job) => ({
@@ -298,7 +304,10 @@ export function FashionToolWorkspace({
         tool: config.toolKey, operation: config.operation, expected: Math.max(1, outputsPerRun),
         ratio: config.showFormat ? format : null, preview: job.url || null,
       })),
-      onAccepted: (out) => setBalance((b) => Math.max(0, b - (out.credits || perImage))),
+      onAccepted: (out) => {
+        setBalance((b) => Math.max(0, b - (out.credits || perImage)));
+        if (!shown) { shown = true; frame.accepted(); }
+      },
       onRefused: (out) => {
         if (refused) return;
         refused = true;
@@ -313,7 +322,7 @@ export function FashionToolWorkspace({
 
   // A visitor's Generate is always the sign-in dialog, so their balance (none)
   // does not grey it out; a member's is the server-checked wallet, as before.
-  const canRun = available && !gate.added && !gate.atLimit && !uploading && runCount > 0 && (session.guest || missing === 0);
+  const canRun = available && !gate.atLimit && !uploading && runCount > 0 && (session.guest || missing === 0);
   const ctaLabel = t(`wf.moda.${config.key}.cta`);
 
   /**
@@ -349,297 +358,146 @@ export function FashionToolWorkspace({
    */
   const aiNoteBody = t(`wf.moda.${config.key}.aiNote`);
 
+  const line = useBarLine({
+    unavailable: !available ? t("fashion.unavailable") : null,
+    invalid: emptyRequired.length > 0 ? t(`fashion.need.${emptyRequired[0]!.key}`) : uploading ? t("bar.uploading") : null,
+    limit: gate.atLimit && gate.limit && !session.guest ? gate.limit : null,
+    cost: total, balance, session,
+  });
+  // The size the panel opens on is the recommended one.
+  const recommendedRes = resolutions.includes("2K") ? "2K" : resolutions[0] ?? "";
+  const priceAt = (r: string) => (pricing[r] ?? 0) * Math.max(1, outputsPerRun);
+
   return (
-    <div className={cn(
-      "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
-      // THE SETTINGS COLUMN IS A WIDTH, NOT A SHARE. 300–330 is what the
-      // controls need — an upload box, two selects, a hint field — and a
-      // wider monitor has nothing to spend the extra on but whitespace. The
-      // clamp's middle term keeps it from collapsing on a 1280 laptop; past
-      // ~1435px it is pinned at 330 and every further pixel goes to the
-      // gallery, which is the half that can actually use them.
-      "lg:grid-cols-[clamp(300px,23vw,330px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
-    )}>
-      <DropOverlay show={dragging} title={t("fashion.dropTitle")} sub={t("fashion.dropSub")} />
+    <ToolFrame frame={frame} tools={[config.toolKey]} back={back} title={<h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>}>
+      <ToolColumns
+        // THE SETTINGS COLUMN IS A WIDTH, NOT A SHARE: what the controls need,
+        // every further pixel to the gallery (unchanged from before).
+        cols="lg:grid-cols-[clamp(300px,23vw,330px)_minmax(0,1fr)]"
+        overlay={<DropOverlay show={dragging} title={t("fashion.dropTitle")} sub={t("fashion.dropSub")} />}
+        panel={(
+          <>
+            <ToolDraftBanner session={session} />
+            {/* One block per pool; only the first claims the paste shortcut.
+                The heading names the pool, the box says what to do with it —
+                unless the tool is numbered (see `step`). */}
+            {config.slots.map((slot, index) => (
+              <PhotoUploader
+                preview
+                key={slot.key}
+                items={pools[slot.key] ?? []}
+                max={slot.max}
+                uploading={uploading}
+                capturePaste={index === 0}
+                compact
+                zone
+                dropTarget={`fashion-${slot.key}`}
+                zoneLabel={config.numberedSteps || !slot.zoneLabelKey ? undefined : t(slot.zoneLabelKey)}
+                zoneDense={config.denseZones}
+                onFiles={(files) => void upload(slot.key, files)}
+                onRemove={(i) => removeAt(slot.key, i)}
+                // Each pool keeps its own order — a garment never trades places
+                // with a person.
+                onMove={slot.max > 1 ? (from, to) => setPools((prev) => ({ ...prev, [slot.key]: reorder(prev[slot.key] ?? [], from, to) })) : undefined}
+                reorderHint={reorderHint}
+                label={config.numberedSteps && slot.zoneLabelKey
+                  ? `${index + 1}. ${t(slot.zoneLabelKey)}`
+                  : t(slot.labelKey, { n: slot.max })}
+              />
+            ))}
 
-      {/* ── LEFT: the tool ──────────────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-        <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
-          <ToolDraftBanner session={session} />
-          {/* One block per pool. Only the first claims the paste shortcut:
-              a single Ctrl+V must not land the same image in both pools.
-
-              THE HEADING NAMES THE POOL, THE BOX SAYS WHAT TO DO WITH IT, and
-              that split is what the two i18n keys were built for. This used to
-              be inverted for the two-pool tool: the heading carried the
-              instruction ("1. Dodaj zdjęcie referencyjne") and the box below
-              it fell back to a generic "Import", which left the only place the
-              CAPACITY is written — "(max. 10)" — off the screen entirely, and
-              the two boxes looked identical once the headings scrolled away.
-
-              …UNLESS THE TOOL IS NUMBERED, in which case the two swap back —
-              see `step` above. Numbering is a per-tool choice and not a
-              global one: it was taken off "Zmiana postaci" because both of
-              its pools are required and neither can be filled before the
-              other, so the digits taught an order that does not exist. Where
-              a tool's own reference panel shows them, `numberedSteps` puts
-              them back for that tool alone.
-
-              `zoneDense` IS ALSO PER-TOOL. It used to be derived from
-              `slots.length > 1` — a panel that stacks two dropzones cannot
-              give each the room a panel with one gives its only one — and
-              that reasoning still holds, but it is not the whole rule: the
-              counter inside the box is redundant only while the HEADING
-              carries the capacity, which numbered mode stops doing. Two
-              dual-pool tools therefore want different boxes, so the shape no
-              longer decides it. */}
-          {config.slots.map((slot, index) => (
-            <PhotoUploader
-              preview
-              key={slot.key}
-              items={pools[slot.key] ?? []}
-              max={slot.max}
-              uploading={uploading}
-              capturePaste={index === 0}
-              compact
-              zone
-              dropTarget={`fashion-${slot.key}`}
-              zoneLabel={config.numberedSteps || !slot.zoneLabelKey ? undefined : t(slot.zoneLabelKey)}
-              zoneDense={config.denseZones}
-              onFiles={(files) => void upload(slot.key, files)}
-              onRemove={(i) => removeAt(slot.key, i)}
-              // Each pool keeps its own order — a garment never trades places
-              // with a person.
-              onMove={slot.max > 1 ? (from, to) => setPools((prev) => ({ ...prev, [slot.key]: reorder(prev[slot.key] ?? [], from, to) })) : undefined}
-              reorderHint={reorderHint}
-              label={config.numberedSteps && slot.zoneLabelKey
-                ? `${index + 1}. ${t(slot.zoneLabelKey)}`
-                : t(slot.labelKey, { n: slot.max })}
-            />
-          ))}
-
-          {(config.showResolution || config.showFormat) && (
-            <section>
-              {/* TWO CONTROLS, SIDE BY SIDE ON A PHONE AND STACKED ON A DESKTOP,
-                  which sounds backwards until you look at the widths. Below
-                  `lg` this panel is the whole page — 320px and up — and two
-                  boxes across it read fine. From `lg` it is the SETTINGS
-                  COLUMN, 300px, and half of that is 146px: enough for "2K",
-                  not for "1:1 (kwadrat)", which truncated to "1:1" and turned
-                  a labelled choice into a bare number.
-
-                  So the stack is a desktop rule, not a redesign of the phone
-                  layout, and `lg:` is doing the whole job.
-
-                  The condition stays: a tool showing only ONE of the two
-                  (Zmiana postaci has no resolution) must not put that control
-                  in a half-width cell with nothing beside it. */}
-              <div className={cn(
-                // 8px is a GUTTER between two boxes on one line; stacked, the
-                // same 8px is a cramped gap that makes two separate choices
-                // look like one control split in half. 16px from `lg` reads as
-                // two rows without competing with the card's own 20px rhythm
-                // between sections.
-                "grid gap-2 [&>*]:min-w-0 lg:gap-4",
-                config.showResolution && config.showFormat
-                  ? "grid-cols-2 lg:grid-cols-1"
-                  : "grid-cols-1",
-              )}>
-                {config.showResolution && (
-                  <div className="rounded-xl border border-line bg-sunken/50 p-2">
-                    <Dropdown
-                      testId="resolution"
-                      label={`${step(1)}${t("genv3.resolution")}`}
-                      value={resolution}
-                      options={resolutions.map((r) => ({
-                        value: r, label: r, meta: t("genv3.creditsShort", { n: (pricing[r] ?? 0) * Math.max(1, outputsPerRun) }),
-                      }))}
-                      onChange={setResolution}
-                      panelWidth={210}
-                    />
-                  </div>
-                )}
-                {config.showFormat && (
-                  <div className="rounded-xl border border-line bg-sunken/50 p-2">
-                    <Dropdown
-                      testId="format"
-                      label={`${step(config.showResolution ? 2 : 1)}${t("genv3.format")}`}
-                      value={format}
-                      options={[
-                        {
-                          value: "auto",
-                          label: t("fashion.formatAuto"),
-                          sub: t("fashion.formatAutoSub"),
-                          icon: <Wand2 size={13} aria-hidden />,
-                        },
-                        ...ratios.map((r) => ({
-                          value: r, label: ratioName(t, r), icon: ratioIcon(r),
-                        })),
-                      ]}
-                      onChange={setFormat}
-                      panelWidth={262}
-                      renderValue={() => format === "auto" ? (
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <Wand2 size={13} aria-hidden className="shrink-0 text-muted" />
-                          <span className="min-w-0 truncate">{t("fashion.formatAuto")}</span>
-                        </span>
-                      ) : <RatioValue t={t} ratio={format} />}
-                    />
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
-          {config.showHint && (
-            <section>
-              <label htmlFor={`hint-${config.key}`}
-                className="flex items-center gap-1.5 text-[12px] font-medium text-muted">
-                {t("fashion.hint")}
-                <span className="text-faint">{t("fashion.hintOptional")}</span>
-                <InfoHint text={t("fashion.hintInfo")} />
-              </label>
-              <div className="relative mt-1.5">
-                <textarea
-                  id={`hint-${config.key}`}
-                  data-fashion-hint
-                  value={hint}
-                  maxLength={FASHION_HINT_MAX}
-                  onChange={(e) => setHint(e.target.value)}
-                  placeholder={t("fashion.hintPlaceholder")}
-                  rows={5}
-                  className={cn(
-                    "thin-scroll w-full resize-none rounded-xl border border-line bg-sunken/50 px-3 py-2.5 pb-7",
-                    "text-[13px] leading-relaxed text-ink placeholder:text-faint",
-                    "outline-none transition-colors focus:border-[rgb(var(--accent)/0.45)]",
-                  )}
-                />
-                <span className="pointer-events-none absolute bottom-2 right-3 text-[10.5px] tabular-nums text-faint">
-                  {n(hint.length)} / {n(FASHION_HINT_MAX)}
-                </span>
-              </div>
-            </section>
-          )}
-
-          {/* WHAT THIS TOOL DOES, in one card — the retouch panel's own box,
-              same border, same tint, same rhythm. The COPY is this tool's
-              though: the retouch wording promises better lighting, materials
-              and cleanliness, which is a different product. A card that
-              describes somebody else's feature is decoration at best and a
-              false promise at worst — which is also why the body is the
-              tool's own `aiNote` and not its catalogue `sub`. See the note on
-              `aiNoteBody` above. */}
-          {config.showAiNote && (
-            <section data-fashion-ai-note
-              className="rounded-xl border border-[rgb(var(--accent)/0.3)] bg-accent-soft/25 p-3">
-              <p className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
-                <Sparkles size={14} aria-hidden className="text-accent" />
-                {t("fashion.aiNoteTitle")}
-                <InfoHint text={t("fashion.aiNoteHint")} />
-              </p>
-              <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-                {aiNoteBody}
-              </p>
-            </section>
-          )}
-
-          {!available && (
-            <p className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted"
-              data-fashion-unavailable>
-              {t("fashion.unavailable")}
-            </p>
-          )}
-        </div>
-
-        {/* ── The footer: two figures, a hairline, the action ───────────── */}
-        <div data-cost-island className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
-          <div className="grid grid-cols-2 divide-x divide-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]">
-            <div className="min-w-0 px-2 text-center">
-              <p className="text-[10px] font-medium leading-tight text-faint">{t("retouch.costPer")}</p>
-              <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
-                {n(perImage)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
-              </p>
-            </div>
-            <div className="min-w-0 px-2 text-center">
-              <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costTotal")}</p>
-              <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
-                {n(total)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
-              </p>
-            </div>
-          </div>
-          {gate.atLimit && gate.limit && !session.guest ? (
-            <LimitNote max={gate.limit.max} plan={gate.limit.plan} />
-          ) : viewer ? (
-            // The status card below the button says what is missing and what
-            // to do; here only what the tool still needs and the balance.
-            emptyRequired.length > 0 ? (
-              <p className="mt-2 text-center text-[11px] text-muted" data-fashion-need>
-                {t(`fashion.need.${emptyRequired[0]!.key}`)}
-              </p>
-            ) : (
-              <p className="mt-2 text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
-            )
-          ) : missing > 0 ? (
-            <p className="mt-2 text-center text-[11px] font-medium text-danger">
-              {t("studio.missing", { n: missing })}{" · "}
-              <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
-            </p>
-          ) : emptyRequired.length > 0 ? (
-            <p className="mt-2 text-center text-[11px] text-muted" data-fashion-need>
-              {t(`fashion.need.${emptyRequired[0]!.key}`)}
-            </p>
-          ) : (
-            <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
-          )}
-          <button type="button" disabled={!canRun} onClick={() => void session.gate(runAll)} data-fashion-cta
-            aria-label={gate.added ? t("inflight.added") : `${ctaLabel} · ${n(total)} ${t("genv3.credits")}`}
-            className={cn(
-              "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
-              !canRun && "cursor-not-allowed opacity-55",
-            )}>
-            {gate.added ? <Check size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            {gate.added ? <span data-generate-added>{t("inflight.added")}</span> : (
-              <>
-                <span>{ctaLabel}</span>
-                {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
-              </>
+            {config.showResolution && resolutions.length > 0 && (
+              <PanelSection title={`${step(1)}${t("genv3.resolution")}`} data="resolution">
+                <Segmented label={t("genv3.resolution")} value={resolution} onChange={setResolution}
+                  options={resolutions.map((r) => ({ value: r, label: r, meta: delta(priceAt(r), priceAt(recommendedRes), r === recommendedRes) }))} />
+              </PanelSection>
             )}
-          </button>
-          {viewer && runCount > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
-        </div>
-      </div>
+            {config.showFormat && (
+              <PanelSection title={`${step(config.showResolution ? 2 : 1)}${t("genv3.format")}`} data="format">
+                <FormatTiles label={t("genv3.format")} value={format} onChange={setFormat}
+                  options={[
+                    { value: "auto", label: t("fashion.formatAuto"), icon: <Wand2 size={16} aria-hidden />,
+                      use: formatUses?.auto ?? t("fashion.formatAutoSub") },
+                    ...ratios.map((r) => ({ value: r, ratio: r, label: ratioName(t, r), use: formatUses?.[r] ?? fmtDefault(t, r) })),
+                  ]} />
+              </PanelSection>
+            )}
 
-      {/* ── RIGHT: jobs in flight, then everything this tool has made ───── */}
-      {/* THE RESULTS CARD IS THE SIZE OF ITS CONTENTS, NOT THE SIZE OF THE
-          COLUMN. This used to be a flex column feeding `fillEmpty`, so an
-          empty gallery stretched a 217px card to 478px and centred four lines
-          of text in the middle of it. The reasoning was that a two-column
-          workspace with a short right card leaves a hole — but the hole is
-          what an empty workspace honestly looks like, and the inflated card
-          reads as a large panel that failed to load rather than as a small
-          one with nothing in it yet. /retusz never did this, and the two
-          screens are meant to be the same screen.
+            {config.showHint && (
+              <section>
+                <label htmlFor={`hint-${config.key}`}
+                  className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight">
+                  {t("fashion.hint")}
+                  <span className="font-normal text-faint">{t("fashion.hintOptional")}</span>
+                  <InfoHint text={t("fashion.hintInfo")} />
+                </label>
+                <div className="relative mt-2">
+                  <textarea
+                    id={`hint-${config.key}`}
+                    data-fashion-hint
+                    value={hint}
+                    maxLength={FASHION_HINT_MAX}
+                    onChange={(e) => setHint(e.target.value)}
+                    placeholder={t("fashion.hintPlaceholder")}
+                    rows={5}
+                    className={cn(
+                      "thin-scroll w-full resize-none rounded-xl border border-line bg-sunken/50 px-3 py-2.5 pb-7",
+                      "text-[13px] leading-relaxed text-ink placeholder:text-faint",
+                      "outline-none transition-colors focus:border-[rgb(var(--accent)/0.45)]",
+                    )}
+                  />
+                  <span className="pointer-events-none absolute bottom-2 right-3 text-[10.5px] tabular-nums text-faint">
+                    {n(hint.length)} / {n(FASHION_HINT_MAX)}
+                  </span>
+                </div>
+              </section>
+            )}
 
-          Same classes as /retusz now, so the next person comparing them finds
-          them identical instead of nearly identical. */}
-      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        <GenerationGallery
-          initialItems={initialItems}
-          initialCursor={initialCursor}
-          freshItems={freshItems}
-          onFresh={setFreshItems}
-          pendingCount={0}
-          pendingRatio="1:1"
-          models={[]}
-          balance={balance}
-          onBalance={setBalance}
-          onAbsorb={absorb}
-          operation={config.operation}
-          inflight={{ tools: [config.toolKey] }}
-          emptyTitle={t("fashion.emptyTitle")}
-          emptyBody={t(`wf.moda.${config.key}.empty`)}
-        />
-      </div>
-    </div>
+            {/* WHAT THIS TOOL DOES — the tool's own sentence (`aiNote`), as a
+                line of copy rather than a card. */}
+            {config.showAiNote && (
+              <section data-fashion-ai-note>
+                <p className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight">
+                  <Sparkles size={14} aria-hidden className="text-accent" />
+                  {t("fashion.aiNoteTitle")}
+                  <InfoHint text={t("fashion.aiNoteHint")} />
+                </p>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">{aiNoteBody}</p>
+              </section>
+            )}
+          </>
+        )}
+        bar={(
+          <GenerateBar
+            label={ctaLabel}
+            total={total}
+            breakdown={[t("bar.photos", { n: n(runCount), p: n(perImage) })]}
+            state={gate.added ? "added" : "idle"}
+            blocked={!canRun}
+            onGenerate={() => void session.gate(runAll)}
+            line={line}
+            ctaAttrs={{ "data-fashion-cta": true }}
+          />
+        )}
+        gallery={(
+          <GenerationGallery
+            initialItems={initialItems}
+            initialCursor={initialCursor}
+            freshItems={freshItems}
+            onFresh={setFreshItems}
+            pendingCount={0}
+            pendingRatio="1:1"
+            models={[]}
+            balance={balance}
+            onBalance={setBalance}
+            onAbsorb={absorb}
+            operation={config.operation}
+            inflight={{ tools: [config.toolKey] }}
+            emptyTitle={t("fashion.emptyTitle")}
+            emptyBody={t(`wf.moda.${config.key}.empty`)}
+          />
+        )}
+      />
+    </ToolFrame>
   );
 }

@@ -375,7 +375,10 @@ check("the old landing's components are gone, not left reachable",
 // forward (/k/<cat>) is behind the login, and the visitor would land on the
 // sign-in dialog. A member still goes through the forward.
 check("a workflow's way back goes through the category's forwarding address (a visitor: straight to the catalogue)",
-  /href=\{guest \? categoryHref\(category\) : categoryPath\(category\)\}/.test(code("components/category/workflow-runtime.tsx")));
+  // (Generator UX V3: the runtime hands the address to the shared tool frame,
+  // which draws the link.)
+  /const back = \{ href: guest \? categoryHref\(category\) : categoryPath\(category\)/.test(code("components/category/workflow-runtime.tsx"))
+  && /href=\{back\.href\}/.test(code("components/tool-frame/frame.tsx")));
 check("the forward never turns an in-app link into a 404 when only the hub is off",
   /if \(!routeReachable\(avail, "\/tools", isAdmin\)\) redirect\("\/home"\)/.test(catPage)
   && catPage.indexOf('routeReachable(avail, "/tools"') < catPage.indexOf("redirect(categoryHref"));

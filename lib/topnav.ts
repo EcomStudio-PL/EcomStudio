@@ -62,7 +62,7 @@ export function entryGate(e: MegaEntry): MenuGate {
  * TWÓRZ — the six categories, each a link into its section of /tools.
  *
  * "Własny prompt" is NOT a tile here. It is a MODE of the generator, not a
- * separate product: `GeneratorModeSwitch` sits at the top of both `/prompts`
+ * separate product: the generator's mode tabs sit at the top of both `/prompts`
  * and `/generator`, so the blank prompt is one click from the generator
  * itself. Listing it in the menu as a seventh peer of the categories said the
  * opposite — that GrovBase ships two generators — and it took the slot next to

@@ -2915,7 +2915,8 @@
       "trial_workflow_unavailable": "This tool mode is available on a paid plan. Nothing was charged.",
       "trial_tool_unavailable": "This tool is available on a paid plan. Nothing was charged.",
       "concurrency_limit": "That's your plan's limit — you can start the next generation when one finishes.",
-      "network": "Couldn't connect. If the generation started, you'll see it in the gallery."
+      "network": "Couldn't connect. If the generation started, you'll see it in the gallery.",
+      "invalid_shot_plan": "The shot plan points to a photo that is no longer in the list. Pick the photo again."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -4625,8 +4626,8 @@
     "inspHint": "Add an inspiration photo if you want the AI to follow its surroundings, light, colours, composition or mood. The product itself is still taken only from your product photos.",
     "inspAdd": "Add inspiration images",
     "inspUnsupported": "The selected model does not support reference images, so inspiration will not be used.",
-    "inspOwn": "Your own inspiration",
-    "inspPick": "Pick an inspiration",
+    "inspOwn": "Upload your own",
+    "inspPick": "Pick from the gallery",
     "inspLibTitle": "GrovBase inspiration library",
     "inspLibAll": "All",
     "inspLibAdd": "Add",
@@ -4756,7 +4757,7 @@
     "pickReferenceEmpty": "Add product photos first",
     "noReference": "No reference",
     "keepFramingNeedsRef": "Pick a reference photo for this shot first.",
-    "keepFramingShort": "Framing",
+    "keepFramingShort": "Keep the photo's framing",
     "dropTitle": "Drop your product photos here",
     "dropSub": "JPG · PNG · WEBP · several at once",
     "densityLabel": "Thumbnail size",
@@ -4926,7 +4927,36 @@
         "account_blocked": "Your account is temporarily paused — Smart prompt is unavailable. No credits were charged.",
         "result_rejected": "The model returned an answer that cannot be used — your credits were refunded. Please try again."
       }
-    }
+    },
+    "creditsShortWord": "cr.",
+    "scenario": "Scenario",
+    "shotPlan": "Shot plan",
+    "shotPlanHint": "You can assign a photo to a shot and describe what is in it or what you want to see. Empty shots are planned automatically.",
+    "planned": "Planned: {n} of {m}",
+    "shot": "Shot {n}",
+    "anyPhoto": "Any",
+    "pickPhoto": "Photo for shot {n}",
+    "planPh1": "E.g. a close-up of the chair's base",
+    "planPh2": "E.g. spilled water next to the product",
+    "planPh3": "E.g. the product on a light countertop in morning light",
+    "moreSettings": "More settings",
+    "changed": "Changed",
+    "restore": "Restore recommended",
+    "grovshotModelNote": "Grovshot works best on the recommended model. Change it if you want to compare results.",
+    "photosUsed": "This mode uses the first {n} photos",
+    "photosUsedOne": "This mode uses only the first photo",
+    "photosUnusedAll": "The selected model does not use product photos.",
+    "restored": "We restored your photos and settings",
+    "clear": "Clear",
+    "modes": "Generator mode",
+    "filters": "Filters",
+    "filtersTitle": "Filters and sorting",
+    "onlyFav": "Favourites only",
+    "categories": "Categories",
+    "clearFilters": "Clear",
+    "showResults": "Show results",
+    "searchOpen": "Search",
+    "searchClose": "Close search"
   },
   "retouch": {
     "title": "Photo retouch",
@@ -7364,7 +7394,9 @@
         "models": "Models",
         "last": "Last used"
       }
-    }
+    },
+    "guide.formats.heading": "Formats — what they are for",
+    "guide.formats.note": "A short caption under each format on this tool's tiles (e.g. 1:1 — Marketplace). Empty = the default caption. The tool only shows the formats its model supports."
   },
   "batch": {
     "viewLabel": "View",
@@ -11857,6 +11889,16 @@
       "confirmOnBody": "The tool catalogue and panels become visible without signing in and are added to the sitemap. Generating still requires an account.",
       "confirmOffTitle": "Turn public tools off?",
       "confirmOffBody": "Visitors see the sign-in dialog again and the tool pages leave the sitemap."
+    },
+    "line": {
+      "guest": "Your photos stay in your browser — you create an account when you click Generate.",
+      "missing": "You are {n} cr. short",
+      "topup": "Top up",
+      "choosePlan": "Choose a plan",
+      "verify": "Confirm your email address",
+      "resend": "Send again",
+      "survey": "Get {n} cr. for a short survey",
+      "surveyCta": "Fill it in"
     }
   },
   "toolPage": {
@@ -11973,5 +12015,48 @@
     "moved": "Photo {n} — position {m}.",
     "dropped": "Photo {n} moved to position {m}.",
     "cancelled": "Move cancelled. Photo {n} stays at position {m}."
+  },
+  "toolFrame": {
+    "views": "View",
+    "create": "Create",
+    "results": "Results",
+    "working": "Generations in progress"
+  },
+  "bar": {
+    "costAria": "Cost: {n} cr. — show details",
+    "total": "Total: {n} cr.",
+    "limit": {
+      "one": "You have {n} generation in progress — your plan's limit",
+      "few": "You have {n} generations in progress — your plan's limit",
+      "many": "You have {n} generations in progress — your plan's limit",
+      "other": "You have {n} generations in progress — your plan's limit"
+    },
+    "shots": "Shots: {n} × {p} cr.",
+    "images": "Images: {n} × {p} cr.",
+    "photos": "Photos: {n} × {p} cr.",
+    "thumb": "Thumbnail: {p} cr.",
+    "retouch": "AI retouch: {n} × {p} cr.",
+    "uploading": "Uploading your photos…",
+    "rewriting": "Rewriting your prompt…"
+  },
+  "controls": {
+    "extra": "+{n} cr.",
+    "less": "−{n} cr.",
+    "recommended": "Recommended",
+    "range": "Range {min}–{max}"
+  },
+  "fmtUse": {
+    "auto": "AI picks",
+    "original": "The photo's frame",
+    "1:1": "Marketplace",
+    "4:5": "Instagram",
+    "5:4": "Post",
+    "3:4": "Product",
+    "4:3": "Slide",
+    "2:3": "Pinterest",
+    "3:2": "Landscape",
+    "16:9": "Banner",
+    "9:16": "Reels",
+    "21:9": "Panorama"
   }
 }

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft, Columns2, Download, FlaskConical, Library, Loader2, RefreshCw, Sparkles, TriangleAlert,
+  Columns2, Download, FlaskConical, Library, Loader2, RefreshCw, Sparkles, TriangleAlert,
 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
@@ -18,15 +18,16 @@ import type { PhotoResult } from "@/lib/server/photo-tools";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { Modal } from "@/components/ui/modal";
 import { InfoHint } from "@/components/ui/hint";
-import { CostIsland, GroupLabel, RadioRows, type RadioRow } from "@/components/tools/panel-parts";
+import { GroupLabel, RadioRows, type RadioRow } from "@/components/tools/panel-parts";
 import { Compare } from "@/components/tools/compare";
 import type { UploadedRef } from "@/components/genv3/types";
 import { starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 import { StarterGallery } from "@/components/tool-guide/lazy";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
-import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
-import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { ToolDraftBanner } from "@/components/public-tools/tool-notice";
+import { HelpPortal, ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
+import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 import { reorder } from "@/components/genv3/sortable-photos";
 import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
 import { isGuideTool } from "@/lib/tool-guides";
@@ -127,7 +128,7 @@ export function PhotoToolWorkspace({
   const { t, locale } = useI18n();
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
   // The tool's guide: tutorial button, first-visit dialog, example effects.
-  const guide = useToolGuide(`tool_${tool}` as GuideToolKey);
+  const guide = useToolGuide(`tool_${tool}` as GuideToolKey, { icon: true });
 
   // ── photos ────────────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<UploadedRef[]>([]);
@@ -205,7 +206,6 @@ export function PhotoToolWorkspace({
     dialog. Back signed in, the same files go through `upload` /
     `uploadGuidance` like any picked by hand. Without a viewer nothing changes.
   */
-  const viewer = useToolViewer();
   const GUIDANCE = "guidance:";
   const session = useToolSession({
     settings: { format, color, hexDraft, scene, prompt, strength, shadowStyle, shadowBg },
@@ -476,22 +476,30 @@ export function PhotoToolWorkspace({
     }
   }
 
-  // ── what stops the button, in words ───────────────────────────────────
-  const blocker = !available ? null
-    : photos.length === 0 ? t("photoTool.needPhotos")
-      : usesColor && !colorOk ? t("photoTool.needColor")
-        : !promptOk ? t("photoTool.needPrompt")
-          // The status card below the button says what is missing (and a
-          // visitor's Generate is the sign-in dialog, whatever their balance).
-          : missing > 0 && !viewer ? t("studio.missing", { n: missing })
-            : null;
+  // ── what stops the button, in words: one line above it ────────────────
   const canRun = available && !busy && !uploading && !guidanceUploading && photos.length > 0
     && (!usesColor || colorOk) && promptOk && (session.guest || missing === 0);
-  const status = !available ? null : blocker
-    ?? (freeCount > 0 ? t("photoTool.freeNote", { n: freeCount, total: photos.length }) : null)
-    ?? (photos.length > 0 && !session.guest ? t("photoTool.balance", { n: n(balance) }) : null);
+  const line = useBarLine({
+    unavailable: !available ? t(`tools.unavailable.${reason === "ok" ? "maintenance" : reason}`) : null,
+    invalid: photos.length === 0 ? t("photoTool.needPhotos")
+      : usesColor && !colorOk ? t("photoTool.needColor")
+        : !promptOk ? t("photoTool.needPrompt")
+          : uploading || guidanceUploading ? t("bar.uploading")
+            : null,
+    cost: total, balance, session,
+  });
+  // The make-up of the price; free photos (a transparent one on "white
+  // background") are said, not hidden.
+  const breakdown = [
+    t("bar.photos", { n: n(paidCount), p: n(credits) }),
+    ...(freeCount > 0 ? [t("photoTool.freeNote", { n: freeCount, total: photos.length })] : []),
+  ];
   const pending = jobs.filter((j) => j.status !== "completed");
   const progress = jobs.length > 0 ? jobs.filter((j) => j.status === "completed" || j.status === "failed").length : 0;
+  // "Wyniki (N)" on a phone: the results this screen holds, once all are loaded.
+  const frame = useToolFrameController();
+  const setResults = frame.setResults;
+  useEffect(() => { setResults(cursor ? null : items.length); }, [setResults, cursor, items.length]);
 
   const formatRows: RadioRow<Format>[] = FORMATS[tool].map((f) => ({
     value: f,
@@ -501,260 +509,225 @@ export function PhotoToolWorkspace({
   }));
 
   return (
-    <div className={cn(
-      "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
-      "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
-    )} data-photo-tool={tool}>
-      <DropOverlay show={dragging} title={t("photoTool.dropTitle")} sub={t("photoTool.dropSub", { n: PHOTO_MAX_PHOTOS })} />
+    <ToolFrame frame={frame} tools={[]} back={{ href: "/tools", label: t("nav.allTools") }}
+      title={<h1 className="truncate text-[15px] font-semibold tracking-tight">{t(`photoTool.name.${tool}`)}</h1>}>
+      <HelpPortal>{guide.button}</HelpPortal>
+      <ToolColumns
+        cols="lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)]"
+        attrs={{ "data-photo-tool": tool }}
+        overlay={<DropOverlay show={dragging} title={t("photoTool.dropTitle")} sub={t("photoTool.dropSub", { n: PHOTO_MAX_PHOTOS })} />}
+        panel={(
+          <>
+            <ToolDraftBanner session={session} />
+            <p className="text-[12px] leading-relaxed text-muted">{t(`photoTool.body.${tool}`)}</p>
+            {sandbox && (
+              <p className="flex gap-2 rounded-xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-3 py-2.5 text-[11.5px] leading-relaxed" data-photo-sandbox>
+                <FlaskConical size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
+                <span>{t("photoTool.sandboxNote")}</span>
+              </p>
+            )}
 
-      {/* ── LEFT: the tool ─────────────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-        <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
-          <ToolDraftBanner session={session} />
-          <header>
-            <Link href="/tools"
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink">
-              <ArrowLeft size={13} aria-hidden /> {t("nav.allTools")}
-            </Link>
-            <h1 className="mt-1.5 font-display text-[19px] font-semibold tracking-tight">{t(`photoTool.name.${tool}`)}</h1>
-            <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{t(`photoTool.body.${tool}`)}</p>
-          </header>
+            {available && <PhotoUploader
+              preview
+              items={photos}
+              max={PHOTO_MAX_PHOTOS}
+              uploading={uploading}
+              capturePaste
+              compact
+              zone
+              dropTarget="photos"
+              onFiles={upload}
+              onRemove={(i) => {
+                // A preview still shown by a job card or a comparison stays
+                // alive until the screen closes.
+                const gone = photos[i];
+                if (gone && !jobs.some((j) => j.url === gone.url) && !items.some((it) => it.sourceUrl === gone.url)) release(gone.url);
+                setPhotos((prev) => prev.filter((_, j) => j !== i));
+              }}
+              // Drag & drop zdjęć V2: the batch runs in this order.
+              onMove={(from, to) => setPhotos((prev) => reorder(prev, from, to))}
+              reorderHint={reorderHint}
+              label={t("photoTool.photos", { n: PHOTO_MAX_PHOTOS })}
+            />}
 
-          {sandbox && (
-            <p className="flex gap-2 rounded-xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-3 py-2.5 text-[11.5px] leading-relaxed" data-photo-sandbox>
-              <FlaskConical size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
-              <span>{t("photoTool.sandboxNote")}</span>
-            </p>
-          )}
+            {tool === "white_bg" && (
+              <ColorPicker label={t("photoTool.color")} color={color} draft={hexDraft}
+                onPick={(c) => { setColor(c); setHexDraft(c); }}
+                onDraft={(v) => { setHexDraft(v); if (HEX_RE.test(v)) setColor(v.toUpperCase()); }} />
+            )}
 
-          {!available && (
-            <p className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted" data-photo-unavailable>
-              {t(`tools.unavailable.${reason === "ok" ? "maintenance" : reason}`)}
-            </p>
-          )}
-
-          {available && <PhotoUploader
-            preview
-            items={photos}
-            max={PHOTO_MAX_PHOTOS}
-            uploading={uploading}
-            capturePaste
-            compact
-            zone
-            dropTarget="photos"
-            onFiles={upload}
-            onRemove={(i) => {
-              // A preview still shown by a job card or a comparison stays
-              // alive until the screen closes.
-              const gone = photos[i];
-              if (gone && !jobs.some((j) => j.url === gone.url) && !items.some((it) => it.sourceUrl === gone.url)) release(gone.url);
-              setPhotos((prev) => prev.filter((_, j) => j !== i));
-            }}
-            // Drag & drop zdjęć V2: the batch runs in this order.
-            onMove={(from, to) => setPhotos((prev) => reorder(prev, from, to))}
-            reorderHint={reorderHint}
-            label={t("photoTool.photos", { n: PHOTO_MAX_PHOTOS })}
-          />}
-
-          {tool === "white_bg" && (
-            <ColorPicker label={t("photoTool.color")} color={color} draft={hexDraft}
-              onPick={(c) => { setColor(c); setHexDraft(c); }}
-              onDraft={(v) => { setHexDraft(v); if (HEX_RE.test(v)) setColor(v.toUpperCase()); }} />
-          )}
-
-          {tool === "ai_background" && (
-            <>
-              <section>
-                <GroupLabel>{t("photoTool.scene")}</GroupLabel>
-                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("photoTool.scene")}>
-                  {presets.map((p) => (
-                    <SceneChip key={p.key} active={scene === p.key} onClick={() => setScene(p.key)}>{p.label}</SceneChip>
-                  ))}
-                  <SceneChip active={custom} onClick={() => setScene(CUSTOM)}>{t("photoTool.custom")}</SceneChip>
-                </div>
-                {presets.length === 0 && <p className="mt-1.5 text-[11px] text-faint">{t("photoTool.noPresets")}</p>}
-                {custom && (
-                  <div className="mt-2.5">
-                    <label htmlFor="photo-tool-prompt" className="mb-1 flex items-center justify-between gap-2 text-[12px] font-semibold">
-                      <span className="flex items-center gap-1">{t("photoTool.promptLabel")}<InfoHint text={t("photoTool.promptHint")} /></span>
-                      <span className="text-[11px] font-normal tabular-nums text-faint">{prompt.length} / {BACKGROUND_PROMPT_MAX}</span>
-                    </label>
-                    <textarea id="photo-tool-prompt" value={prompt} maxLength={BACKGROUND_PROMPT_MAX} rows={3}
-                      onChange={(e) => setPrompt(e.target.value)} placeholder={t("photoTool.promptPh")}
-                      className="w-full resize-y rounded-xl border border-line bg-surface px-3 py-2 text-[13px] leading-relaxed outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.6)]" />
+            {tool === "ai_background" && (
+              <>
+                <section>
+                  <GroupLabel>{t("photoTool.scene")}</GroupLabel>
+                  <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t("photoTool.scene")}>
+                    {presets.map((p) => (
+                      <SceneChip key={p.key} active={scene === p.key} onClick={() => setScene(p.key)}>{p.label}</SceneChip>
+                    ))}
+                    <SceneChip active={custom} onClick={() => setScene(CUSTOM)}>{t("photoTool.custom")}</SceneChip>
                   </div>
-                )}
-              </section>
+                  {presets.length === 0 && <p className="mt-1.5 text-[11px] text-faint">{t("photoTool.noPresets")}</p>}
+                  {custom && (
+                    <div className="mt-2.5">
+                      <label htmlFor="photo-tool-prompt" className="mb-1 flex items-center justify-between gap-2 text-[12px] font-semibold">
+                        <span className="flex items-center gap-1">{t("photoTool.promptLabel")}<InfoHint text={t("photoTool.promptHint")} /></span>
+                        <span className="text-[11px] font-normal tabular-nums text-faint">{prompt.length} / {BACKGROUND_PROMPT_MAX}</span>
+                      </label>
+                      <textarea id="photo-tool-prompt" value={prompt} maxLength={BACKGROUND_PROMPT_MAX} rows={3}
+                        onChange={(e) => setPrompt(e.target.value)} placeholder={t("photoTool.promptPh")}
+                        className="w-full resize-y rounded-xl border border-line bg-surface px-3 py-2 text-[13px] leading-relaxed outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.6)]" />
+                    </div>
+                  )}
+                </section>
 
-              {available && <section data-drop-target="guidance">
-                <PhotoUploader
-                  items={guidance ? [guidance] : []}
-                  max={1}
-                  uploading={guidanceUploading}
-                  compact
-                  counter={false}
-                  dropTarget="guidance"
-                  onFiles={uploadGuidance}
-                  onRemove={() => { release(guidance?.url); setGuidance(null); }}
-                  label={<span className="flex items-center gap-1">{t("photoTool.inspiration")}<InfoHint text={t("photoTool.inspirationHint")} /></span>}
-                />
-                {guidance && (
-                  <div className="mt-2">
-                    <GroupLabel hint={`${Math.round(strength * 100)}%`}>{t("photoTool.strength")}</GroupLabel>
-                    <input type="range" min={0} max={100} step={5} value={Math.round(strength * 100)}
-                      aria-label={t("photoTool.strength")}
-                      onChange={(e) => setStrength(Number(e.target.value) / 100)}
-                      className="w-full accent-[rgb(var(--accent))]" />
-                  </div>
-                )}
-              </section>}
-            </>
-          )}
+                {available && <section data-drop-target="guidance">
+                  <PhotoUploader
+                    items={guidance ? [guidance] : []}
+                    max={1}
+                    uploading={guidanceUploading}
+                    compact
+                    counter={false}
+                    dropTarget="guidance"
+                    onFiles={uploadGuidance}
+                    onRemove={() => { release(guidance?.url); setGuidance(null); }}
+                    label={<span className="flex items-center gap-1">{t("photoTool.inspiration")}<InfoHint text={t("photoTool.inspirationHint")} /></span>}
+                  />
+                  {guidance && (
+                    <div className="mt-2">
+                      <GroupLabel hint={`${Math.round(strength * 100)}%`}>{t("photoTool.strength")}</GroupLabel>
+                      <input type="range" min={0} max={100} step={5} value={Math.round(strength * 100)}
+                        aria-label={t("photoTool.strength")}
+                        onChange={(e) => setStrength(Number(e.target.value) / 100)}
+                        className="w-full accent-[rgb(var(--accent))]" />
+                    </div>
+                  )}
+                </section>}
+              </>
+            )}
 
-          {tool === "ai_shadow" && (
-            <>
-              <section>
-                <GroupLabel>{t("photoTool.shadowStyle")}</GroupLabel>
-                <RadioRows name="photo-shadow-style" value={shadowStyle} onChange={setShadowStyle}
-                  rows={AI_SHADOW_STYLES.map((s) => ({ value: s, label: t(`photoTool.shadow.${s}`), meta: t(`photoTool.shadowMeta.${s}`) }))} />
-              </section>
-              <section>
-                <GroupLabel>{t("photoTool.background")}</GroupLabel>
-                <RadioRows name="photo-shadow-bg" value={shadowBg} onChange={setShadowBg}
-                  rows={(["white", "transparent", "color"] as const).map((b) => ({ value: b, label: t(`photoTool.bg.${b}`) }))} />
-                {shadowBg === "color" && (
-                  <div className="mt-2.5">
-                    <ColorPicker label={t("photoTool.color")} color={color} draft={hexDraft}
-                      onPick={(c) => { setColor(c); setHexDraft(c); }}
-                      onDraft={(v) => { setHexDraft(v); if (HEX_RE.test(v)) setColor(v.toUpperCase()); }} />
-                  </div>
-                )}
-              </section>
-            </>
-          )}
+            {tool === "ai_shadow" && (
+              <>
+                <section>
+                  <GroupLabel>{t("photoTool.shadowStyle")}</GroupLabel>
+                  <RadioRows name="photo-shadow-style" value={shadowStyle} onChange={setShadowStyle}
+                    rows={AI_SHADOW_STYLES.map((s) => ({ value: s, label: t(`photoTool.shadow.${s}`), meta: t(`photoTool.shadowMeta.${s}`) }))} />
+                </section>
+                <section>
+                  <GroupLabel>{t("photoTool.background")}</GroupLabel>
+                  <RadioRows name="photo-shadow-bg" value={shadowBg} onChange={setShadowBg}
+                    rows={(["white", "transparent", "color"] as const).map((b) => ({ value: b, label: t(`photoTool.bg.${b}`) }))} />
+                  {shadowBg === "color" && (
+                    <div className="mt-2.5">
+                      <ColorPicker label={t("photoTool.color")} color={color} draft={hexDraft}
+                        onPick={(c) => { setColor(c); setHexDraft(c); }}
+                        onDraft={(v) => { setHexDraft(v); if (HEX_RE.test(v)) setColor(v.toUpperCase()); }} />
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
 
-          <section>
-            <GroupLabel>{t("photoTool.format")}</GroupLabel>
-            <RadioRows name="photo-format" value={effectiveFormat} onChange={setFormat} rows={formatRows} />
-          </section>
+            <section>
+              <GroupLabel>{t("photoTool.format")}</GroupLabel>
+              <RadioRows name="photo-format" value={effectiveFormat} onChange={setFormat} rows={formatRows} />
+            </section>
 
-          {tool === "white_bg" && freeWhenTransparent && (
-            <p className="text-[11px] leading-relaxed text-faint">{t("photoTool.freeHint")}</p>
-          )}
+            {tool === "white_bg" && freeWhenTransparent && (
+              <p className="text-[11px] leading-relaxed text-faint">{t("photoTool.freeHint")}</p>
+            )}
 
-        </div>
-
-        {/* ── The footer: price per photo, total, why not, the action ───── */}
-        {!available ? (
-          // No price on a tool that cannot run: "0 credits" would read as free.
-          <div data-cost-island className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3 lg:shadow-e2">
-            <button type="button" disabled data-photo-cta
-              className="cta flex h-11 w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-xl px-3 text-[13.5px] font-semibold opacity-55">
-              <Sparkles size={14} aria-hidden /><span>{t(`photoTool.cta.${tool}`)}</span>
-            </button>
-          </div>
-        ) : (
-        <CostIsland perImage={credits} count={paidCount} enough={session.guest || missing === 0} status={status}>
-          {missing > 0 && !viewer && (
-            <p className="-mt-1 mb-2 text-center text-[11px]">
-              <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
-            </p>
-          )}
-          <button type="button" disabled={!canRun} onClick={() => void session.gate(runAll)} data-photo-cta
-            aria-label={`${t(`photoTool.cta.${tool}`)} · ${n(total)} ${t("genv3.credits")}`}
-            className={cn(
-              "cta flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13.5px] font-semibold",
-              !canRun && "cursor-not-allowed opacity-55",
-            )}>
-            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            <span>{busy && jobs.length > 0 ? t("tools.progress", { done: progress, total: jobs.length }) : t(`photoTool.cta.${tool}`)}</span>
-            {!busy && total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
-          </button>
-          {viewer && photos.length > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
-        </CostIsland>
+          </>
         )}
-      </div>
-
-      {/* ── RIGHT: what is running, then everything already made ─────────── */}
-      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        {pending.length > 0 && (
-          <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-photo-jobs>
-            {pending.map((job) => (
-              <div key={job.key} data-photo-job={job.status}
-                className="flex items-center gap-3 rounded-xl border border-line bg-surface/60 p-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={job.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover opacity-70" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-[12.5px] font-semibold">
-                    {job.status !== "failed" && <Loader2 size={12} className="animate-spin text-accent" aria-hidden />}
-                    {t(`photoTool.status_${job.status}`)}
-                  </span>
-                  {job.error && <span className="mt-0.5 block text-[11px] leading-snug text-danger">{job.error}</span>}
-                </span>
-                {job.status === "failed" && (
-                  <button type="button" onClick={() => retry(job)} disabled={busy} data-photo-retry
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
-                    <RefreshCw size={12} aria-hidden />{t("photoTool.retry")}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+        bar={(
+          <GenerateBar
+            label={t(`photoTool.cta.${tool}`)}
+            total={available ? total : 0}
+            breakdown={breakdown}
+            state={busy ? "sending" : "idle"}
+            sendingLabel={busy && jobs.length > 0 ? t("tools.progress", { done: progress, total: jobs.length }) : undefined}
+            blocked={!canRun}
+            onGenerate={() => void session.gate(runAll)}
+            line={line}
+            ctaAttrs={{ "data-photo-cta": true }}
+          />
         )}
-
-        {items.length === 0 ? (
-          // One column: the button row takes its height, the empty state the
-          // rest — never the full height on top of the row.
-          <div className="flex flex-col lg:h-full lg:min-h-0">
-            {/* The tutorial's way back in, above the gallery even before
-                there is a first result. */}
-            {guide.button && <div className="mb-2 flex shrink-0 justify-end">{guide.button}</div>}
-            {starterVisible({
-              response: guide.response, itemCount: items.length, pendingCount: pending.length,
-              loading: false, filtered: false, moreToLoad: cursor !== null, madeHere: false,
-            }) && available && guide.response?.guide?.starter ? (
-              <StarterGallery title={guide.response.guide.starter.title} body={guide.response.guide.starter.body}
-                image={guide.response.guide.starter.image} fallbackArt="compare" />
-            ) : (
-              <div aria-hidden={guide.pending ? true : undefined}
-                className={cn("flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center lg:flex-1",
-                  guide.pending && "invisible")}>
-                <Sparkles size={20} aria-hidden className="text-faint" />
-                <p className="mt-2 text-[14px] font-semibold">{t("photoTool.emptyTitle")}</p>
-                <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-muted">{t("photoTool.emptyBody")}</p>
+        gallery={(
+          <>
+            {pending.length > 0 && (
+              <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-photo-jobs>
+                {pending.map((job) => (
+                  <div key={job.key} data-photo-job={job.status}
+                    className="flex items-center gap-3 rounded-xl border border-line bg-surface/60 p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={job.url} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover opacity-70" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5 text-[12.5px] font-semibold">
+                        {job.status !== "failed" && <Loader2 size={12} className="animate-spin text-accent" aria-hidden />}
+                        {t(`photoTool.status_${job.status}`)}
+                      </span>
+                      {job.error && <span className="mt-0.5 block text-[11px] leading-snug text-danger">{job.error}</span>}
+                    </span>
+                    {job.status === "failed" && (
+                      <button type="button" onClick={() => retry(job)} disabled={busy} data-photo-retry
+                        className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
+                        <RefreshCw size={12} aria-hidden />{t("photoTool.retry")}
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
-          </div>
-        ) : (
-          <>
-            <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
-              <h2 className="text-[13px] font-semibold">{t("photoTool.results")}</h2>
-              <div className="flex items-center gap-2">
-                {guide.button}
-                <Link href="/library?tab=tools" className="flex items-center gap-1 text-[12px] font-medium text-muted hover:text-ink">
-                  <Library size={13} aria-hidden />{t("photoTool.inLibrary")}
-                </Link>
+
+            {items.length === 0 ? (
+              // One column: the button row takes its height, the empty state the
+              // rest — never the full height on top of the row.
+              <div className="flex flex-col lg:h-full lg:min-h-0">
+                {starterVisible({
+                  response: guide.response, itemCount: items.length, pendingCount: pending.length,
+                  loading: false, filtered: false, moreToLoad: cursor !== null, madeHere: false,
+                }) && available && guide.response?.guide?.starter ? (
+                  <StarterGallery title={guide.response.guide.starter.title} body={guide.response.guide.starter.body}
+                    image={guide.response.guide.starter.image} fallbackArt="compare" />
+                ) : (
+                  <div aria-hidden={guide.pending ? true : undefined}
+                    className={cn("flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center lg:flex-1",
+                      guide.pending && "invisible")}>
+                    <Sparkles size={20} aria-hidden className="text-faint" />
+                    <p className="mt-2 text-[14px] font-semibold">{t("photoTool.emptyTitle")}</p>
+                    <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-muted">{t("photoTool.emptyBody")}</p>
+                  </div>
+                )}
               </div>
-            </div>
-            <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4" data-photo-results>
-              {items.map((item) => (
-                <ResultCard key={item.id} item={item} tool={tool}
-                  onOpen={() => setViewing(item)} onDownload={() => download(item)} />
-              ))}
-            </ul>
-            {cursor && (
-              <div className="mt-3 flex justify-center">
-                <button type="button" onClick={loadMore} disabled={loadingMore}
-                  className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-4 text-[12.5px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
-                  {loadingMore && <Loader2 size={13} className="animate-spin" aria-hidden />}
-                  {t("photoTool.loadMore")}
-                </button>
-              </div>
+            ) : (
+              <>
+                <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
+                  <h2 className="text-[13px] font-semibold">{t("photoTool.results")}</h2>
+                  <div className="flex items-center gap-2">
+                    <Link href="/library?tab=tools" className="flex items-center gap-1 text-[12px] font-medium text-muted hover:text-ink">
+                      <Library size={13} aria-hidden />{t("photoTool.inLibrary")}
+                    </Link>
+                  </div>
+                </div>
+                <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4" data-photo-results>
+                  {items.map((item) => (
+                    <ResultCard key={item.id} item={item} tool={tool}
+                      onOpen={() => setViewing(item)} onDownload={() => download(item)} />
+                  ))}
+                </ul>
+                {cursor && (
+                  <div className="mt-3 flex justify-center">
+                    <button type="button" onClick={loadMore} disabled={loadingMore}
+                      className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-4 text-[12.5px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">
+                      {loadingMore && <Loader2 size={13} className="animate-spin" aria-hidden />}
+                      {t("photoTool.loadMore")}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
-      </div>
-
+      />
       <Modal open={!!viewing} onClose={() => setViewing(null)} title={t(`photoTool.name.${tool}`)} wide>
         {viewing && (
           <div className="space-y-3">
@@ -791,7 +764,7 @@ export function PhotoToolWorkspace({
         )}
       </Modal>
       {guide.dialog}
-    </div>
+    </ToolFrame>
   );
 }
 

@@ -219,7 +219,10 @@ check("…and sends no hint when the flag is off",
 
 check("the tool page renders no category hero",
   !/<CategoryHeader/.test(runtime) && !/CategoryHeader/.test(runtime));
-check("…but it does offer a way back", /data-tool-back/.test(runtime));
+// Generator UX V3: the way back is drawn by the shared tool frame (one header
+// for every generating tool: ← · name · ?); the runtime hands it the address.
+const frameSrc = stripComments(readFileSync("components/tool-frame/frame.tsx", "utf8"));
+check("…but it does offer a way back", /back=\{back\}/.test(runtime) && /data-tool-back/.test(frameSrc) && /href=\{back\.href\}/.test(frameSrc));
 // A real href, not history.back(): a tool opened from a bookmark or a shared
 // URL has no history entry to return to.
 // The category lives as a section of /tools now; the link goes through the
@@ -228,15 +231,16 @@ check("…but it does offer a way back", /data-tool-back/.test(runtime));
 // (Public Tools V1: a visitor goes straight to that section — the forward is
 // behind the login.)
 check("…which is a link to the category (forwarded to its section of /tools), not history.back()",
-  /href=\{guest \? categoryHref\(category\) : categoryPath\(category\)\}/.test(runtime)
+  /const back = \{ href: guest \? categoryHref\(category\) : categoryPath\(category\)/.test(runtime)
   && categoryPath(CATEGORIES.find((c) => c.key === "moda")!) === "/k/moda"
   && categoryHref(CATEGORIES.find((c) => c.key === "moda")!) === "/tools?category=moda"
   && !/history\.back\(\)/.test(runtime));
 // The back link is now the ONLY thing above the panel. Section A pins the
 // absence of the chips; this pins that nothing else crept in to replace them.
+// (V3: the frame's header row — way back, name, tutorial — is that band.)
 check("…and the back link is the only band above the panel",
-  runtime.indexOf("data-tool-back") < runtime.indexOf("{tool && fashion")
-  && !/<nav\b/.test(runtime) && !/<header\b/.test(runtime));
+  !/data-tool-back/.test(runtime) && !/<nav\b/.test(runtime) && !/<header\b/.test(runtime)
+  && !/<nav\b|<header\b/.test(frameSrc));
 
 // The CATEGORY page no longer exists as a screen: /k/<slug> forwards to the
 // category's section of /tools, which holds these tools as cards. Its header
@@ -321,15 +325,16 @@ check("…and numbering is reachable only through the config",
   && /config\.numberedSteps \? `\$\{config\.slots\.length \+ n\}\. ` : ""/.test(panel),
   "a hard-coded index would number every tool at once");
 
-// A SINGLE CONTROL IS NEVER HALF A ROW. With no resolution to sit beside it,
-// `grid-cols-2` would leave Format in a half-width cell with empty space.
-check("the controls grid is two columns only when there are two controls",
-  /config\.showResolution && config\.showFormat\s*\n?\s*\?\s*"grid-cols-2 lg:grid-cols-1"\s*\n?\s*:\s*"grid-cols-1"/.test(panel),
-  "one dropdown must fill the row");
+// A SINGLE CONTROL IS NEVER HALF A ROW. Generator UX V3 gave each control its
+// own full-width section (resolution as segments, format as tiles), so no
+// control shares a row at all — the half-width cell cannot happen.
+check("each control is its own full-width section (no control shares a row)",
+  !/grid-cols-2/.test(panel) && /<PanelSection title=\{`\$\{step\(config\.showResolution \? 2 : 1\)\}/.test(panel),
+  "one control must fill the row");
 
 // The three blocks stay behind their flags in the panel, and the wire stays
 // clean: a control that is off sends nothing rather than an empty value.
-check("the resolution block is behind the flag", /\{\(config\.showResolution \|\| config\.showFormat\) && \(/.test(panel));
+check("the resolution block is behind the flag", /\{config\.showResolution && resolutions\.length > 0 && \(/.test(panel) && /\{config\.showFormat && \(/.test(panel));
 check("…the AI card is behind its own flag", /\{config\.showAiNote && \(/.test(panel));
 check("…and no resolution goes on the wire when it is off",
   /resolution:\s*config\.showResolution \?/.test(panel));
@@ -532,8 +537,11 @@ check("and it is checked before anything is spent",
 // Generacje w toku V2: a batch in flight no longer locks the panel — the
 // double click is still refused (the ref above, a short lock), the button
 // rests for "Dodano ✓", and the plan's limit holds it when reached.
+// (V3: the shared Generate bar — `state` rests it for "Dodano ✓", `blocked`
+// at the plan's limit.)
 check("the button rests for 'Dodano ✓' and at the plan's limit, not for a whole batch",
-  /disabled=\{!canRun\}/.test(panel) && /!gate\.added && !gate\.atLimit/.test(panel) && !/!busy/.test(panel));
+  /blocked=\{!canRun\}/.test(panel) && /state=\{gate\.added \? "added" : "idle"\}/.test(panel)
+  && /const canRun = available && !gate\.atLimit/.test(panel) && !/!busy/.test(panel));
 check("a run needs every required pool filled",
   /emptyRequired/.test(panel) && /runCount > 0/.test(panel));
 
@@ -567,9 +575,12 @@ check("all four are model-driven, so the admin gets the prompt tab",
 console.log("\nH2. THE PANEL'S SHELL IS PINNED, NOT INHERITED");
 
 const retouch = readFileSync("components/retouch/workspace.tsx", "utf8");
-const SHELL = "lg:grid-cols-[clamp(300px,23vw,330px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0";
+// Generator UX V3: both panels lay out through the one ToolColumns; each names
+// only its settings column's width.
+const frameColumns = readFileSync("components/tool-frame/frame.tsx", "utf8");
 check("the settings column is the measured 300–330, and the gallery takes the rest",
-  panel.includes(SHELL));
+  panel.includes('cols="lg:grid-cols-[clamp(300px,23vw,330px)_minmax(0,1fr)]"')
+  && frameColumns.includes('"lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0"'));
 check("retouch keeps its own width — this change did not reach another tab",
   retouch.includes("clamp(380px,27vw,430px)"));
 /*
@@ -585,9 +596,10 @@ check("retouch keeps its own width — this change did not reach another tab",
   Asserted against retouch, not a literal: the point is that the two screens
   match, and a literal would fail the day they move together.
 */
-const RIGHT_COLUMN = 'className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1"';
+// (V3: ONE results column for every tool — ToolColumns — so the two cannot drift.)
+const RIGHT_COLUMN = '"thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1"';
 check("the results column is the retouch column, to the character",
-  panel.includes(RIGHT_COLUMN) && retouch.includes(RIGHT_COLUMN));
+  frameColumns.includes(RIGHT_COLUMN) && /<ToolColumns\b/.test(panel) && /<ToolColumns\b/.test(retouch));
 check("…and nothing asks the empty state to fill it any more",
   !stripComments(panel).includes("fillEmpty")
   && !stripComments(readFileSync("components/genv3/gallery.tsx", "utf8")).includes("fillEmpty"));
@@ -601,10 +613,12 @@ check("…and nothing asks the empty state to fill it any more",
   so this is a `lg:` rule and the phone layout is untouched. A tool showing
   only one of the two keeps a full-width single column at every size.
 */
-check("the two controls stack from lg, and only from lg",
-  panel.includes('"grid-cols-2 lg:grid-cols-1"'));
+// V3: the two controls are stacked sections at EVERY size now (segments and
+// tiles need the full width — "1:1 (kwadrat)" is never truncated to "1:1").
+check("the two controls stack (at every size)",
+  !/grid-cols-2/.test(panel) && (panel.match(/<PanelSection /g) ?? []).length >= 2);
 check("…while a tool with one control never gets a half-width cell",
-  /showResolution && config\.showFormat[\s\S]{0,80}:\s*"grid-cols-1"/.test(panel));
+  !/grid-cols-2/.test(panel));
 // Compared against retouch rather than against a literal, like the shell
 // above it. The literal used to carry `pb-[var(--gen-page-bottom)]`, and
 // pinning that here meant the test failed the day the bottom offset moved to
@@ -613,12 +627,13 @@ check("…while a tool with one control never gets a half-width cell",
 // toolbar, so neither reserves room for one.
 const STACK = "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0";
 check("the mobile stack is the same single column below lg",
-  retouch.includes(STACK) && panel.includes(STACK));
+  frameColumns.includes(STACK) && /<ToolColumns\b/.test(panel) && /<ToolColumns\b/.test(retouch));
 check("the left column scrolls inside itself rather than the page",
-  panel.includes("lg:h-full lg:min-h-0 lg:overflow-y-auto"));
-check("the cost island keeps the retouch card's geometry",
-  panel.includes('className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3"')
-  && retouch.includes('className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3"'));
+  frameColumns.includes("lg:h-full lg:min-h-0 lg:overflow-y-auto") && /data-tool-panel className=\{cn\(\s*"panel thin-scroll relative min-h-0 space-y-6 overflow-y-auto/.test(frameColumns));
+// The cost card is gone (Generator UX V3): both screens end in the one shared
+// Generate bar, so their bars cannot differ.
+check("the Generate bar is the shared one, in both panels",
+  /<GenerateBar\b/.test(panel) && /<GenerateBar\b/.test(retouch) && !/CostIsland/.test(panel + retouch));
 // Every width the panel names must be a clamp or a breakpoint, never a fixed
 // px that a 320px phone cannot honour.
 check("no fixed pixel width is set on the panel column",

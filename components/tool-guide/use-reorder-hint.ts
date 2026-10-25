@@ -24,3 +24,23 @@ export function useReorderHint(tool: GuideToolKey): string | null | undefined {
   }, [tool, guest]);
   return hint;
 }
+
+/**
+ * What each format is for on this tool's format tiles (Generator UX V3), as
+ * the admin wrote it in the tool's guide — only the formats with a line; the
+ * tiles fall back to the shipped wording for the rest, and a visitor (no
+ * guide read) sees the shipped wording throughout. Same request as the guide.
+ */
+export function useFormatUses(tool: GuideToolKey): Record<string, string> | undefined {
+  const guest = useIsGuest();
+  const [uses, setUses] = useState<Record<string, string> | undefined>(undefined);
+  useEffect(() => {
+    if (guest) return;
+    let alive = true;
+    void fetchToolGuide(tool).then((json) => {
+      if (alive) setUses(json?.ok && json.formatUses ? json.formatUses : undefined);
+    });
+    return () => { alive = false; };
+  }, [tool, guest]);
+  return uses;
+}

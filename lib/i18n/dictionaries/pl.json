@@ -2915,7 +2915,8 @@
       "trial_workflow_unavailable": "Ten tryb narzędzia jest dostępny w płatnym planie. Nic nie zostało pobrane.",
       "trial_tool_unavailable": "To narzędzie jest dostępne w płatnym planie. Nic nie zostało pobrane.",
       "concurrency_limit": "To limit Twojego planu — kolejną generację uruchomisz, gdy któraś się zakończy.",
-      "network": "Nie udało się połączyć. Jeśli generacja wystartowała, zobaczysz ją w galerii."
+      "network": "Nie udało się połączyć. Jeśli generacja wystartowała, zobaczysz ją w galerii.",
+      "invalid_shot_plan": "Plan ujęć wskazuje zdjęcie, którego nie ma już na liście. Wybierz zdjęcie ponownie."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -4625,8 +4626,8 @@
     "inspHint": "Dodaj zdjęcie inspiracji, jeśli chcesz, aby AI wzorowało się na jego otoczeniu, świetle, kolorystyce, kompozycji lub nastroju. Sam produkt nadal odwzorowujemy wyłącznie ze zdjęć produktu.",
     "inspAdd": "Dodaj zdjęcia inspiracji",
     "inspUnsupported": "Wybrany model nie obsługuje zdjęć referencyjnych, więc inspiracje nie zostaną użyte.",
-    "inspOwn": "Własna inspiracja",
-    "inspPick": "Wybierz inspirację",
+    "inspOwn": "Wgraj własną",
+    "inspPick": "Wybierz z galerii",
     "inspLibTitle": "Biblioteka inspiracji GrovBase",
     "inspLibAll": "Wszystkie",
     "inspLibAdd": "Dodaj",
@@ -4756,7 +4757,7 @@
     "pickReferenceEmpty": "Najpierw dodaj zdjęcia produktu",
     "noReference": "Bez referencji",
     "keepFramingNeedsRef": "Najpierw wybierz zdjęcie referencyjne dla tego ujęcia.",
-    "keepFramingShort": "Kadr",
+    "keepFramingShort": "Zachowaj kadr zdjęcia",
     "dropTitle": "Upuść zdjęcia produktu tutaj",
     "dropSub": "JPG · PNG · WEBP · kilka naraz",
     "densityLabel": "Wielkość miniatur",
@@ -4926,7 +4927,36 @@
         "account_blocked": "Konto jest tymczasowo wstrzymane — Inteligentny prompt jest niedostępny. Nie pobrano kredytów.",
         "result_rejected": "Model zwrócił odpowiedź, której nie można użyć — kredyty zostały zwrócone. Spróbuj ponownie."
       }
-    }
+    },
+    "creditsShortWord": "kr.",
+    "scenario": "Scenariusz",
+    "shotPlan": "Plan ujęć",
+    "shotPlanHint": "Możesz przypisać zdjęcie do ujęcia i opisać, co na nim jest albo co chcesz zobaczyć. Puste ujęcia zaplanujemy automatycznie.",
+    "planned": "Zaplanowane: {n} z {m}",
+    "shot": "Ujęcie {n}",
+    "anyPhoto": "Dowolne",
+    "pickPhoto": "Zdjęcie do ujęcia {n}",
+    "planPh1": "Np. zbliżenie na podstawę fotela",
+    "planPh2": "Np. rozlana woda obok produktu",
+    "planPh3": "Np. produkt na jasnym blacie w porannym świetle",
+    "moreSettings": "Więcej ustawień",
+    "changed": "Zmienione",
+    "restore": "Przywróć zalecane",
+    "grovshotModelNote": "Grovshot najlepiej działa na zalecanym modelu. Zmień, jeśli chcesz porównać rezultaty.",
+    "photosUsed": "Ten tryb użyje pierwszych {n} zdjęć",
+    "photosUsedOne": "Ten tryb użyje tylko pierwszego zdjęcia",
+    "photosUnusedAll": "Wybrany model nie korzysta ze zdjęć produktu.",
+    "restored": "Przywróciliśmy Twoje zdjęcia i ustawienia",
+    "clear": "Wyczyść",
+    "modes": "Tryb generatora",
+    "filters": "Filtry",
+    "filtersTitle": "Filtry i sortowanie",
+    "onlyFav": "Tylko ulubione",
+    "categories": "Kategorie",
+    "clearFilters": "Wyczyść",
+    "showResults": "Pokaż wyniki",
+    "searchOpen": "Szukaj",
+    "searchClose": "Zamknij wyszukiwanie"
   },
   "retouch": {
     "title": "Retusz zdjęć",
@@ -7364,7 +7394,9 @@
         "models": "Modele",
         "last": "Ostatnie użycie"
       }
-    }
+    },
+    "guide.formats.heading": "Formaty — do czego służą",
+    "guide.formats.note": "Krótki podpis pod każdym formatem na kafelkach tego narzędzia (np. 1:1 — Allegro). Puste pole = podpis domyślny. Narzędzie pokazuje tylko formaty, które obsługuje jego model."
   },
   "batch": {
     "viewLabel": "Widok",
@@ -11857,6 +11889,16 @@
       "confirmOnBody": "Katalog i panele narzędzi będą widoczne bez logowania i trafią do mapy strony. Generowanie nadal wymaga konta.",
       "confirmOffTitle": "Wyłączyć publiczne narzędzia?",
       "confirmOffBody": "Goście znów zobaczą okno logowania, a strony narzędzi znikną z mapy strony."
+    },
+    "line": {
+      "guest": "Zdjęcia zostają w Twojej przeglądarce — konto założysz po kliknięciu Generuj.",
+      "missing": "Brakuje Ci {n} kr.",
+      "topup": "Doładuj",
+      "choosePlan": "Wybierz plan",
+      "verify": "Potwierdź adres e-mail",
+      "resend": "Wyślij ponownie",
+      "survey": "Odbierz {n} kr. za krótką ankietę",
+      "surveyCta": "Wypełnij"
     }
   },
   "toolPage": {
@@ -11975,5 +12017,48 @@
     "moved": "Zdjęcie {n} — pozycja {m}.",
     "dropped": "Zdjęcie {n} przeniesione na pozycję {m}.",
     "cancelled": "Przenoszenie anulowane. Zdjęcie {n} zostaje na pozycji {m}."
+  },
+  "toolFrame": {
+    "views": "Widok",
+    "create": "Utwórz",
+    "results": "Wyniki",
+    "working": "Generacje w toku"
+  },
+  "bar": {
+    "costAria": "Koszt: {n} kr. — pokaż szczegóły",
+    "total": "Razem: {n} kr.",
+    "limit": {
+      "one": "Masz {n} generację w toku — limit Twojego planu",
+      "few": "Masz {n} generacje w toku — limit Twojego planu",
+      "many": "Masz {n} generacji w toku — limit Twojego planu",
+      "other": "Masz {n} generacji w toku — limit Twojego planu"
+    },
+    "shots": "Ujęcia: {n} × {p} kr.",
+    "images": "Zdjęcia: {n} × {p} kr.",
+    "photos": "Zdjęcia: {n} × {p} kr.",
+    "thumb": "Miniaturka: {p} kr.",
+    "retouch": "Retusz AI: {n} × {p} kr.",
+    "uploading": "Wgrywamy zdjęcia…",
+    "rewriting": "Przepisujemy prompt…"
+  },
+  "controls": {
+    "extra": "+{n} kr.",
+    "less": "−{n} kr.",
+    "recommended": "Zalecane",
+    "range": "Zakres {min}–{max}"
+  },
+  "fmtUse": {
+    "auto": "AI dobierze",
+    "original": "Kadr zdjęcia",
+    "1:1": "Allegro",
+    "4:5": "Instagram",
+    "5:4": "Post",
+    "3:4": "Produkt",
+    "4:3": "Slajd",
+    "2:3": "Pinterest",
+    "3:2": "Poziome",
+    "16:9": "Baner",
+    "9:16": "Rolki",
+    "21:9": "Panorama"
   }
 }

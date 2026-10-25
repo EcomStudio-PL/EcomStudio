@@ -343,7 +343,7 @@ async function main() {
     !/touch-action:\s*none/.test(read("app/globals.css").replace(/\/\*[\s\S]*?\*\//g, ""))
     && !/touch-action:\s*none|touchAction: "none"/.test(read("components/genv3/sortable-grid.tsx") + read("components/genv3/sortable-photos.ts").replace(/\/\*[\s\S]*?\*\//g, "")));
   check("tiles lead every tool gallery and the library",
-    ["components/genv3/workspace.tsx", "components/retouch/workspace.tsx", "components/thumbnail/workspace.tsx", "components/fashion/tool-workspace.tsx"].every((f) => /inflight=\{\{ tools: \[/.test(read(f)))
+    ["components/genv3/workspace.tsx", "components/retouch/workspace.tsx", "components/thumbnail/workspace.tsx", "components/fashion/tool-workspace.tsx"].every((f) => /inflight=\{\{ tools: (both \? )?\[/.test(read(f)))
     && /useInflightTiles\(shelf === "image" \? "all"/.test(read("components/library/library-browser.tsx")));
   check("the tab title is the live document's only — never metadata", /document\.title = want/.test(read("components/inflight/inflight-section.tsx")) && !/metadata/.test(read("components/inflight/inflight-section.tsx").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
   check("no toast on top of a visible tile (the tool's panel, the library)", /pathname === "\/library"/.test(read("components/layout/generation-toast.tsx")));

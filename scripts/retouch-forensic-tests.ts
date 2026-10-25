@@ -228,8 +228,14 @@ async function main() {
   const sendBody = /const body: Record<string, unknown> = \{ \.\.\.input\.snapshot\.body, requestId \};\n\s*if \(input\.batch\) body\.batch = input\.batch;\n\s*if \(input\.snapshot\.endpoint === "\/api\/thumbnail"\) body\.attempt = requestId;/.test(store);
   check("the panel POSTs { sourcePath, resolution, format, expectedOutputs } (+ the request's ids only) — no prompt",
     uiBody.replace(/\s+/g, " ") === "{ sourcePath: p.path, resolution, format, expectedOutputs: outputsPerRun }" && sendBody, uiBody);
+  // Generator UX V3: the same two choices as segments (size) and tiles
+  // (format, "Oryginalny" first) instead of dropdowns — same values, same
+  // defaults, same request body (checked just above, byte for byte below).
   check("the panel renders the quality + format pickers again (default 2K, 'original'); the locked note is gone",
-    /testId="resolution"/.test(ui) && /testId="format"/.test(ui) && /useState\(\(\) => \(resolutions\.includes\("2K"\) \? "2K"/.test(ui)
+    /<PanelSection title=\{t\("genv3\.resolution"\)\} data="resolution">\s*<Segmented /.test(ui)
+    && /<PanelSection title=\{t\("genv3\.format"\)\} data="format">\s*<FormatTiles /.test(ui)
+    && /options=\{\[\s*\{ value: "original"/.test(ui)
+    && /useState\(\(\) => \(resolutions\.includes\("2K"\) \? "2K"/.test(ui)
     && /useState\("original"\)/.test(ui) && !/data-retouch-settings-locked|settingsLocked/.test(ui));
   const page = read("app/(app)/retusz/page.tsx");
   check("the page offers retouchSizes (2K/4K, no 1K) and retouchRatios, priced per size",

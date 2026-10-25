@@ -14,8 +14,8 @@ import { cn, formatInstant } from "@/lib/utils";
 import { saveToolGuideAction, showToolGuideAgainAction } from "@/app/actions/tool-guides";
 import type { LibraryItem } from "@/lib/services/media-slots";
 import {
-  GUIDE_ARTS, GUIDE_LIMITS, GUIDE_MAX_STEPS, guideHasStarter, guideSurface, normalizeGuideContent,
-  type GuideArt, type GuideContent, type GuideImage, type GuideProblem, type GuideToolKey,
+  FORMAT_USE_KEYS, GUIDE_ARTS, GUIDE_LIMITS, GUIDE_MAX_STEPS, guideHasStarter, guideSurface, normalizeGuideContent,
+  type FormatUseKey, type GuideArt, type GuideContent, type GuideImage, type GuideProblem, type GuideToolKey,
   type LocaleText, type ResolvedGuide,
 } from "@/lib/tool-guides";
 import { AssetPicker } from "@/components/admin/media/asset-picker";
@@ -79,7 +79,15 @@ type Form = {
   /** Drag & drop zdjęć V2: the line under the tool's reorderable photo grid
    *  (empty in every language = hidden on the tool's screen). */
   reorderHint: Text3;
+  /** Generator UX V3: what each format is for on the tool's format tiles. */
+  formats: Record<FormatUseKey, Text3>;
 };
+
+/** The tools whose panels show format tiles (their guide carries the lines). */
+const FORMAT_TOOLS: readonly GuideToolKey[] = [
+  "prompts", "generator", "retouch",
+  "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person", "fashion_change_face",
+];
 
 type FieldProblem = Extract<GuideProblem, "required" | "too_long" | "markup" | "invisible">;
 type Tutorial = NonNullable<ResolvedGuide["tutorial"]>;
@@ -175,6 +183,7 @@ function fieldsOf(form: Form, hasStarter: boolean): { value: Text3; max: number;
       { value: form.starter.body, max: GUIDE_LIMITS.starterBody, required: false },
     ] : []),
     { value: form.reorderHint, max: GUIDE_LIMITS.reorderHint, required: false },
+    ...FORMAT_USE_KEYS.map((k) => ({ value: form.formats[k], max: GUIDE_LIMITS.formatUse, required: false })),
   ];
 }
 
@@ -192,7 +201,7 @@ function contentOf(form: Form, hasStarter: boolean): GuideContent {
       steps: form.steps.map((s) => ({ title: s.title, body: s.body, art: s.art })),
     },
     starter: { title: starterTitle, body: form.starter.body },
-    hints: { reorder: form.reorderHint },
+    hints: { reorder: form.reorderHint, formats: form.formats },
   };
 }
 
@@ -222,7 +231,14 @@ function initialForm(initial: ToolGuideEditorProps["initial"], defaults: GuideCo
     starter: { title: text3(content.starter.title), body: text3(content.starter.body), imageId: initial.starterImage },
     // A guide saved before this field existed shows the shipped line.
     reorderHint: text3(content.hints?.reorder ?? defaults.hints?.reorder ?? {}),
+    formats: formatsOf(content, defaults),
   };
+}
+
+/** Each format's line: the saved one, else the shipped one. */
+function formatsOf(content: GuideContent, defaults: GuideContent): Record<FormatUseKey, Text3> {
+  return Object.fromEntries(FORMAT_USE_KEYS.map((k) => [k,
+    text3(content.hints?.formats?.[k] ?? defaults.hints?.formats?.[k] ?? {})])) as Record<FormatUseKey, Text3>;
 }
 
 /** resolveGuide's pick() (lib/server/tool-guides.ts): this language, else
@@ -358,6 +374,7 @@ export function ToolGuideEditor({ tool, defaults, initial, status, library, cata
       steps: stepsFrom(defaults, f.steps.map((s) => s.imageId), () => fresh()),
       starter: { ...f.starter, title: text3(defaults.starter.title), body: text3(defaults.starter.body) },
       reorderHint: text3(defaults.hints?.reorder ?? {}),
+      formats: formatsOf(defaults, defaults),
     }));
     setConfirmReset(false);
   }
@@ -806,6 +823,23 @@ export function ToolGuideEditor({ tool, defaults, initial, status, library, cata
           problem={fieldProblem(form.reorderHint, GUIDE_LIMITS.reorderHint, false)}
           onChange={(v) => edit((f) => ({ ...f, reorderHint: inLang(f.reorderHint, v) }))} />
       </section>
+
+      {/* ── FORMATY (Generator UX V3): what each format is for ────────── */}
+      {FORMAT_TOOLS.includes(tool) && (
+        <section aria-labelledby={`${ids}-fmt`} className="space-y-2 border-t border-line pt-5" data-guide-formats>
+          <h3 id={`${ids}-fmt`} className="font-display text-[15px] font-semibold">{t("aicc.guide.formats.heading")}</h3>
+          <p className="text-[12px] leading-relaxed text-muted">{t("aicc.guide.formats.note")}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {FORMAT_USE_KEYS.map((k) => (
+              <TextField key={k} id={fid(`fmt-${k}`)}
+                label={`${k === "auto" ? t("genv3.fmtAuto") : k === "original" ? t("retouch.formatOriginal") : k} · ${L}`}
+                lang={lang} value={form.formats[k][lang]} max={GUIDE_LIMITS.formatUse}
+                problem={fieldProblem(form.formats[k], GUIDE_LIMITS.formatUse, false)}
+                onChange={(v) => edit((f) => ({ ...f, formats: { ...f.formats, [k]: inLang(f.formats[k], v) } }))} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── D. PODGLĄD I PUBLIKACJA ───────────────────────────────────── */}
       <div className="space-y-3 border-t border-line pt-5">

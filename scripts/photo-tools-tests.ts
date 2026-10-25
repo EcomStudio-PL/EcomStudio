@@ -630,7 +630,9 @@ async function main() {
     check("the panel validates the HEX the field shows", panel.includes("const colorOk = HEX_RE.test(hexDraft)"));
     check("the sandbox notice needs a runnable tool", panel.includes('const sandbox = available && environment === "sandbox"'));
     check("an unavailable tool takes no uploads and shows no price",
-      panel.includes("{available && <PhotoUploader") && panel.includes("enabled: available && !busy") && panel.includes("{!available ? ("));
+      // (Generator UX V3: the price lives on the shared Generate bar, which is
+      // handed none while the tool cannot run.)
+      panel.includes("{available && <PhotoUploader") && panel.includes("enabled: available && !busy") && panel.includes("total={available ? total : 0}"));
     check("a recovery matches the press, not just the photo", panel.includes("i.sourcePath === job.path && i.attempt === job.attempt"));
     check("a retry looks before it runs", /async function retry[\s\S]{0,400}await recovered\(job\)[\s\S]{0,200}await runOne\(job\)/.test(panel));
     check("credits come off the shown balance once per job", panel.includes("charged.current.has(job.key)"));

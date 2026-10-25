@@ -36,6 +36,15 @@ export type ToolSessionOptions<S> = {
    *  are the source ids they were saved under (a panel with two kinds of
    *  photo tells them apart by these). */
   apply: (settings: S, files: File[], ids: string[]) => void;
+  /**
+   * Generator UX V3: keep this panel's work for a MEMBER too — saved as they
+   * go, put back on their next visit (24 h), kept after a run — under its own
+   * key. It is this account's alone: its owner is `member:<account>`, so
+   * another account in the same browser never sees it (not even offered),
+   * and the "come back to your tool" banner and the checkout's report, which
+   * look at a visitor's preparation, never count it.
+   */
+  memberDraft?: { key: string };
 };
 
 export type RestoreOffer = {
@@ -61,6 +70,10 @@ export type ToolSession = {
   touched: () => void;
   /** Report photos added locally (analytics, visitors only). */
   added: (count: number) => void;
+  /** The panel was put back from this viewer's own draft, silently. */
+  restored: boolean;
+  /** Drop the draft(s) of this panel ("Wyczyść"). */
+  clear: () => Promise<void>;
 };
 
 const LOCAL_PREFIX = "local:";
@@ -85,7 +98,7 @@ export function refSource(ref: { key: string; path: string; url: string }): Draf
   return { id: ref.key, name, type: file?.type ?? "", file, url: file ? undefined : ref.url };
 }
 
-export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptions<S>): ToolSession {
+export function useToolSession<S>({ settings, sources, apply, memberDraft }: ToolSessionOptions<S>): ToolSession {
   const viewer = useToolViewer();
   const auth = useOptionalAuthDialog();
   const facts = viewer?.facts ?? null;
@@ -99,6 +112,10 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
   const [offer, setOffer] = useState<RestoreOffer | null>(null);
   const [storage, setStorage] = useState<ToolSession["storage"]>("ok");
   const [partial, setPartial] = useState(false);
+  const [restored, setRestored] = useState(false);
+  // The member's own working draft (Generator UX V3), when the panel keeps one.
+  const memberSlot = memberDraft && facts?.kind === "member" ? memberDraft.key : null;
+  const memberOwner = facts?.kind === "member" ? `member:${facts.viewerKey}` : "";
   // The latest values, for callbacks that must not re-subscribe on every keystroke.
   const latest = useRef({ settings, sources, apply });
   latest.current = { settings, sources, apply };
@@ -118,12 +135,37 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
     return r;
   }, [facts, tool, path]);
 
+  /** The member's working draft: a fresh 24 hours from every save. */
+  const saveMine = useCallback(async (): Promise<SaveResult> => {
+    if (!memberSlot) return "unavailable";
+    const r = await saveDraft({
+      tool: memberSlot, path, owner: memberOwner,
+      settings: latest.current.settings, sources: latest.current.sources,
+    });
+    setStorage(r);
+    return r;
+  }, [memberSlot, memberOwner, path]);
+
   /* ── coming back ─────────────────────────────────────────────────────── */
   useEffect(() => {
     if (!facts || !tool) return;
     let cancelled = false;
-    void loadDraft<S>(tool).then((found) => {
+    void loadDraft<S>(tool).then(async (found) => {
       if (cancelled) return;
+      if (!found && memberSlot) {
+        // Nothing waiting from a visit or a checkout: the member's own
+        // working draft, and only theirs.
+        const mine = await loadDraft<S>(memberSlot);
+        if (cancelled) return;
+        ready.current = true;
+        if (!mine || mine.draft.owner !== memberOwner) return;
+        restoring.current = true;
+        latest.current.apply(mine.draft.settings, mine.files, mine.ids);
+        setPartial(mine.files.length < mine.draft.fileCount);
+        setRestored(true);
+        window.setTimeout(() => { restoring.current = false; }, 0);
+        return;
+      }
       ready.current = true;
       if (!found) return;
       const { draft, files, ids } = found;
@@ -133,6 +175,7 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
         latest.current.apply(draft.settings, files, ids);
         setPartial(files.length < draft.fileCount);
         setOffer(null);
+        if (!draftNeedsConsent(draft, facts)) setRestored(true);
         track("tool_state_restored", { tool_id: tool, source: facts.kind === "guest" ? "guest" : "member" });
         // A visitor's preparation claimed by a brand-new account: a signup
         // that started on this tool has finished here.
@@ -158,6 +201,14 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
   /* ── the first change of a setting, for the funnel (visitors only) ────── */
   const settingsJson = useMemo(() => JSON.stringify(settings), [settings]);
   const initialSettings = useRef(settingsJson);
+  // "Wyczyść": the panel's reset (rendered together with the tick) is the
+  // new starting point — not a change worth keeping as a fresh draft.
+  const [clearTick, setClearTick] = useState(0);
+  useEffect(() => {
+    if (clearTick) initialSettings.current = settingsJson;
+    // Only on a clear: the reset settings of that very render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearTick]);
   useEffect(() => {
     if (!guest || touchedOnce.current || restoring.current) return;
     if (settingsJson === initialSettings.current) return;
@@ -165,19 +216,23 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
     track("guest_tool_settings_interaction", { tool_id: tool });
   }, [guest, settingsJson, tool, track]);
 
-  /* ── a visitor's work survives a refresh ──────────────────────────────── */
+  /* ── a visitor's work survives a refresh (and a member's, where kept) ──── */
   const fingerprint = useMemo(
     () => JSON.stringify([settingsJson, sources.map((s) => s.id)]),
     [settingsJson, sources],
   );
+  const changedOnce = useRef(false);
   useEffect(() => {
-    if (!guest || !ready.current || restoring.current || offer) return;
+    if (settingsJson !== initialSettings.current && !restoring.current) changedOnce.current = true;
+  }, [settingsJson]);
+  useEffect(() => {
+    if (!(guest || memberSlot) || !ready.current || restoring.current || offer) return;
     // Nothing prepared yet is nothing to keep — and must not erase a draft
     // still waiting for "Przywróć".
-    if (sources.length === 0 && !touchedOnce.current) return;
-    const id = window.setTimeout(() => { void save(); }, 700);
+    if (sources.length === 0 && !touchedOnce.current && !changedOnce.current) return;
+    const id = window.setTimeout(() => { void (guest ? save() : saveMine()); }, 700);
     return () => window.clearTimeout(id);
-  }, [guest, fingerprint, save, offer, sources.length]);
+  }, [guest, memberSlot, fingerprint, save, saveMine, offer, sources.length]);
 
   /* ── Generate ─────────────────────────────────────────────────────────── */
   const gate = useCallback(async (run: () => void | Promise<void>) => {
@@ -188,11 +243,24 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
     auth?.open("register", path, { intent: "tool" });
   }, [guest, save, tool, track, auth, path]);
 
+  // A run never drops the member's working draft (Generator UX V3): only the
+  // preparation a visit or a checkout left under the tool's own key.
   const ran = useCallback(() => {
     if (!tool) return;
     expiresAt.current = undefined;
     void deleteDraft(tool);
   }, [tool]);
+
+  const clear = useCallback(async () => {
+    setRestored(false);
+    setOffer(null);
+    setPartial(false);
+    changedOnce.current = false;
+    touchedOnce.current = false;
+    setClearTick((n) => n + 1);
+    if (!tool) return;
+    await Promise.all([deleteDraft(tool), memberSlot ? deleteDraft(memberSlot) : Promise.resolve()]);
+  }, [tool, memberSlot]);
 
   const localRef = useCallback((file: File) => {
     const key = `${LOCAL_PREFIX}${crypto.randomUUID()}`;
@@ -216,7 +284,7 @@ export function useToolSession<S>({ settings, sources, apply }: ToolSessionOptio
     if (guest && tool) track("public_tool_view", { tool_id: tool });
   }, [guest, tool, track]);
 
-  return { guest, preview, localRef, gate, prepare: save, ran, offer, storage, partial, touched, added };
+  return { guest, preview, localRef, gate, prepare: save, ran, offer, storage, partial, touched, added, restored, clear };
 }
 
 /** Is this ref one of a visitor's local stand-ins (never uploaded)? */

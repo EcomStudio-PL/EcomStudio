@@ -17,7 +17,7 @@ import type { UploadedRef } from "@/components/genv3/types";
  * never part of the order, never draggable.
  */
 export function SortablePhotoGrid({
-  items, onMove, onRemove, onOpen, gridClass, primaryLabel, reorderHint, trailing,
+  items, onMove, onRemove, onOpen, gridClass, primaryLabel, reorderHint, trailing, usable,
 }: {
   items: UploadedRef[];
   onMove?: (from: number, to: number) => void;
@@ -29,6 +29,9 @@ export function SortablePhotoGrid({
   /** undefined = the default line, "" = none, else the tool's own wording. */
   reorderHint?: string | null;
   trailing?: React.ReactNode;
+  /** Generator UX V3: how many photos (from the first) this mode sends. The
+   *  rest stay in the list, greyed, for the mode that uses them. */
+  usable?: number;
 }) {
   const { t } = useI18n();
   const [said, setSaid] = useState("");
@@ -55,6 +58,7 @@ export function SortablePhotoGrid({
           return (
             <div key={r.key} data-sort-slot={onMove ? "" : undefined} data-sort-key={onMove ? r.key : undefined}
               data-photo-key={r.key} data-held={held ? sortable.drag?.mode : undefined}
+              data-photo-unused={usable !== undefined && i >= usable ? "" : undefined}
               onPointerDown={onMove ? (e) => sortable.handlers.onPointerDown(e, i, r.key) : undefined}
               onTouchStart={onMove ? (e) => sortable.handlers.onTouchStart(e, i, r.key) : undefined}
               className={cn(
@@ -65,7 +69,8 @@ export function SortablePhotoGrid({
               {/* The photo stays in the page while it is held — only hidden.
                   A touch keeps talking to the element it started on; were
                   that element removed, the finger's moves would be lost. */}
-              <div className={cn("contents", floating && "[&>*]:invisible")}>
+              <div className={cn("contents", floating && "[&>*]:invisible",
+                usable !== undefined && i >= usable && "[&_img]:opacity-35 [&_img]:grayscale")}>
                   {preview ? (
                     <button type="button" onClick={() => { if (!sortable.consumeClick()) setViewIndex(at); }} data-photo-preview
                       aria-label={t("genv3.thumbAria", { n: i + 1 })}

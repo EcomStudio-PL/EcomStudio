@@ -368,7 +368,10 @@ check("C1 types.ts: GalleryItem.trial?: GalleryTrial | null (and the server's pr
   check("C6 gallery keeps the literals other suites pin (H3–H6b, fashion:588, ratio)",
     !galleryRaw.includes("aspect-square") && /useRatioGrid\(/.test(gallery) && /grid\.itemStyle\(assetAspect\(item\)\)/.test(gallery)
     && /guideTool \?\? \(operation \? guideToolForOperation\(operation\) : guideToolForPath\(pathname\)\)/.test(gallery)
-    && gallery.includes("{guide.button}") && gallery.includes("{guide.dialog}") && count(gallery, /<StarterGallery/g) === 1
+    // (Generator UX V3: inside a tool frame the tutorial button is portalled
+    // beside the tool's name; without one it stays inline — H6b.)
+    && gallery.includes("<HelpPortal>{frame ? guide.button : null}</HelpPortal>") && gallery.includes("const inlineGuide = frame ? null : guide.button;")
+    && gallery.includes("{guide.dialog}") && count(gallery, /<StarterGallery/g) === 1
     && !gallery.includes("fillEmpty") && !/h-1[14] w-1[14][^"]*object-cover/.test(galleryRaw) && galleryRaw.includes("@/lib/save-image"));
 }
 {

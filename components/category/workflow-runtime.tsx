@@ -1,6 +1,4 @@
 "use client";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryHref, categoryPath, findCategory } from "@/lib/categories";
@@ -120,50 +118,20 @@ export function WorkflowRuntime({
   const styleKey = `wf.${category.key}.${workflow.key}.style`;
   const styleValue = t(styleKey);
   const styleHint = styleValue && styleValue !== styleKey ? styleValue : undefined;
+  const back = { href: guest ? categoryHref(category) : categoryPath(category), label: t(`cats.${category.key}`) };
+  const toolName = t(`wf.${category.key}.${workflow.key}.name`);
 
   return (
     <>
-      {/* A WAY BACK, AND NOTHING ELSE.
-          This used to be the category hero: a washed card with the category
-          overline, a 56px icon tile, the tool's name at clamp(1.35rem…2rem)
-          and its description. Every word of it was already on screen — the
-          name in the selected chip directly below, the description in the
-          panel — so it spent roughly 150px of phone height, and a comparable
-          band on desktop, restating the answer to a question nobody had. The
-          thing the seller opened the page for started below the fold.
-
-          (The name then lived in the selected chip below this link. The chips
-          are gone too, so the tool's name is now only where it always
-          mattered: on the card the seller clicked, and in the page title.)
-
-          A plain link is what is left, in the same idiom /tools/[slug] and
-          /prompts/[id] already use. It is a real <Link> to the category, not
-          history.back(): a tool reached from a bookmark, a shared URL or an
-          e-mail has no history to go back to, and "back" that lands outside
-          the app is worse than no button.
-
-          It leads to the category's section of /tools, which is where the
-          category lives now — THROUGH the category's own address, which
-          forwards there. This screen cannot see the switchboard, and the
-          forward can: should an operator take the whole hub down while the
-          category stays live, "back" lands on a live screen, not a 404. */}
-      {/* A visitor (Public Tools V1) goes back to the catalogue itself: the
-          category's own address is a member's forward. */}
-      <Link href={guest ? categoryHref(category) : categoryPath(category)}
-        data-tool-back
-        className="mb-3 inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted transition-colors hover:text-ink">
-        <ArrowLeft size={14} aria-hidden />
-        {t(`cats.${category.key}`)}
-      </Link>
-
-      {/* The sibling-chip row stood here. Nothing replaces it: the back link's
-          own `mb-3` is the gap to the panel, so there is no wrapper, no height
-          and no margin left behind. */}
+      {/* THE WAY BACK, THE NAME AND THE "?" are the tool frame's one header
+          row now (components/tool-frame/frame.tsx), drawn by each panel: the
+          category it came from (a visitor: the catalogue itself — the
+          category's own address is a member's forward) and the tool's name. */}
 
       {/* MINIATURKA — its own panel (photos → optional Retusz → one
           composition → 2560×2560). It exists for one workflow only, so it
           needs no per-workflow key; the two branches below keep theirs. */}
-      {thumbnail && <ThumbnailWorkspace workspaceId={workspaceId} credits={credits} data={thumbnail} />}
+      {thumbnail && <ThumbnailWorkspace workspaceId={workspaceId} credits={credits} data={thumbnail} back={back} title={toolName} />}
       {!thumbnail && <>{tool && fashion ? (
         /* A TOOL. Keyed like the generator below, and for the same reason: the
            panel seeds its pools, its size and its framing from props once, so
@@ -181,22 +149,24 @@ export function WorkflowRuntime({
           pricing={fashion.pricing}
           initialItems={fashion.tools[workflow.key]?.initialItems ?? []}
           initialCursor={fashion.tools[workflow.key]?.initialCursor ?? null}
+          back={back}
+          title={toolName}
         />
       ) : (
       <GeneratorWorkspace
         key={workflow.key}
-        mode="managed"
-        models={models}
+        managed={{
+          models, engineAvailable, sessionPreviews,
+          variant: CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT,
+          initialStyle: styleHint, initialRatio: workflow.ratio, initialShots: workflow.shots,
+        }}
+        initialTab="grovshot"
         credits={credits}
         workspaceId={workspaceId}
-        engineAvailable={engineAvailable}
         initialItems={initialItems}
         initialCursor={initialCursor}
-        initialStyle={styleHint}
-        initialRatio={workflow.ratio}
-        initialShots={workflow.shots}
-        variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}
-        sessionPreviews={sessionPreviews}
+        back={back}
+        title={toolName}
       />
       )}</>}
     </>

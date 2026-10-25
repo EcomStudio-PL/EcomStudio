@@ -1580,7 +1580,11 @@ function sectionH() {
     sgIdx > svIdx && svIdx > galleryCode.indexOf("merged.length === 0 && pendingCount === 0 && !loading")
       && /filtered: filter\.session !== "all" \|\| filter\.fav \|\| filter\.q\.trim\(\) !== ""/.test(galleryCode)
       && /moreToLoad: cursor !== null, madeHere: freshItems\.length > 0/.test(galleryCode) && (galleryCode.match(/<StarterGallery/g) ?? []).length === 1);
-  check("H6b … and renders the tutorial button and the dialog", galleryCode.includes("{guide.button}") && galleryCode.includes("{guide.dialog}"));
+  // Generator UX V3: inside a tool frame the button sits beside the tool's
+  // name (portalled into the header's "?" slot); without a frame, inline.
+  check("H6b … and renders the tutorial button and the dialog",
+    galleryCode.includes("<HelpPortal>{frame ? guide.button : null}</HelpPortal>") && /const inlineGuide = frame \? null : guide\.button;/.test(galleryCode)
+      && galleryCode.includes("{guide.dialog}"));
 
   const starterSrc = read("components/tool-guide/starter-gallery.tsx");
   const sc = code(starterSrc);
@@ -1644,7 +1648,8 @@ function sectionH() {
   const compress = code(read("components/tools/compress-workbench.tsx"));
   const batch = code(read("components/tools/batch-gallery.tsx"));
   check("H19 photo-tool: the guide is tool_<slug>, the starter needs the tool to be available, and the dialog is mounted",
-    /useToolGuide\(`tool_\$\{tool\}` as GuideToolKey\)/.test(photo) && /\}\) && available && guide\.response\?\.guide\?\.starter \?/.test(photo) && photo.includes("{guide.dialog}"));
+    /useToolGuide\(`tool_\$\{tool\}` as GuideToolKey(, \{ icon: true \})?\)/.test(photo) && /\}\) && available && guide\.response\?\.guide\?\.starter \?/.test(photo) && photo.includes("{guide.dialog}")
+      && photo.includes("<HelpPortal>{guide.button}</HelpPortal>"));
   check("H20 resize / compress workbenches: their own guide, the button in the batch toolbar's `extra`, starterVisible over an empty queue, the dialog mounted",
     /useToolGuide\("resize"\)/.test(resize) && /useToolGuide\("compress"\)/.test(compress)
       && [resize, compress].every((s) => s.includes("extra={guide.button}") && s.includes("starterVisible({") && s.includes("{guide.dialog}"))

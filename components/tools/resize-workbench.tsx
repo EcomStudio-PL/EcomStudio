@@ -15,7 +15,8 @@ import {
   ACCEPTED_MIME, DEFAULT_SETTINGS, MAX_UPLOAD_BYTES,
   type OutputFormatOption, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
-import { CostIsland, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
+import { GroupLabel, RadioRows } from "@/components/tools/panel-parts";
+import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 import {
   BatchGalleryToolbar, BatchGrid, DEFAULT_BATCH_FILTER, DEFAULT_ZOOM,
   applyBatchFilter, type BatchFilter, type BatchItem,
@@ -27,7 +28,7 @@ import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 import { starterVisible } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 import { useToolSession } from "@/components/public-tools/use-tool-session";
-import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { ToolDraftBanner } from "@/components/public-tools/tool-notice";
 import { useToolViewer } from "@/components/public-tools/tool-viewer";
 import { StarterGallery } from "@/components/tool-guide/lazy";
 
@@ -250,6 +251,11 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
       : notEnough && !viewer ? t("tools.err.insufficient_credits")
         : pending.length === 0 ? t("resize.nothingQueued")
           : null;
+
+  const barLine = useBarLine({
+    invalid: status,
+    cost: credits > 0 ? totalCredits : 0, balance, session,
+  });
 
   const targetLabel = hasTarget
     ? `≤ ${[target.width, target.height].filter((v): v is number => v !== null).join(" × ")} px`
@@ -537,19 +543,20 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           )}
         </Panel>
 
-        {/* COST + ACTION — the island, in the shape the generator's uses. */}
-        <CostIsland perImage={credits} count={pending.length} enough={!notEnough} status={status}>
-          <button type="button" onClick={() => void session.gate(() => run())}
-            disabled={running || pending.length === 0 || notEnough || !hasTarget}
-            className={cn("cta flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
-              (running || pending.length === 0 || notEnough || !hasTarget) && "cursor-not-allowed opacity-55")}>
-            {running ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Maximize2 size={14} aria-hidden />}
-            {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("resize.run")}
-          </button>
-          {viewer && pending.length > 0 && credits > 0 && (
-            <ToolNotice cost={totalCredits} balance={balance} session={session} className="mt-2.5" />
-          )}
-        </CostIsland>
+        {/* THE GENERATE BAR (Generator UX V3): the price on the button, its
+            make-up on the price, one line above it only while something is
+            missing. Same decisions as before; only the card is gone. */}
+        <GenerateBar
+          label={t("resize.run")}
+          total={credits > 0 ? totalCredits : 0}
+          breakdown={[t("bar.photos", { n: pending.length, p: credits })]}
+          state={running ? "sending" : "idle"}
+          sendingLabel={running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : undefined}
+          blocked={running || pending.length === 0 || notEnough || !hasTarget}
+          onGenerate={() => void session.gate(() => run())}
+          line={barLine}
+          ctaAttrs={{ "data-resize-cta": true }}
+        />
       </div>
 
       {/* THE WORKSPACE — the toolbar sits ABOVE the gallery, on the page

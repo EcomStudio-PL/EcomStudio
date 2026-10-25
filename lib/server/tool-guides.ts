@@ -17,7 +17,7 @@ import { publishedGuide, type PublishedGuide } from "@/lib/server/tool-guides-pu
 
 export { TOOL_GUIDES_TAG } from "@/lib/server/tool-guides-published";
 import {
-  DEFAULT_STEP_ARTS, guideHasStarter, guideSlotKey, isGuideArt, photoSlugOf,
+  DEFAULT_STEP_ARTS, FORMAT_USE_KEYS, guideHasStarter, guideSlotKey, isGuideArt, photoSlugOf,
   type GuideContent, type GuideImage, type GuideToolKey, type LocaleText, type ResolvedGuide,
 } from "@/lib/tool-guides";
 import { STARTER_FALLBACK_SLOTS, guideImageKeys } from "@/lib/tool-guide-slots";
@@ -62,8 +62,12 @@ export function defaultGuideContent(tool: GuideToolKey): GuideContent {
       title: perLocale(`${base}.starter.title`),
       body: perLocale(`${base}.starter.body`),
     },
-    // Drag & drop zdjęć V2: the same line on every reorderable grid.
-    hints: { reorder: perLocale("dnd.hint") },
+    // Drag & drop zdjęć V2: the same line on every reorderable grid;
+    // Generator UX V3: the shipped "what this format is for" lines.
+    hints: {
+      reorder: perLocale("dnd.hint"),
+      formats: Object.fromEntries(FORMAT_USE_KEYS.map((k) => [k, perLocale(`fmtUse.${k}`)])),
+    },
   };
 }
 
@@ -157,6 +161,20 @@ export async function loadReorderHint(tool: GuideToolKey, locale: Locale): Promi
   if (!reorder || typeof reorder !== "object") return undefined;
   const text = (reorder[locale] ?? "").trim() || (reorder.pl ?? "").trim();
   return text || null;
+}
+
+/** The tool's format lines (Generator UX V3), in this language (else Polish),
+ *  only the formats an admin wrote; undefined when none is saved. */
+export async function loadFormatUses(tool: GuideToolKey, locale: Locale): Promise<Record<string, string> | undefined> {
+  const saved = await publishedGuide(tool);
+  const formats = saved && saved !== "failed" ? saved.hints?.formats : undefined;
+  if (!formats || typeof formats !== "object") return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, text] of Object.entries(formats)) {
+    const v = ((text?.[locale] ?? "").trim() || (text?.pl ?? "").trim());
+    if (v) out[key] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export async function loadGuide(supabase: Client, tool: GuideToolKey, locale: Locale): Promise<ResolvedGuide | null> {

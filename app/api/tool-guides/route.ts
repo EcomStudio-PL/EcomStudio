@@ -4,7 +4,7 @@ import { getLocale } from "@/lib/i18n/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { viewerIsAdmin } from "@/lib/server/feature-availability";
 import { hasToolResults, hasUsedTool, readSeenVersion } from "@/lib/services/tool-guides";
-import { loadGuide, loadReorderHint, toolIsLive } from "@/lib/server/tool-guides";
+import { loadFormatUses, loadGuide, loadReorderHint, toolIsLive } from "@/lib/server/tool-guides";
 import { isGuideTool, type GuideResponse } from "@/lib/tool-guides";
 
 export const dynamic = "force-dynamic";
@@ -33,15 +33,20 @@ export async function GET(request: Request) {
     getCurrentWorkspace(supabase, user.id),
     viewerIsAdmin(supabase),
   ]);
-  const [guide, seen, live, hasResults, usedBefore, reorderHint] = await Promise.all([
+  const [guide, seen, live, hasResults, usedBefore, reorderHint, formatUses] = await Promise.all([
     loadGuide(supabase, tool, locale),
     readSeenVersion(supabase, user.id, tool),
     toolIsLive(supabase, tool, { admin }),
     workspace ? hasToolResults(supabase, workspace.id, tool) : Promise.resolve(null),
     workspace ? hasUsedTool(supabase, workspace.id, user.id, tool) : Promise.resolve(null),
     loadReorderHint(tool, locale),
+    loadFormatUses(tool, locale),
   ]);
 
-  const body: GuideResponse = { guide, seen, live, hasResults, usedBefore, ...(reorderHint !== undefined ? { reorderHint } : {}) };
+  const body: GuideResponse = {
+    guide, seen, live, hasResults, usedBefore,
+    ...(reorderHint !== undefined ? { reorderHint } : {}),
+    ...(formatUses ? { formatUses } : {}),
+  };
   return NextResponse.json({ ok: true, ...body }, { headers: { "Cache-Control": "no-store" } });
 }

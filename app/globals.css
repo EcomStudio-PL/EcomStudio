@@ -1652,6 +1652,30 @@ html[data-photo-dragging] { user-select: none; -webkit-user-select: none; }
   .photo-floating { transform: none; }
 }
 
+/* ── GENERATOR UX V3 — the Generate bar and the tool frame ─────────────────────
+   On a phone a tool's Generate bar is the dock: the app's own navigation steps
+   aside on a tool screen (the frame's header carries the way back), so there
+   is ONE bar at the bottom and one button. The room the bar needs at the foot
+   of the page is still reserved in exactly one place (dock-room.ts writes
+   --gen-dock-room, `.app-shell:has([data-gen-dock]) > main` spends it), and
+   the toasts sit above the bar instead of above the navigation that is gone. */
+@media (max-width: 1023.98px) {
+  .app-shell:has([data-tool-dock]) > nav.fixed { display: none; }
+  :root:has([data-tool-dock]) { --toast-bottom: calc(var(--gen-dock-room, 6.5rem) + 0.5rem); }
+}
+/* The price on the button ticks when it changes — a short lift, no more. */
+.bar-cost-tick { display: inline-block; animation: bar-cost-tick 260ms ease-out; }
+@keyframes bar-cost-tick {
+  from { opacity: 0.35; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+/* A blocked bar is faded and still: no breathing, no warm-up on hover. */
+.cta[data-blocked] { animation: none; }
+.cta[data-blocked]:hover { filter: none; }
+@media (prefers-reduced-motion: reduce) {
+  .bar-cost-tick { animation: none; }
+}
+
 /* ── AUTH FORMS ON A PHONE ────────────────────────────────────────────────
    When the browser (or the customer's own tap) scrolls a field into view, it
    stops as soon as the field's edge is visible — which on a keyboard-reduced

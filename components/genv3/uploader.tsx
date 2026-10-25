@@ -87,6 +87,7 @@ export const DropOverlay = FileDropOverlay;
 export function PhotoUploader({
   items, max, uploading, label, hint, counter = true, compact, capturePaste, dropTarget,
   onFiles, onRemove, onMove, columns = 4, zone, zoneLabel, zoneDense, preview, primaryLabel, reorderHint,
+  usable, usableNote,
 }: {
   items: UploadedRef[];
   max: number;
@@ -158,6 +159,10 @@ export function PhotoUploader({
    *  the files, their order, the upload state or any request. Off by
    *  default, so every other uploader renders exactly as before. */
   preview?: boolean;
+  /** Generator UX V3: photos past this many are kept but greyed — the active
+   *  mode sends only the first ones — and `usableNote` says so. */
+  usable?: number;
+  usableNote?: string;
 }) {
   const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -194,7 +199,7 @@ export function PhotoUploader({
   return (
     <section data-drop-target={dropTarget}>
       <div className="mb-2 flex items-baseline justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-[13.5px] font-semibold tracking-tight">{label}</p>
+        <p className="flex items-center gap-1.5 text-[14px] font-semibold tracking-tight">{label}</p>
         {counter && !bigZone && (
           <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-faint">
             {items.length}/{max}
@@ -235,7 +240,7 @@ export function PhotoUploader({
       <SortablePhotoGrid items={items} onMove={onMove} onRemove={onRemove}
         onOpen={preview ? setViewIndex : undefined}
         gridClass={columns === 5 ? "grid-cols-5" : "grid-cols-4 sm:grid-cols-5"}
-        primaryLabel={primaryLabel} reorderHint={reorderHint}
+        primaryLabel={primaryLabel} reorderHint={reorderHint} usable={usable}
         trailing={!full ? (
             <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
               aria-label={t("genv3.addPhotos")}
@@ -248,6 +253,9 @@ export function PhotoUploader({
 
       {!compact && (
         <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{hint ?? t("genv3.uploadWays")}</p>
+      )}
+      {usableNote && usable !== undefined && items.length > usable && (
+        <p data-photos-usable={usable} className="mt-1.5 text-[11.5px] leading-snug text-muted">{usableNote}</p>
       )}
 
 

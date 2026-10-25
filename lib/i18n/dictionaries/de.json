@@ -2915,7 +2915,8 @@
       "trial_workflow_unavailable": "Dieser Werkzeugmodus ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
       "trial_tool_unavailable": "Dieses Werkzeug ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
       "concurrency_limit": "Das ist das Limit deines Plans — die nächste Generierung kannst du starten, sobald eine fertig ist.",
-      "network": "Verbindung fehlgeschlagen. Falls die Generierung gestartet ist, siehst du sie in der Galerie."
+      "network": "Verbindung fehlgeschlagen. Falls die Generierung gestartet ist, siehst du sie in der Galerie.",
+      "invalid_shot_plan": "Der Aufnahmeplan verweist auf ein Foto, das nicht mehr in der Liste ist. Wähle das Foto erneut."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -4625,8 +4626,8 @@
     "inspHint": "Füge ein Inspirationsbild hinzu, wenn die KI dessen Umgebung, Licht, Farben, Komposition oder Stimmung aufgreifen soll. Das Produkt selbst stammt weiterhin ausschließlich aus deinen Produktfotos.",
     "inspAdd": "Inspirationsbilder hinzufügen",
     "inspUnsupported": "Das gewählte Modell unterstützt keine Referenzbilder, daher wird Inspiration nicht verwendet.",
-    "inspOwn": "Eigene Inspiration",
-    "inspPick": "Inspiration wählen",
+    "inspOwn": "Eigene hochladen",
+    "inspPick": "Aus der Galerie wählen",
     "inspLibTitle": "GrovBase-Inspirationsbibliothek",
     "inspLibAll": "Alle",
     "inspLibAdd": "Hinzufügen",
@@ -4756,7 +4757,7 @@
     "pickReferenceEmpty": "Zuerst Produktfotos hinzufügen",
     "noReference": "Ohne Referenz",
     "keepFramingNeedsRef": "Wähle zuerst ein Referenzfoto für diese Aufnahme.",
-    "keepFramingShort": "Bildaus.",
+    "keepFramingShort": "Bildausschnitt des Fotos beibehalten",
     "dropTitle": "Produktfotos hier ablegen",
     "dropSub": "JPG · PNG · WEBP · mehrere auf einmal",
     "densityLabel": "Miniaturgröße",
@@ -4926,7 +4927,36 @@
         "account_blocked": "Dein Konto ist vorübergehend pausiert — der intelligente Prompt ist nicht verfügbar. Es wurden keine Credits abgebucht.",
         "result_rejected": "Das Modell hat eine unbrauchbare Antwort geliefert — deine Credits wurden erstattet. Bitte versuche es erneut."
       }
-    }
+    },
+    "creditsShortWord": "Cr.",
+    "scenario": "Szenario",
+    "shotPlan": "Aufnahmeplan",
+    "shotPlanHint": "Du kannst einer Aufnahme ein Foto zuordnen und beschreiben, was darauf ist oder was du sehen möchtest. Leere Aufnahmen planen wir automatisch.",
+    "planned": "Geplant: {n} von {m}",
+    "shot": "Aufnahme {n}",
+    "anyPhoto": "Beliebig",
+    "pickPhoto": "Foto für Aufnahme {n}",
+    "planPh1": "Z. B. Nahaufnahme des Stuhlfußes",
+    "planPh2": "Z. B. verschüttetes Wasser neben dem Produkt",
+    "planPh3": "Z. B. das Produkt auf heller Arbeitsplatte im Morgenlicht",
+    "moreSettings": "Weitere Einstellungen",
+    "changed": "Geändert",
+    "restore": "Empfohlene wiederherstellen",
+    "grovshotModelNote": "Grovshot funktioniert am besten mit dem empfohlenen Modell. Ändere es, wenn du Ergebnisse vergleichen möchtest.",
+    "photosUsed": "Dieser Modus nutzt die ersten {n} Fotos",
+    "photosUsedOne": "Dieser Modus nutzt nur das erste Foto",
+    "photosUnusedAll": "Das gewählte Modell verwendet keine Produktfotos.",
+    "restored": "Wir haben deine Fotos und Einstellungen wiederhergestellt",
+    "clear": "Leeren",
+    "modes": "Generatormodus",
+    "filters": "Filter",
+    "filtersTitle": "Filter und Sortierung",
+    "onlyFav": "Nur Favoriten",
+    "categories": "Kategorien",
+    "clearFilters": "Zurücksetzen",
+    "showResults": "Ergebnisse anzeigen",
+    "searchOpen": "Suchen",
+    "searchClose": "Suche schließen"
   },
   "retouch": {
     "title": "Foto-Retusche",
@@ -7364,7 +7394,9 @@
         "models": "Modelle",
         "last": "Zuletzt genutzt"
       }
-    }
+    },
+    "guide.formats.heading": "Formate — wofür sie da sind",
+    "guide.formats.note": "Eine kurze Beschriftung unter jedem Format auf den Kacheln dieses Tools (z. B. 1:1 — Marktplatz). Leer = Standardbeschriftung. Das Tool zeigt nur Formate, die sein Modell unterstützt."
   },
   "batch": {
     "viewLabel": "Ansicht",
@@ -11857,6 +11889,16 @@
       "confirmOnBody": "Der Werkzeugkatalog und die Panels werden ohne Anmeldung sichtbar und in die Sitemap aufgenommen. Generieren erfordert weiterhin ein Konto.",
       "confirmOffTitle": "Öffentliche Werkzeuge ausschalten?",
       "confirmOffBody": "Besucher sehen wieder den Anmeldedialog, und die Werkzeugseiten verschwinden aus der Sitemap."
+    },
+    "line": {
+      "guest": "Deine Fotos bleiben in deinem Browser — ein Konto erstellst du beim Klick auf Generieren.",
+      "missing": "Dir fehlen {n} Cr.",
+      "topup": "Aufladen",
+      "choosePlan": "Plan wählen",
+      "verify": "Bestätige deine E-Mail-Adresse",
+      "resend": "Erneut senden",
+      "survey": "Hol dir {n} Cr. für eine kurze Umfrage",
+      "surveyCta": "Ausfüllen"
     }
   },
   "toolPage": {
@@ -11973,5 +12015,48 @@
     "moved": "Foto {n} — Position {m}.",
     "dropped": "Foto {n} auf Position {m} verschoben.",
     "cancelled": "Verschieben abgebrochen. Foto {n} bleibt auf Position {m}."
+  },
+  "toolFrame": {
+    "views": "Ansicht",
+    "create": "Erstellen",
+    "results": "Ergebnisse",
+    "working": "Generierungen laufen"
+  },
+  "bar": {
+    "costAria": "Kosten: {n} Cr. — Details anzeigen",
+    "total": "Gesamt: {n} Cr.",
+    "limit": {
+      "one": "Du hast {n} Generierung in Arbeit — das Limit deines Plans",
+      "few": "Du hast {n} Generierungen in Arbeit — das Limit deines Plans",
+      "many": "Du hast {n} Generierungen in Arbeit — das Limit deines Plans",
+      "other": "Du hast {n} Generierungen in Arbeit — das Limit deines Plans"
+    },
+    "shots": "Aufnahmen: {n} × {p} Cr.",
+    "images": "Bilder: {n} × {p} Cr.",
+    "photos": "Fotos: {n} × {p} Cr.",
+    "thumb": "Thumbnail: {p} Cr.",
+    "retouch": "KI-Retusche: {n} × {p} Cr.",
+    "uploading": "Fotos werden hochgeladen…",
+    "rewriting": "Dein Prompt wird umgeschrieben…"
+  },
+  "controls": {
+    "extra": "+{n} Cr.",
+    "less": "−{n} Cr.",
+    "recommended": "Empfohlen",
+    "range": "Bereich {min}–{max}"
+  },
+  "fmtUse": {
+    "auto": "KI wählt",
+    "original": "Bildausschnitt",
+    "1:1": "Marktplatz",
+    "4:5": "Instagram",
+    "5:4": "Post",
+    "3:4": "Produkt",
+    "4:3": "Folie",
+    "2:3": "Pinterest",
+    "3:2": "Quer",
+    "16:9": "Banner",
+    "9:16": "Reels",
+    "21:9": "Panorama"
   }
 }

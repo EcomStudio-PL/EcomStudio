@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "i18n:check": "node scripts/i18n-check.mjs",
     "test:tools": "esbuild scripts/tool-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/tool-tests.cjs --log-level=silent && node .next/tool-tests.cjs",
+    "test:genv3": "esbuild scripts/generator-v3-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/generator-v3-tests.cjs --log-level=silent && node .next/generator-v3-tests.cjs",
     "test:filedrop": "esbuild scripts/file-drop-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/file-drop-tests.cjs --log-level=silent && node .next/file-drop-tests.cjs",
     "test:batch": "esbuild scripts/batch-probe.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/batch-probe.cjs --log-level=silent && node .next/batch-probe.cjs",
     "test:ledger:sql": "bash scripts/ledger-sql-tests.sh",

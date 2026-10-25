@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Sparkles, Wand2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -16,10 +16,11 @@ import { THUMBNAIL_OPERATION, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/l
 import type { ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
-import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
-import { useToolViewer } from "@/components/public-tools/tool-viewer";
+import { ToolDraftBanner } from "@/components/public-tools/tool-notice";
 import { frozenSnapshot, submitTracked } from "@/lib/inflight/store";
-import { LimitNote, useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { useInflightGate } from "@/components/inflight/use-inflight-gate";
+import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
+import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 import { limitText } from "@/components/inflight/inflight-tile";
 import { reorder } from "@/components/genv3/sortable-photos";
 import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
@@ -44,10 +45,12 @@ import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
  * as they were for the next one. The click's own id makes a double submit
  * the same run.
  */
-export function ThumbnailWorkspace({ workspaceId, credits, data }: {
+export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: {
   workspaceId: string;
   credits: number;
   data: ThumbnailRuntimeData;
+  back: { href: string; label: string };
+  title: string;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -78,7 +81,6 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
     browser — no Storage, no run — and Generate opens the sign-in dialog. Back
     signed in, the same files go through `upload` in the same order.
   */
-  const viewer = useToolViewer();
   const session = useToolSession({
     settings: { retouch },
     sources: photos.map(refSource),
@@ -167,6 +169,8 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
 
   useEffect(() => { setBalance(credits); }, [credits]);
 
+  const frame = useToolFrameController();
+
   // ── D · start a run: the server takes it from here ──────────────────────
   const start = useCallback(async () => {
     if (sending) return;
@@ -187,6 +191,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       });
       if (out.ok) {
         gate.flash();
+        frame.accepted();
         return;
       }
       if (out.error === "price_changed") { toast.error(t("thumb.priceChanged")); router.refresh(); }
@@ -198,155 +203,127 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
     } finally {
       setSending(false);
     }
-  }, [sending, photos, retouchOn, quote.total, errText, router, t, locale, session, gate]);
+  }, [sending, photos, retouchOn, quote.total, errText, router, t, locale, session, gate, frame]);
 
   // A visitor's Generate is the sign-in dialog: their (absent) balance never greys it out.
-  const canRun = data.ready && !sending && !gate.added && !gate.atLimit && !uploading && photos.length > 0
+  const canRun = data.ready && !gate.atLimit && !uploading && photos.length > 0
     && (session.guest || missing === 0) && (!retouch || data.retouch.available);
+  const line = useBarLine({
+    unavailable: !data.ready ? t("thumb.unavailable") : null,
+    invalid: photos.length === 0 ? t("thumb.needPhotos") : uploading ? t("bar.uploading") : null,
+    limit: gate.atLimit && gate.limit && !session.guest ? gate.limit : null,
+    cost: quote.total, balance, session,
+  });
+  // The make-up of the price, from the live quote.
+  const breakdown = [
+    t("bar.thumb", { p: n(data.thumbnailCredits ?? 0) }),
+    ...(retouchOn && quote.retouchCount > 0 ? [t("bar.retouch", { n: n(quote.retouchCount), p: n(data.retouch.unit ?? 0) })] : []),
+  ];
 
   return (
-    <div className={cn(
-      "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
-      "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
-    )} data-thumbnail-tool>
-      <DropOverlay show={dragging} title={t("thumb.dropTitle")} sub={t("thumb.dropSub")} />
+    <ToolFrame frame={frame} tools={["ecommerce_thumbnail"]} back={back} title={<h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>}>
+      <ToolColumns
+        cols="lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)]"
+        attrs={{ "data-thumbnail-tool": true }}
+        overlay={<DropOverlay show={dragging} title={t("thumb.dropTitle")} sub={t("thumb.dropSub")} />}
+        panel={(
+          <>
+            <ToolDraftBanner session={session} />
+            {/* A */}
+            <PhotoUploader
+              preview
+              items={photos}
+              max={data.maxPhotos}
+              uploading={uploading}
+              capturePaste
+              compact
+              zone
+              onFiles={(files) => { void upload(files); }}
+              onRemove={(i) => { setPhotos((prev) => prev.filter((_, j) => j !== i)); }}
+              onMove={move}
+              reorderHint={reorderHint}
+              label={t("thumb.photos", { n: data.maxPhotos })}
+            />
 
-      {/* ── LEFT: photos, Retusz, the price, the button ─────────────────── */}
-      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
-        <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
-          <ToolDraftBanner session={session} />
-          {/* A */}
-          <PhotoUploader
-            preview
-            items={photos}
-            max={data.maxPhotos}
-            uploading={uploading}
-            capturePaste
-            compact
-            zone
-            onFiles={(files) => { void upload(files); }}
-            onRemove={(i) => { setPhotos((prev) => prev.filter((_, j) => j !== i)); }}
-            onMove={move}
-            reorderHint={reorderHint}
-            label={t("thumb.photos", { n: data.maxPhotos })}
-          />
-
-          {/* B */}
-          <section data-thumbnail-retouch className={cn(
-            "rounded-xl border p-3 transition-colors",
-            retouchOn ? "border-[rgb(var(--accent)/0.45)] bg-accent-soft/25" : "border-line bg-sunken/50",
-          )}>
-            <div className="flex items-start gap-3">
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 text-[13px] font-semibold leading-snug tracking-tight">
-                  <Wand2 size={14} aria-hidden className="shrink-0 text-accent" />
-                  {t("thumb.retouchTitle")}
+            {/* B — one row: what it does, its price, the switch. */}
+            <section data-thumbnail-retouch>
+              <div className="flex items-start gap-3">
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-[14px] font-semibold leading-snug tracking-tight">
+                    <Wand2 size={14} aria-hidden className="shrink-0 text-accent" />
+                    {t("thumb.retouchTitle")}
+                  </span>
+                  <span className="mt-1 block text-[12px] leading-relaxed text-muted">{t("thumb.retouchBody")}</span>
+                  <span className="mt-1.5 block text-[12px] font-semibold tabular-nums text-accent">
+                    {data.retouch.available
+                      ? t("thumb.retouchPrice", { n: n(data.retouch.unit) })
+                      : t("thumb.retouchUnavailable")}
+                  </span>
                 </span>
-                <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">{t("thumb.retouchBody")}</span>
-                <span className="mt-1.5 block text-[11.5px] font-semibold tabular-nums text-accent">
-                  {data.retouch.available
-                    ? t("thumb.retouchPrice", { n: n(data.retouch.unit) })
-                    : t("thumb.retouchUnavailable")}
-                </span>
-              </span>
-              <Switch checked={retouchOn} onChange={setRetouch} label={t("thumb.retouchTitle")}
-                disabled={!data.retouch.available} />
-            </div>
-          </section>
+                <Switch checked={retouchOn} onChange={setRetouch} label={t("thumb.retouchTitle")}
+                  disabled={!data.retouch.available} />
+              </div>
+            </section>
 
-          {/* C */}
-          <section data-thumbnail-summary>
-            <p className="mb-2 text-[13.5px] font-semibold tracking-tight">{t("thumb.summary.title")}</p>
-            <dl className="divide-y divide-line rounded-xl bg-raised text-[12.5px]">
-              <Row label={t("thumb.summary.photos")} value={n(photos.length)} />
-              <Row label={t("thumb.summary.retouch")} value={retouchOn ? t("thumb.summary.on") : t("thumb.summary.off")} />
-              {retouchOn && (
-                <Row label={t("thumb.summary.retouchCost", { n: photos.length, unit: n(data.retouch.unit ?? 0) })}
-                  value={`${n(quote.retouchCredits)} ${t("genv3.credits")}`} />
-              )}
-              <Row label={t("thumb.summary.thumbnailCost")}
-                value={data.thumbnailCredits !== null ? `${n(data.thumbnailCredits)} ${t("genv3.credits")}` : "—"} />
-              <Row strong label={t("thumb.summary.total")} value={`${n(quote.total)} ${t("genv3.credits")}`} />
-            </dl>
-          </section>
+            {/* C — the summary of THIS configuration stays: it is part of the
+                settings (what will be made, from what), not the price card the
+                Generate bar replaced. */}
+            <section data-thumbnail-summary>
+              <p className="mb-2 text-[14px] font-semibold tracking-tight">{t("thumb.summary.title")}</p>
+              <dl className="divide-y divide-line rounded-xl bg-raised text-[12.5px]">
+                <Row label={t("thumb.summary.photos")} value={n(photos.length)} />
+                <Row label={t("thumb.summary.retouch")} value={retouchOn ? t("thumb.summary.on") : t("thumb.summary.off")} />
+                {retouchOn && (
+                  <Row label={t("thumb.summary.retouchCost", { n: photos.length, unit: n(data.retouch.unit ?? 0) })}
+                    value={`${n(quote.retouchCredits)} ${t("genv3.credits")}`} />
+                )}
+                <Row label={t("thumb.summary.thumbnailCost")}
+                  value={data.thumbnailCredits !== null ? `${n(data.thumbnailCredits)} ${t("genv3.credits")}` : "—"} />
+                <Row strong label={t("thumb.summary.total")} value={`${n(quote.total)} ${t("genv3.credits")}`} />
+              </dl>
+            </section>
 
-          {!data.ready && (
-            <div className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted" data-thumbnail-unavailable>
-              <p>{t("thumb.unavailable")}</p>
-              {data.blockers.length > 0 && (
-                <p className="mt-1.5 text-[11.5px]">
-                  {t("thumb.adminBlockers")}{" "}
-                  {data.blockers.map((b) => t(`thumb.blocker.${b}`)).join(" · ")}{" · "}
-                  <Link href="/admin/ai/ecommerce_thumbnail" className="font-semibold text-accent hover:opacity-75">{t("thumb.configure")}</Link>
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* D — the footer: price, balance, the one button */}
-        <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
-          {gate.atLimit && gate.limit && !session.guest ? (
-            <LimitNote max={gate.limit.max} plan={gate.limit.plan} className="text-center text-[11px] leading-snug text-muted" />
-          ) : viewer ? (
-            // The status card below the button says what is missing and what
-            // to do (Public Tools V1); here only the empty state and the balance.
-            photos.length === 0 ? (
-              <p className="text-center text-[11px] text-muted">{t("thumb.needPhotos")}</p>
-            ) : (
-              <p className="text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
-            )
-          ) : missing > 0 ? (
-            <p className="text-center text-[11px] font-medium text-danger">
-              {t("studio.missing", { n: missing })}{" · "}
-              <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
-            </p>
-          ) : photos.length === 0 ? (
-            <p className="text-center text-[11px] text-muted">{t("thumb.needPhotos")}</p>
-          ) : (
-            <p className="text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
-          )}
-          <button type="button" disabled={!canRun} onClick={() => void session.gate(() => start())} data-thumbnail-cta
-            aria-label={gate.added ? t("inflight.added") : `${t("thumb.cta")} · ${n(quote.total)} ${t("genv3.credits")}`}
-            className={cn(
-              "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
-              !canRun && "cursor-not-allowed opacity-55",
-            )}>
-            {gate.added ? <Check size={14} aria-hidden /> : sending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-            {gate.added ? <span data-generate-added>{t("inflight.added")}</span> : (
-              <>
-                <span>{t("thumb.cta")}</span>
-                {quote.total > 0 && photos.length > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(quote.total)}</span></>}
-              </>
+            {!data.ready && data.blockers.length > 0 && (
+              <p className="rounded-xl bg-raised px-3.5 py-3 text-[11.5px] leading-relaxed text-muted" data-thumbnail-unavailable>
+                {t("thumb.adminBlockers")}{" "}
+                {data.blockers.map((b) => t(`thumb.blocker.${b}`)).join(" · ")}{" · "}
+                <Link href="/admin/ai/ecommerce_thumbnail" className="font-semibold text-accent hover:opacity-75">{t("thumb.configure")}</Link>
+              </p>
             )}
-          </button>
-          {viewer && photos.length > 0 && (
-            <ToolNotice cost={quote.total} balance={balance} session={session} className="mt-2.5" />
-          )}
-        </div>
-      </div>
-
-      {/* ── RIGHT: runs in progress (tiles), then every Miniaturka made ─── */}
-      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
-        <GenerationGallery
-          initialItems={data.initialItems}
-          initialCursor={data.initialCursor}
-          freshItems={freshItems}
-          onFresh={setFreshItems}
-          pendingCount={0}
-          pendingRatio="1:1"
-          models={[]}
-          balance={balance}
-          onBalance={setBalance}
-          onAbsorb={absorb}
-          operation={THUMBNAIL_OPERATION}
-          inflight={{ tools: ["ecommerce_thumbnail"] }}
-          emptyTitle={t("thumb.emptyTitle")}
-          emptyBody={t("thumb.emptyBody")}
-        />
-      </div>
-
-    </div>
+          </>
+        )}
+        bar={(
+          <GenerateBar
+            label={t("thumb.cta")}
+            total={photos.length > 0 ? quote.total : 0}
+            breakdown={breakdown}
+            state={gate.added ? "added" : sending ? "sending" : "idle"}
+            blocked={!canRun}
+            onGenerate={() => void session.gate(() => start())}
+            line={line}
+            ctaAttrs={{ "data-thumbnail-cta": true }}
+          />
+        )}
+        gallery={(
+          <GenerationGallery
+            initialItems={data.initialItems}
+            initialCursor={data.initialCursor}
+            freshItems={freshItems}
+            onFresh={setFreshItems}
+            pendingCount={0}
+            pendingRatio="1:1"
+            models={[]}
+            balance={balance}
+            onBalance={setBalance}
+            onAbsorb={absorb}
+            operation={THUMBNAIL_OPERATION}
+            inflight={{ tools: ["ecommerce_thumbnail"] }}
+            emptyTitle={t("thumb.emptyTitle")}
+            emptyBody={t("thumb.emptyBody")}
+          />
+        )}
+      />
+    </ToolFrame>
   );
 }
 

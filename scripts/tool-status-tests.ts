@@ -408,8 +408,12 @@ async function main() {
     check("a batch tool that cannot run states no price (never \"Za darmo\" above \"niedostępne\")",
       /overline=\{!entry\.available \? undefined : entry\.credits === 0 \? t\("tools\.free"\)/.test(slugPage));
     const ui = read("components/tools/photo-tool.tsx");
+    // Generator UX V3: the honest message is the Generate bar's one line (the
+    // same words), the upload stays hidden, and the button cannot be used and
+    // names no price.
     check("an Aktywny tool that cannot run shows the honest message and no upload/CTA",
-      /\{!available && \(/.test(ui) && /tools\.unavailable\./.test(ui) && /\{available && <PhotoUploader/.test(ui));
+      /unavailable: !available \? t\(`tools\.unavailable\.\$\{reason === "ok" \? "maintenance" : reason\}`\) : null/.test(ui)
+      && /\{available && <PhotoUploader/.test(ui) && /const canRun = available && /.test(ui) && /total=\{available \? total : 0\}/.test(ui));
   }
 
   console.log("\nH. SEARCH, MENUS AND START SPEAK THE SAME PUBLICATION WORDS");

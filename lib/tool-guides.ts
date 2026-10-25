@@ -189,8 +189,17 @@ export type GuideContent = {
   /** Short lines on the tool's own screen. `reorder` is the line under a
    *  reorderable photo grid (Drag & drop zdjęć V2): saved empty = hidden;
    *  absent = the shipped default. */
-  hints?: { reorder?: LocaleText };
+  hints?: {
+    reorder?: LocaleText;
+    /** Generator UX V3: what each format is for on this tool's format tiles
+     *  ("1:1" → "Allegro"). A key with no text = the shipped line. */
+    formats?: Partial<Record<FormatUseKey, LocaleText>>;
+  };
 };
+
+/** The formats a tool's tiles can show, and "original" (Retusz's own). */
+export const FORMAT_USE_KEYS = ["auto", "original", "1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "16:9", "9:16", "21:9"] as const;
+export type FormatUseKey = (typeof FORMAT_USE_KEYS)[number];
 
 export const GUIDE_LIMITS = {
   tutorialTitle: 80,
@@ -200,6 +209,7 @@ export const GUIDE_LIMITS = {
   starterTitle: 80,
   starterBody: 240,
   reorderHint: 120,
+  formatUse: 40,
 } as const;
 
 export type GuideProblem =
@@ -279,6 +289,20 @@ export function normalizeGuideContent(input: unknown): { ok: true; content: Guid
     const reorder = field((rawHints as { reorder?: unknown }).reorder, GUIDE_LIMITS.reorderHint, false);
     if (typeof reorder === "string") return { ok: false, problem: reorder };
     hints = { reorder };
+    // The format lines: only the known formats, each held to the same rules.
+    const rawFormats = (rawHints as { formats?: unknown }).formats;
+    if (rawFormats !== undefined && rawFormats !== null) {
+      if (typeof rawFormats !== "object" || Array.isArray(rawFormats)) return { ok: false, problem: "shape" };
+      const formats: Partial<Record<FormatUseKey, LocaleText>> = {};
+      for (const key of FORMAT_USE_KEYS) {
+        const raw = (rawFormats as Record<string, unknown>)[key];
+        if (raw === undefined) continue;
+        const text = field(raw, GUIDE_LIMITS.formatUse, false);
+        if (typeof text === "string") return { ok: false, problem: text };
+        if (Object.values(text).some((v) => v)) formats[key] = text;
+      }
+      hints.formats = formats;
+    }
   }
 
   return {
@@ -330,6 +354,9 @@ export type GuideResponse = {
   /** The line under a reorderable photo grid: the admin's wording, null =
    *  hidden by the admin, undefined = the shipped default. */
   reorderHint?: string | null;
+  /** Generator UX V3: the admin's format lines in this language (only the
+   *  formats with text); absent = the shipped lines. */
+  formatUses?: Record<string, string>;
 };
 
 /* ── THE TWO DECISIONS ─────────────────────────────────────────────────── */

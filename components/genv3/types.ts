@@ -25,6 +25,9 @@ export type GenModel = {
   /** Max images per run for this model (adapter ∧ admin cap). */
   maxOutputs: number;
   supportsRefs: boolean;
+  /** Reference slots the model really takes (`ai_models.max_reference_images`);
+   *  absent where the planner decides (GrovBase), or unknown. */
+  maxRefs?: number | null;
   /** Render qualities this model lets the customer pick ("Jakość"). Empty
    *  for every model without the knob — then no field is shown at all. */
   qualities: string[];
@@ -76,11 +79,6 @@ export function snapQuality(m: Pick<GenModel, "qualities"> | undefined, value: s
 }
 
 export type UploadedRef = { key: string; path: string; url: string };
-
-/** One row of "Opisy ujęć". Everything starts EMPTY: the reference is only
- *  ever set by the customer picking a photo — uploading photos never assigns
- *  them to shots. `refIndex` is 1-based into the uploaded reference pool. */
-export type BriefState = { text: string; keepFraming: boolean; refIndex: number | null };
 
 export type GallerySessionType = "advertising" | "lifestyle";
 

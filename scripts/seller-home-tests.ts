@@ -761,7 +761,11 @@ const ENGINE: readonly [string, string][] = [
   // (0 calls, 0 credits). No provider request byte changes.
   ["lib/server/image-tools.ts", "ac473b62ebbc13138de61e38293b970fab2127d5a395a9f56d1dbeaf9618a8a2"],
   ["lib/server/fashion.ts", "43147c3ec1602fb3afbdb94d698fc2a13732f7edc2fec1a4716c4fd59af343a8"],
-  ["app/api/prompts/generate/route.ts", "37db9bd3798b9bd5c4c4fc3bdf1056d57dec296f12754fd52bd9f5f97e204b5e"],
+  // Re-pinned by Generator UX V3 (Plan ujęć): the route filters the reference
+  // paths FIRST and checks a shot's chosen photo against them
+  // (lib/server/shot-plan.ts → invalid_shot_plan, before any paid call). The
+  // engine, its prompts and the request it sends are untouched (test:genv3).
+  ["app/api/prompts/generate/route.ts", "95657fea7aee587f0d80ad9b3effae4ebd98e55a01906a9f7a239e55fda7590d"],
   ["app/api/concepts/generate/route.ts", "7e9b4a0069bfc227e1aaec8f9189e84ef188a063930385dbc849f820fd1c0075"],
   // Re-pinned by the trial-watermark task: the route passes its own start
   // time (routeStartedAt) so the trial-image gate counts the hybrid engine's
@@ -776,7 +780,10 @@ const ENGINE: readonly [string, string][] = [
   // Drag & drop V2: the arrows became the shared reorderable grid
   // (SortablePhotoGrid) — still opt-in through `onMove`; uploading, intake and
   // the file limits are untouched.
-  ["components/genv3/uploader.tsx", "57bf13636e515d4b798bda2d39e82f5479c1602341602620e40e4d88f2d0808e"],
+  // Generator UX V3: two more OPT-IN props (`usable`, `usableNote`: a mode that
+  // sends fewer photos greys the rest and says so) and the 14px section label.
+  // Uploading, intake and the file limits are untouched.
+  ["components/genv3/uploader.tsx", "1ebf12e2d3402c20fd99a2e2e9e742cdf38784d285ad13f7d59185c839809a24"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],
   ["lib/services/credits.ts", "1a25606a89ca4ebc6f2640542f59b9185da4595ebad973b69be9f82932cb74fb"],
@@ -794,52 +801,34 @@ for (const [file, digest] of ENGINE) check(`${file} unchanged`, sha(readFileSync
     cut > 0 && sha(g.slice(0, cut)) === "20d848f41571c7c76463cfc9a24dd7ba8c1e4e393bd6400eaac5b1f655034c28");
 }
 // The generator workspace gained ONE receiver (in the first redesign) and
-// nothing else: with those lines taken out it is byte-identical to before.
+// nothing else /home depends on.
+//
+// Generator UX V3 REWROTE this file (one screen for GrovShot and Stwórz
+// zdjęcie: per-mode state, the shared Generate bar, the member's draft). The
+// earlier check took each later task's pieces back out and compared the rest
+// with a digest — a method that cannot follow a rewrite. What this section is
+// about is pinned piece by piece instead: /home's one entry point, and the
+// Inteligentny prompt wiring (whose behaviour test:smartprompt holds); the
+// request bodies are held by test:genv3, test:smartprompt and the V3 browser
+// run. The whole file is re-pinned below so the NEXT change is seen again.
 const ws = read("components/genv3/workspace.tsx");
 const RECEIVER_IMPORT = 'import { useHomeHandoff } from "@/lib/home-handoff";\n';
-const RECEIVER = ws.slice(ws.indexOf("  // A photo chosen on /home"), ws.indexOf("  /**\n   * A PICK FROM THE GROVBASE LIBRARY"));
-// The Inteligentny prompt task added its wiring and nothing else: two imports,
-// one optional prop, one hook call, the Generate hold while a rewrite is in
-// flight, and the `smart` prop on PromptSection. Taken out as well, the file is
-// still the same bytes as before — the digest is NOT re-pinned.
-const SMART_PIECES: readonly [string, string][] = [
-  ['import { useSmartPrompt } from "@/components/genv3/smart-prompt";\nimport type { SmartPromptOffer } from "@/lib/smart-prompt";\n', ""],
-  ['  variant, initialPrompt = "", sessionPreviews, smartPrompt,\n', '  variant, initialPrompt = "", sessionPreviews,\n'],
-  ["  /** Inteligentny prompt: price + whether to offer it (custom mode only). */\n  smartPrompt?: SmartPromptOffer;\n", ""],
-  ["  // ── Inteligentny prompt (custom mode): rewrites land in `prompt` itself ─\n"
-    + "  const refPaths = useMemo(() => refs.map((r) => r.path).slice(0, MAX_REFS), [refs]);\n"
-    + "  const smart = useSmartPrompt({\n"
-    + "    value: prompt, onChange: setPrompt, offer: managed ? undefined : smartPrompt,\n"
-    + "    referencePaths: refPaths, onBalance: setBalance,\n"
-    + "  });\n\n", ""],
-  // Generacje w toku V2 moved the hold from `busy` to `sending` + the plan's
-  // gate (the lines between the two comments); the smart hold is unchanged.
-  ["  // Not while a rewrite is on its way: the text about to be replaced is not\n"
-    + "  // the text the customer would be generating from.\n"
-    + "  // Generacje w toku V2: a click in flight (the POST, or GrovBase's planner\n"
-    + "  // pass) and the plan's limit are the only things that hold the button —\n"
-    + "  // never a generation that is merely running.\n"
-    + "  const sending = stageLabel !== \"\" || preparing;\n"
-    + "  const canGenerate = !!model && !sending && !gate.added && !gate.atLimit && !smart.busy && ",
-  "  // Generacje w toku V2: a click in flight (the POST, or GrovBase's planner\n"
-    + "  // pass) and the plan's limit are the only things that hold the button —\n"
-    + "  // never a generation that is merely running.\n"
-    + "  const sending = stageLabel !== \"\" || preparing;\n"
-    + "  const canGenerate = !!model && !sending && !gate.added && !gate.atLimit && "],
-  [" max={PROMPT_MAX} smart={smart} />", " max={PROMPT_MAX} />"],
+const RECEIVER = '  // A photo chosen on /home for this screen: the same upload as a picked one.\n'
+  + '  useHomeHandoff((file) => { void upload([file], "refs"); });\n';
+const SMART_PIECES: readonly string[] = [
+  'import { useSmartPrompt } from "@/components/genv3/smart-prompt";\nimport type { SmartPromptOffer } from "@/lib/smart-prompt";\n',
+  "  smartPrompt?: SmartPromptOffer;\n",
+  "  const smart = useSmartPrompt({\n    value: stw.prompt, onChange: setPrompt, offer: customData?.smartPrompt,\n    referencePaths: refPaths, onBalance: setBalance,\n  });\n",
+  "  const canGenerate = !!model && !gate.atLimit && !smart.busy && ",
+  " max={PROMPT_MAX} smart={smart} />",
 ];
-check("…the Inteligentny prompt wiring is all present (a vanished piece is not a pass)", SMART_PIECES.every(([piece]) => ws.includes(piece)));
-const wsBefore = SMART_PIECES.reduce((src, [piece, was]) => src.replace(piece, was), ws);
-// Re-pinned by Public Tools V1 (was 07d316d7…): the visitor's session wiring —
-// local photo stand-ins instead of uploads, Generate through session.gate (the
-// sign-in dialog for a visitor, the same run for a member), the draft banner,
-// the account notice beside the price. No request a member sends changed.
-// Re-pinned by Generacje w toku V2 + Drag & drop V2 (was 8ad2fb3e…): Generuj
-// sends a frozen snapshot through the shared in-flight store (custom) or the
-// batch queue (GrovBase), the plan's limit gate, and the photo order moves
-// (brief refIndex follows). The prompt text and the request body are the same.
+check("…the Inteligentny prompt wiring is all present (a vanished piece is not a pass)", SMART_PIECES.every((piece) => ws.includes(piece)));
+check("the generator workspace has exactly ONE /home receiver (and its import)",
+  ws.split(RECEIVER).length === 2 && ws.split("useHomeHandoff(").length === 2 && ws.split(RECEIVER_IMPORT).length === 2);
+// Re-pinned by Generator UX V3 (was 6937614c… with the earlier tasks' pieces
+// taken out): the rewrite described above.
 check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring, and the Public Tools V1 session)",
-  sha(wsBefore.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "6937614cc204b5bc05ff7d179ce3c29e49939f6ce77739835d3531beab3fc1af");
+  sha(ws.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "3801efd1ec63d28e7dae7007b32dcf2b404d191d1a970b5e4abfa548e85b857b");
 check("…which feeds the screen's own upload and starts nothing", /useHomeHandoff\(\(file\) => \{ void upload\(\[file\], "refs"\); \}\)/.test(RECEIVER)
   && !/generate\(|fetch\(/.test(RECEIVER));
 check("/home has no generation path: no AI route, no provider, no prompt",

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BookOpen } from "lucide-react";
+import { BookOpen, CircleHelp } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { markToolTutorialSeenAction } from "@/app/actions/tool-guide-seen";
@@ -35,7 +35,11 @@ export function fetchToolGuide(tool: GuideToolKey): Promise<(GuideResponse & { o
   return read;
 }
 
-export function useToolGuide(requested: GuideToolKey | null, opts: { compactLabel?: boolean } = {}): {
+export function useToolGuide(requested: GuideToolKey | null, opts: {
+  compactLabel?: boolean;
+  /** Generator UX V3: the "?" beside the tool's name instead of the pill. */
+  icon?: boolean;
+} = {}): {
   response: GuideResponse | null;
   /** Still asking: the empty gallery waits for the answer rather than
    *  flashing one empty state and then another. */
@@ -117,7 +121,13 @@ export function useToolGuide(requested: GuideToolKey | null, opts: { compactLabe
   }, [tool]);
   const tutorial = response?.live ? response.guide?.tutorial ?? null : null;
 
-  const button = tutorial && tutorial.steps.length > 0 ? (
+  const button = tutorial && tutorial.steps.length > 0 ? opts.icon ? (
+    <button type="button" data-guide-open data-guide-icon onClick={openByHand}
+      aria-label={t("toolGuide.openAria")} title={t("toolGuide.open")} aria-haspopup="dialog"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-faint transition-colors duration-200 hover:bg-raised hover:text-accent">
+      <CircleHelp size={18} aria-hidden />
+    </button>
+  ) : (
     <button type="button" data-guide-open onClick={openByHand}
       aria-label={t("toolGuide.openAria")} title={t("toolGuide.openAria")} aria-haspopup="dialog"
       className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-line px-3 text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink">

@@ -44,12 +44,17 @@ function missingKey(base: string, n: number): string {
   return n === 1 ? `${base}One` : base;
 }
 
-export function ToolNotice({ cost, balance, session, className }: {
+export function ToolNotice({ cost, balance, session, className, variant = "card" }: {
   cost: number;
   balance: number;
   /** For saving the work before the checkout takes the member away. */
   session?: Pick<ToolSession, "prepare">;
   className?: string;
+  /**
+   * "line" (Generator UX V3): the same state, the same dialogs and actions, as
+   * ONE short line above a tool's Generate bar instead of a card under it.
+   */
+  variant?: "card" | "line";
 }) {
   const viewer = useToolViewer();
   const { t } = useI18n();
@@ -84,6 +89,18 @@ export function ToolNotice({ cost, balance, session, className }: {
   }, [state, viewer]);
 
   if (!viewer || !state) return null;
+
+  if (variant === "line") {
+    return (
+      <NoticeLine state={state} claimed={claimed} watermark={!!viewer.trialWatermark && cost > 0}
+        email={viewer.email ?? null} onBilling={(kind) => {
+          trackEvent(kind === "plan" ? "tool_choose_plan_click" : "tool_topup_click", { tool_id: viewer.tool });
+          setDialog(kind);
+        }}
+        dialog={<BillingDialog kind={dialog} missing={state.code === "C" || state.code === "D" ? state.missing : 0} onClose={() => setDialog(null)} session={session} />}
+      />
+    );
+  }
 
   const box = (tone: "info" | "warn", icon: React.ReactNode, children: React.ReactNode, data: string) => (
     <div data-tool-notice={data} role={tone === "warn" ? "status" : undefined}
@@ -157,6 +174,103 @@ export function ToolNotice({ cost, balance, session, className }: {
       ), state.code.toLowerCase())}
       <BillingDialog kind={dialog} missing={state.missing} onClose={() => setDialog(null)} session={session} />
     </>
+  );
+}
+
+/**
+ * THE SAME STATES, ONE LINE EACH — what the Generate bar shows above its
+ * button. Same order, same dialogs, same resend and survey as the card:
+ *
+ *   A   (a visitor) quiet: the photos stay here, an account comes at Generate
+ *   B   nothing, or the watermark note, or "Masz X darmowych kredytów"
+ *   B2  "Potwierdź adres e-mail · Wyślij ponownie" / the survey
+ *   C   "Brakuje Ci 8 kr. · Wybierz plan"
+ *   D   "Brakuje Ci 8 kr. · Doładuj"
+ */
+function NoticeLine({ state, claimed, watermark, email, onBilling, dialog }: {
+  state: ToolState;
+  claimed: number | null;
+  watermark: boolean;
+  email: string | null;
+  onBilling: (kind: "plan" | "topup") => void;
+  dialog: React.ReactNode;
+}) {
+  const { t, locale } = useI18n();
+  const n = (v: number) => new Intl.NumberFormat(locale).format(v);
+  const line = (icon: React.ReactNode, children: React.ReactNode, data: string, warn = false) => (
+    <p data-tool-notice={data} data-bar-reason="account" role={warn ? "status" : undefined}
+      className={cn("flex min-w-0 items-start gap-1.5 text-[12px] leading-snug", warn ? "text-ink" : "text-muted")}>
+      <span aria-hidden className={cn("mt-[1px] shrink-0", warn ? "text-warning" : "text-faint")}>{icon}</span>
+      <span className="min-w-0">{children}</span>
+    </p>
+  );
+  const act = (label: string, onClick: () => void, data: string) => (
+    <>
+      <span aria-hidden className="text-faint"> · </span>
+      <button type="button" onClick={onClick} data-tool-billing={data}
+        className="font-semibold text-accent transition-opacity hover:opacity-75">{label}</button>
+    </>
+  );
+
+  if (state.code === "A") return line(<Sparkles size={13} />, t("publicTools.line.guest"), "a");
+  if (state.code === "B") {
+    if (claimed) return line(<Gift size={13} />, t("publicTools.notice.claimed", { n: claimed }), "claimed");
+    if (watermark) return line(<Stamp size={13} />, t("publicTools.notice.watermark"), "watermark");
+    return null;
+  }
+  if (state.code === "B2") {
+    return state.step === "verify"
+      ? line(<MailCheck size={13} />, (
+        <>
+          {t("publicTools.line.verify")}
+          {email && <ResendInline email={email} />}
+        </>
+      ), "b2-verify", true)
+      : line(<Gift size={13} />, (
+        <>
+          {t("publicTools.line.survey", { n: n(state.bonus) })}
+          <span aria-hidden className="text-faint"> · </span>
+          <button type="button" data-tool-survey onClick={() => window.dispatchEvent(new Event("grovbase:open-bonus"))}
+            className="font-semibold text-accent transition-opacity hover:opacity-75">{t("publicTools.line.surveyCta")}</button>
+        </>
+      ), "b2-survey", true);
+  }
+  return (
+    <>
+      {line(state.code === "C" ? <Crown size={13} /> : <Coins size={13} />, (
+        <>
+          {t("publicTools.line.missing", { n: n(state.missing) })}
+          {state.code === "C"
+            ? act(t("publicTools.line.choosePlan"), () => onBilling("plan"), "plan")
+            : act(t("publicTools.line.topup"), () => onBilling("topup"), "topup")}
+        </>
+      ), state.code.toLowerCase(), true)}
+      {dialog}
+    </>
+  );
+}
+
+/** "Wyślij ponownie", inline — the same server action as the card's button. */
+function ResendInline({ email }: { email: string }) {
+  const { t } = useI18n();
+  const [state, action, pending] = useActionState(resendConfirmation, null);
+  if (state?.info) {
+    return (
+      <span className="font-medium text-success">
+        <span aria-hidden className="text-faint"> · </span>
+        {state.info === "cooldown" ? t("auth.resendCooldown") : t("auth.resendSent")}
+      </span>
+    );
+  }
+  return (
+    <form action={action} className="inline">
+      <input type="hidden" name="email" value={email} />
+      <span aria-hidden className="text-faint"> · </span>
+      <button type="submit" disabled={pending} data-tool-resend
+        className="font-semibold text-accent transition-opacity hover:opacity-75 disabled:opacity-60">
+        {pending ? <Loader2 size={12} className="inline animate-spin" aria-hidden /> : t("publicTools.line.resend")}
+      </button>
+    </form>
   );
 }
 
