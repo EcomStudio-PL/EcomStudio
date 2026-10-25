@@ -24,6 +24,9 @@ import type { UploadedRef } from "@/components/genv3/types";
 import { starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 import { StarterGallery } from "@/components/tool-guide/lazy";
+import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
+import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 
 /** Photos running at once — Retusz's figure: a batch, not ten simultaneous
  *  requests from one seller (Photoroom's own default is 60 a minute). */
@@ -191,6 +194,36 @@ export function PhotoToolWorkspace({
   const total = credits * paidCount;
   const missing = Math.max(0, total - balance);
 
+  /*
+    PUBLIC TOOLS V1. A visitor's photos (and the inspiration) are local
+    stand-ins — no Storage, no Photoroom — and Generate opens the sign-in
+    dialog. Back signed in, the same files go through `upload` /
+    `uploadGuidance` like any picked by hand. Without a viewer nothing changes.
+  */
+  const viewer = useToolViewer();
+  const GUIDANCE = "guidance:";
+  const session = useToolSession({
+    settings: { format, color, hexDraft, scene, prompt, strength, shadowStyle, shadowBg },
+    sources: [
+      ...photos.map(refSource),
+      ...(guidance ? [{ ...refSource(guidance), id: `${GUIDANCE}${guidance.key}` }] : []),
+    ],
+    apply: (saved: Partial<{ format: Format; color: string; hexDraft: string; scene: string; prompt: string; strength: number; shadowStyle: AiShadowStyle; shadowBg: AiShadowBackground }>, files: File[], ids: string[]) => {
+      if (saved.format && FORMATS[tool].includes(saved.format)) setFormat(saved.format);
+      if (typeof saved.color === "string" && HEX_RE.test(saved.color)) setColor(saved.color);
+      if (typeof saved.hexDraft === "string") setHexDraft(saved.hexDraft.slice(0, 7));
+      if (typeof saved.scene === "string" && (saved.scene === CUSTOM || presets.some((p) => p.key === saved.scene))) setScene(saved.scene);
+      if (typeof saved.prompt === "string") setPrompt(saved.prompt.slice(0, BACKGROUND_PROMPT_MAX));
+      if (typeof saved.strength === "number" && saved.strength >= 0 && saved.strength <= 1) setStrength(saved.strength);
+      if (saved.shadowStyle && AI_SHADOW_STYLES.includes(saved.shadowStyle)) setShadowStyle(saved.shadowStyle);
+      if (saved.shadowBg && ["white", "transparent", "color"].includes(saved.shadowBg)) setShadowBg(saved.shadowBg);
+      const photoFiles = files.filter((_, i) => !ids[i]?.startsWith(GUIDANCE));
+      const guidanceFile = tool === "ai_background" ? files.find((_, i) => ids[i]?.startsWith(GUIDANCE)) : undefined;
+      if (photoFiles.length > 0) void upload(photoFiles);
+      if (guidanceFile) void uploadGuidance([guidanceFile]);
+    },
+  });
+
   const errText = useCallback((code?: string) => {
     if (code && PANEL_ERRORS.has(code)) return t(`photoTool.err.${code}`);
     if (code && TOOL_ERRORS.has(code)) return t(`tools.err.${code}`);
@@ -199,7 +232,6 @@ export function PhotoToolWorkspace({
 
   // ── upload: the same three ways in as Retusz (pick, drop, paste) ──────
   async function upload(files: File[]) {
-    const supabase = createClient();
     const room = Math.max(0, PHOTO_MAX_PHOTOS - photos.length - reserved.current);
     if (files.length > room) toast.error(t("genv3.capReached", { max: PHOTO_MAX_PHOTOS }));
     if (room === 0) return;
@@ -211,13 +243,17 @@ export function PhotoToolWorkspace({
       for (const file of batch) {
         if (!ACCEPTED.includes(file.type)) { toast.error(t("products.invalidType")); continue; }
         if (file.size > PHOTO_MAX_BYTES) { toast.error(t("products.tooLarge")); continue; }
-        const path = await store(supabase, file);
+        // A visitor's photo is a local stand-in: no request of any kind. The
+        // transparency check below runs in this browser either way.
+        const local = session.guest ? session.localRef(file) : null;
+        const path = local ? local.path : await store(createClient(), file);
         if (!path) { toast.error(t("photoTool.uploadFailed")); continue; }
+        if (local) session.added(1);
         if (tool === "white_bg") {
           const isClear = await hasRealTransparency(file);
           setClear((prev) => ({ ...prev, [path]: isClear }));
         }
-        setPhotos((prev) => prev.length >= PHOTO_MAX_PHOTOS ? prev : [...prev, { key: path, path, url: preview(file) }]);
+        setPhotos((prev) => prev.length >= PHOTO_MAX_PHOTOS ? prev : [...prev, local ?? { key: path, path, url: preview(file) }]);
       }
     } finally {
       reserved.current -= batch.length;
@@ -240,10 +276,11 @@ export function PhotoToolWorkspace({
     if (file.size > PHOTO_MAX_BYTES) { toast.error(t("products.tooLarge")); return; }
     setGuidanceUploading(true);
     try {
-      const path = await store(createClient(), file);
+      const local = session.guest ? session.localRef(file) : null;
+      const path = local ? local.path : await store(createClient(), file);
       if (!path) { toast.error(t("photoTool.uploadFailed")); return; }
       release(guidance?.url);
-      setGuidance({ key: path, path, url: preview(file) });
+      setGuidance(local ?? { key: path, path, url: preview(file) });
     } finally {
       setGuidanceUploading(false);
     }
@@ -386,6 +423,7 @@ export function PhotoToolWorkspace({
     // Guarded against the double click that would otherwise pay twice.
     if (running.current || photos.length === 0) return;
     running.current = true;
+    session.ran();
     setBusy(true);
     const attempt = crypto.randomUUID();
     const settings = currentSettings();
@@ -438,13 +476,15 @@ export function PhotoToolWorkspace({
     : photos.length === 0 ? t("photoTool.needPhotos")
       : usesColor && !colorOk ? t("photoTool.needColor")
         : !promptOk ? t("photoTool.needPrompt")
-          : missing > 0 ? t("studio.missing", { n: missing })
+          // The status card below the button says what is missing (and a
+          // visitor's Generate is the sign-in dialog, whatever their balance).
+          : missing > 0 && !viewer ? t("studio.missing", { n: missing })
             : null;
   const canRun = available && !busy && !uploading && !guidanceUploading && photos.length > 0
-    && (!usesColor || colorOk) && promptOk && missing === 0;
+    && (!usesColor || colorOk) && promptOk && (session.guest || missing === 0);
   const status = !available ? null : blocker
     ?? (freeCount > 0 ? t("photoTool.freeNote", { n: freeCount, total: photos.length }) : null)
-    ?? (photos.length > 0 ? t("photoTool.balance", { n: n(balance) }) : null);
+    ?? (photos.length > 0 && !session.guest ? t("photoTool.balance", { n: n(balance) }) : null);
   const pending = jobs.filter((j) => j.status !== "completed");
   const progress = jobs.length > 0 ? jobs.filter((j) => j.status === "completed" || j.status === "failed").length : 0;
 
@@ -465,6 +505,7 @@ export function PhotoToolWorkspace({
       {/* ── LEFT: the tool ─────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           <header>
             <Link href="/tools"
               className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink">
@@ -605,13 +646,13 @@ export function PhotoToolWorkspace({
             </button>
           </div>
         ) : (
-        <CostIsland perImage={credits} count={paidCount} enough={missing === 0} status={status}>
-          {missing > 0 && (
+        <CostIsland perImage={credits} count={paidCount} enough={session.guest || missing === 0} status={status}>
+          {missing > 0 && !viewer && (
             <p className="-mt-1 mb-2 text-center text-[11px]">
               <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
             </p>
           )}
-          <button type="button" disabled={!canRun} onClick={runAll} data-photo-cta
+          <button type="button" disabled={!canRun} onClick={() => void session.gate(runAll)} data-photo-cta
             aria-label={`${t(`photoTool.cta.${tool}`)} · ${n(total)} ${t("genv3.credits")}`}
             className={cn(
               "cta flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13.5px] font-semibold",
@@ -621,6 +662,7 @@ export function PhotoToolWorkspace({
             <span>{busy && jobs.length > 0 ? t("tools.progress", { done: progress, total: jobs.length }) : t(`photoTool.cta.${tool}`)}</span>
             {!busy && total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
           </button>
+          {viewer && photos.length > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
         </CostIsland>
         )}
       </div>

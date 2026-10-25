@@ -371,8 +371,11 @@ check("the workflow screens are untouched and still resolve",
 check("the old landing's components are gone, not left reachable",
   ["components/category/category-header.tsx", "components/category/workflow-cards.tsx",
     "components/category/matching-workspace.tsx", "components/home/category-grid.tsx"].every((f) => !fs.existsSync(f)));
-check("a workflow's way back goes through the category's forwarding address",
-  /href=\{categoryPath\(category\)\}/.test(code("components/category/workflow-runtime.tsx")));
+// Public Tools V1: a visitor's way back is the catalogue address itself — the
+// forward (/k/<cat>) is behind the login, and the visitor would land on the
+// sign-in dialog. A member still goes through the forward.
+check("a workflow's way back goes through the category's forwarding address (a visitor: straight to the catalogue)",
+  /href=\{guest \? categoryHref\(category\) : categoryPath\(category\)\}/.test(code("components/category/workflow-runtime.tsx")));
 check("the forward never turns an in-app link into a 404 when only the hub is off",
   /if \(!routeReachable\(avail, "\/tools", isAdmin\)\) redirect\("\/home"\)/.test(catPage)
   && catPage.indexOf('routeReachable(avail, "/tools"') < catPage.indexOf("redirect(categoryHref"));

@@ -13,6 +13,9 @@ import { InfoHint } from "@/components/ui/hint";
 import { RatioValue, ratioIcon, ratioName } from "@/components/genv3/ratio-options";
 import { cn } from "@/lib/utils";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
+import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
+import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 
 /** Photos one batch may carry. */
 const MAX_PHOTOS = 10;
@@ -78,9 +81,25 @@ export function RetouchWorkspace({
   const missing = Math.max(0, total - balance);
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
 
+  /*
+    PUBLIC TOOLS V1. A visitor prepares the retouch exactly as a member does —
+    the photos stay in the browser (never Storage), Generate opens the sign-in
+    dialog — and once signed in the same photos go through `upload` below like
+    any picked by hand. Without a viewer (no provider) nothing changes.
+  */
+  const viewer = useToolViewer();
+  const session = useToolSession({
+    settings: { resolution, format },
+    sources: photos.map(refSource),
+    apply: (saved: { resolution?: string; format?: string }, files: File[]) => {
+      if (saved.resolution && resolutions.includes(saved.resolution)) setResolution(saved.resolution);
+      if (saved.format && (saved.format === "original" || ratios.includes(saved.format))) setFormat(saved.format);
+      if (files.length > 0) void upload(files);
+    },
+  });
+
   // ── Upload: the same three ways in as everywhere else ──────────────────
   async function upload(files: File[]) {
-    const supabase = createClient();
     const room = Math.max(0, MAX_PHOTOS - photos.length - reserved.current);
     if (files.length > room) toast.error(t("genv3.capReached", { max: MAX_PHOTOS }));
     if (room === 0) return;
@@ -92,6 +111,14 @@ export function RetouchWorkspace({
       for (const file of batch) {
         if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) { toast.error(t("products.invalidType")); continue; }
         if (file.size > 10 * 1024 * 1024) { toast.error(t("products.tooLarge")); continue; }
+        if (session.guest) {
+          // A visitor's photo is a local stand-in: no request of any kind.
+          const ref = session.localRef(file);
+          setPhotos((prev) => prev.length >= MAX_PHOTOS ? prev : [...prev, ref]);
+          session.added(1);
+          continue;
+        }
+        const supabase = createClient();
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${workspaceId}/${folder.current}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from("product-images").upload(path, file);
@@ -178,6 +205,7 @@ export function RetouchWorkspace({
     // Guarded against the double click that would otherwise pay twice.
     if (running.current || photos.length === 0) return;
     running.current = true;
+    session.ran();
     setBusy(true);
     const batch: JobState[] = photos.map((p) => ({ key: `${p.path}-${Date.now()}`, path: p.path, url: p.url, status: "queued" }));
     setJobs(batch);
@@ -208,7 +236,9 @@ export function RetouchWorkspace({
     try { await retouchOne(job); } finally { setBusy(false); running.current = false; }
   }
 
-  const canRun = available && !busy && !uploading && photos.length > 0 && missing === 0;
+  // A visitor's Generate is always the sign-in dialog, so their balance (none)
+  // does not grey it out; a member's is the server-checked wallet, as before.
+  const canRun = available && !busy && !uploading && photos.length > 0 && (session.guest || missing === 0);
   const pending = jobs.filter((j) => j.status !== "completed");
 
   return (
@@ -221,6 +251,7 @@ export function RetouchWorkspace({
       {/* ── LEFT: the whole tool, in six rows ───────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           <PhotoUploader
             preview
             items={photos}
@@ -244,7 +275,7 @@ export function RetouchWorkspace({
                   options={resolutions.map((r) => ({
                     value: r, label: r, meta: t("genv3.creditsShort", { n: (pricing[r] ?? 0) * Math.max(1, outputsPerRun) }),
                   }))}
-                  onChange={setResolution}
+                  onChange={(v) => { setResolution(v); session.touched(); }}
                   panelWidth={210}
                 />
               </div>
@@ -264,7 +295,7 @@ export function RetouchWorkspace({
                       value: r, label: ratioName(t, r), icon: ratioIcon(r),
                     })),
                   ]}
-                  onChange={setFormat}
+                  onChange={(v) => { setFormat(v); session.touched(); }}
                   panelWidth={262}
                   renderValue={() => format === "original" ? (
                     <span className="flex min-w-0 items-center gap-1.5">
@@ -310,7 +341,15 @@ export function RetouchWorkspace({
               </p>
             </div>
           </div>
-          {missing > 0 ? (
+          {viewer ? (
+            // The status card below the button says what is missing and what
+            // to do; here only the empty state and the member's balance.
+            photos.length === 0 ? (
+              <p className="mt-2 text-center text-[11px] text-muted">{t("retouch.needPhotos")}</p>
+            ) : (
+              <p className="mt-2 text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
+            )
+          ) : missing > 0 ? (
             <p className="mt-2 text-center text-[11px] font-medium text-danger">
               {t("studio.missing", { n: missing })}{" · "}
               <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
@@ -320,7 +359,7 @@ export function RetouchWorkspace({
           ) : (
             <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
           )}
-          <button type="button" disabled={!canRun} onClick={retouchAll} data-retouch-cta
+          <button type="button" disabled={!canRun} onClick={() => void session.gate(retouchAll)} data-retouch-cta
             aria-label={`${t("retouch.cta")} · ${n(total)} ${t("genv3.credits")}`}
             className={cn(
               "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
@@ -330,6 +369,7 @@ export function RetouchWorkspace({
             <span>{t("retouch.cta")}</span>
             {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
           </button>
+          {viewer && photos.length > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
         </div>
       </div>
 

@@ -1385,9 +1385,14 @@ body:has(.workspace-page)::after { display: none; }
    handled where it belongs instead, by letting the left column itself scroll
    as a last resort (see workspace.tsx); that only ever engages when the frame
    is shorter than the island, and it can never clip the CTA. */
+/* PUBLIC TOOLS V1: a visitor's tool page carries the tool's public block
+   ([data-public-tool-seo]) UNDER the panel — examples, questions, "Wypróbuj
+   za darmo" — and a viewport-locked frame would put it past `overflow:
+   hidden`, out of reach. So the lock applies only where that block is not:
+   a member's page is framed exactly as before; a visitor's scrolls. */
 @supports selector(:has(*)) {
   @media (min-width: 1024px) {
-    body:has(.gen-shell) .app-shell {
+    body:has(.gen-shell):not(:has([data-public-tool-seo])) .app-shell {
       height: 100dvh;
       overflow: hidden;
     }
@@ -1395,7 +1400,7 @@ body:has(.workspace-page)::after { display: none; }
        inner scrollers get a bounded box; the frame's own page padding would
        stack on top of the viewport height and overflow again, so the shell
        below takes over that job. */
-    body:has(.gen-shell) .app-shell > main {
+    body:has(.gen-shell):not(:has([data-public-tool-seo])) .app-shell > main {
       /* A COLUMN, so the frame has somewhere to put its last row. The
          workspace used to be the only thing in here and took the whole
          height; anything after it fell past `overflow: hidden`. As a flex
@@ -1412,7 +1417,7 @@ body:has(.workspace-page)::after { display: none; }
        outranks any single-class utility. A plain `.gen-shell` would tie with
        `pt-1`/`lg:pt-*` on the same element and be decided by emission order,
        which is not a thing a layout should depend on. */
-    body:has(.gen-shell) .gen-shell {
+    body:has(.gen-shell):not(:has([data-public-tool-seo])) .gen-shell {
       /* `flex: 1 1 auto` rather than `height: 100%`. Both gave the workspace
          the frame's whole height while it was the only child; only this one
          gives it "the frame MINUS the feedback row" now that there is one. A
@@ -1427,11 +1432,11 @@ body:has(.workspace-page)::after { display: none; }
     }
     /* Bands above the workspace keep their natural height and are never
        squeezed to make room. */
-    body:has(.gen-shell) .gen-shell > * { flex: 0 0 auto; }
+    body:has(.gen-shell):not(:has([data-public-tool-seo])) .gen-shell > * { flex: 0 0 auto; }
     /* …and the workspace takes the remainder. Without `min-height: 0` a flex
        item refuses to shrink below its content, the columns would grow instead
        of scrolling, and the island would be pushed off-screen again. */
-    body:has(.gen-shell) .gen-shell > .gen-shell-body {
+    body:has(.gen-shell):not(:has([data-public-tool-seo])) .gen-shell > .gen-shell-body {
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -1453,7 +1458,7 @@ body:has(.workspace-page)::after { display: none; }
        page the CTA separates itself from the content above with a large
        margin, and here the frame's own edge already does that job — a 3rem
        margin inside a viewport-locked page is 3rem stolen from the tool. */
-    body:has(.gen-shell) .app-shell > main > [data-feedback-cta] {
+    body:has(.gen-shell):not(:has([data-public-tool-seo])) .app-shell > main > [data-feedback-cta] {
       flex: 0 0 auto;
       margin-top: 0;
       padding-block: 0.5rem 0.625rem;

@@ -26,6 +26,13 @@ import { CustomerDrawer } from "@/components/layout/customer-drawer";
 import { CustomerBottomNav } from "@/components/layout/customer-bottom-nav";
 import { DrawerProvider } from "@/components/layout/shell-context";
 import { FeedbackCTA } from "@/components/feedback/feedback-cta";
+import { GuestShell } from "@/components/public-tools/guest-shell";
+import { GuestPreviewBar } from "@/components/public-tools/preview-bar";
+import { DraftResume } from "@/components/public-tools/draft-resume";
+import { guestPreviewActive, publicToolAudience, requestPath } from "@/lib/server/public-tools";
+import { PUBLIC_TOOLS, isPublicToolPath } from "@/lib/public-tools";
+import { catalogItem } from "@/lib/tool-cards";
+import { itemLabelKey } from "@/lib/tool-layout";
 
 export default async function AppLayout({ children, searchParams }: {
   children: React.ReactNode;
@@ -33,6 +40,22 @@ export default async function AppLayout({ children, searchParams }: {
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  /*
+    PUBLIC TOOLS V1. A visitor (or an admin looking through "Podgląd jako
+    gość") on a public tool page gets the app's shell with the two doors in
+    and none of an account's data. publicToolAudience decides — the switch,
+    the catalogue's own visibility — and with the switch off sends a visitor
+    to the sign-in dialog exactly as the middleware would have. Every other
+    page without a session is answered as before.
+  */
+  const preview = user ? await guestPreviewActive() : false;
+  if (!user || preview) {
+    const path = await requestPath();
+    if (isPublicToolPath(path)) {
+      const audience = await publicToolAudience(path);
+      if (audience.kind === "guest") return <GuestShell preview={audience.preview}>{children}</GuestShell>;
+    }
+  }
   if (!user) redirect("/login");
   // App-level login security: an unrecognised device (or new IP, or one stale
   // past the admin's window) must confirm an emailed code before any protected
@@ -212,6 +235,10 @@ export default async function AppLayout({ children, searchParams }: {
   const planCredits = sub?.subscription_plans?.monthly_credits ?? freePlan?.monthly_credits ?? null;
   const isAdmin = profile.role === "admin";
   const displayName = profile.full_name ?? profile.email;
+  const toolLabels = Object.fromEntries(PUBLIC_TOOLS.map((tool) => {
+    const item = catalogItem(tool.key);
+    return [tool.key, item ? t0(itemLabelKey(item)) : tool.key];
+  }));
   return (
     <I18nScope dict={clientDict}>
     <DrawerProvider>
@@ -222,12 +249,18 @@ export default async function AppLayout({ children, searchParams }: {
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
       <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
+        {/* The admin is previewing as a visitor but opened a page a visitor
+            cannot see: their own app, with the way out of the preview. */}
+        {preview && <GuestPreviewBar />}
         <MegaTopbar name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone
             screenshot. */}
         <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
+          {/* A tool prepared before signing in (or before a checkout), one
+              click away from wherever the account landed. */}
+          <DraftResume viewerKey={user.id} labels={toolLabels} />
           {children}
           {/* MOUNTED ONCE, FOR THE WHOLE CUSTOMER APP. Every screen a customer
               can reach lives under this <main>, so "report a bug / suggest a

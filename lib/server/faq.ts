@@ -37,6 +37,8 @@ type Row = {
   answer: FaqText | null;
   pages: string[] | null;
   only_premiere: boolean;
+  /** The tools the question is assigned to (0158). Absent before that file. */
+  tools?: string[] | null;
 };
 
 const readRows = unstable_cache(
@@ -115,6 +117,39 @@ export async function getFaqPages(locale: string, now: number = Date.now()): Pro
 
 export async function getFaq(page: FaqPage, locale: string): Promise<FaqPublicData> {
   return (await getFaqPages(locale))[page];
+}
+
+/** How many questions a tool's page shows (Public Tools V1: "trzy krótkie"). */
+export const TOOL_FAQ_LIMIT = 3;
+
+/**
+ * The questions assigned to one tool, in the base's own order, at most
+ * TOOL_FAQ_LIMIT — the same visibility rules as every page (faq_public() has
+ * already dropped what is hidden, unreviewed, empty or a placeholder; here the
+ * premiere-only rule and the translation fallback). Pure, for the tests.
+ */
+export function faqToolItems(rows: readonly Row[], tool: string, locale: string, premiere: boolean): FaqPublicItem[] {
+  const out: FaqPublicItem[] = [];
+  for (const r of rows) {
+    if (!(r.tools ?? []).includes(tool)) continue;
+    if (r.only_premiere && !premiere) continue;
+    const q = pick(r.question, locale);
+    const answer = pick(r.answer, locale);
+    const a = answer ? parseFaqRich(answer) : [];
+    if (!q || a.length === 0) continue;
+    out.push({ slug: r.slug, category: r.category, q, a, text: faqPlainText(a) });
+    if (out.length >= TOOL_FAQ_LIMIT) break;
+  }
+  return out;
+}
+
+/** A tool page's questions; none (never an error) when the base cannot be read. */
+export async function getToolFaq(tool: string, locale: string, now: number = Date.now()): Promise<FaqPublicItem[]> {
+  try {
+    return faqToolItems(await readRows(), tool, locale, premiereState(now).status === "active");
+  } catch {
+    return [];
+  }
 }
 
 /** The questions a Kontakt FAQ link may point at (lib/contact-page.ts). */

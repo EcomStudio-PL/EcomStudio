@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { absoluteUrl } from "@/lib/site";
+import { publicToolSitemapPaths } from "@/lib/server/public-tool-meta";
 
 /**
  * The workspace is private, so crawlers are pointed at the public shell and
@@ -27,9 +28,18 @@ const PRIVATE = [
   "/grovnews$", "/grovnews/",
 ];
 
-export default function robots(): MetadataRoute.Robots {
+/**
+ * PUBLIC TOOLS V1: while the switch is on, the catalogue and the listed tools
+ * are pages a visitor can open, so they are allowed — by their exact address,
+ * ahead of the private prefixes they live under (the longest match wins). Off,
+ * the list is exactly the one above.
+ */
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const open = await publicToolSitemapPaths();
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: PRIVATE.map((p) => `${p}`) }],
+    rules: open.length === 0
+      ? [{ userAgent: "*", allow: "/", disallow: PRIVATE.map((p) => `${p}`) }]
+      : [{ userAgent: "*", allow: ["/", ...open.map((p) => `${p}$`)], disallow: PRIVATE.map((p) => `${p}`) }],
     sitemap: absoluteUrl("/sitemap.xml"),
     host: absoluteUrl("/").replace(/\/$/, ""),
   };

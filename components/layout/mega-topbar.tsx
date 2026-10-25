@@ -257,13 +257,19 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
              Below `sm` only the primary survives: at 320px the pair costs the
              whole flexible gap this row has. */
           <>
+            {/* Outlined, then filled (Public Tools V1): the quiet door is still
+                a button, not a stray word in the bar. The long promise on the
+                primary only where the row has room for it — a phone keeps the
+                short label, so the bar never wraps. A shut registration is the
+                dialog's to explain (its pre-launch notice). */}
             <AuthLink mode="login"
-              className="hidden h-9 items-center rounded-xl px-3 text-sm font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink sm:inline-flex">
+              className="hidden h-9 items-center rounded-xl border border-line px-3 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-raised sm:inline-flex">
               {t("auth.signIn")}
             </AuthLink>
             <AuthLink mode="register"
               className="cta inline-flex h-9 shrink-0 items-center rounded-xl px-3.5 text-[13px] font-semibold sm:text-sm">
-              {t("auth.signUp")}
+              <span className="xl:hidden">{t("auth.signUp")}</span>
+              <span className="hidden xl:inline">{t("auth.signUpFree")}</span>
             </AuthLink>
           </>
         ) : (

@@ -1,4 +1,5 @@
 import type { TicketTopic } from "./contact-page";
+import { PUBLIC_TOOLS } from "./public-tools";
 
 /**
  * FAQ V1 — ONE BASE OF QUESTIONS, THREE PAGES.
@@ -29,6 +30,13 @@ export type FaqPage = (typeof FAQ_PAGES)[number];
 
 export const isFaqPage = (v: unknown): v is FaqPage =>
   typeof v === "string" && (FAQ_PAGES as readonly string[]).includes(v);
+
+/** The tools a question may be assigned to (0158, Public Tools V1): the
+ *  public tool pages, whose block shows up to three of them. Not a second
+ *  table — the item says which tools, as it says which pages. */
+export const FAQ_TOOLS: readonly string[] = PUBLIC_TOOLS.map((t) => t.key);
+export const isFaqTool = (v: unknown): v is string =>
+  typeof v === "string" && FAQ_TOOLS.includes(v);
 
 export const FAQ_LOCALES = ["pl", "en", "de"] as const;
 export type FaqLocale = (typeof FAQ_LOCALES)[number];
@@ -179,6 +187,8 @@ export type FaqItemRow = {
   position: number;
   visible: boolean;
   pages: FaqPage[];
+  /** Public tool keys (FAQ_TOOLS) whose page block may show it. */
+  tools: string[];
   only_premiere: boolean;
   needs_review: boolean;
   review_note: string | null;
@@ -201,7 +211,7 @@ export type FaqHiddenReason =
   | "empty_question" | "empty_answer" | "placeholder" | "premiere_only";
 
 export function faqHiddenReasons(
-  item: Pick<FaqItemRow, "visible" | "needs_review" | "pages" | "question" | "answer" | "only_premiere">,
+  item: Pick<FaqItemRow, "visible" | "needs_review" | "pages" | "question" | "answer" | "only_premiere"> & { tools?: readonly string[] },
   category: Pick<FaqCategoryRow, "visible"> | null | undefined,
   opts: { premiere?: boolean } = {},
 ): FaqHiddenReason[] {
@@ -209,7 +219,8 @@ export function faqHiddenReasons(
   if (!item.visible) out.push("hidden");
   if (item.needs_review) out.push("needs_review");
   if (!category || !category.visible) out.push("category_hidden");
-  if (item.pages.length === 0) out.push("no_pages");
+  // A tool page is a page too: assigned to a tool only, it is not "nowhere".
+  if (item.pages.length === 0 && (item.tools ?? []).length === 0) out.push("no_pages");
   const q = item.question.pl ?? "";
   const a = item.answer.pl ?? "";
   if (!q.trim()) out.push("empty_question");
@@ -234,7 +245,7 @@ const FORBIDDEN = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u034F\u061C\u1
 
 export const faqCharsOk = (text: string): boolean => !FORBIDDEN.test(text);
 
-export type FaqFieldProblem = "required" | "too_long" | "chars" | "slug" | "pages" | "category";
+export type FaqFieldProblem = "required" | "too_long" | "chars" | "slug" | "pages" | "tools" | "category";
 
 /** A locale map, cleaned: trimmed values, empty ones dropped. */
 export function cleanFaqText(input: unknown, max: number): { value: FaqText; problem: FaqFieldProblem | null } {

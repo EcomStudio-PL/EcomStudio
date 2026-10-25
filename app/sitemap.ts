@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveHomepage } from "@/lib/server/homepage";
 import { getBlogSitemap } from "@/lib/server/grovnews-blog";
 import { blogPath } from "@/lib/grovnews-blog";
+import { publicToolSitemapPaths } from "@/lib/server/public-tool-meta";
 
 /**
  * Only what a signed-out visitor can actually open. GrovBase is a workspace
@@ -40,13 +41,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // find is barely published. Drafts are excluded by RLS as well as by the
   // filter, and the launch page has no URL of its own.
   const supabase = await createClient();
-  const [{ data }, home, blog] = await Promise.all([
+  const [{ data }, home, blog, tools] = await Promise.all([
     supabase.from("cms_pages")
       .select("slug, published_at, kind, status, seo")
       .eq("status", "published"),
     getActiveHomepage(),
     // The blog failing to answer leaves the rest of the sitemap intact.
     getBlogSitemap().catch(() => []),
+    // Public Tools V1: the catalogue and the listed tools — only while the
+    // switch is on, never a hidden tool. Off, nothing is added.
+    publicToolSitemapPaths(),
   ]);
   // The product Home (kind `app`) that currently answers "/" forwards its own
   // slug there (app/[slug]/page.tsx), so it is "/" above and not a page of its
@@ -86,9 +90,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }]
     : [];
 
+  const toolEntries = tools.map((path) => ({
+    url: absoluteUrl(path),
+    lastModified: now,
+    changeFrequency: "weekly" as const,
+    priority: path === "/tools" ? 0.8 : 0.7,
+  }));
+
   // The fixed list wins on collisions (home and the four legal documents).
   const seen = new Set(fixed.map((e) => e.url));
-  return [...fixed, ...managed.filter((e) => !seen.has(e.url)), ...blogIndex, ...articles];
+  return [...fixed, ...managed.filter((e) => !seen.has(e.url)), ...toolEntries, ...blogIndex, ...articles];
 }
 
 function isNoindex(seo: unknown): boolean {

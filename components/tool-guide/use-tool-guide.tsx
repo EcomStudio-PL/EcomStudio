@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { markToolTutorialSeenAction } from "@/app/actions/tool-guide-seen";
 import { shouldAutoOpen, type GuideResponse, type GuideToolKey } from "@/lib/tool-guides";
 import { TutorialModal, preloadGuideChunks } from "./lazy";
+import { useIsGuest } from "@/components/public-tools/tool-viewer";
 
 /**
  * ONE TOOL'S GUIDE ON ITS SCREEN — fetched after the gallery has painted, so
@@ -17,7 +18,7 @@ import { TutorialModal, preloadGuideChunks } from "./lazy";
  * the starter-gallery decision needs. A failed fetch leaves everything as it
  * was before this feature — no button, no example effects, no dialog.
  */
-export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: boolean } = {}): {
+export function useToolGuide(requested: GuideToolKey | null, opts: { compactLabel?: boolean } = {}): {
   response: GuideResponse | null;
   /** Still asking: the empty gallery waits for the answer rather than
    *  flashing one empty state and then another. */
@@ -29,6 +30,10 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
   dialog: ReactNode;
 } {
   const { t } = useI18n();
+  // A visitor (Public Tools V1) has no account to mark a guide seen on, and
+  // the guide endpoint answers members only: no request is made for them.
+  const guest = useIsGuest();
+  const tool = guest ? null : requested;
   const [response, setResponse] = useState<GuideResponse | null>(null);
   const [pending, setPending] = useState(Boolean(tool));
   const [open, setOpen] = useState(false);

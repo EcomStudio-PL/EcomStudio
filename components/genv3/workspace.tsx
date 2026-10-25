@@ -21,6 +21,9 @@ import {
 } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
 import type { SessionPreviewMap } from "@/components/genv3/sections";
+import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
+import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 
 /** Reference photos the seller may drop in for one generation session. */
 const MAX_REFS = 10;
@@ -129,6 +132,53 @@ export function GeneratorWorkspace({
   const total = perShot * effCount;
   const missing = Math.max(0, total - balance);
 
+  /*
+    PUBLIC TOOLS V1. A visitor prepares the generation exactly as a member does
+    — product photos and inspirations stay in the browser (never Storage),
+    nothing paid runs (the smart prompt is not offered to them) — and Generate
+    opens the sign-in dialog. Back signed in, the same files go through
+    `upload` in the same order, with the prompt and the settings as they were.
+  */
+  const viewer = useToolViewer();
+  const INSP = "insp:";
+  const session = useToolSession({
+    settings: { prompt, modelId, ratio, resolution, quality, count, sessionType, choices, briefs },
+    sources: [...refs.map(refSource), ...insp.map((r) => ({ ...refSource(r), id: `${INSP}${r.key}` }))],
+    apply: (saved: Partial<{
+      prompt: string; modelId: string; ratio: string; resolution: string; quality: string; count: number;
+      sessionType: "advertising" | "lifestyle"; choices: Record<string, string>; briefs: BriefState[];
+    }>, files: File[], ids: string[]) => {
+      if (typeof saved.prompt === "string") setPrompt(saved.prompt.slice(0, PROMPT_MAX));
+      if (typeof saved.modelId === "string" && models.some((m) => m.id === saved.modelId)) setModelId(saved.modelId);
+      // Ratio, size, quality and count are snapped to the model on every
+      // render, exactly as when they are picked by hand.
+      if (typeof saved.ratio === "string") setRatio(saved.ratio);
+      if (typeof saved.resolution === "string") setResolution(saved.resolution);
+      if (typeof saved.quality === "string") setQuality(saved.quality);
+      if (typeof saved.count === "number" && Number.isFinite(saved.count)) setCount(Math.max(1, Math.floor(saved.count)));
+      if (saved.sessionType === "advertising" || saved.sessionType === "lifestyle") setSessionType(saved.sessionType);
+      if (saved.choices && typeof saved.choices === "object") {
+        const allowed = new Set((variant?.controls ?? []).map((c) => c.key));
+        setChoices(Object.fromEntries(Object.entries(saved.choices).filter(([k, v]) => allowed.has(k) && typeof v === "string")));
+      }
+      if (Array.isArray(saved.briefs)) {
+        setBriefs(saved.briefs.slice(0, 10).map((b) => ({
+          text: typeof b?.text === "string" ? b.text.slice(0, 2000) : "",
+          keepFraming: b?.keepFraming === true,
+          refIndex: typeof b?.refIndex === "number" ? b.refIndex : null,
+        })));
+      }
+      const refFiles = files.filter((_, i) => !ids[i]?.startsWith(INSP));
+      const inspFiles = files.filter((_, i) => ids[i]?.startsWith(INSP));
+      // One after the other: two uploads at once would read the same
+      // pre-commit counts and race the caps.
+      void (async () => {
+        if (refFiles.length > 0) await upload(refFiles, "refs");
+        if (inspFiles.length > 0 && !managed) await upload(inspFiles, "insp");
+      })();
+    },
+  });
+
   function pickModel(id: string) {
     setModelId(id);
     const m = models.find((x) => x.id === id);
@@ -143,7 +193,6 @@ export function GeneratorWorkspace({
   // Accepts files from ALL three entry points — picker, drag & drop and a
   // clipboard paste — because they all arrive here as plain File objects.
   async function upload(files: File[], target: "refs" | "insp") {
-    const supabase = createClient();
     const folder = target === "insp" ? inspFolder.current : adhocFolder.current;
     const setter = target === "insp" ? setInsp : setRefs;
     const cap = target === "insp" ? 5 : MAX_REFS;
@@ -167,6 +216,14 @@ export function GeneratorWorkspace({
       for (const file of batch) {
         if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) { toast.error(t("products.invalidType")); continue; }
         if (file.size > 10 * 1024 * 1024) { toast.error(t("products.tooLarge")); continue; }
+        if (session.guest) {
+          // A visitor's photo is a local stand-in: no request of any kind.
+          const ref = session.localRef(file);
+          setter((prev) => prev.length >= cap ? prev : [...prev, ref]);
+          session.added(1);
+          continue;
+        }
+        const supabase = createClient();
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${workspaceId}/${folder}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from("product-images").upload(path, file);
@@ -259,6 +316,7 @@ export function GeneratorWorkspace({
   async function generateManaged() {
     if (submitting.current) return;
     submitting.current = true;
+    session.ran();
     setBusy(true);
     setPendingCount(effCount);
     setStageLabel(t("genv3.stagePrepare"));
@@ -360,6 +418,7 @@ export function GeneratorWorkspace({
   async function generateCustom() {
     if (submitting.current) return;
     submitting.current = true;
+    session.ran();
     setBusy(true);
     setPendingCount(effCount);
     setStageLabel(t("genv3.stageGenerateSimple"));
@@ -409,12 +468,13 @@ export function GeneratorWorkspace({
   });
 
   // Photos are the only hard requirement now — no product, no name.
+  // A visitor's Generate is the sign-in dialog: their (absent) balance never greys it out.
   // Not while a rewrite is on its way: the text about to be replaced is not
   // the text the customer would be generating from.
   const canGenerate = !!model && !busy && !smart.busy && !uploading && refs.length > 0
-    && missing === 0
+    && (session.guest || missing === 0)
     && (managed ? engineAvailable : prompt.trim().length > 2);
-  const generate = managed ? generateManaged : generateCustom;
+  const generate = () => void session.gate(managed ? generateManaged : generateCustom);
 
   if (models.length === 0) {
     return (
@@ -476,6 +536,7 @@ export function GeneratorWorkspace({
             ever hidden underneath it, and the content still does not end flush
             against the scroller's edge. */}
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           <ProductRefsSection
             refs={refs}
             max={MAX_REFS}
@@ -503,7 +564,9 @@ export function GeneratorWorkspace({
                 disabled={!model?.supportsRefs}
                 onUpload={(files) => upload(files, "insp")}
                 onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
-                onOpenLibrary={() => setLibraryOpen(true)}
+                // The GrovBase library is an account's (it reads the library
+                // table); a visitor uploads their own inspiration.
+                onOpenLibrary={session.guest ? undefined : () => setLibraryOpen(true)}
               />
               <PromptSection value={prompt} onChange={setPrompt} max={PROMPT_MAX} smart={smart} />
             </>
@@ -551,6 +614,10 @@ export function GeneratorWorkspace({
           needsPhotos={refs.length === 0}
           needsPrompt={!managed && prompt.trim().length <= 2}
           onGenerate={generate}
+          status={viewer ? {
+            balance: <BalanceLine balance={balance} />,
+            notice: refs.length > 0 ? <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" /> : null,
+          } : undefined}
         />
       </div>
 

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield } from "lucide-react";
+import { ArrowUpRight, ChevronDown, CreditCard, Eye, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
@@ -13,6 +13,7 @@ import { LOCALES } from "@/lib/i18n/config";
 import { Diamond } from "./credits-control";
 import { MenuVeil } from "./menu-veil";
 import { Flag } from "./flag";
+import { GUEST_PREVIEW_ROUTE } from "@/lib/public-tools";
 
 /**
  * ACCOUNT POPOVER — a 340px panel anchored under the avatar, not a modal.
@@ -226,6 +227,7 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName, gro
                 <Item href="/plan" icon={CreditCard} label={t("nav.plan")} />
                 <Item href="/support" icon={LifeBuoy} label={t("account.help")} />
                 {isAdmin && <Item href="/admin" icon={Shield} label={t("account.admin")} tone="accent2" />}
+                {isAdmin && <GuestPreviewItem label={t("publicTools.preview.start")} />}
               </div>
 
               <form method="post" action="/auth/sign-out" className="border-t border-line p-1.5">
@@ -240,6 +242,35 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName, gro
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * "Podgląd jako gość" (Public Tools V1): the catalogue as a visitor sees it.
+ * The route re-checks the role and only sets a cookie that takes privilege
+ * away; the session, the role and the public-tools switch are untouched.
+ */
+function GuestPreviewItem({ label }: { label: string }) {
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(GUEST_PREVIEW_ROUTE, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: true }),
+      });
+      if (res.ok) { window.location.href = "/tools"; return; }
+    } catch {
+      // Stays where it is; the menu item can be pressed again.
+    }
+    setBusy(false);
+  };
+  return (
+    <button type="button" role="menuitem" onClick={() => void start()} disabled={busy} data-guest-preview-start
+      className="flex min-h-[40px] w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm font-medium text-accent2 transition-colors duration-200 hover:bg-accent2-soft disabled:opacity-60">
+      <Eye size={15} aria-hidden />
+      {label}
+    </button>
   );
 }
 

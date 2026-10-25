@@ -21,7 +21,14 @@ import type { PricingPackView, PricingPageData, PricingTierView } from "./pricin
  * on the server, and the checkout refuses on its own without an active paid
  * plan; this overlay only explains the refusal before it happens.
  */
-export function TopUps({ data, onChoosePlan }: { data: PricingPageData; onChoosePlan: () => void }) {
+export function TopUps({ data, onChoosePlan, recommendedSlot = null }: {
+  data: PricingPageData;
+  onChoosePlan: () => void;
+  /** A tool panel's top-up dialog (Public Tools V1): the smallest buyable pack
+   *  that covers what the image is missing, marked as the one to pick. The
+   *  cennik passes nothing and looks exactly as before. */
+  recommendedSlot?: number | null;
+}) {
   const { t } = useI18n();
   const locked = data.viewer.topups !== "allowed";
 
@@ -42,7 +49,7 @@ export function TopUps({ data, onChoosePlan }: { data: PricingPageData; onChoose
           )}>
           {/* Packs first in the document (left on wide screens); the custom
               amount is drawn first on a phone, where it is the headline. */}
-          <PackList packs={data.packs} currency={data.currency} className="order-2 lg:order-1" />
+          <PackList packs={data.packs} currency={data.currency} recommendedSlot={recommendedSlot} className="order-2 lg:order-1" />
           <CustomAmount tiers={data.tiers} currency={data.currency} className="order-1 lg:order-2" />
         </div>
         {locked && <LockOverlay reason={data.viewer.topups} onChoosePlan={onChoosePlan} />}
@@ -60,7 +67,9 @@ export function TopUps({ data, onChoosePlan }: { data: PricingPageData; onChoose
 
 /* ── the five packs ────────────────────────────────────────────────────────*/
 
-function PackList({ packs, currency, className }: { packs: PricingPackView[]; currency: string; className?: string }) {
+function PackList({ packs, currency, recommendedSlot = null, className }: {
+  packs: PricingPackView[]; currency: string; recommendedSlot?: number | null; className?: string;
+}) {
   const { t } = useI18n();
   return (
     <ul className={cn("grid gap-3", className)} data-pack-list>
@@ -68,9 +77,12 @@ function PackList({ packs, currency, className }: { packs: PricingPackView[]; cu
         const credits = p.slot + p.bonusCredits;
         return (
           <li key={p.slot} data-pack-slot={p.slot} data-best={p.best ? "1" : undefined}
+            data-recommended={recommendedSlot === p.slot ? "1" : undefined}
+            aria-current={recommendedSlot === p.slot ? "true" : undefined}
             className={cn(
               "relative flex items-center gap-3 rounded-2xl border bg-surface px-3.5 py-3 sm:gap-4 sm:px-4",
               p.best ? "border-transparent" : "border-line",
+              recommendedSlot === p.slot && "ring-2 ring-[rgb(var(--accent))] ring-offset-2 ring-offset-[rgb(var(--surface))]",
             )}
             style={p.best ? BEST_EDGE : undefined}>
             {p.best && (

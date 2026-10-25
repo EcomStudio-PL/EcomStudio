@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { FaqRichText } from "@/components/faq/faq-rich";
 import { TICKET_TOPICS, type TicketTopic } from "@/lib/contact-page";
 import {
-  FAQ_LOCALES, FAQ_PAGES, faqHiddenReasons, faqNeedsContent, faqSlugify, parseFaqRich,
+  FAQ_LOCALES, FAQ_PAGES, FAQ_TOOLS, faqHiddenReasons, faqNeedsContent, faqSlugify, parseFaqRich,
   type FaqCategoryRow, type FaqHiddenReason, type FaqItemRow, type FaqLocale, type FaqPage, type FaqText,
 } from "@/lib/faq";
+import { toolPageTextKeys } from "@/lib/public-tools";
 import {
   deleteFaqCategoryAction, deleteFaqItemAction, faqEditorDataAction, faqHistoryAction, reorderFaqAction,
   restoreFaqVersionAction, saveFaqCategoryAction, saveFaqItemAction, type FaqEditorData,
@@ -371,6 +372,7 @@ function ItemForm({ item, category, categories, premiere, onCancel, onSaved, err
   const [slug, setSlug] = useState(item?.slug ?? "");
   const [cat, setCat] = useState(item?.category_id ?? category);
   const [pages, setPages] = useState<FaqPage[]>(item?.pages ?? ["faq"]);
+  const [tools, setTools] = useState<string[]>(item?.tools ?? []);
   const [visible, setVisible] = useState(item?.visible ?? false);
   const [review, setReview] = useState(item?.needs_review ?? false);
   const [premiereOnly, setPremiereOnly] = useState(item?.only_premiere ?? false);
@@ -381,7 +383,7 @@ function ItemForm({ item, category, categories, premiere, onCancel, onSaved, err
 
   const draft: FaqItemRow = {
     ...(item ?? { id: "", import_key: null, helpful_count: 0, unhelpful_count: 0, position: 0, created_at: "", updated_at: "", draft_answer: null }),
-    slug, category_id: cat, question, answer, pages, visible, needs_review: review, only_premiere: premiereOnly, review_note: note || null,
+    slug, category_id: cat, question, answer, pages, tools, visible, needs_review: review, only_premiere: premiereOnly, review_note: note || null,
   } as FaqItemRow;
   const reasons = faqHiddenReasons(draft, categories.find((c) => c.id === cat), { premiere });
   const preview = parseFaqRich(answer[tab] ?? "");
@@ -401,7 +403,7 @@ function ItemForm({ item, category, categories, premiere, onCancel, onSaved, err
     setError(null);
     const res = await saveFaqItemAction({
       id: item?.id ?? null, base: item?.updated_at ?? null, slug: slug || undefined, category_id: cat,
-      question, answer, draft_answer: item?.draft_answer ?? null, pages, visible, needs_review: review,
+      question, answer, draft_answer: item?.draft_answer ?? null, pages, tools, visible, needs_review: review,
       only_premiere: premiereOnly, review_note: note,
     });
     setSaving(false);
@@ -419,6 +421,8 @@ function ItemForm({ item, category, categories, premiere, onCancel, onSaved, err
   };
 
   const field = "block text-[12px] font-semibold text-muted";
+  // The tool's page headline (the same words its public page shows).
+  const toolLabel = (k: string) => t(toolPageTextKeys(k).headline);
   return (
     <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void save(); }} data-faq-form={item?.slug ?? "new"}>
       <div role="tablist" aria-label={t("ice.faq.language")} className="flex gap-1">
@@ -480,6 +484,19 @@ function ItemForm({ item, category, categories, premiere, onCancel, onSaved, err
               <input type="checkbox" checked={pages.includes(p)} data-faq-page-box={p}
                 onChange={(e) => setPages(e.target.checked ? [...pages, p] : pages.filter((x) => x !== p))} />
               {t(`ice.faq.page_${p.replace("-", "_")}`)}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset data-faq-tools>
+        <legend className={field}>{t("ice.faq.tools")}</legend>
+        <p className="mt-0.5 text-[11.5px] text-faint">{t("ice.faq.toolsHint")}</p>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5">
+          {FAQ_TOOLS.map((k) => (
+            <label key={k} className="inline-flex items-center gap-1.5 text-[13px] text-ink">
+              <input type="checkbox" checked={tools.includes(k)} data-faq-tool-box={k}
+                onChange={(e) => setTools(e.target.checked ? [...tools, k] : tools.filter((x) => x !== k))} />
+              {toolLabel(k)}
             </label>
           ))}
         </div>

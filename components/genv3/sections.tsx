@@ -903,13 +903,20 @@ function InspTile({ icon: Icon, label, onClick, disabled, busy }: {
 
 export function CostSummary({
   perShot, total, balance, missing, busy, busyLabel, canGenerate,
-  engineUnavailable, needsPhotos, needsPrompt, onGenerate,
+  engineUnavailable, needsPhotos, needsPrompt, onGenerate, status,
 }: {
   perShot: number; total: number; balance: number; missing: number;
   busy: boolean; busyLabel: string; canGenerate: boolean;
   engineUnavailable?: boolean;
   needsPhotos?: boolean; needsPrompt?: boolean;
   onGenerate: () => void;
+  /**
+   * Public Tools V1: the panel's status card (components/public-tools/
+   * tool-notice.tsx), drawn under the button — it then says what is missing
+   * and what to do, so the line above keeps only the note or the balance.
+   * Absent: exactly as before.
+   */
+  status?: { notice: React.ReactNode; balance: React.ReactNode };
 }) {
   const { t, locale } = useI18n();
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
@@ -949,7 +956,10 @@ export function CostSummary({
           </p>
         </div>
       </div>
-      {missing > 0 ? (
+      {status ? (
+        note ? <p className="mt-2 text-center text-[11px] text-muted">{note}</p>
+          : <p className="mt-2 text-center text-[10.5px]">{status.balance}</p>
+      ) : missing > 0 ? (
         <p className="mt-2 text-center text-[11px] font-medium text-danger">
           {t("studio.missing", { n: missing })}{" · "}
           <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
@@ -977,6 +987,7 @@ export function CostSummary({
           </>
         )}
       </button>
+      {status?.notice}
     </div>
   );
 }

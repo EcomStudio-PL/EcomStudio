@@ -5,6 +5,8 @@ import { CheckCircle2, Clock, XCircle, Loader2, Image as ImageIcon } from "lucid
 import { useI18n } from "@/lib/i18n/provider";
 import { checkoutStatusAction } from "@/app/actions/checkout";
 import type { StatusResult } from "@/lib/server/checkout";
+import { trackEvent } from "@/components/analytics/google-analytics";
+import { listDrafts } from "@/components/public-tools/draft-store";
 
 /**
  * "POTWIERDZAMY PŁATNOŚĆ…" — AND THEN THE TRUTH, FROM THE SERVER.
@@ -51,7 +53,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * bought after the paywall unlocks nothing, so it offers no way back. It
  * grants nothing.
  */
-export function StatusView({ reference, unlockAssetId = null }: { reference: string | null; unlockAssetId?: string | null }) {
+export function StatusView({ reference, unlockAssetId = null, viewerKey = null }: {
+  reference: string | null;
+  unlockAssetId?: string | null;
+  /** The signed-in account — whose prepared tool (if any) this purchase was for. */
+  viewerKey?: string | null;
+}) {
   const { t, locale } = useI18n();
   const back = unlockAssetId && UUID.test(unlockAssetId)
     ? { href: `/library?unlock=${unlockAssetId}`, label: t("checkout.wmReturnCta") }
@@ -84,6 +91,20 @@ export function StatusView({ reference, unlockAssetId = null }: { reference: str
       if (timer.current) clearTimeout(timer.current);
     };
   }, [reference]);
+
+  // Public Tools V1: a purchase made while a tool was waiting (the plan or
+  // top-up dialog under a panel saves it first). Reported once, and only on
+  // CREDITED — the ledger's fact, never the redirect's. The way back is the
+  // layout's resume banner, which this screen sits under.
+  const reported = useRef(false);
+  useEffect(() => {
+    if (status?.state !== "credited" || !viewerKey || reported.current) return;
+    reported.current = true;
+    void listDrafts().then((all) => {
+      const draft = all.find((d) => d.owner === viewerKey);
+      if (draft) trackEvent("tool_checkout_completed", { tool_id: draft.tool, source: status.kind ?? "unknown" });
+    });
+  }, [status, viewerKey]);
 
   if (!reference) return <Shell tone="fail" title={t("checkout.statusUnknownTitle")} body={t("checkout.statusUnknownBody")} />;
 

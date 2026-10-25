@@ -23,6 +23,9 @@ import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 import { guideToolForWorkbench } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { useToolSession } from "@/components/public-tools/use-tool-session";
+import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 
 /** What the batch tools take — one object, used by the picker, the drop and
  *  the validator, so the three can never disagree. */
@@ -100,7 +103,33 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
   const failed = items.filter((i) => i.status === "error");
   const pending = items.filter((i) => i.status === "queued");
   const totalCredits = credits * pending.length;
-  const notEnough = totalCredits > balance;
+
+  /*
+    PUBLIC TOOLS V1. The files never left the browser here anyway; a visitor's
+    "Uruchom" opens the sign-in dialog instead of /api/tools/run, and the queue
+    (with the settings and the logo) is kept until they are back signed in.
+  */
+  const viewer = useToolViewer();
+  const session = useToolSession({
+    settings: { settings },
+    sources: [
+      ...items.filter((i) => i.status === "queued").map((i) => ({ id: i.id, name: i.file.name, type: i.file.type, file: i.file })),
+      ...(logo ? [{ id: "logo", name: logo.file.name, type: logo.file.type, file: logo.file }] : []),
+    ],
+    apply: (saved: { settings?: Record<string, unknown> }, files: File[], ids: string[]) => {
+      const defaults = DEFAULT_SETTINGS[tool];
+      if (saved.settings && typeof saved.settings === "object") {
+        // Only this tool's own settings, never a key it does not have.
+        setSettings({ ...defaults, ...Object.fromEntries(Object.entries(saved.settings).filter(([k]) => k in defaults)) });
+      }
+      const logoFile = files.find((_, i) => ids[i] === "logo");
+      if (logoFile && tool === "watermark") setLogo({ file: logoFile, url: trackUrl(logoFile) });
+      const photoFiles = files.filter((_, i) => ids[i] !== "logo");
+      if (photoFiles.length > 0) addFiles(photoFiles);
+    },
+  });
+  // A visitor's run is the sign-in dialog: their (absent) balance never greys it out.
+  const notEnough = !session.guest && totalCredits > balance;
 
   const addFiles = useCallback((files: FileList | File[]) => {
     // ONE GATE. The picker and a drop anywhere on the page both land here, so
@@ -166,6 +195,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     const queue = only ?? items.filter((i) => i.status === "queued");
     if (queue.length === 0) return;
     if (tool === "watermark" && !logo) { toast.error(t("tools.needLogo")); return; }
+    session.ran();
 
     cancelled.current = false;
     setRunning(true);
@@ -262,7 +292,8 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         sub={t("tools.dropHint", { n: MAX_BATCH_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
       />
       {/* UPLOAD — first on every layout, phone and desktop alike. */}
-      <div className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+      <div className="order-1 min-w-0 space-y-3 lg:order-none lg:col-start-1 lg:row-start-1">
+        <ToolDraftBanner session={session} />
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button
@@ -430,7 +461,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
           }
           note={providerLabel && credits > 0 ? <span className="text-faint">{providerLabel}</span> : undefined}
         >
-          <Button className="w-full" size="lg" onClick={() => run()}
+          <Button className="w-full" size="lg" onClick={() => void session.gate(() => run())}
             disabled={running || pending.length === 0 || notEnough}>
             {running ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Zap size={16} aria-hidden />}
             {running
@@ -438,6 +469,9 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
               : t("tools.run", { n: pending.length })}
           </Button>
         </ActionBar>
+        {viewer && pending.length > 0 && credits > 0 && (
+          <ToolNotice cost={totalCredits} balance={balance} session={session} />
+        )}
       </div>
 
       {guide.dialog}

@@ -1,7 +1,7 @@
 import type { Client } from "./workspace";
 import { isTicketTopic, type TicketTopic } from "@/lib/contact-page";
 import {
-  FAQ_LIMITS, FAQ_SLUG, FAQ_SLUG_MAX, cleanFaqText, faqCharsOk, faqSlugify, isFaqPage,
+  FAQ_LIMITS, FAQ_SLUG, FAQ_SLUG_MAX, cleanFaqText, faqCharsOk, faqSlugify, isFaqPage, isFaqTool,
   type FaqCategoryRow, type FaqItemRow, type FaqPage, type FaqText,
 } from "@/lib/faq";
 
@@ -28,7 +28,7 @@ export type FaqError =
   | "stale" | "category_missing" | "not_restorable" | "generic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ITEM_COLUMNS = "id, slug, category_id, question, answer, position, visible, pages, only_premiere, needs_review, review_note, draft_answer, helpful_count, unhelpful_count, import_key, created_at, updated_at";
+const ITEM_COLUMNS = "id, slug, category_id, question, answer, position, visible, pages, tools, only_premiere, needs_review, review_note, draft_answer, helpful_count, unhelpful_count, import_key, created_at, updated_at";
 const CATEGORY_COLUMNS = "id, slug, name, position, visible, contact_topic, updated_at";
 
 const asText = (v: unknown): FaqText => (v && typeof v === "object" && !Array.isArray(v) ? v as FaqText : {});
@@ -39,6 +39,7 @@ function toItem(r: Record<string, unknown>): FaqItemRow {
     question: asText(r.question), answer: asText(r.answer),
     position: Number(r.position) || 0, visible: r.visible === true,
     pages: (Array.isArray(r.pages) ? r.pages : []).filter(isFaqPage),
+    tools: (Array.isArray(r.tools) ? r.tools : []).filter(isFaqTool),
     only_premiere: r.only_premiere === true, needs_review: r.needs_review === true,
     review_note: typeof r.review_note === "string" ? r.review_note : null,
     draft_answer: r.draft_answer && typeof r.draft_answer === "object" ? asText(r.draft_answer) : null,
@@ -92,6 +93,8 @@ export type FaqItemInput = {
   answer: unknown;
   draft_answer?: unknown;
   pages: unknown;
+  /** Public tool keys; absent from an older editor = none. */
+  tools?: unknown;
   visible: boolean;
   needs_review: boolean;
   only_premiere: boolean;
@@ -100,7 +103,7 @@ export type FaqItemInput = {
 
 type ItemWrite = {
   slug: string; category_id: string; question: FaqText; answer: FaqText; draft_answer: FaqText | null;
-  pages: FaqPage[]; visible: boolean; needs_review: boolean; only_premiere: boolean; review_note: string | null;
+  pages: FaqPage[]; tools: string[]; visible: boolean; needs_review: boolean; only_premiere: boolean; review_note: string | null;
 };
 
 /** The input, cleaned and checked — or the field that is wrong. */
@@ -117,6 +120,9 @@ export function validateFaqItem(input: FaqItemInput): { ok: true; value: ItemWri
   const pagesIn = Array.isArray(input.pages) ? input.pages : [];
   const pages = [...new Set(pagesIn)].filter(isFaqPage);
   if (pages.length !== pagesIn.length) return { ok: false, field: "pages" };
+  const toolsIn = Array.isArray(input.tools) ? input.tools : [];
+  const tools = [...new Set(toolsIn)].filter(isFaqTool);
+  if (tools.length !== toolsIn.length) return { ok: false, field: "tools" };
   const note = (input.review_note ?? "").trim();
   if (note.length > FAQ_LIMITS.note || !faqCharsOk(note)) return { ok: false, field: "note" };
   return {
@@ -124,7 +130,7 @@ export function validateFaqItem(input: FaqItemInput): { ok: true; value: ItemWri
     value: {
       slug, category_id: input.category_id, question: question.value, answer: answer.value,
       draft_answer: draft && Object.keys(draft.value).length > 0 ? draft.value : null,
-      pages, visible: input.visible === true, needs_review: input.needs_review === true,
+      pages, tools, visible: input.visible === true, needs_review: input.needs_review === true,
       only_premiere: input.only_premiere === true, review_note: note || null,
     },
   };

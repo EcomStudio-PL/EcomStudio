@@ -134,6 +134,12 @@
     "openApp": "App öffnen"
   },
   "auth": {
+    "signUpFree": "Konto erstellen – Gratis-Credits zum Start",
+    "toolRegisterTitle": "Erstelle ein Konto, um diese Grafik zu generieren",
+    "toolRegisterSub": "Zum Start bekommst du Gratis-Credits",
+    "toolTabs": "Registrieren oder anmelden",
+    "toolTabRegister": "Registrieren",
+    "toolTabLogin": "Anmelden",
     "loginTitle": "Bei GrovBase anmelden",
     "registerTitle": "Konto erstellen",
     "registerSub": "Konto anlegen und {n} Credits zum Start erhalten.",
@@ -10765,6 +10771,8 @@
     "faq.slug": "Adresse (Slug)",
     "faq.slugWarn": "Eine geänderte Adresse macht bestehende /faq#…-Links ungültig",
     "faq.pages": "Auf den Seiten zeigen",
+    "faq.tools": "Auf Werkzeugseiten zeigen",
+    "faq.toolsHint": "Eine Werkzeugseite zeigt Besuchern bis zu 3 zugeordnete Fragen (Öffentliche Werkzeuge).",
     "faq.visible": "Sichtbar (veröffentlicht)",
     "faq.needsReview": "Muss geprüft werden",
     "faq.onlyPremiere": "Nur während des Startangebots",
@@ -10812,6 +10820,7 @@
     "faq.err.field.slug": "Adresse: Kleinbuchstaben, Ziffern und Bindestriche (max. 80).",
     "faq.err.field.category": "Wähle eine Kategorie.",
     "faq.err.field.pages": "Unbekannte Seite.",
+    "faq.err.field.tools": "Unbekanntes Werkzeug.",
     "faq.err.field.note": "Die Notiz ist zu lang oder enthält unzulässige Zeichen.",
     "faq.err.field.name": "Der polnische Name ist erforderlich (keine [Klammern] oder < >).",
     "faq.err.field.topic": "Wähle ein Formularthema.",
@@ -11621,5 +11630,150 @@
     "share": "Teilen…",
     "shareOn": "Über {network} teilen",
     "shareText": "Trag dich in die GrovBase-Startliste ein — KI-Fotos für Händler:"
+  },
+  "publicTools": {
+    "balance": "Du hast {n} Credits",
+    "notice": {
+      "guest": "Bereite das Werkzeug ohne Konto vor — deine Fotos bleiben in deinem Browser. Ein Konto erstellst du, wenn du auf Generieren klickst.",
+      "watermark": "Grafiken aus Gratis-Credits tragen ein Wasserzeichen",
+      "claimed": "Du hast {n} Gratis-Credits – klicke auf Generieren",
+      "missing": "Dir fehlen {n} Credits",
+      "missingOne": "Dir fehlt 1 Credit",
+      "missingImage": "Dir fehlen {n} Credits, um diese Grafik zu generieren",
+      "missingImageOne": "Dir fehlt 1 Credit, um diese Grafik zu generieren",
+      "verify": "Bestätige deine E-Mail-Adresse, um deine Gratis-Credits zu erhalten",
+      "resend": "Link erneut senden",
+      "survey": "Fülle eine kurze Umfrage aus und erhalte {n} Gratis-Credits",
+      "surveyCta": "Umfrage ausfüllen",
+      "choosePlanBody": "Wähle einen Plan, um die Werkzeuge weiter zu nutzen",
+      "choosePlan": "Plan wählen",
+      "topup": "Credits aufladen"
+    },
+    "modal": {
+      "planTitle": "Plan wählen",
+      "topupTitle": "Credits aufladen",
+      "error": "Das Angebot konnte nicht geladen werden. Lade die Seite neu und versuche es erneut.",
+      "recommended": "Wir empfehlen das Paket mit {n} Credits — es deckt die fehlenden {missing}."
+    },
+    "draft": {
+      "label": "Vorbereitetes Werkzeug",
+      "offer": "In diesem Browser wartet ein vorbereitetes Werkzeug (Fotos: {n}, gespeichert {when}). Wiederherstellen?",
+      "restore": "Wiederherstellen",
+      "discard": "Verwerfen",
+      "partial": "Deine Einstellungen sind zurück, aber der Browser hat einige Fotos nicht behalten. Bitte füge sie erneut hinzu.",
+      "unavailable": "Dieser Browser erlaubt kein Speichern von Fotos (z. B. im privaten Modus). Füge sie nach der Anmeldung erneut hinzu.",
+      "full": "Im Browser ist kein Platz mehr, daher wurden die Fotos nicht gespeichert. Füge sie nach der Anmeldung erneut hinzu."
+    },
+    "resume": {
+      "title": "Ein vorbereitetes Werkzeug wartet auf dich: {tool} (Fotos: {n}).",
+      "cta": "Zurück zum Werkzeug"
+    },
+    "preview": {
+      "label": "Vorschau als Gast",
+      "exit": "Vorschau beenden",
+      "start": "Vorschau als Gast"
+    },
+    "seo": {
+      "slider": "Vorher-nachher-Vergleich: {name}"
+    },
+    "footer": {
+      "faq": "FAQ"
+    },
+    "admin": {
+      "title": "Öffentliche Werkzeuge (publicTools)",
+      "body": "Wenn aktiv, können abgemeldete Besucher den Werkzeugkatalog und die Panels ansehen, Fotos hinzufügen (sie bleiben in ihrem Browser) und Preise sehen. Generieren erfordert immer ein Konto.",
+      "on": "Aktiv",
+      "off": "Inaktiv",
+      "changed": "Zuletzt geändert: {when}",
+      "beforeLaunch": "Vor dem Einschalten prüfen:",
+      "checkSignup": "Registrierung offen",
+      "checkLogin": "Anmeldung aktiv",
+      "yes": "ja",
+      "no": "nein",
+      "waitlistOn": "Die Warteliste ist aktiv — solange die Registrierung geschlossen ist, sehen Besucher die Warteliste.",
+      "waitlistOff": "Die Warteliste ist inaktiv.",
+      "signupIndependent": "Das Einschalten der öffentlichen Werkzeuge ändert weder die Registrierungseinstellungen noch den Kontoschutz.",
+      "turnOn": "Öffentliche Werkzeuge einschalten",
+      "turnOff": "Öffentliche Werkzeuge ausschalten",
+      "preview": "Vorschau als Gast",
+      "previewError": "Die Vorschau konnte nicht gestartet werden.",
+      "saveError": "Die Einstellung konnte nicht gespeichert werden.",
+      "savedOn": "Öffentliche Werkzeuge sind aktiv.",
+      "savedOff": "Öffentliche Werkzeuge sind inaktiv.",
+      "confirmOnTitle": "Öffentliche Werkzeuge einschalten?",
+      "confirmOnBody": "Der Werkzeugkatalog und die Panels werden ohne Anmeldung sichtbar und in die Sitemap aufgenommen. Generieren erfordert weiterhin ein Konto.",
+      "confirmOffTitle": "Öffentliche Werkzeuge ausschalten?",
+      "confirmOffBody": "Besucher sehen wieder den Anmeldedialog, und die Werkzeugseiten verschwinden aus der Sitemap."
+    }
+  },
+  "toolPage": {
+    "examples": "Beispiele",
+    "before": "Vorher",
+    "after": "Nachher",
+    "faq": "Häufige Fragen",
+    "cta": "Kostenlos ausprobieren",
+    "ctaSub": "Bereite deine Fotos ohne Konto vor — registrieren musst du dich erst beim Generieren.",
+    "catalogue": {
+      "title": "KI-Werkzeuge für Produktfotos",
+      "description": "Retusche, Hintergrundentfernung, Bildgenerator, Größenänderung, Komprimierung und weitere GrovBase-Werkzeuge für Händler — ohne Konto ausprobieren."
+    },
+    "generator": {
+      "headline": "KI-Generator für Produktfotos",
+      "lead": "Füge Fotos deines Produkts hinzu, wähle Shooting-Art, Format und Qualität — GrovBase erstellt Verkaufsfotos, die Form, Farben und Details deines Produkts bewahren."
+    },
+    "custom": {
+      "headline": "KI-Bildgenerator mit eigenem Prompt",
+      "lead": "Beschreibe die Szene mit eigenen Worten und füge Produktfotos als Referenz hinzu. Du wählst Modell, Format, Auflösung und Bildanzahl und siehst den Preis vor dem Generieren."
+    },
+    "retouch": {
+      "headline": "KI-Retusche für Produktfotos",
+      "lead": "Verwandle ein gewöhnliches Produktfoto in ein sauberes Packshot auf weißem Hintergrund. Wähle 2K- oder 4K-Qualität und das Dateiformat — ohne manuelle Bearbeitung."
+    },
+    "remove_bg": {
+      "headline": "Hintergrund aus Produktfotos entfernen",
+      "lead": "Stelle dein Produkt frei und lade ein transparentes PNG herunter — bereit für Shop, Marktplatz und weitere Bearbeitung."
+    },
+    "background": {
+      "headline": "Weißer Hintergrund für Produktfotos",
+      "lead": "Setze dein Produkt auf den sauberen weißen Hintergrund, den Marktplätze verlangen — für ein Foto oder eine ganze Serie."
+    },
+    "ai_background": {
+      "headline": "KI-Hintergrund für Produktfotos",
+      "lead": "Beschreibe eine Szene oder wähle eine Farbe, und das Modell zeichnet einen Hintergrund für dein Produkt. Das Produkt selbst bleibt wie auf dem Foto."
+    },
+    "shadow": {
+      "headline": "KI-Schatten unter deinem Produkt",
+      "lead": "Füge einen realistischen Schlagschatten hinzu, damit ein Packshot auf einfarbigem Hintergrund natürlich wirkt."
+    },
+    "ecommerce": {
+      "thumbnail": {
+        "headline": "Produkt-Thumbnail für das Hauptbild deines Angebots",
+        "lead": "Bereite das Hauptbild deines Angebots vor: das Produkt klar in der Mitte, auf sauberem Hintergrund, im Format, das dein Shop verlangt."
+      }
+    },
+    "resize": {
+      "headline": "Bildgröße online ändern",
+      "lead": "Skaliere viele Fotos auf einmal auf die Maße, die dein Shop oder Marktplatz verlangt."
+    },
+    "compress": {
+      "headline": "Komprimierung von Produktfotos",
+      "lead": "Mach deine Fotos leichter, damit dein Shop schneller lädt. Du siehst die Größe vorher und nachher und wie viel der ganze Stapel gespart hat."
+    },
+    "upscale": {
+      "headline": "KI-Upscaling für Bilder",
+      "lead": "Vergrößere ein Produktfoto 2× oder 4× ohne Schärfeverlust — auch kleine Lieferantenfotos."
+    },
+    "expand": {
+      "headline": "KI-Bilderweiterung",
+      "lead": "Erweitere den Bildausschnitt auf 1:1, 4:5, 9:16 oder 16:9, ohne das Produkt zu beschneiden."
+    },
+    "watermark": {
+      "headline": "Wasserzeichen für Produktfotos",
+      "lead": "Setze dein Logo auf eine ganze Fotoserie — an einer von neun Positionen oder als wiederholtes Muster."
+    },
+    "editor": {
+      "headline": "Online-Editor für Produktfotos",
+      "lead": "Ändere den Hintergrund, füge einen Schatten hinzu, stelle Format, Helligkeit und Ausschnitt an einem Ort ein und lade die fertige Datei herunter."
+    }
   }
 }

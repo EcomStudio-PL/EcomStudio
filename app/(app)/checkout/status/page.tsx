@@ -52,7 +52,7 @@ export default async function CheckoutStatusPage({ searchParams }: {
 
   return (
     <div className="mx-auto w-full max-w-2xl py-6 sm:py-10">
-      <StatusView reference={safe} unlockAssetId={unlockAssetId} />
+      <StatusView reference={safe} unlockAssetId={unlockAssetId} viewerKey={user.id} />
     </div>
   );
 }

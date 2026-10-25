@@ -18,8 +18,16 @@ import { FeatureGate } from "@/components/feature-gate";
 import { ToolsCatalogue } from "@/components/tools/tools-catalogue";
 import { ToolsDeepLink } from "@/components/tools/tools-deep-link";
 import type { ToolSlug } from "@/lib/images/tools";
+import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
+import { publicCatalogueMetadata } from "@/lib/server/public-tool-meta";
+import { PUBLIC_CATALOGUE_PATH } from "@/lib/public-tools";
 
 export const dynamic = "force-dynamic";
+
+/** Title, description, canonical, robots — Public Tools V1. */
+export function generateMetadata() {
+  return publicCatalogueMetadata();
+}
 
 /**
  * WSZYSTKIE NARZĘDZIA — every tool GrovBase has, in one place.
@@ -53,13 +61,22 @@ export default async function ToolsPage({ searchParams }: {
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) redirect("/home");
+  // Public Tools V1: a visitor (or an admin's guest preview) reads the same
+  // catalogue a customer does — the same layout, the same switches, the same
+  // prices (through the server's own read) — minus the campaign banners,
+  // which speak to an account.
+  const audience = await publicToolAudience(PUBLIC_CATALOGUE_PATH);
+  const guest = audience.kind === "guest";
+  if (!guest) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
+    const workspace = await getCurrentWorkspace(supabase, user.id);
+    if (!workspace) redirect("/home");
+  }
+  const reader = guest ? guestReadClient() : supabase;
 
   const [catalogue, avail, isAdmin, layout] = await Promise.all([
-    toolCatalogue(supabase),
+    reader ? toolCatalogue(reader) : Promise.resolve([] as ToolAvailability[]),
     getAvailabilityMap(supabase),
     viewerIsAdmin(supabase),
     getToolsLayout(supabase),
@@ -90,7 +107,7 @@ export default async function ToolsPage({ searchParams }: {
 
   // The catalogue's own cards and any live banner, in ONE resolve for the
   // whole page — not one per card.
-  const banners = await loadBanners(supabase, "tools");
+  const banners = guest ? [] : await loadBanners(supabase, "tools");
   const slots = await loadSlots(supabase, [
     ...visible.flatMap((s) => s.cards.map(slotKeyOf)),
     ...banners.map((b) => bannerSlotKey(b.key)),

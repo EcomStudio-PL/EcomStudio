@@ -129,7 +129,11 @@ const FROZEN: readonly [string, string][] = [
   ["app/(app)/dashboard/page.tsx", "200419c0840054885847a2cfca17918bd524644630b63c3be324e798b12c7eb2"],
   ["app/(app)/dashboard/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
   ["app/(app)/home/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
-  ["app/(app)/layout.tsx", "70658a26afb3ff8b9b672e00de244bfeb369c140cc49701d36f95575856a5b9c"],
+  // Public Tools V1: a visitor (or an admin's "Podgląd jako gość") on a
+  // public tool page gets GuestShell — publicToolAudience decides, and with
+  // the switch off nothing changes; the preview strip while previewing; the
+  // local-draft resume banner above the page. Every other path as before.
+  ["app/(app)/layout.tsx", "e6fa8bc737baab5bc1b3765a92c056b41d5b9523af8201a30afaf9b212a5d9c0"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   // Kontakt V2: the dialog gained one line — a link to /kontakt?temat=problem
@@ -146,12 +150,24 @@ for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync
 {
   const bar = readFileSync("components/layout/mega-topbar.tsx", "utf8");
   const PLANY_NOTE = "          // A visitor goes to the PUBLIC cennik; /plan sits behind the login.\n";
+  // Public Tools V1 (guest doors): login outlined, the long signup promise
+  // from xl up. Undone here as well, so the frozen digest still holds.
+  const PT_NOTE = "            {/* Outlined, then filled (Public Tools V1): the quiet door is still\n"
+    + "                a button, not a stray word in the bar. The long promise on the\n"
+    + "                primary only where the row has room for it — a phone keeps the\n"
+    + "                short label, so the bar never wraps. A shut registration is the\n"
+    + "                dialog's to explain (its pre-launch notice). */}\n";
   const restored = bar
+    .replace(PT_NOTE, "")
+    .replace("border border-line px-3 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-raised sm:inline-flex",
+      "px-3 text-sm font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink sm:inline-flex")
+    .replace('              <span className="xl:hidden">{t("auth.signUp")}</span>\n              <span className="hidden xl:inline">{t("auth.signUpFree")}</span>\n',
+      '              {t("auth.signUp")}\n')
     .replace(PLANY_NOTE, "")
     .replace('<Link href={guest ? "/plany" : "/plan"}', '<Link href="/plan"')
     .replace('isNavActive(pathname, "/plan") || isNavActive(pathname, "/plany")\n                ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",',
       'isNavActive(pathname, "/plan") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",');
-  check("components/layout/mega-topbar.tsx differs only by the visitor's cennik link",
+  check("components/layout/mega-topbar.tsx differs only by the visitor's cennik link (and the Public Tools V1 guest doors)",
     sha(restored) === "913fe0c30674ddd6651a6025bbb646859c08a92f9a462dcc59df672690d7937a" && restored !== bar);
 }
 // The shared media components are pinned against git, not a literal: the
@@ -163,8 +179,11 @@ check("…the shared media components and tool-thumb are byte-identical to the l
 // `[data-launch-page]` only (the status colours of its dark ramp, the
 // --hero-overlap token, a floor under --hero-art for phones in landscape).
 // /home's rules are untouched; any further edit must be argued for here.
-check("…globals.css is the reviewed Pre-launch Landing V2 version",
-  sha(readFileSync("app/globals.css")) === "23e3dff24b2c7965ac56c725df2d2c76593e84b2ef497ef3d07c76f579811d11");
+// Re-pinned by Public Tools V1: the desktop gen-shell viewport lock is lifted
+// on a page that carries a visitor's tool block ([data-public-tool-seo]) —
+// one selector change; /home's rules and the launch page's are untouched.
+check("…globals.css is the reviewed Pre-launch Landing V2 version (+ the Public Tools V1 lock exception)",
+  sha(readFileSync("app/globals.css")) === "8f024ebf826afd750357e2e33559e9be1fc7e7c30e77592b2fcfafc974f1ed73");
 check("/home requires a session (middleware's protected paths)", isProtectedPath("/home") && isProtectedPath("/dashboard"));
 check("/dashboard still forwards to /home", /redirect\("\/home"\)/.test(code("app/(app)/dashboard/page.tsx")));
 const homePage = code("app/(app)/home/page.tsx");
@@ -744,8 +763,12 @@ const SMART_PIECES: readonly [string, string][] = [
 ];
 check("…the Inteligentny prompt wiring is all present (a vanished piece is not a pass)", SMART_PIECES.every(([piece]) => ws.includes(piece)));
 const wsBefore = SMART_PIECES.reduce((src, [piece, was]) => src.replace(piece, was), ws);
-check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring)",
-  sha(wsBefore.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "07d316d73828d44727ec892747596a47f6b56ff719eb9bfc41fc0e125fdcb769");
+// Re-pinned by Public Tools V1 (was 07d316d7…): the visitor's session wiring —
+// local photo stand-ins instead of uploads, Generate through session.gate (the
+// sign-in dialog for a visitor, the same run for a member), the draft banner,
+// the account notice beside the price. No request a member sends changed.
+check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring, and the Public Tools V1 session)",
+  sha(wsBefore.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "8ad2fb3e895d1ea26992c54fb52b6ec4581338eda680179512bfae6aa87c0db8");
 check("…which feeds the screen's own upload and starts nothing", /useHomeHandoff\(\(file\) => \{ void upload\(\[file\], "refs"\); \}\)/.test(RECEIVER)
   && !/generate\(|fetch\(/.test(RECEIVER));
 check("/home has no generation path: no AI route, no provider, no prompt",
@@ -770,14 +793,21 @@ check("the no-credits dialog only links to the existing checkout intent and /pla
 const RETUSZ: readonly [string, string][] = [
   ["lib/server/retouch.ts", "fee74d0e4795110812d4019a3525ac2d9f83420ab3ad616515bb56b39e410d3e"],
   ["lib/server/retouch-delivery.ts", "52d62017201d4c62227c13dbcb84deb5834615ef78bbcf800eda1ad63ca01e54"],
-  ["app/(app)/retusz/page.tsx", "3fd68105b04c8d818641de0cd6bc61464b0a0a8e0a4946a8cc63e7731a7e1748"],
+  // Re-pinned by Public Tools V1: the page's metadata and a visitor's branch
+  // (the same workspace, priced through the server's own read, no wallet).
+  // The member's branch, the route and the request are unchanged — the
+  // forensic suite holds the request byte for byte.
+  ["app/(app)/retusz/page.tsx", "7fd6fc379aa05f06ba6472df4eeb27df6288b1b6c3b43b0c889cdcacf3457427"],
 ];
 for (const [file, digest] of RETUSZ) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
 check("Retusz is reached only by its route — never prefilled, never imported", !/RetouchWorkspace|components\/retouch|runRetouch|retouchStepConfig/.test(SH + loader));
 // The catalogue changed once since: the photo-tools task pointed four cards at
 // their own screens (/tools/remove_bg, white_bg, ai_background, ai_shadow).
-check("/tools' own page and layout are untouched; the catalogue only by the photo-tools task",
-  !gitChanged("app/(app)/tools/page.tsx") && !gitChanged("lib/tool-layout.ts")
+// Public Tools V1 gave the catalogue page its metadata and a visitor's branch
+// (same layout, same switches, prices through the server's read, no banners);
+// pinned to that version. The layout module is untouched.
+check("/tools' own page and layout are untouched (but for the Public Tools V1 visitor branch); the catalogue only by the photo-tools task",
+  sha(readFileSync("app/(app)/tools/page.tsx")) === "e5b9cd62f319853537f4b82c5cff48151a3baca143bf6bf5e48a8d1246a9a05a" && !gitChanged("lib/tool-layout.ts")
   && sha(readFileSync("lib/tool-cards.ts")) === "1a433b1509141bafab46e7142b3d1d2821ad45b89da16c94b00bc1ffb3b5a2c5");
 
 /* ── 12. handoff ──────────────────────────────────────────────────────────*/

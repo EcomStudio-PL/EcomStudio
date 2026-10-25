@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
  */
 
 export function AuthModal() {
-  const { mode, next, error, email, close, switchTo } = useAuthDialog();
+  const { mode, next, error, email, intent, close, switchTo } = useAuthDialog();
   const { t } = useI18n();
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -175,14 +175,18 @@ export function AuthModal() {
   const signupCredits = registration?.signupCredits ?? 0;
   const copy = useMemo(() => ({
     login: { title: t("auth.loginTitle"), sub: t("auth.loginSub") },
-    register: {
-      title: t("auth.registerTitle"),
-      sub: signupCredits > 0
-        ? t("auth.registerSub", { n: signupCredits })
-        : t("auth.registerSubNoCredits"),
-    },
+    // A visitor who pressed Generate on a tool panel (Public Tools V1) reads
+    // why they are here; the form below is the same form.
+    register: intent === "tool"
+      ? { title: t("auth.toolRegisterTitle"), sub: t("auth.toolRegisterSub") }
+      : {
+          title: t("auth.registerTitle"),
+          sub: signupCredits > 0
+            ? t("auth.registerSub", { n: signupCredits })
+            : t("auth.registerSubNoCredits"),
+        },
     forgot: { title: t("auth.resetTitle"), sub: t("auth.resetSub") },
-  }), [t, signupCredits]);
+  }), [t, signupCredits, intent]);
 
   if (!mode) return null;
 
@@ -341,6 +345,25 @@ export function AuthModal() {
             </div>
             )}
 
+            {/* REJESTRACJA · LOGOWANIE — the two doors as tabs, when a tool's
+                Generate opened the dialog: the visitor came to make an image,
+                not to read which link switches the form. Same forms, same
+                switchTo; a shut door shows its notice instead. */}
+            {intent === "tool" && !blocked && (mode === "register" || mode === "login") && (
+              <div role="tablist" aria-label={t("auth.toolTabs")} data-auth-tabs
+                className={cn("mx-4 mb-1 mt-2 grid grid-cols-2 gap-1 rounded-xl bg-raised p-1 sm:mx-6")}>
+                {(["register", "login"] as const).map((m) => (
+                  <button key={m} type="button" role="tab" aria-selected={mode === m}
+                    onClick={() => { if (mode !== m) switchTo(m); }}
+                    className={cn(
+                      "h-9 rounded-lg text-[13px] font-semibold transition-colors",
+                      mode === m ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+                    )}>
+                    {t(m === "register" ? "auth.toolTabRegister" : "auth.toolTabLogin")}
+                  </button>
+                ))}
+              </div>
+            )}
             <ModeBody mode={`${mode}:${blocked ?? ""}`}>
               {/* A closed door gets an invitation, not an error. The form is not
                   rendered at all — there is nothing to submit. */}

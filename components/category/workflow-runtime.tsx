@@ -3,7 +3,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
-import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryPath, findCategory } from "@/lib/categories";
+import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryHref, categoryPath, findCategory } from "@/lib/categories";
+import { useIsGuest } from "@/components/public-tools/tool-viewer";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import { ThumbnailWorkspace } from "@/components/thumbnail/workspace";
@@ -102,6 +103,7 @@ export function WorkflowRuntime({
   thumbnail?: ThumbnailRuntimeData | null;
 }) {
   const { t } = useI18n();
+  const guest = useIsGuest();
   const category = findCategory(catSlug);
 
   if (!category) return null;
@@ -145,7 +147,9 @@ export function WorkflowRuntime({
           forwards there. This screen cannot see the switchboard, and the
           forward can: should an operator take the whole hub down while the
           category stays live, "back" lands on a live screen, not a 404. */}
-      <Link href={categoryPath(category)}
+      {/* A visitor (Public Tools V1) goes back to the catalogue itself: the
+          category's own address is a member's forward. */}
+      <Link href={guest ? categoryHref(category) : categoryPath(category)}
         data-tool-back
         className="mb-3 inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted transition-colors hover:text-ink">
         <ArrowLeft size={14} aria-hidden />

@@ -34,7 +34,7 @@
  */
 import { readFileSync, readdirSync, statSync } from "fs";
 import {
-  EVENT_PARAM_KEYS, PRELAUNCH_EVENTS, createTracker, eventParams, gaEnabled, isPrelaunchEvent,
+  EVENT_PARAM_KEYS, PRELAUNCH_EVENTS, createTracker, eventParams, gaEnabled, isAnalyticsEvent, isPrelaunchEvent,
   sanitizePageLocation, type EventParams, type PrelaunchEvent, type Tracker,
 } from "../lib/analytics/ga";
 
@@ -383,7 +383,7 @@ async function main() {
         /import\s*\{[^}]*\btrackEvent\b[^}]*\}\s*from\s*["']@\/components\/analytics\/google-analytics["']/.test(c.src));
       const names = [...c.src.matchAll(/\btrackEvent\(\s*(["'`])([^"'`]*)\1/g)].map((m) => m[2]);
       viaVariable += (c.src.match(/\btrackEvent\s*\(/g) ?? []).length - names.length;
-      const unknown = names.filter((n) => !isPrelaunchEvent(n));
+      const unknown = names.filter((n) => !isAnalyticsEvent(n));
       check(`${c.file}: every event it names is on the list`, unknown.length === 0, unknown.join(", "));
     }
     console.log(`  · ${callers.length} file(s) call trackEvent; ${viaVariable} call(s) pass the name through a typed variable`);
@@ -425,8 +425,10 @@ async function main() {
       notEvents.every((n) => !isPrelaunchEvent(n)),
       notEvents.filter((n) => isPrelaunchEvent(n)).map((n) => JSON.stringify(n)).join(", "));
 
-    const EXPECTED_KEYS = ["section", "form_variant", "pair_index", "channel", "method", "cta_id", "traffic_source"];
-    check("the parameter allowlist is exactly the seven keys the design names",
+    const EXPECTED_KEYS = ["section", "form_variant", "pair_index", "channel", "method", "cta_id", "traffic_source",
+      // Public Tools V1: the tool funnel's three (which tool, where, which panel state).
+      "tool_id", "source", "state"];
+    check("the parameter allowlist is exactly the ten keys the designs name",
       JSON.stringify([...EVENT_PARAM_KEYS]) === JSON.stringify(EXPECTED_KEYS), EVENT_PARAM_KEYS.join(", "));
     // The same vocabulary the page_location sanitiser refuses (section D): no
     // allowed key may even LOOK like it carries a credential or an address.

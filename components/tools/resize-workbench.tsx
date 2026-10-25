@@ -26,6 +26,9 @@ import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 import { starterVisible } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { useToolSession } from "@/components/public-tools/use-tool-session";
+import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 import { StarterGallery } from "@/components/tool-guide/lazy";
 
 /**
@@ -198,7 +201,27 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   const failed = items.filter((i) => i.status === "error");
   const pending = items.filter((i) => i.status === "queued");
   const totalCredits = credits * pending.length;
-  const notEnough = totalCredits > balance;
+
+  /*
+    PUBLIC TOOLS V1. The photos never leave the browser before the run here;
+    a visitor's run opens the sign-in dialog instead of /api/tools/run, and the
+    queue and the size are kept until they are back signed in.
+  */
+  const viewer = useToolViewer();
+  const session = useToolSession({
+    settings: { presetKey, custom, customWidth, customHeight, lockRatio },
+    sources: pending.map((i) => ({ id: i.id, name: i.file.name, type: i.file.type, file: i.file })),
+    apply: (saved: Partial<{ presetKey: string; custom: boolean; customWidth: string; customHeight: string; lockRatio: boolean }>, files: File[]) => {
+      if (typeof saved.presetKey === "string" && PRESETS.some((p) => p.key === saved.presetKey)) setPresetKey(saved.presetKey);
+      if (typeof saved.custom === "boolean") setCustom(saved.custom);
+      if (typeof saved.customWidth === "string") setCustomWidth(saved.customWidth.slice(0, 5));
+      if (typeof saved.customHeight === "string") setCustomHeight(saved.customHeight.slice(0, 5));
+      if (typeof saved.lockRatio === "boolean") setLockRatio(saved.lockRatio);
+      if (files.length > 0) addFiles(files);
+    },
+  });
+  // A visitor's run is the sign-in dialog: their (absent) balance never greys it out.
+  const notEnough = !session.guest && totalCredits > balance;
 
   const target = useMemo<Target>(() => {
     if (!custom) {
@@ -223,7 +246,8 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
    */
   const status = items.length === 0 ? t("resize.needPhotos")
     : !hasTarget ? t("resize.needSize", { min: MIN_SIDE, max: MAX_SIDE })
-      : notEnough ? t("tools.err.insufficient_credits")
+      // A member's shortfall is the status card's to explain (Public Tools V1).
+      : notEnough && !viewer ? t("tools.err.insufficient_credits")
         : pending.length === 0 ? t("resize.nothingQueued")
           : null;
 
@@ -317,6 +341,7 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
     if (running || !hasTarget) return;
     const queue = only ?? items.filter((i) => i.status === "queued");
     if (queue.length === 0) return;
+    session.ran();
 
     cancelled.current = false;
     setRunning(true);
@@ -417,6 +442,7 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
             and the resolution rows were two panels with a gap between them,
             which read as two unrelated decisions — they are one. */}
         <Panel className="thin-scroll min-h-0 flex-1 space-y-4 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
           {/* THE IMPORT TILE — a word, a count, and the rule underneath.
@@ -513,13 +539,16 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
 
         {/* COST + ACTION — the island, in the shape the generator's uses. */}
         <CostIsland perImage={credits} count={pending.length} enough={!notEnough} status={status}>
-          <button type="button" onClick={() => run()}
+          <button type="button" onClick={() => void session.gate(() => run())}
             disabled={running || pending.length === 0 || notEnough || !hasTarget}
             className={cn("cta flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
               (running || pending.length === 0 || notEnough || !hasTarget) && "cursor-not-allowed opacity-55")}>
             {running ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Maximize2 size={14} aria-hidden />}
             {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("resize.run")}
           </button>
+          {viewer && pending.length > 0 && credits > 0 && (
+            <ToolNotice cost={totalCredits} balance={balance} session={session} className="mt-2.5" />
+          )}
         </CostIsland>
       </div>
 

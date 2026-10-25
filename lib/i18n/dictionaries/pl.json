@@ -134,6 +134,12 @@
     "openApp": "Otwórz aplikację"
   },
   "auth": {
+    "signUpFree": "Załóż konto – darmowe kredyty na start",
+    "toolRegisterTitle": "Załóż konto, żeby wygenerować grafikę",
+    "toolRegisterSub": "Na start dostajesz darmowe kredyty",
+    "toolTabs": "Rejestracja lub logowanie",
+    "toolTabRegister": "Rejestracja",
+    "toolTabLogin": "Logowanie",
     "loginTitle": "Zaloguj się do GrovBase",
     "registerTitle": "Utwórz konto",
     "registerSub": "Załóż konto i odbierz {n} kredytów na start.",
@@ -10765,6 +10771,8 @@
     "faq.slug": "Adres (slug)",
     "faq.slugWarn": "Zmiana adresu zepsuje istniejące linki /faq#…",
     "faq.pages": "Pokazuj na stronach",
+    "faq.tools": "Pokazuj w narzędziach",
+    "faq.toolsHint": "Strona narzędzia pokazuje gościom do 3 przypisanych pytań (Publiczne narzędzia).",
     "faq.visible": "Widoczne (opublikowane)",
     "faq.needsReview": "Wymaga weryfikacji",
     "faq.onlyPremiere": "Tylko w trakcie premiery",
@@ -10812,6 +10820,7 @@
     "faq.err.field.slug": "Adres: małe litery, cyfry i myślniki (maks. 80).",
     "faq.err.field.category": "Wybierz kategorię.",
     "faq.err.field.pages": "Nieznana strona.",
+    "faq.err.field.tools": "Nieznane narzędzie.",
     "faq.err.field.note": "Notatka jest za długa albo ma niedozwolone znaki.",
     "faq.err.field.name": "Nazwa po polsku jest wymagana (bez [nawiasów] i < >).",
     "faq.err.field.topic": "Wybierz temat formularza.",
@@ -11621,5 +11630,150 @@
     "share": "Udostępnij…",
     "shareOn": "Udostępnij przez {network}",
     "shareText": "Dołącz do listy premierowej GrovBase — zdjęcia AI dla sprzedawców:"
+  },
+  "publicTools": {
+    "balance": "Masz {n} kr.",
+    "notice": {
+      "guest": "Przygotuj narzędzie bez konta — zdjęcia zostają w Twojej przeglądarce. Konto założysz, gdy klikniesz Generuj.",
+      "watermark": "Grafiki z darmowych kredytów mają znak wodny",
+      "claimed": "Masz {n} darmowych kredytów – kliknij Generuj",
+      "missing": "Brakuje Ci {n} kredytów",
+      "missingOne": "Brakuje Ci 1 kredytu",
+      "missingImage": "Brakuje Ci {n} kredytów, żeby wygenerować tę grafikę",
+      "missingImageOne": "Brakuje Ci 1 kredytu, żeby wygenerować tę grafikę",
+      "verify": "Potwierdź adres e-mail, żeby odebrać darmowe kredyty",
+      "resend": "Wyślij link ponownie",
+      "survey": "Wypełnij krótką ankietę i odbierz {n} darmowych kredytów",
+      "surveyCta": "Wypełnij ankietę",
+      "choosePlanBody": "Wybierz plan, żeby dalej korzystać z narzędzi",
+      "choosePlan": "Wybierz plan",
+      "topup": "Doładuj kredyty"
+    },
+    "modal": {
+      "planTitle": "Wybierz plan",
+      "topupTitle": "Doładuj kredyty",
+      "error": "Nie udało się wczytać oferty. Odśwież stronę i spróbuj ponownie.",
+      "recommended": "Polecamy pakiet z {n} kr. — pokryje brakujące {missing} kr."
+    },
+    "draft": {
+      "label": "Przygotowane narzędzie",
+      "offer": "W tej przeglądarce czeka przygotowane narzędzie (zdjęcia: {n}, zapisane {when}). Przywrócić je?",
+      "restore": "Przywróć",
+      "discard": "Odrzuć",
+      "partial": "Ustawienia wróciły, ale przeglądarka nie zachowała części zdjęć. Dodaj je ponownie.",
+      "unavailable": "Ta przeglądarka nie pozwala zapisać zdjęć (np. w trybie prywatnym). Po zalogowaniu dodaj je ponownie.",
+      "full": "W przeglądarce zabrakło miejsca, więc zdjęcia nie zostały zapisane. Po zalogowaniu dodaj je ponownie."
+    },
+    "resume": {
+      "title": "Czeka na Ciebie przygotowane narzędzie: {tool} (zdjęcia: {n}).",
+      "cta": "Wróć do narzędzia"
+    },
+    "preview": {
+      "label": "Podgląd jako gość",
+      "exit": "Wyjdź z podglądu",
+      "start": "Podgląd jako gość"
+    },
+    "seo": {
+      "slider": "Porównanie przed i po: {name}"
+    },
+    "footer": {
+      "faq": "FAQ"
+    },
+    "admin": {
+      "title": "Publiczne narzędzia (publicTools)",
+      "body": "Po włączeniu niezalogowani goście mogą oglądać katalog i panele narzędzi, dodawać zdjęcia (zostają w ich przeglądarce) i widzieć ceny. Generowanie zawsze wymaga konta.",
+      "on": "Włączone",
+      "off": "Wyłączone",
+      "changed": "Ostatnia zmiana: {when}",
+      "beforeLaunch": "Przed włączeniem sprawdź:",
+      "checkSignup": "Rejestracja otwarta",
+      "checkLogin": "Logowanie włączone",
+      "yes": "tak",
+      "no": "nie",
+      "waitlistOn": "Lista oczekujących jest włączona — przy zamkniętej rejestracji goście zobaczą zapis na listę.",
+      "waitlistOff": "Lista oczekujących jest wyłączona.",
+      "signupIndependent": "Włączenie publicznych narzędzi nie zmienia ustawień rejestracji ani zabezpieczeń kont.",
+      "turnOn": "Włącz publiczne narzędzia",
+      "turnOff": "Wyłącz publiczne narzędzia",
+      "preview": "Podgląd jako gość",
+      "previewError": "Nie udało się uruchomić podglądu.",
+      "saveError": "Nie udało się zapisać ustawienia.",
+      "savedOn": "Publiczne narzędzia są włączone.",
+      "savedOff": "Publiczne narzędzia są wyłączone.",
+      "confirmOnTitle": "Włączyć publiczne narzędzia?",
+      "confirmOnBody": "Katalog i panele narzędzi będą widoczne bez logowania i trafią do mapy strony. Generowanie nadal wymaga konta.",
+      "confirmOffTitle": "Wyłączyć publiczne narzędzia?",
+      "confirmOffBody": "Goście znów zobaczą okno logowania, a strony narzędzi znikną z mapy strony."
+    }
+  },
+  "toolPage": {
+    "examples": "Przykłady",
+    "before": "Przed",
+    "after": "Po",
+    "faq": "Najczęstsze pytania",
+    "cta": "Wypróbuj za darmo",
+    "ctaSub": "Przygotuj zdjęcia bez konta — konto zakładasz dopiero przy generowaniu.",
+    "catalogue": {
+      "title": "Narzędzia AI do zdjęć produktowych",
+      "description": "Retusz, usuwanie tła, generator zdjęć, zmiana rozmiaru, kompresja i inne narzędzia GrovBase dla sprzedawców — sprawdź je bez zakładania konta."
+    },
+    "generator": {
+      "headline": "Generator zdjęć produktowych AI",
+      "lead": "Dodaj zdjęcia produktu, wybierz rodzaj sesji, format i jakość — GrovBase przygotuje zdjęcia sprzedażowe, zachowując kształt, kolory i detale Twojego produktu."
+    },
+    "custom": {
+      "headline": "Generator obrazów AI z własnym promptem",
+      "lead": "Opisz scenę własnymi słowami i dodaj zdjęcia produktu jako referencję. Wybierasz model, format, rozdzielczość i liczbę obrazów, a cenę widzisz przed generowaniem."
+    },
+    "retouch": {
+      "headline": "Retusz zdjęć produktowych AI",
+      "lead": "Zamień zwykłe zdjęcie produktu w czysty packshot na białym tle. Wybierasz jakość 2K lub 4K i format pliku — bez ręcznej obróbki."
+    },
+    "remove_bg": {
+      "headline": "Usuwanie tła ze zdjęć produktów",
+      "lead": "Wytnij produkt z tła i pobierz plik PNG z przezroczystością — gotowy do sklepu, marketplace'u i dalszej edycji."
+    },
+    "background": {
+      "headline": "Białe tło dla zdjęć produktów",
+      "lead": "Ustaw produkt na czystym białym tle, jakiego wymagają marketplace'y — dla jednego zdjęcia albo całej serii."
+    },
+    "ai_background": {
+      "headline": "Tło AI dla zdjęć produktów",
+      "lead": "Opisz scenę albo wybierz kolor, a model dorysuje tło pod Twój produkt. Sam produkt zostaje taki jak na zdjęciu."
+    },
+    "shadow": {
+      "headline": "Cień AI pod produktem",
+      "lead": "Dodaj realistyczny cień rzucany przez produkt, żeby packshot na jednolitym tle wyglądał naturalnie."
+    },
+    "ecommerce": {
+      "thumbnail": {
+        "headline": "Miniaturka produktu na pierwsze zdjęcie oferty",
+        "lead": "Przygotuj kadr na pierwsze zdjęcie oferty: produkt wyraźnie w centrum, na czystym tle, w formacie, którego wymaga sklep."
+      }
+    },
+    "resize": {
+      "headline": "Zmiana rozmiaru zdjęć online",
+      "lead": "Przeskaluj wiele zdjęć naraz do wymiarów, których wymaga Twój sklep albo marketplace."
+    },
+    "compress": {
+      "headline": "Kompresja zdjęć produktowych",
+      "lead": "Zmniejsz wagę zdjęć, żeby sklep ładował się szybciej. Widzisz wagę przed i po oraz to, ile zaoszczędziła cała paczka."
+    },
+    "upscale": {
+      "headline": "Powiększanie zdjęć AI (upscale)",
+      "lead": "Powiększ zdjęcie produktu 2× lub 4× bez utraty ostrości — także małe zdjęcia od dostawcy."
+    },
+    "expand": {
+      "headline": "Rozszerzanie kadru AI",
+      "lead": "Dorysuj brakujący kadr do 1:1, 4:5, 9:16 albo 16:9 bez przycinania produktu."
+    },
+    "watermark": {
+      "headline": "Znak wodny na zdjęciach produktów",
+      "lead": "Nałóż swoje logo na całą serię zdjęć — w jednym z dziewięciu miejsc albo jako powtarzalny wzór."
+    },
+    "editor": {
+      "headline": "Edytor zdjęć produktowych online",
+      "lead": "Zmień tło, dodaj cień, ustaw format, jasność i kadr w jednym miejscu, a potem pobierz gotowy plik."
+    }
   }
 }

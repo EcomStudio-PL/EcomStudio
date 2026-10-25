@@ -29,6 +29,9 @@ import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 import { starterVisible } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { useToolSession } from "@/components/public-tools/use-tool-session";
+import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 import { StarterGallery } from "@/components/tool-guide/lazy";
 
 /**
@@ -227,7 +230,24 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
   const failed = items.filter((i) => i.status === "error");
   const pending = items.filter((i) => i.status === "queued");
   const totalCredits = credits * pending.length;
-  const notEnough = totalCredits > balance;
+
+  /*
+    PUBLIC TOOLS V1. The photos never leave the browser before the run here;
+    a visitor's run opens the sign-in dialog instead of /api/tools/run, and the
+    queue and the settings are kept until they are back signed in.
+  */
+  const viewer = useToolViewer();
+  const session = useToolSession({
+    settings: { levelKey, format },
+    sources: pending.map((i) => ({ id: i.id, name: i.file.name, type: i.file.type, file: i.file })),
+    apply: (saved: Partial<{ levelKey: string; format: ToolSettings["compress"]["format"] }>, files: File[]) => {
+      if (typeof saved.levelKey === "string" && LEVELS.some((l) => l.key === saved.levelKey)) setLevelKey(saved.levelKey);
+      if (saved.format && FORMATS.some((f) => f.value === saved.format)) setFormat(saved.format);
+      if (files.length > 0) addFiles(files);
+    },
+  });
+  // A visitor's run is the sign-in dialog: their (absent) balance never greys it out.
+  const notEnough = !session.guest && totalCredits > balance;
 
   const level = LEVELS.find((l) => l.key === levelKey) ?? LEVELS[1];
 
@@ -240,7 +260,8 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
    * and silent once there is nothing left to explain.
    */
   const status = items.length === 0 ? t("compress.needPhotos")
-    : notEnough ? t("tools.err.insufficient_credits")
+    // A member's shortfall is the status card's to explain (Public Tools V1).
+    : notEnough && !viewer ? t("tools.err.insufficient_credits")
       : pending.length === 0 ? t("compress.nothingQueued")
         : null;
 
@@ -350,6 +371,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
     if (running) return;
     const queue = only ?? items.filter((i) => i.status === "queued");
     if (queue.length === 0) return;
+    session.ran();
 
     cancelled.current = false;
     setRunning(true);
@@ -446,6 +468,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         {/* ONE CARD: what goes in, and how hard it is squeezed. */}
         <Panel className="thin-scroll min-h-0 flex-1 space-y-4 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
           {/* A word, a count, and the rule underneath — the same tile the
@@ -538,13 +561,16 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
 
         {/* COST + ACTION — the island, in the shape the generator's uses. */}
         <CostIsland perImage={credits} count={pending.length} enough={!notEnough} status={status}>
-          <button type="button" onClick={() => run()}
+          <button type="button" onClick={() => void session.gate(() => run())}
             disabled={running || pending.length === 0 || notEnough}
             className={cn("cta flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
               (running || pending.length === 0 || notEnough) && "cursor-not-allowed opacity-55")}>
             {running ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Gauge size={14} aria-hidden />}
             {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("compress.run")}
           </button>
+          {viewer && pending.length > 0 && credits > 0 && (
+            <ToolNotice cost={totalCredits} balance={balance} session={session} className="mt-2.5" />
+          )}
         </CostIsland>
       </div>
 

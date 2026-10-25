@@ -1708,6 +1708,7 @@ export type Database = {
           needs_review: boolean
           only_premiere: boolean
           pages: string[]
+          tools: string[]
           position: number
           question: Json
           review_note: string | null
@@ -1728,6 +1729,7 @@ export type Database = {
           needs_review?: boolean
           only_premiere?: boolean
           pages?: string[]
+          tools?: string[]
           position?: number
           question: Json
           review_note?: string | null
@@ -1748,6 +1750,7 @@ export type Database = {
           needs_review?: boolean
           only_premiere?: boolean
           pages?: string[]
+          tools?: string[]
           position?: number
           question?: Json
           review_note?: string | null
@@ -8614,6 +8617,7 @@ export type Database = {
           question: Json
           answer: Json
           pages: string[]
+          tools: string[]
           only_premiere: boolean
         }[]
       }

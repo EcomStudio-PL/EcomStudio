@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# FAQ V1 (0155 + 0156), PROVEN AGAINST A REAL POSTGRES.
+# FAQ V1 (0155 + 0156, and 0158 — questions on a tool's page), PROVEN AGAINST A REAL POSTGRES.
 #
 # What has to hold:
 #   · the import lands every question of the brief once (30), the one old
@@ -482,6 +482,66 @@ else record 'P8  0155 after 0156 still applies' false "$(tr '\n' ' ' < "$ERR")";
 AFTER=$(digest)
 if [ "$BEFORE" = "$AFTER" ]; then record 'P8b … and changes no admin edit' true ''
 else record 'P8b … and changes no admin edit' false "$BEFORE vs $AFTER"; fi
+
+# ── 0158: a question on a tool's page ───────────────────────────────────────
+TOOLS="$M/0158_faq_tool_questions.sql"
+[ -f "$TOOLS" ] || { echo "faq-sql: $TOOLS not found" >&2; exit 2; }
+if apply "$TOOLS"; then record 'T0  0158 applies in one transaction' true ''
+else record 'T0  0158 applies in one transaction' false "$(tr '\n' ' ' < "$ERR")"; fi
+
+q >/dev/null <<'SQL'
+select public.t_true('T1  every question starts on no tool', 'postgres', $q$
+  select not exists (select 1 from public.faq_items where cardinality(tools) > 0) $q$);
+select public.t_be('admin');
+select public.t_true('T2  an admin assigns a question to two tools', 'authenticated', $q$
+  with u as (update public.faq_items set tools = array['retouch', 'ecommerce.thumbnail']
+              where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy' returning 1)
+  select count(*) = 1 from u $q$);
+select public.t_raises('T3  a key that is not a catalogue key is refused', 'authenticated', $q$
+  update public.faq_items set tools = array['Retusz AI'] where slug = 'czym-jest-grovbase' $q$, 'faq_items_tools_check');
+select public.t_raises('T3b … and so is a duplicate', 'authenticated', $q$
+  update public.faq_items set tools = array['retouch', 'retouch'] where slug = 'czym-jest-grovbase' $q$, 'faq_items_tools_check');
+select public.t_true('T4  a question on a tool only (no page) is public', 'authenticated', $q$
+  with u as (update public.faq_items set pages = '{}', tools = array['remove_bg']
+              where slug = 'co-jesli-wynik-mi-sie-nie-podoba' returning 1)
+  select count(*) = 1 from u $q$);
+reset role;
+select public.t_be('anon');
+select public.t_true('T4b … faq_public() returns it with its tools, and the assigned one too', 'anon', $q$
+  select (select tools = array['remove_bg'] and cardinality(pages) = 0 from public.faq_public() where slug = 'co-jesli-wynik-mi-sie-nie-podoba')
+     and (select tools = array['retouch', 'ecommerce.thumbnail'] from public.faq_public() where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy') $q$);
+select public.t_true('T5  a hidden question assigned to a tool stays out', 'postgres', $q$
+  select not exists (select 1 from public.faq_public() p join public.faq_items i on i.slug = p.slug where not i.visible) $q$);
+select public.t_raises('T6  a visitor still cannot read the table', 'anon', $q$
+  select count(*) from public.faq_items $q$, 'permission denied');
+select public.t_true('T6b … nor see a placeholder through the function', 'anon', $q$
+  select bool_and(public.faq_text_ok(answer ->> 'pl')) and bool_and(public.faq_text_ok(question ->> 'pl')) from public.faq_public() $q$);
+reset role;
+select public.t_be('admin');
+select public.t_true('T7  tools are content: changing them is a history entry', 'authenticated', $q$
+  with u as (update public.faq_items set tools = array['custom']
+              where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy' returning 1)
+  select count(*) = 1 from u $q$);
+select public.t_true('T7a … restore the version that had two tools (the action)', 'authenticated', $q$
+  select (public.faq_restore((select v.id from public.content_versions v
+            where v.key = 'faq:item:' || (select id from public.faq_items where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy')
+              and v.after ->> 'tools' = '["retouch", "ecommerce.thumbnail"]' order by v.created_at desc limit 1)) ->> 'kind') = 'item' $q$);
+select public.t_true('T7b … they are back (the effect)', 'authenticated', $q$
+  select tools = array['retouch', 'ecommerce.thumbnail'] from public.faq_items where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy' $q$);
+select public.t_true('T7c … restore a version from before 0158 (the action)', 'authenticated', $q$
+  select (public.faq_restore((select v.id from public.content_versions v
+            where v.key = 'faq:item:' || (select id from public.faq_items where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy')
+              and not (v.after ? 'tools') order by v.created_at desc limit 1)) ->> 'kind') = 'item' $q$);
+select public.t_true('T7d … it restores as no tools (the effect)', 'authenticated', $q$
+  select cardinality(tools) = 0 from public.faq_items where slug = 'czy-produkt-bedzie-wygladal-jak-prawdziwy' $q$);
+reset role;
+SQL
+BEFORE=$(digest)
+if apply "$TOOLS"; then record 'T8  0158 again (re-runnable)' true ''
+else record 'T8  0158 again (re-runnable)' false "$(tr '\n' ' ' < "$ERR")"; fi
+AFTER=$(digest)
+if [ "$BEFORE" = "$AFTER" ]; then record 'T8b … and changes no question' true ''
+else record 'T8b … and changes no question' false "$BEFORE vs $AFTER"; fi
 
 q -c "select case when ok then '  ✓ ' else '  ✗ ' end || name || case when ok then '' else '  — ' || detail end
       from public.test_results order by seq"

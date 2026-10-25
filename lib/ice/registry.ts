@@ -9,6 +9,9 @@ import { categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots
 import { PHOTO_TOOLS, TOOLS } from "@/lib/images/tools";
 import { LAUNCH_V2_BUILDER_ONLY, LAUNCH_V2_TEXT_FIELDS } from "@/lib/launch/fields";
 import { ABOUT_SLOTS } from "@/lib/about-page";
+import {
+  PUBLIC_TOOLS, TOOL_EXAMPLE_PAIRS, TOOL_PAGE_SHARED_KEYS, toolExampleSlot, toolPageTextKeys,
+} from "@/lib/public-tools";
 import type { IceElement, IceLinkFormat, IcePage, IceSection, IceSlotSpec } from "./types";
 
 /**
@@ -334,9 +337,84 @@ function toolPages(): IcePage[] {
   }));
 }
 
+/* ── a public tool's block (Public Tools V1) ─────────────────────────────── */
+
+/**
+ * The copy and the before/after examples under a tool's panel — what a
+ * visitor reads there (components/public-tools/tool-seo.tsx), and the page's
+ * <title> and description. Only the block: the panel above it stays what it
+ * was, a workspace of controls. Its shared labels (the examples overline, the
+ * badges, the button) read the same on every tool, so they are one key each.
+ *
+ * Not for Retusz: that path is frozen ("Ścieżka zamrożona") — its block keeps
+ * the shipped copy.
+ */
+const PUBLIC_BLOCK_EXCLUDED = new Set(["retouch"]);
+
+function exampleSlot(tool: string, n: number, side: "before" | "after"): IceSlotSpec {
+  return {
+    key: toolExampleSlot(tool, n, side),
+    ratio: ratioOf(BEFORE_AFTER_SIZE),
+    width: BEFORE_AFTER_SIZE.width,
+    height: BEFORE_AFTER_SIZE.height,
+    video: false,
+    // Page content, not a catalogue card — the same entity columns as the
+    // home page's own before/after pairs (global / sellerHome).
+    entityType: "global",
+    entityId: "toolPage",
+    slotName: toolExampleSlot(tool, n, side).slice("toolPage.".length),
+  };
+}
+
+function toolPublicSection(tool: string): IceSection {
+  const keys = toolPageTextKeys(tool);
+  return {
+    key: "toolPublic",
+    elements: [
+      text(keys.headline, "title", TITLE),
+      text(keys.lead, "sub", LINE),
+      text(TOOL_PAGE_SHARED_KEYS.examples, "overline", SHORT),
+      text(TOOL_PAGE_SHARED_KEYS.before, "badge", SHORT),
+      text(TOOL_PAGE_SHARED_KEYS.after, "badge", SHORT),
+      text(TOOL_PAGE_SHARED_KEYS.faq, "title", TITLE),
+      text(TOOL_PAGE_SHARED_KEYS.cta, "button", SHORT),
+      text(TOOL_PAGE_SHARED_KEYS.ctaSub, "hint", LINE),
+      ...Array.from({ length: TOOL_EXAMPLE_PAIRS }, (_, i): IceElement => ({
+        id: `pair:${i + 1}`, kind: "pair", role: "pair", index: i + 1,
+        slots: [exampleSlot(tool, i + 1, "before"), exampleSlot(tool, i + 1, "after")],
+        dom: `[data-tool-example="${i + 1}"] [data-before-after]`,
+      })),
+    ],
+  };
+}
+
+/** The tool pages with their public block: a tool that already has a page
+ *  gains the section; one whose screen had none (a workspace) gets a page
+ *  that holds only the block. */
+function withPublicBlocks(pages: IcePage[]): IcePage[] {
+  const out = [...pages];
+  for (const tool of PUBLIC_TOOLS) {
+    if (PUBLIC_BLOCK_EXCLUDED.has(tool.key)) continue;
+    const bulk = {
+      key: "toolExamples",
+      slots: Array.from({ length: TOOL_EXAMPLE_PAIRS }, (_, i) =>
+        [toolExampleSlot(tool.key, i + 1, "before"), toolExampleSlot(tool.key, i + 1, "after")]).flat(),
+      pairs: true,
+    };
+    const at = out.findIndex((p) => p.path === tool.path);
+    if (at >= 0) {
+      const page = out[at];
+      out[at] = { ...page, sections: [...page.sections, toolPublicSection(tool.key)], bulk: [...(page.bulk ?? []), bulk] };
+    } else {
+      out.push({ key: `public.${tool.key}`, path: tool.path, type: "tool", sections: [toolPublicSection(tool.key)], bulk: [bulk] });
+    }
+  }
+  return out;
+}
+
 /* ── the registry ────────────────────────────────────────────────────────── */
 
-export const ICE_PAGES: readonly IcePage[] = [homePage(), plansPage(), toolsPage(), ...toolPages()];
+export const ICE_PAGES: readonly IcePage[] = [homePage(), plansPage(), toolsPage(), ...withPublicBlocks(toolPages())];
 
 /** Paths that show the same page as another (same component, same copy). */
 const ALIASES: Readonly<Record<string, string>> = { "/plan": "/plany" };
@@ -575,9 +653,7 @@ export const LAUNCH_TEXT_FIELDS: readonly string[] = [
 
 export const ICE_UNSUPPORTED: readonly { path: string; reason: string }[] = [
   { path: "/k/…", reason: "workflow" },
-  { path: "/generator, /prompts", reason: "workspace" },
   { path: "/retusz", reason: "frozen" },
-  { path: "/tools/compress, /tools/resize, /tools/editor", reason: "workspace" },
   { path: "/checkout, /credits", reason: "money" },
   { path: "/library, /settings, /support", reason: "userData" },
   { path: "/blog, /grovnews", reason: "ownEditor" },

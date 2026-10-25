@@ -7,6 +7,17 @@ import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { retouchModel, retouchPrice, retouchRatios, retouchSizes, retouchWorkflowSize, RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RetouchWorkspace } from "@/components/retouch/workspace";
+import { ToolScope } from "@/components/public-tools/tool-scope";
+import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
+import { publicToolByKey } from "@/lib/public-tools";
+import { publicToolMetadata } from "@/lib/server/public-tool-meta";
+import type { Client } from "@/lib/services/workspace";
+
+const TOOL = publicToolByKey("retouch")!;
+
+export function generateMetadata() {
+  return publicToolMetadata(TOOL);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +31,13 @@ export const dynamic = "force-dynamic";
  * the customer — they bought a retouch, not a provider.
  */
 export default async function RetouchPage() {
+  // Public Tools V1: a visitor (or an admin's guest preview) gets the same
+  // panel, priced by the same code, with nothing of an account behind it.
+  const audience = await publicToolAudience(TOOL.path);
+  if (audience.kind === "guest") {
+    return <ToolScope tool={TOOL} audience={audience}><GuestRetouch /></ToolScope>;
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -39,8 +57,9 @@ export default async function RetouchPage() {
   ]);
 
   return (
-    // Same shell contract as the generator: workspace tokens, and the
-    // viewport-locked frame so the cost island stays at the column's foot.
+    <ToolScope tool={TOOL} audience={audience}>
+    {/* Same shell contract as the generator: workspace tokens, and the
+        viewport-locked frame so the cost island stays at the column's foot. */}
     <div className="workspace workspace-page gen-shell pt-1">
       <RetouchWorkspace
         workspaceId={workspace.id}
@@ -54,6 +73,40 @@ export default async function RetouchPage() {
         outputsPerRun={outputsPerRun}
         initialItems={gallery.items}
         initialCursor={gallery.nextCursor}
+      />
+    </div>
+    </ToolScope>
+  );
+}
+
+/**
+ * The visitor's retouch: the model's price per size and whether the tool can
+ * run, read by the server (guestReadClient — migration 0157) through the same
+ * functions as above. No wallet, no gallery, no workspace: the photos stay in
+ * the visitor's browser until they sign in.
+ */
+async function GuestRetouch() {
+  const reader: Client | null = guestReadClient();
+  const [model, outputsPerRun, configured] = reader
+    ? await Promise.all([
+        retouchModel(reader),
+        engineOutputsPerRun(reader, "retouch"),
+        engineToolConfigured(reader, "retouch", false),
+      ])
+    : [null, 1, false] as const;
+  const sizes = model ? (model.workflowEnabled ? [retouchWorkflowSize(model)] : retouchSizes(model)) : [];
+  return (
+    <div className="workspace workspace-page gen-shell pt-1">
+      <RetouchWorkspace
+        workspaceId=""
+        credits={0}
+        available={!!model && configured}
+        resolutions={sizes}
+        ratios={model && !model.workflowEnabled ? retouchRatios(model) : []}
+        pricing={model ? Object.fromEntries(sizes.map((r) => [r, retouchPrice(model, r)])) : {}}
+        outputsPerRun={outputsPerRun}
+        initialItems={[]}
+        initialCursor={null}
       />
     </div>
   );

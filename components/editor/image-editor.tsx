@@ -17,7 +17,7 @@ import { useDockRoom } from "@/components/layout/dock-room";
 import { HistoryList } from "@/components/editor/history";
 import type { CutoutState, PatchFn } from "@/components/editor/panels";
 import {
-  EDITOR_DEFAULTS, ENTRY_SECTION, SECTIONS, applyPatch, pushHistory,
+  EDITOR_DEFAULTS, ENTRY_SECTION, SECTIONS, applyPatch, clampEditorState, pushHistory,
   type EditorEntry, type EditorSection, type EditorState, type HistoryEntry,
 } from "@/lib/images/editor-state";
 import { DEFAULT_SETTINGS, MAX_UPLOAD_BYTES } from "@/lib/images/tools";
@@ -26,6 +26,8 @@ import { FileDropOverlay, useImageDrop } from "@/components/ui/file-drop";
 import { outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { useToolSession } from "@/components/public-tools/use-tool-session";
+import { ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
 
 /**
  * The canvas and the five control panels are the two heaviest things on this
@@ -463,6 +465,32 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     void bootstrap(initialImage);
   }, [bootstrap, initialImage]);
 
+  /* ── a visitor (Public Tools V1) ─────────────────────────────────────── */
+
+  // Editing is all in this browser already; what reaches the server — the
+  // export bake, the paid cutout, the library — waits for an account. The
+  // photo and the dials are kept locally (IndexedDB) until the visitor is back.
+  const session = useToolSession<{ state: EditorState }>({
+    settings: { state },
+    sources: working
+      ? [{ id: `photo-${working.version}`, name: working.file.name, type: working.file.type, file: working.file }]
+      : [],
+    apply: (saved, files) => {
+      const file = files[0];
+      if (!file) return;
+      void adopt(file, false).then((loaded) => {
+        if (!loaded) return;
+        // The saved dials, through the same clamp the server applies — a
+        // stored draft is input like any other.
+        const restored = clampEditorState(saved?.state);
+        stateRef.current = restored;
+        setState(restored);
+        commitState(restored, STEP_LABEL.background);
+      });
+    },
+  });
+  const guarded = useCallback((run: () => Promise<unknown>) => () => void session.gate(async () => { await run(); }), [session]);
+
   /* ── render ──────────────────────────────────────────────────────────── */
 
   if (!available) {
@@ -485,10 +513,11 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     available: cutout.available,
     reason: cutout.reason,
     credits: cutout.credits,
-    enough: cutout.credits <= balance,
+    // A visitor's button stays live: pressing it opens the sign-in dialog.
+    enough: session.guest || cutout.credits <= balance,
     busy: busy === "cutout",
     done: working?.hasAlpha ?? false,
-    onRun: () => void runCutout(),
+    onRun: guarded(runCutout),
   };
   const panelProps = {
     state,
@@ -596,6 +625,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
 
       {/* ── RIGHT: toolbar, canvas, exports ─────────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0">
+        <ToolDraftBanner session={session} />
         {/* ROW 1 — the timeline, spelled out. Undo, redo and the history list
             were three unlabelled 36px icons in a strip of nine; they are the
             three controls a customer reaches for by name, so they get names. */}
@@ -677,20 +707,22 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
               desktop they sit centred under the canvas, where the reference
               puts them — the export is the end of the pass, not a left rail. */}
           <div className="hidden justify-center gap-2 lg:flex">
-            <Button variant="ghost" onClick={() => void copyUrl()} disabled={!ready || busy !== null}>
+            <Button variant="ghost" onClick={guarded(copyUrl)} disabled={!ready || busy !== null}>
               <Link2 size={15} aria-hidden />
               {t("editor.copyUrl")}
             </Button>
-            <Button variant="secondary" onClick={() => void saveToLibrary()} disabled={!ready || busy !== null || storedNow}>
+            <Button variant="secondary" onClick={guarded(saveToLibrary)} disabled={!ready || busy !== null || storedNow}>
               <Save size={15} aria-hidden />
               {storedNow ? t("tools.allSaved") : t("editor.saveLibrary")}
             </Button>
-            <Button onClick={() => void download()} disabled={!ready || busy !== null}>
+            <Button onClick={guarded(download)} disabled={!ready || busy !== null}>
               {exporting ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}
               {t("editor.download")}
             </Button>
           </div>
           <p className="text-center text-[11.5px] leading-relaxed text-faint lg:text-center">{t("editor.previewNote")}</p>
+          {/* Export itself is free; the visitor's line (and nothing for a member). */}
+          <ToolNotice cost={0} balance={balance} session={session} />
         </div>
       </div>
 
@@ -715,18 +747,18 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
             {guide.button && <span className="flex shrink-0 [&>button]:h-auto [&>button]:py-1.5">{guide.button}</span>}
           </div>
           <div className="flex items-stretch gap-1.5">
-            <button type="button" onClick={() => void download()} disabled={!ready || busy !== null}
+            <button type="button" onClick={guarded(download)} disabled={!ready || busy !== null}
               className={cn("cta flex min-h-[2.75rem] flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
                 (!ready || busy !== null) && "cursor-not-allowed opacity-55")}>
               {exporting ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}
               {t("editor.download")}
             </button>
-            <button type="button" onClick={() => void saveToLibrary()} disabled={!ready || busy !== null || storedNow}
+            <button type="button" onClick={guarded(saveToLibrary)} disabled={!ready || busy !== null || storedNow}
               aria-label={t("editor.saveLibrary")}
               className="plate flex min-h-[2.75rem] w-11 items-center justify-center rounded-xl text-ink disabled:opacity-50">
               <Save size={16} aria-hidden />
             </button>
-            <button type="button" onClick={() => void copyUrl()} disabled={!ready || busy !== null}
+            <button type="button" onClick={guarded(copyUrl)} disabled={!ready || busy !== null}
               aria-label={t("editor.copyUrl")}
               className="plate flex min-h-[2.75rem] w-11 items-center justify-center rounded-xl text-ink disabled:opacity-50">
               <Link2 size={16} aria-hidden />

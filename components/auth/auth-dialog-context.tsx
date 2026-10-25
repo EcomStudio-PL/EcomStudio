@@ -33,10 +33,16 @@ export type AuthDialogState = {
   error?: string;
   /** Address to prefill after an "unconfirmed" bounce. */
   email?: string;
+  /**
+   * Why the dialog opened, when a surface asked for its own wording — "tool":
+   * a visitor pressed Generate on a tool panel (Public Tools V1). State only,
+   * never in the URL: a shared link opens the plain dialog.
+   */
+  intent?: "tool";
 };
 
 type AuthDialogApi = AuthDialogState & {
-  open: (mode: AuthMode, next?: string) => void;
+  open: (mode: AuthMode, next?: string, options?: { intent?: "tool" }) => void;
   /** Change mode inside the open dialog; pushes history so Back steps back. */
   switchTo: (mode: AuthMode) => void;
   close: () => void;
@@ -116,12 +122,13 @@ export function AuthDialogProvider({ children }: { children: React.ReactNode }) 
     });
   }, []);
 
-  const open = useCallback((mode: AuthMode, next?: string) => {
+  const open = useCallback((mode: AuthMode, next?: string, options?: { intent?: "tool" }) => {
     const resolved: AuthDialogState = {
       mode,
       // An explicit returnTo wins; otherwise keep the one already in the URL
       // (the middleware puts it there when it bounces a protected route).
       next: safeReturnTo(next) || readLocation().next,
+      ...(options?.intent ? { intent: options.intent } : {}),
     };
     setState(resolved);                       // paints now
     window.history.pushState(null, "", urlFor(resolved));  // no server request
@@ -129,8 +136,9 @@ export function AuthDialogProvider({ children }: { children: React.ReactNode }) 
 
   const switchTo = useCallback((mode: AuthMode) => {
     setState((prev) => {
-      // The previous attempt's error and prefill belong to that attempt.
-      const nextState: AuthDialogState = { mode, next: prev.next };
+      // The previous attempt's error and prefill belong to that attempt; the
+      // reason it opened (a tool's Generate) carries over to the other tab.
+      const nextState: AuthDialogState = { mode, next: prev.next, ...(prev.intent ? { intent: prev.intent } : {}) };
       window.history.pushState(null, "", urlFor(nextState));
       return nextState;
     });

@@ -1598,7 +1598,7 @@ async function sectionI() {
     freshDb();
     const slash = await actions.setEdit(true, "/plany/");
     check("I21e a trailing slash is cleaned before the cookie is named and scoped", slash.ok && iceState.cookieWrites[0].name === editCookieName("/plany") && iceState.cookieWrites[0].opts.path === "/plany");
-    const unsupported = ["/nope", "/tools/compress", "/retusz", "/tools/../admin", "home", "/szkic", "/aplikacja", "/start-strona", "/a b", "//evil.example"];
+    const unsupported = ["/nope", "/tools/shadow", "/retusz", "/tools/../admin", "home", "/szkic", "/aplikacja", "/start-strona", "/a b", "//evil.example"];
     const bad: string[] = [];
     for (const p of unsupported) {
       freshDb();

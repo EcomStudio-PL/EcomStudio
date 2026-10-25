@@ -3,6 +3,7 @@ import { cache } from "react";
 import { getRequestUser } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import type { Client } from "@/lib/services/workspace";
+import { GUEST_PREVIEW_COOKIE } from "@/lib/public-tools";
 import {
   ACTIVE_STATE, allDefaults, defaultStateFor, isFeatureKey,
   type AvailabilityMap, type FeatureKey, type FeatureState, type FeatureStatus,
@@ -116,7 +117,10 @@ export const CLIENT_PREVIEW_COOKIE = "grovbase_client_preview";
 export const viewerIsAdmin = cache(async (supabase: Client): Promise<boolean> => {
   if (!(await isAdminUser(supabase))) return false;
   try {
-    return (await cookies()).get(CLIENT_PREVIEW_COOKIE)?.value !== "1";
+    const jar = await cookies();
+    // "Podgląd jako gość" (Public Tools V1) is a client preview too — the
+    // stricter one: a visitor is not even a customer.
+    return jar.get(CLIENT_PREVIEW_COOKIE)?.value !== "1" && jar.get(GUEST_PREVIEW_COOKIE)?.value !== "1";
   } catch {
     return true;
   }

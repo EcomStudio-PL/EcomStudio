@@ -18,8 +18,36 @@ import { viewerIsAdmin } from "@/lib/server/feature-availability";
 import { readThumbnailState } from "@/lib/server/thumbnail/settings";
 import { latestOpenThumbnailRun } from "@/lib/server/thumbnail/status";
 import { OPENAI_EDIT_MAX_IMAGES, THUMBNAIL_CATEGORY, THUMBNAIL_OPERATION, THUMBNAIL_WORKFLOW } from "@/lib/thumbnail/config";
+import { ToolScope } from "@/components/public-tools/tool-scope";
+import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
+import { publicToolMetadata } from "@/lib/server/public-tool-meta";
+import { publicToolForPath } from "@/lib/public-tools";
+import type { ThumbnailState } from "@/lib/server/thumbnail/settings";
 
 export const dynamic = "force-dynamic";
+
+/** A public workflow's (Miniaturka's) title, description, canonical and
+ *  robots — Public Tools V1; every other workflow keeps the defaults. */
+export async function generateMetadata({ params }: { params: Promise<{ cat: string; wf: string }> }) {
+  const { cat, wf } = await params;
+  const tool = publicToolForPath(`/k/${cat}/${wf}`);
+  return tool ? publicToolMetadata(tool) : {};
+}
+
+/** What the panel may know about Miniaturka — the same for a member and a
+ *  visitor; the blockers' names only for an admin. */
+function thumbnailView(state: ThumbnailState, admin: boolean) {
+  return {
+    ready: state.ready,
+    blockers: admin ? state.blockers : [],
+    maxPhotos: Math.min(state.config?.maxPhotos ?? 10, OPENAI_EDIT_MAX_IMAGES),
+    thumbnailCredits: state.thumbnailCredits,
+    retouch: state.retouch.available
+      ? { available: true as const, unit: state.retouch.unit }
+      : { available: false as const, unit: null, reason: state.retouch.reason },
+    target: state.config?.finish.target ?? 2560,
+  };
+}
 
 /**
  * WORKFLOW WORKSPACE — the managed generator opened with this workflow's own
@@ -42,6 +70,36 @@ export default async function WorkflowPage({ params }: {
   if (!category) notFound();
   const workflow = category.workflows.find((w) => w.key === wf);
   if (!workflow || workflow.soon || category.soon) notFound();
+
+  // Public Tools V1: Miniaturka, asked for by a visitor (or an admin's guest
+  // preview) — the same panel priced by the same code, nothing of an account.
+  // Every other workflow needs a session, as before.
+  const pub = publicToolForPath(`/k/${category.slug}/${workflow.key}`);
+  const audience = pub ? await publicToolAudience(pub.path) : null;
+  if (pub && audience?.kind === "guest") {
+    const reader = guestReadClient();
+    const state = reader ? await readThumbnailState(reader) : null;
+    const thumbnail: ThumbnailRuntimeData = {
+      ...(state ? thumbnailView(state, false) : {
+        ready: false, blockers: [], maxPhotos: 10, thumbnailCredits: null,
+        retouch: { available: false as const, unit: null, reason: "model_unavailable" as const }, target: 2560,
+      }),
+      openRunId: null,
+      initialItems: [],
+      initialCursor: null,
+    };
+    return (
+      <FeatureGate feature="ecommerce_thumbnail">
+        <ToolScope tool={pub} audience={audience}>
+          <div className="workspace workspace-page gen-shell">
+            <WorkflowRuntime catSlug={category.slug} initialWorkflow={workflow.key} models={[]} credits={0}
+              workspaceId="" engineAvailable={false} initialItems={[]} initialCursor={null} sessionPreviews={{}}
+              fashion={null} thumbnail={thumbnail} />
+          </div>
+        </ToolScope>
+      </FeatureGate>
+    );
+  }
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -110,14 +168,7 @@ export default async function WorkflowPage({ params }: {
       viewerIsAdmin(supabase),
     ]);
     thumbnail = {
-      ready: state.ready,
-      blockers: admin ? state.blockers : [],
-      maxPhotos: Math.min(state.config?.maxPhotos ?? 10, OPENAI_EDIT_MAX_IMAGES),
-      thumbnailCredits: state.thumbnailCredits,
-      retouch: state.retouch.available
-        ? { available: true, unit: state.retouch.unit }
-        : { available: false, unit: null, reason: state.retouch.reason },
-      target: state.config?.finish.target ?? 2560,
+      ...thumbnailView(state, admin),
       openRunId,
       initialItems: items.items,
       initialCursor: items.nextCursor,
@@ -153,5 +204,6 @@ export default async function WorkflowPage({ params }: {
   );
   // Miniaturka has its own switch (status, "Wkrótce", maintenance) inside the
   // category's: the category layout gates the route, this gates the tool.
-  return isThumbnail ? <FeatureGate feature="ecommerce_thumbnail">{screen}</FeatureGate> : screen;
+  const scoped = pub && audience ? <ToolScope tool={pub} audience={audience}>{screen}</ToolScope> : screen;
+  return isThumbnail ? <FeatureGate feature="ecommerce_thumbnail">{scoped}</FeatureGate> : scoped;
 }

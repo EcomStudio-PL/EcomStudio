@@ -225,8 +225,10 @@ check("…but it does offer a way back", /data-tool-back/.test(runtime));
 // The category lives as a section of /tools now; the link goes through the
 // category's own address, which forwards there (and decides when the hub is
 // switched off — this client screen cannot see the switchboard).
+// (Public Tools V1: a visitor goes straight to that section — the forward is
+// behind the login.)
 check("…which is a link to the category (forwarded to its section of /tools), not history.back()",
-  /href=\{categoryPath\(category\)\}/.test(runtime)
+  /href=\{guest \? categoryHref\(category\) : categoryPath\(category\)\}/.test(runtime)
   && categoryPath(CATEGORIES.find((c) => c.key === "moda")!) === "/k/moda"
   && categoryHref(CATEGORIES.find((c) => c.key === "moda")!) === "/tools?category=moda"
   && !/history\.back\(\)/.test(runtime));

@@ -6,9 +6,20 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
-import { toolCatalogue } from "@/lib/server/image-tools";
+import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
 import { parseEntry } from "@/lib/images/editor-state";
 import { ImageEditor } from "@/components/editor/image-editor";
+import { ToolScope } from "@/components/public-tools/tool-scope";
+import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
+import { publicToolMetadata } from "@/lib/server/public-tool-meta";
+import { publicToolByKey } from "@/lib/public-tools";
+
+const TOOL = publicToolByKey("editor")!;
+
+/** Title, description, canonical, robots — Public Tools V1. */
+export function generateMetadata() {
+  return publicToolMetadata(TOOL);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +45,26 @@ export default async function ImageEditorPage({ searchParams }: {
   const params = await searchParams;
   const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
 
-  const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
+
+  // Public Tools V1: a visitor (or an admin's guest preview) gets the same
+  // editor, the cutout priced by the same catalogue — and no library: no
+  // `?path=` is signed for someone without a workspace.
+  const audience = await publicToolAudience(TOOL.path);
+  if (audience.kind === "guest") {
+    const reader = guestReadClient();
+    const guestCatalogue = reader ? await toolCatalogue(reader) : [];
+    return (
+      <ToolScope tool={TOOL} audience={audience}>
+        <EditorScreen t={t} params={params} initialImage={null} balance={0}
+          editor={guestCatalogue.find((entry) => entry.slug === "editor")}
+          cutout={guestCatalogue.find((entry) => entry.slug === "remove_bg")} />
+      </ToolScope>
+    );
+  }
+
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
@@ -66,6 +94,23 @@ export default async function ImageEditorPage({ searchParams }: {
   }
 
   return (
+    <ToolScope tool={TOOL} audience={audience}>
+      <EditorScreen t={t} params={params} initialImage={initialImage} balance={wallet?.balance ?? 0}
+        editor={editor} cutout={cutout} />
+    </ToolScope>
+  );
+}
+
+/** The screen itself — one tree for a member and a visitor. */
+function EditorScreen({ t, params, initialImage, balance, editor, cutout }: {
+  t: (key: string) => string;
+  params: Record<string, string | string[] | undefined>;
+  initialImage: { url: string; name: string } | null;
+  balance: number;
+  editor: ToolAvailability | undefined;
+  cutout: ToolAvailability | undefined;
+}) {
+  return (
     // `gen-shell` binds the page to the viewport on desktop, so the canvas and
     // the settings column each scroll inside themselves and the page does not.
     <div className="workspace workspace-page gen-shell pt-1">
@@ -92,7 +137,7 @@ export default async function ImageEditorPage({ searchParams }: {
           credits: cutout?.credits ?? 0,
           reason: cutout?.reason ?? "no_provider",
         }}
-        balance={wallet?.balance ?? 0}
+        balance={balance}
       />
     </div>
   );

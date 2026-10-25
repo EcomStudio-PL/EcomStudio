@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
 import { cachedPass, rememberPass, sha256Hex, stepUpAppliesTo } from "@/lib/server/step-up-edge";
+import { GUEST_PREVIEW_COOKIE, GUEST_PREVIEW_ROUTE, PATH_HEADER, isPublicToolPath } from "@/lib/public-tools";
 
 // `/podglad` is the CMS draft preview: an unpublished page rendered as a
 // visitor would see it. It is not under /admin because it must carry NO admin
@@ -59,6 +60,29 @@ const AUTH_HOST = "/";
 const AUTH_PARAM = "auth";
 
 export async function updateSession(request: NextRequest) {
+  // The path being rendered, for layouts (Next does not tell a layout its
+  // pathname). Always OVERWRITTEN here, so a value a client sent never
+  // reaches the server. See lib/public-tools.ts PATH_HEADER.
+  request.headers.set(PATH_HEADER, request.nextUrl.pathname);
+
+  /*
+    "PODGLĄD JAKO GOŚĆ" SPENDS NOTHING. While an admin looks at the visitor's
+    interface, the panels never call a run endpoint (Generate opens the
+    sign-in dialog) — and this makes sure nothing else can either: no API
+    write and no server action outside the admin panel is accepted while the
+    cookie is set. The admin's real session is untouched; leaving the preview
+    (the one exempt route) restores everything. The cookie can only ever take
+    capability away, so it needs no signature.
+  */
+  if (request.cookies.get(GUEST_PREVIEW_COOKIE)?.value === "1"
+    && request.method !== "GET" && request.method !== "HEAD"
+    && (request.nextUrl.pathname.startsWith("/api/") || request.headers.has("next-action"))
+    && request.nextUrl.pathname !== GUEST_PREVIEW_ROUTE
+    && !request.nextUrl.pathname.startsWith("/api/admin/")
+    && !isUnder(request.nextUrl.pathname, "/admin")) {
+    return NextResponse.json({ ok: false, error: "guest_preview" }, { status: 403 });
+  }
+
   let response = NextResponse.next({ request });
   // Honor the login-time "remember me" choice on every token refresh: a
   // session login must keep producing session cookies here, or the first
@@ -102,7 +126,17 @@ export async function updateSession(request: NextRequest) {
   // OAuth callback both validate before honouring.
   const adminLogin = pathname === ADMIN_LOGIN_PATH;
 
-  if (!user && !adminLogin && isProtectedPath(pathname)) {
+  /*
+    PUBLIC TOOLS V1. A tool page (or the catalogue) asked for without a session
+    is not bounced HERE: the server decides — the `public_tools` switch, the
+    catalogue's own visibility — and with the switch off it sends the visitor
+    to exactly the same dialog, with the same returnTo, from the layout
+    (lib/server/public-tools.ts publicToolAudience). The edge cannot read the
+    switch without a query per request, and a cached copy would keep the
+    tools open for a minute after an admin closed them. Every other protected
+    path is refused here, as before.
+  */
+  if (!user && !adminLogin && isProtectedPath(pathname) && !isPublicToolPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = AUTH_HOST;
     url.search = "";

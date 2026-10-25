@@ -20,8 +20,11 @@ import { Input } from "./input";
  * key modal lived inside exactly such a card, which is why its input could not
  * be typed into or pasted into. Rendering at the body escapes every ancestor.
  */
-export function Modal({ open, onClose, title, children, wide, portal }: {
-  open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean; portal?: boolean;
+export function Modal({ open, onClose, title, children, wide, xl, portal }: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
+  /** Room for a row of three plan cards (the tool panels' "Wybierz plan"). */
+  xl?: boolean;
+  portal?: boolean;
 }) {
   const { t } = useI18n();
   useEffect(() => {
@@ -38,7 +41,7 @@ export function Modal({ open, onClose, title, children, wide, portal }: {
       <div className={cn(
         "overlay thin-scroll animate-sheet relative m-0 max-h-[calc(100dvh-env(safe-area-inset-top)-1rem)] w-full overflow-y-auto overscroll-contain",
         "rounded-t-2xl px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:m-4 sm:max-h-[88dvh] sm:rounded-2xl sm:p-6",
-        wide ? "sm:max-w-2xl" : "sm:max-w-md"
+        xl ? "sm:max-w-5xl" : wide ? "sm:max-w-2xl" : "sm:max-w-md"
       )}>
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 className="font-display text-base font-semibold">{title}</h2>

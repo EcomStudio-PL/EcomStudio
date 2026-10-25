@@ -18,6 +18,9 @@ import { THUMBNAIL_OPERATION, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/l
 import type { ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import type { ThumbnailRunView } from "@/lib/server/thumbnail/status";
+import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
+import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 
 const POLL_MS = 2500;
 const TERMINAL = new Set(["ok", "failed"]);
@@ -70,9 +73,26 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   const missing = Math.max(0, quote.total - balance);
   const active = run !== null && !TERMINAL.has(run.status);
 
+  /*
+    PUBLIC TOOLS V1. A visitor's photos (their order included) stay in the
+    browser — no Storage, no run — and Generate opens the sign-in dialog. Back
+    signed in, the same files go through `upload` in the same order.
+  */
+  const viewer = useToolViewer();
+  const session = useToolSession({
+    settings: { retouch },
+    sources: photos.map(refSource),
+    apply: (saved: { retouch?: boolean }, files: File[]) => {
+      if (typeof saved.retouch === "boolean") setRetouch(saved.retouch);
+      if (files.length > 0) void uploadRef.current(files);
+    },
+  });
+  // `upload` is declared below and depends on the session; the restore calls
+  // whichever version is current.
+  const uploadRef = useRef<(files: File[]) => Promise<void>>(async () => undefined);
+
   // ── A · upload: one file after another, so the order is the order chosen ──
   const upload = useCallback(async (files: File[]) => {
-    const supabase = createClient();
     const room = Math.max(0, data.maxPhotos - photos.length - reserved.current);
     if (files.length > room) toast.error(t("genv3.capReached", { max: data.maxPhotos }));
     if (room === 0) return;
@@ -84,6 +104,14 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       for (const file of batch) {
         if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) { toast.error(t("products.invalidType")); continue; }
         if (file.size > THUMBNAIL_UPLOAD_MAX_BYTES) { toast.error(t("products.tooLarge")); continue; }
+        if (session.guest) {
+          // A visitor's photo is a local stand-in: no request of any kind.
+          const ref = session.localRef(file);
+          setPhotos((prev) => prev.length >= data.maxPhotos ? prev : [...prev, ref]);
+          session.added(1);
+          continue;
+        }
+        const supabase = createClient();
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${workspaceId}/${folder.current}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from("product-images").upload(path, file);
@@ -95,7 +123,8 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       inFlight.current -= 1;
       if (inFlight.current === 0) setUploading(false);
     }
-  }, [data.maxPhotos, photos.length, t, workspaceId]);
+  }, [data.maxPhotos, photos.length, t, workspaceId, session]);
+  uploadRef.current = upload;
 
   // The photo handed over from /home ("Miniaturka" is its default tool).
   useHomeHandoff((file) => { void upload([file]); });
@@ -210,6 +239,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
     const paths = source ? source.photos : photos.map((p) => p.path);
     const withRetouch = source ? source.retouch : retouchOn;
     if (paths.length === 0) return;
+    session.ran();
     const reused = source && source.retouch ? source.retouchedCount : 0;
     const total = quoteTotal({
       photos: paths.length, retouch: withRetouch, retouchUnit: data.retouch.unit,
@@ -238,7 +268,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       toast.error(t("common.error"));
       setBusy(false);
     }
-  }, [busy, photos, retouchOn, data.retouch.unit, data.thumbnailCredits, drive, errText, router, t]);
+  }, [busy, photos, retouchOn, data.retouch.unit, data.thumbnailCredits, drive, errText, router, t, session]);
 
   async function cancel() {
     if (!run) return;
@@ -263,7 +293,8 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
     folder.current = `thumbnail-${Math.random().toString(36).slice(2, 10)}`;
   }
 
-  const canRun = data.ready && !busy && !active && !uploading && photos.length > 0 && missing === 0
+  // A visitor's Generate is the sign-in dialog: their (absent) balance never greys it out.
+  const canRun = data.ready && !busy && !active && !uploading && photos.length > 0 && (session.guest || missing === 0)
     && (!retouch || data.retouch.available);
   const reusedCredits = run && run.status === "failed" && run.error !== "cancelled"
     ? quoteTotal({
@@ -282,6 +313,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       {/* ── LEFT: photos, Retusz, the price, the button ─────────────────── */}
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           {/* A */}
           <PhotoUploader
             preview
@@ -352,7 +384,15 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
 
         {/* D — the footer: price, balance, the one button */}
         <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
-          {missing > 0 ? (
+          {viewer ? (
+            // The status card below the button says what is missing and what
+            // to do (Public Tools V1); here only the empty state and the balance.
+            photos.length === 0 && !active ? (
+              <p className="text-center text-[11px] text-muted">{t("thumb.needPhotos")}</p>
+            ) : (
+              <p className="text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
+            )
+          ) : missing > 0 ? (
             <p className="text-center text-[11px] font-medium text-danger">
               {t("studio.missing", { n: missing })}{" · "}
               <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
@@ -362,7 +402,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
           ) : (
             <p className="text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
           )}
-          <button type="button" disabled={!canRun} onClick={() => void start()} data-thumbnail-cta
+          <button type="button" disabled={!canRun} onClick={() => void session.gate(() => start())} data-thumbnail-cta
             aria-label={`${t("thumb.cta")} · ${n(quote.total)} ${t("genv3.credits")}`}
             className={cn(
               "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
@@ -372,6 +412,9 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
             <span>{t("thumb.cta")}</span>
             {quote.total > 0 && photos.length > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(quote.total)}</span></>}
           </button>
+          {viewer && photos.length > 0 && !active && (
+            <ToolNotice cost={quote.total} balance={balance} session={session} className="mt-2.5" />
+          )}
         </div>
       </div>
 

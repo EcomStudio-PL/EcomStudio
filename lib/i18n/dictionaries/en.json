@@ -134,6 +134,12 @@
     "openApp": "Open app"
   },
   "auth": {
+    "signUpFree": "Create account – free credits to start",
+    "toolRegisterTitle": "Create an account to generate this image",
+    "toolRegisterSub": "You get free credits to start",
+    "toolTabs": "Sign up or log in",
+    "toolTabRegister": "Sign up",
+    "toolTabLogin": "Log in",
     "loginTitle": "Sign in to GrovBase",
     "registerTitle": "Create your account",
     "registerSub": "Create an account and get {n} credits to start.",
@@ -10765,6 +10771,8 @@
     "faq.slug": "Address (slug)",
     "faq.slugWarn": "Changing the address breaks existing /faq#… links",
     "faq.pages": "Show on the pages",
+    "faq.tools": "Show on tool pages",
+    "faq.toolsHint": "A tool page shows visitors up to 3 assigned questions (Public tools).",
     "faq.visible": "Visible (published)",
     "faq.needsReview": "Needs review",
     "faq.onlyPremiere": "Only during the launch offer",
@@ -10812,6 +10820,7 @@
     "faq.err.field.slug": "Address: lower-case letters, digits and hyphens (max. 80).",
     "faq.err.field.category": "Choose a category.",
     "faq.err.field.pages": "Unknown page.",
+    "faq.err.field.tools": "Unknown tool.",
     "faq.err.field.note": "The note is too long or has characters that are not allowed.",
     "faq.err.field.name": "The Polish name is required (no [brackets] or < >).",
     "faq.err.field.topic": "Choose a form topic.",
@@ -11621,5 +11630,150 @@
     "share": "Share…",
     "shareOn": "Share via {network}",
     "shareText": "Join the GrovBase launch list — AI photos for sellers:"
+  },
+  "publicTools": {
+    "balance": "You have {n} credits",
+    "notice": {
+      "guest": "Prepare the tool without an account — your photos stay in your browser. You create an account when you click Generate.",
+      "watermark": "Images made with free credits carry a watermark",
+      "claimed": "You have {n} free credits – click Generate",
+      "missing": "You are {n} credits short",
+      "missingOne": "You are 1 credit short",
+      "missingImage": "You are {n} credits short of generating this image",
+      "missingImageOne": "You are 1 credit short of generating this image",
+      "verify": "Confirm your email address to claim your free credits",
+      "resend": "Send the link again",
+      "survey": "Fill in a short survey and claim {n} free credits",
+      "surveyCta": "Fill in the survey",
+      "choosePlanBody": "Choose a plan to keep using the tools",
+      "choosePlan": "Choose a plan",
+      "topup": "Top up credits"
+    },
+    "modal": {
+      "planTitle": "Choose a plan",
+      "topupTitle": "Top up credits",
+      "error": "We could not load the offer. Refresh the page and try again.",
+      "recommended": "We recommend the {n}-credit pack — it covers the {missing} you are missing."
+    },
+    "draft": {
+      "label": "Prepared tool",
+      "offer": "A prepared tool is waiting in this browser (photos: {n}, saved {when}). Restore it?",
+      "restore": "Restore",
+      "discard": "Discard",
+      "partial": "Your settings are back, but the browser did not keep some of the photos. Please add them again.",
+      "unavailable": "This browser does not allow saving photos (e.g. in private mode). Add them again after you sign in.",
+      "full": "The browser ran out of space, so the photos were not saved. Add them again after you sign in."
+    },
+    "resume": {
+      "title": "A prepared tool is waiting for you: {tool} (photos: {n}).",
+      "cta": "Back to the tool"
+    },
+    "preview": {
+      "label": "Guest preview",
+      "exit": "Exit preview",
+      "start": "Preview as guest"
+    },
+    "seo": {
+      "slider": "Before and after comparison: {name}"
+    },
+    "footer": {
+      "faq": "FAQ"
+    },
+    "admin": {
+      "title": "Public tools (publicTools)",
+      "body": "When on, signed-out visitors can browse the tool catalogue and panels, add photos (kept in their browser) and see prices. Generating always requires an account.",
+      "on": "On",
+      "off": "Off",
+      "changed": "Last changed: {when}",
+      "beforeLaunch": "Before turning it on, check:",
+      "checkSignup": "Sign-up open",
+      "checkLogin": "Login enabled",
+      "yes": "yes",
+      "no": "no",
+      "waitlistOn": "The waiting list is on — while sign-up is closed, visitors are offered the waiting list.",
+      "waitlistOff": "The waiting list is off.",
+      "signupIndependent": "Turning public tools on does not change sign-up settings or account protections.",
+      "turnOn": "Turn public tools on",
+      "turnOff": "Turn public tools off",
+      "preview": "Preview as guest",
+      "previewError": "Could not start the preview.",
+      "saveError": "Could not save the setting.",
+      "savedOn": "Public tools are on.",
+      "savedOff": "Public tools are off.",
+      "confirmOnTitle": "Turn public tools on?",
+      "confirmOnBody": "The tool catalogue and panels become visible without signing in and are added to the sitemap. Generating still requires an account.",
+      "confirmOffTitle": "Turn public tools off?",
+      "confirmOffBody": "Visitors see the sign-in dialog again and the tool pages leave the sitemap."
+    }
+  },
+  "toolPage": {
+    "examples": "Examples",
+    "before": "Before",
+    "after": "After",
+    "faq": "Frequently asked questions",
+    "cta": "Try it for free",
+    "ctaSub": "Prepare your photos without an account — you sign up only when you generate.",
+    "catalogue": {
+      "title": "AI tools for product photos",
+      "description": "Retouching, background removal, an image generator, resizing, compression and more GrovBase tools for sellers — try them without an account."
+    },
+    "generator": {
+      "headline": "AI product photo generator",
+      "lead": "Add photos of your product, choose a session type, format and quality — GrovBase prepares sales photos that keep your product's shape, colours and details."
+    },
+    "custom": {
+      "headline": "AI image generator with your own prompt",
+      "lead": "Describe the scene in your own words and add product photos as a reference. You choose the model, format, resolution and number of images, and see the price before generating."
+    },
+    "retouch": {
+      "headline": "AI product photo retouching",
+      "lead": "Turn an ordinary product photo into a clean packshot on a white background. Choose 2K or 4K quality and the file format — no manual editing."
+    },
+    "remove_bg": {
+      "headline": "Remove the background from product photos",
+      "lead": "Cut your product out of the background and download a transparent PNG — ready for your shop, a marketplace or further editing."
+    },
+    "background": {
+      "headline": "White background for product photos",
+      "lead": "Place your product on the clean white background marketplaces require — for one photo or a whole series."
+    },
+    "ai_background": {
+      "headline": "AI background for product photos",
+      "lead": "Describe a scene or pick a colour and the model draws a background for your product. The product itself stays as it is in the photo."
+    },
+    "shadow": {
+      "headline": "AI shadow under your product",
+      "lead": "Add a realistic shadow cast by your product so a packshot on a plain background looks natural."
+    },
+    "ecommerce": {
+      "thumbnail": {
+        "headline": "Product thumbnail for your listing's main image",
+        "lead": "Prepare the main image of your listing: the product clearly centred, on a clean background, in the format your shop requires."
+      }
+    },
+    "resize": {
+      "headline": "Resize images online",
+      "lead": "Resize many photos at once to the dimensions your shop or marketplace requires."
+    },
+    "compress": {
+      "headline": "Product photo compression",
+      "lead": "Make your photos lighter so your shop loads faster. See the size before and after, and how much the whole batch saved."
+    },
+    "upscale": {
+      "headline": "AI image upscaling",
+      "lead": "Enlarge a product photo 2× or 4× without losing sharpness — small supplier photos included."
+    },
+    "expand": {
+      "headline": "AI image expansion",
+      "lead": "Extend the frame to 1:1, 4:5, 9:16 or 16:9 without cropping the product."
+    },
+    "watermark": {
+      "headline": "Watermark your product photos",
+      "lead": "Put your logo on a whole series of photos — in one of nine positions or as a repeating pattern."
+    },
+    "editor": {
+      "headline": "Online product photo editor",
+      "lead": "Change the background, add a shadow, set the format, brightness and framing in one place, then download the finished file."
+    }
   }
 }

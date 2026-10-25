@@ -16,11 +16,16 @@ import type { FaqRich } from "@/lib/faq";
  * instant change. Only the questions the server decided to show arrive here:
  * the FAQ base's, marked for O nas (FAQ V1).
  */
-export function AboutFaq({ items }: { items: { slug: string; q: string; a: FaqRich }[] }) {
+export function AboutFaq({ items, shared = "o-nas" }: {
+  items: { slug: string; q: string; a: FaqRich }[];
+  /** Which surface of the FAQ base this is — "Edytuj stronę" opens the base's
+   *  editor when it finds one. A tool page passes "tool" (Public Tools V1). */
+  shared?: string;
+}) {
   const [open, setOpen] = useState<number | null>(null);
   const base = useId();
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-3xl border border-line bg-surface" data-about-faq data-faq-shared="o-nas">
+    <ul className="divide-y divide-line overflow-hidden rounded-3xl border border-line bg-surface" data-about-faq data-faq-shared={shared}>
       {items.map((it, i) => {
         const expanded = open === i;
         const btn = `${base}-q${i}`;

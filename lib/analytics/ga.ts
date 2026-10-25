@@ -27,6 +27,8 @@
  * centralised because an ID copied into three files is an ID that will be
  * changed in two.
  */
+import { TOOL_EVENTS, type ToolEvent } from "@/lib/public-tools";
+
 export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID ?? "";
 
 /** A real GA4 measurement ID, not an empty string and not a UA-xxx property. */
@@ -108,9 +110,10 @@ export type Tracker = {
   init: () => void;
   /** One page_view for the address the router SETTLES on. */
   pageView: (href: string, title?: string) => void;
-  /** One named funnel event (see PRELAUNCH_EVENTS). Initialises first, so an
-   *  event can never reach the queue ahead of the `config` it belongs to. */
-  event: (name: PrelaunchEvent, params?: EventParams) => void;
+  /** One named funnel event (see PRELAUNCH_EVENTS / TOOL_EVENTS). Initialises
+   *  first, so an event can never reach the queue ahead of the `config` it
+   *  belongs to. */
+  event: (name: AnalyticsEvent, params?: EventParams) => void;
 };
 
 /* ── FUNNEL EVENTS ─────────────────────────────────────────────────────── */
@@ -137,6 +140,13 @@ export const PRELAUNCH_EVENTS = [
 export type PrelaunchEvent = (typeof PRELAUNCH_EVENTS)[number];
 
 /**
+ * THE TOOL FUNNEL (Public Tools V1) — a second closed list, kept where the
+ * public-tools rules live (lib/public-tools.ts TOOL_EVENTS) and accepted here
+ * on the same terms: a name not on either list is never sent.
+ */
+export type AnalyticsEvent = PrelaunchEvent | ToolEvent;
+
+/**
  * WHAT AN EVENT MAY CARRY — names, not people. An allowlist of parameter keys
  * with short scalar values: which section, which form, which pair, which share
  * button, which traffic source. Never an e-mail, a token, a referral code or a
@@ -145,6 +155,9 @@ export type PrelaunchEvent = (typeof PRELAUNCH_EVENTS)[number];
  */
 export const EVENT_PARAM_KEYS = [
   "section", "form_variant", "pair_index", "channel", "method", "cta_id", "traffic_source",
+  // The tool funnel: which tool (its catalogue key), where it happened and in
+  // which panel state — never a photo, a prompt or a person.
+  "tool_id", "source", "state",
 ] as const;
 export type EventParams = Partial<Record<(typeof EVENT_PARAM_KEYS)[number], string | number>>;
 
@@ -165,6 +178,9 @@ export function eventParams(params: EventParams | undefined): Record<string, str
 
 export const isPrelaunchEvent = (name: unknown): name is PrelaunchEvent =>
   typeof name === "string" && (PRELAUNCH_EVENTS as readonly string[]).includes(name);
+
+export const isAnalyticsEvent = (name: unknown): name is AnalyticsEvent =>
+  isPrelaunchEvent(name) || (typeof name === "string" && (TOOL_EVENTS as readonly string[]).includes(name));
 
 /**
  * A ROUTE THAT REDIRECTS IS STILL ONE VISIT.
@@ -240,7 +256,7 @@ export function createTracker(
   return {
     init,
     event(name, params) {
-      if (!gaEnabled(id) || !isPrelaunchEvent(name)) return;
+      if (!gaEnabled(id) || !isAnalyticsEvent(name)) return;
       init();
       // THE ADDRESS, SANITISED, ON EVERY EVENT (review S9). An event without a
       // page_location is not an event without an address: gtag.js fills it in

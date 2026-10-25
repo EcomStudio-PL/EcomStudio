@@ -85,10 +85,14 @@ check("SET2c …and is not a second screen (no data, no markup)",
   !/createClient|<[A-Za-z]/.test(profile));
 check("SET2d the middleware refuses it to a visitor", isProtectedPath("/profile") && isProtectedPath("/settings"));
 check("SET2e …segment-wise: a public slug that merely starts with it is not swallowed", !isProtectedPath("/profile-firmy"));
-const disallow = robots().rules;
-const disallowed = (Array.isArray(disallow) ? disallow : [disallow]).flatMap((r) => [r.disallow ?? []].flat());
-check("SET2f robots keeps crawlers out of /profile", disallowed.includes("/profile$") && disallowed.includes("/profile/"),
-  disallowed.join(" "));
+// robots() reads the Public Tools switch (V1), so it is async now; with no
+// request scope here the switch reads as off — the list every visitor gets.
+const robotsChecked = robots().then((file) => {
+  const disallow = file.rules;
+  const disallowed = (Array.isArray(disallow) ? disallow : [disallow]).flatMap((r) => [r.disallow ?? []].flat());
+  check("SET2f robots keeps crawlers out of /profile", disallowed.includes("/profile$") && disallowed.includes("/profile/"),
+    disallowed.join(" "));
+});
 check("SET2g an admin redirect cannot claim /profile", sourceIsProtected("/profile"));
 check("SET2h a CMS page cannot claim the slug (app list, route list)",
   slugProblem("profile") === "reserved" && RESERVED.includes("profile") && RESERVED_SLUGS.has("profile"));
@@ -269,5 +273,7 @@ check("pl: the placeholders survive translation", tPl("settings.plan.renews", { 
 const literal = NEW_UI.filter((f) => /[^=]>\s*[A-Za-zÀ-ž]{3,}[^<{}]*<\//.test(code(read(f)).replace(/<option[^>]*>\{[^}]*\}<\/option>/g, "")));
 check("no hardcoded user-facing text in the new settings UI", literal.length === 0, literal.join(", "));
 
-console.log(failed ? `\n${failed} settings test(s) failed.` : "\nAll settings tests passed.");
-process.exit(failed ? 1 : 0);
+void robotsChecked.then(() => {
+  console.log(failed ? `\n${failed} settings test(s) failed.` : "\nAll settings tests passed.");
+  process.exit(failed ? 1 : 0);
+});
