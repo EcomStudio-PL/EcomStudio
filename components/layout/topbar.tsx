@@ -9,7 +9,8 @@ import { LocaleSwitcher } from "./locale-switcher";
 import { Brand } from "./brand";
 import { CommandPalette } from "./command-palette";
 import { useDrawer } from "./shell-context";
-import { NotificationsBell, type NotificationItem } from "./notifications-bell";
+import { NotificationsBell } from "./notifications-bell";
+import type { BellPayload } from "@/lib/notifications/catalog";
 
 /** Customer toolbar: [hamburger][logo] [search ⌘K] … [credits][bell][flag][theme][avatar].
  *  Search sits on the LEFT like a proper workbench top bar; the credit pill
@@ -17,9 +18,9 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
  *  and a "buy credits" CTA at zero) so the wallet warns before it blocks.
  *  The avatar opens the unified drawer on mobile and links to settings on
  *  desktop — there is deliberately NO second dropdown menu. */
-export function Topbar({ name, credits, workspace, isAdmin = false, notifications = [], unread = 0 }: {
+export function Topbar({ name, credits, workspace, isAdmin = false, bell }: {
   name: string; credits: number; workspace?: string; isAdmin?: boolean;
-  notifications?: NotificationItem[]; unread?: number;
+  bell?: BellPayload;
 }) {
   const { t, locale } = useI18n();
   const { setOpen } = useDrawer();
@@ -92,7 +93,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
               <Plus size={14} aria-hidden strokeWidth={2.6} />
             </Link>
           </div>
-          <NotificationsBell items={notifications} unread={unread} />
+          <NotificationsBell initial={bell} />
           <LocaleSwitcher />
           <ThemeToggle />
           {isAdmin && (

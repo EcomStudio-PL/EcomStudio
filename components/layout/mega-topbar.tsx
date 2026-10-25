@@ -20,7 +20,8 @@ import { CreditsControl } from "./credits-control";
 import { AccountMenu } from "./account-menu";
 import { MenuVeil } from "./menu-veil";
 import { useDrawer } from "./shell-context";
-import { NotificationsBell, type NotificationItem } from "./notifications-bell";
+import { NotificationsBell } from "./notifications-bell";
+import type { BellPayload } from "@/lib/notifications/catalog";
 import { AuthLink } from "@/components/auth/auth-link";
 import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
 
@@ -39,7 +40,7 @@ import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, menuItems, popularTools, searchTags, guest = false, signupOpen = true, menu: hasMenu = true, brandHref = "/home" }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, bell, availability, menuItems, popularTools, searchTags, guest = false, signupOpen = true, menu: hasMenu = true, brandHref = "/home" }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
   /**
    * NOBODY IS SIGNED IN.
@@ -71,7 +72,8 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
    *  admin previewing the app as a customer gets `false` here while keeping
    *  the admin affordances (the admin link, the wide palette) intact. */
   navAdmin?: boolean;
-  notifications?: NotificationItem[]; unread?: number;
+  /** The bell's server copy (app layout). Absent → the bell asks once. */
+  bell?: BellPayload;
   /** Feature availability from the server layout — filters and badges the
    *  menus. Absent (other shells) means everything active. */
   availability?: AvailabilityMap;
@@ -277,7 +279,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           </>
         ) : (
           <>
-            <NotificationsBell items={notifications} unread={unread} />
+            <NotificationsBell initial={bell} />
             {/* ONE avatar treatment at every width: the picture and a caret.
                 The name was on the bar only past 2xl, so the trigger changed
                 shape between laptop and monitor — and the name is the first

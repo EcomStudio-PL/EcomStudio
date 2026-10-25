@@ -138,7 +138,10 @@ const FROZEN: readonly [string, string][] = [
   // local-draft resume banner above the page. Every other path as before.
   // Then: the resume banner also names a category's workflows (Moda, the
   // thumbnail), which a visitor can now prepare too — labels only.
-  ["app/(app)/layout.tsx", "880f786814f0a5f86564dc1de047012ebb54f412cff771126fba05fa39dd071f"],
+  // Powiadomienia V2: the bell's state comes from one RPC (readBell — both
+  // tabs, the important-only badge, the bar), and the „Ważny” bar plus the
+  // off-panel "ready" toast are mounted under the header. Nothing else moved.
+  ["app/(app)/layout.tsx", "fecb3fffd9abcc692c7b1691dfa37e867461a16da7bd904de26d642ad70c475e"],
   // Public Tools V1 (activation): a visitor's pages wear the same dock; with
   // `guest`, the account slots open the sign-in dialog in place. A member's
   // dock (no `guest`) renders and behaves exactly as before.
@@ -170,7 +173,15 @@ for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync
   const PT_SIGNUP_PROP = "  /** A visitor's primary door promises free credits only while signup is\n"
     + "   *  open; shut, it is the plain \"Załóż konto\" and the dialog explains. */\n"
     + "  signupOpen?: boolean;\n";
+  // Powiadomienia V2: the bell takes the server's payload (`bell`) instead of
+  // a list and a count. Undone here as well.
   const restored = bar
+    .replace('import { NotificationsBell } from "./notifications-bell";\nimport type { BellPayload } from "@/lib/notifications/catalog";',
+      'import { NotificationsBell, type NotificationItem } from "./notifications-bell";')
+    .replace("navAdmin, bell, availability,", "navAdmin, notifications = [], unread = 0, availability,")
+    .replace("  /** The bell's server copy (app layout). Absent → the bell asks once. */\n  bell?: BellPayload;",
+      "  notifications?: NotificationItem[]; unread?: number;")
+    .replace("<NotificationsBell initial={bell} />", "<NotificationsBell items={notifications} unread={unread} />")
     .replace(PT_SIGNUP_PROP, "")
     .replace("guest = false, signupOpen = true, menu:", "guest = false, menu:")
     .replace('{t(signupOpen ? "auth.signUpFree" : "auth.signUp")}', '{t("auth.signUpFree")}')

@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Inbox, Bell, FileText, Plug2, type LucideIcon } from "lucide-react";
+import { Inbox, Bell, Megaphone, FileText, Plug2, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 /**
- * KOMUNIKACJA — one module, four tabs.
+ * KOMUNIKACJA — one module, five tabs.
  *
  * Everything GrovBase says to somebody used to be four separate menu entries
  * sitting in two different groups: Poczta, Powiadomienia, Szablony wiadomości
@@ -26,6 +26,7 @@ type Tab = { href: string; key: string; icon: LucideIcon };
 export const COMM_TABS: readonly Tab[] = [
   { href: "/admin/communication", key: "inbox", icon: Inbox },
   { href: "/admin/communication/powiadomienia", key: "notifications", icon: Bell },
+  { href: "/admin/communication/komunikaty", key: "announcements", icon: Megaphone },
   { href: "/admin/communication/szablony", key: "templates", icon: FileText },
   { href: "/admin/communication/kanaly", key: "channels", icon: Plug2 },
 ] as const;

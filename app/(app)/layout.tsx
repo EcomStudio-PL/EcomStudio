@@ -33,6 +33,9 @@ import { guestPreviewActive, publicToolAudience, requestPath } from "@/lib/serve
 import { PUBLIC_TOOLS, isPublicToolPath } from "@/lib/public-tools";
 import { CATALOG_ITEMS, catalogItem } from "@/lib/tool-cards";
 import { itemLabelKey } from "@/lib/tool-layout";
+import { readBell } from "@/lib/server/user-notifications";
+import { ImportantBanner } from "@/components/layout/important-banner";
+import { GenerationToast } from "@/components/layout/generation-toast";
 
 export default async function AppLayout({ children, searchParams }: {
   children: React.ReactNode;
@@ -150,7 +153,7 @@ export default async function AppLayout({ children, searchParams }: {
   // slowest member anyway — measurably free, and it keeps the bonus branch
   // below from re-introducing a serial await.
   const [
-    { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, { data: notifs },
+    { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, bell,
     availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout, searchTags,
   ] = await Promise.all([
     getDictionary(),
@@ -169,8 +172,9 @@ export default async function AppLayout({ children, searchParams }: {
     // branch, so it costs nothing: this Promise.all was already waiting for its
     // slowest member.
     supabase.from("subscription_plans").select("monthly_credits").eq("slug", "free").maybeSingle(),
-    supabase.from("notifications").select("id, type, title, body, href, read_at, created_at")
-      .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10),
+    // The bell's whole state (both tabs, the important-only badge, the bar)
+    // in one RPC — Powiadomienia V2, 0160.
+    readBell(supabase),
     getAvailabilityMap(supabase),
     // What the NAV should treat as admin: the real role unless this admin
     // asked to look at the app as a customer.
@@ -190,7 +194,6 @@ export default async function AppLayout({ children, searchParams }: {
   ]);
   const menuItems = menuItemKeys(toolsLayout);
   const t0 = makeT(appDict);
-  const unread = (notifs ?? []).filter((n) => !n.read_at).length;
 
   /**
    * WELCOME BONUS. A verified account created after the campaign started gets
@@ -256,7 +259,11 @@ export default async function AppLayout({ children, searchParams }: {
         {/* The admin is previewing as a visitor but opened a page a visitor
             cannot see: their own app, with the way out of the preview. */}
         {preview && <GuestPreviewBar />}
-        <MegaTopbar name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
+        <MegaTopbar name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} bell={bell} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
+        {/* An admin message marked „Ważny”: one thin row in the flow, under
+            the header — never over it, the dock or a tool's panel. */}
+        <ImportantBanner initial={bell} />
+        <GenerationToast />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone

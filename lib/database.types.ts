@@ -14,6 +14,120 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_announcement_recipients: {
+        Row: {
+          announcement_id: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_announcement_recipients_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "admin_announcements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_announcement_recipients_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_announcements: {
+        Row: {
+          audience: Json
+          audience_label: string | null
+          body: string
+          created_at: string
+          created_by: string | null
+          cta_href: string | null
+          cta_label: string | null
+          expires_at: string | null
+          fanout_done: boolean
+          id: string
+          priority: string
+          publish_at: string | null
+          published_at: string | null
+          read_count_final: number | null
+          recipient_count: number
+          status: string
+          title: string
+          updated_at: string
+          withdrawn_at: string | null
+          withdrawn_by: string | null
+        }
+        Insert: {
+          audience: Json
+          audience_label?: string | null
+          body: string
+          created_at?: string
+          created_by?: string | null
+          cta_href?: string | null
+          cta_label?: string | null
+          expires_at?: string | null
+          fanout_done?: boolean
+          id?: string
+          priority?: string
+          publish_at?: string | null
+          published_at?: string | null
+          read_count_final?: number | null
+          recipient_count?: number
+          status?: string
+          title: string
+          updated_at?: string
+          withdrawn_at?: string | null
+          withdrawn_by?: string | null
+        }
+        Update: {
+          audience?: Json
+          audience_label?: string | null
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          cta_href?: string | null
+          cta_label?: string | null
+          expires_at?: string | null
+          fanout_done?: boolean
+          id?: string
+          priority?: string
+          publish_at?: string | null
+          published_at?: string | null
+          read_count_final?: number | null
+          recipient_count?: number
+          status?: string
+          title?: string
+          updated_at?: string
+          withdrawn_at?: string | null
+          withdrawn_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_announcements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_announcements_withdrawn_by_fkey"
+            columns: ["withdrawn_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       auth_email_log: {
         Row: {
           action: string
@@ -5105,36 +5219,64 @@ export type Database = {
       }
       notifications: {
         Row: {
+          announcement_id: string | null
+          banner_dismissed_at: string | null
           body: string | null
+          category: string
           created_at: string
+          dedupe_key: string | null
+          expires_at: string | null
           href: string | null
           id: string
+          meta: Json
+          pinned: boolean
           read_at: string | null
           title: string
           type: string
           user_id: string
         }
         Insert: {
+          announcement_id?: string | null
+          banner_dismissed_at?: string | null
           body?: string | null
+          category?: string
           created_at?: string
+          dedupe_key?: string | null
+          expires_at?: string | null
           href?: string | null
           id?: string
+          meta?: Json
+          pinned?: boolean
           read_at?: string | null
           title: string
           type?: string
           user_id: string
         }
         Update: {
+          announcement_id?: string | null
+          banner_dismissed_at?: string | null
           body?: string | null
+          category?: string
           created_at?: string
+          dedupe_key?: string | null
+          expires_at?: string | null
           href?: string | null
           id?: string
+          meta?: Json
+          pinned?: boolean
           read_at?: string | null
           title?: string
           type?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "notifications_announcement_fk"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "admin_announcements"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "notifications_user_id_fkey"
             columns: ["user_id"]
@@ -7172,6 +7314,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      announcement_audience_count: {
+        Args: { p_audience: Json }
+        Returns: number
+      }
+      announcement_process: { Args: { p_id: string }; Returns: Json }
+      announcement_stats: {
+        Args: never
+        Returns: {
+          announcement_id: string
+          delivered: number
+          reads: number
+        }[]
+      }
+      announcement_withdraw: { Args: { p_id: string }; Returns: Json }
+      notification_bell: { Args: { p_limit?: number }; Returns: Json }
       feature_interest_counts: {
         Args: never
         Returns: { feature_key: string; interested: number }[]

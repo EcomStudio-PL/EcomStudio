@@ -2951,7 +2951,70 @@
     "credits_granted": "Otrzymałeś kredyty",
     "credits_removed": "Korekta kredytów",
     "support_reply": "Odpowiedź od zespołu wsparcia",
-    "bonus": "Bonus powitalny"
+    "bonus": "Bonus powitalny",
+    "v2": {
+      "tabImportant": "Ważne",
+      "tabActivity": "Aktywność",
+      "markAll": "Oznacz wszystkie jako przeczytane",
+      "emptyImportant": "Nie masz ważnych powiadomień",
+      "emptyActivity": "Brak aktywności",
+      "unreadDot": "Nieprzeczytane",
+      "pinned": "Przypięte",
+      "see": "Zobacz",
+      "closeBar": "Zamknij komunikat",
+      "markFailed": "Nie udało się zapisać — spróbuj ponownie.",
+      "openLibrary": "otwórz w Bibliotece",
+      "images": {
+        "one": "{n} grafika",
+        "few": "{n} grafiki",
+        "many": "{n} grafik",
+        "other": "{n} grafiki"
+      },
+      "done": {
+        "ecommerce_thumbnail": "Miniaturka gotowa",
+        "retouch": "Retusz gotowy",
+        "prompts": "Grafika gotowa",
+        "generator": "Grafika gotowa",
+        "named": "{tool} — wynik gotowy",
+        "any": "Grafika gotowa"
+      },
+      "failed": {
+        "ecommerce_thumbnail": "Nie udało się wygenerować miniaturki",
+        "retouch": "Nie udało się wykonać retuszu",
+        "prompts": "Nie udało się wygenerować grafiki",
+        "generator": "Nie udało się wygenerować grafiki",
+        "named": "{tool} — nie udało się",
+        "any": "Nie udało się wygenerować grafiki"
+      },
+      "failedRefunded": "Kredyty ({n} kr.) wróciły na Twoje konto. Spróbuj ponownie lub użyj innego zdjęcia.",
+      "failedNotCharged": "Nie pobraliśmy kredytów. Spróbuj ponownie lub użyj innego zdjęcia.",
+      "failedRetry": "Spróbuj ponownie lub użyj innego zdjęcia.",
+      "credits": {
+        "refund": "Zwrot kredytów: {n} kr.",
+        "bonus": "Bonus: {n} kr.",
+        "topup": "Doładowanie: {n} kr.",
+        "admin_adjustment": "Korekta salda: {n} kr.",
+        "changed": "Zmiana salda kredytów",
+        "reason": "Powód: {reason}"
+      },
+      "supportReply": "Masz odpowiedź na zgłoszenie",
+      "paymentFailed": {
+        "title": "Płatność za plan {plan} nie powiodła się",
+        "titleNoPlan": "Płatność za plan nie powiodła się"
+      },
+      "renewalFailed": {
+        "title": "Nie udało się odnowić planu {plan}",
+        "titleNoPlan": "Nie udało się odnowić planu"
+      },
+      "updatePaymentBody": "Zaktualizuj metodę płatności, żeby nie stracić dostępu.",
+      "updatePaymentCta": "Zaktualizuj płatność",
+      "planExpiring": {
+        "title": "Plan {plan} wygaśnie {date}",
+        "body": "Odnowienie zostało anulowane. Wznów plan, jeśli chcesz zachować dostęp.",
+        "cta": "Zarządzaj planem"
+      },
+      "generic": "Powiadomienie"
+    }
   },
   "chat": {
     "tickets.title": "Zgłoszenia z formularza",
@@ -5247,6 +5310,85 @@
     "tab.notifications": "Powiadomienia",
     "tab.templates": "Szablony",
     "tab.channels": "Kanały",
+    "tab.announcements": "Komunikaty",
+    "ann": {
+      "title": "Komunikaty",
+      "sub": "Wiadomości od zespołu do klientów. Trafiają do zakładki „Ważne” w dzwonku i zapalają licznik; „Ważny” jest dodatkowo przypięty i pokazuje pasek pod nagłówkiem.",
+      "fTitle": "Tytuł",
+      "fBody": "Treść",
+      "fCta": "Przycisk CTA",
+      "fCtaLabel": "Etykieta przycisku",
+      "fCtaHref": "Link",
+      "fCtaHrefHint": "/ścieżka lub https://",
+      "fPriority": "Priorytet",
+      "fPublish": "Publikacja",
+      "fPublishAt": "Data publikacji",
+      "fExpires": "Wygaśnięcie",
+      "fAudience": "Odbiorcy",
+      "optional": "opcjonalnie",
+      "priority": {
+        "normal": "Zwykły",
+        "important": "Ważny",
+        "normalHint": "w zakładce Ważne",
+        "importantHint": "przypięty + pasek"
+      },
+      "publishNow": "Teraz",
+      "publishLater": "Zaplanuj",
+      "aud": {
+        "all": "Wszyscy użytkownicy",
+        "noPlan": "Użytkownicy bez planu",
+        "plans": "Wybrane plany",
+        "user": "Konkretny użytkownik",
+        "plansLabel": "Plany: {plans}",
+        "userLabel": "Użytkownik: {email}"
+      },
+      "noPlans": "Brak aktywnych płatnych planów.",
+      "userSearch": "Szukaj po e-mailu (min. 3 znaki)",
+      "userPicked": "Wybrano: {email}",
+      "preview": "Podgląd u klienta",
+      "previewTitle": "Tytuł komunikatu",
+      "previewBody": "Treść komunikatu",
+      "previewBar": "Pasek pod nagłówkiem (przy następnym wejściu)",
+      "recipients": "Odbiorców",
+      "incomplete": "Uzupełnij formularz, aby opublikować.",
+      "publish": "Opublikuj",
+      "schedule": "Zaplanuj",
+      "saveDraft": "Zapisz szkic",
+      "confirm": "Potwierdź — wyślij do {n} osób",
+      "published": "Komunikat opublikowany",
+      "scheduled": "Komunikat zaplanowany",
+      "drafted": "Szkic zapisany",
+      "saveFailed": "Nie udało się zapisać komunikatu",
+      "err": {
+        "title": "Tytuł: 1–120 znaków",
+        "body": "Treść: 1–600 znaków",
+        "cta_label": "Etykieta: do 40 znaków",
+        "cta_href": "Link musi zaczynać się od / albo https://",
+        "cta_pair": "Podaj etykietę i link przycisku razem",
+        "audience": "Wybierz odbiorców",
+        "plans": "Zaznacz co najmniej jeden plan",
+        "user": "Wybierz użytkownika z listy",
+        "publish_at": "Data publikacji musi być w przyszłości",
+        "expires_at": "Wygaśnięcie musi być po publikacji"
+      },
+      "listTitle": "Wysłane i zaplanowane",
+      "empty": "Nie ma jeszcze żadnych komunikatów.",
+      "state": {
+        "draft": "Szkic",
+        "scheduled": "Zaplanowany",
+        "active": "Aktywny",
+        "expired": "Wygasły",
+        "withdrawn": "Wycofany"
+      },
+      "colPublished": "Publikacja",
+      "colExpires": "Wygasa",
+      "colReads": "Przeczytania",
+      "withdraw": "Wycofaj komunikat",
+      "withdrawConfirm": "Na pewno wycofać?",
+      "withdrawn": "Komunikat wycofany",
+      "withdrawFailed": "Nie udało się wycofać komunikatu",
+      "withdrawnAt": "Wycofany {date}"
+    },
     "transportOwned": "Serwer wychodzący ustawiasz w karcie Poczta powyżej — to jedyne miejsce, w którym wpisuje się host, port i hasło SMTP.",
     "mirrorAlways": "Ustawienia serwera z tej karty są automatycznie używane przez wysyłkę systemową (potwierdzenia zapisu na listę). Nazwa nadawcy i treść potwierdzenia pozostają bez zmian.",
     "secretUnreadable": "Nie da się odczytać sekretu zapisanego wcześniej w tych kanałach: {channels}. Otwórz kanał, wpisz nową wartość i zapisz — zostanie zabezpieczona w Supabase Vault. Nie musisz nic zmieniać poza tym panelem. Pozostałe kanały działają normalnie.",

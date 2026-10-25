@@ -16,6 +16,7 @@ import {
 } from "@/lib/ai/workflow-values";
 import { sumKnownCosts } from "@/lib/ai/usage-cost";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import { notifyGenerationDone, notifyGenerationFailed } from "@/lib/server/user-notifications";
 import { dispatchToken } from "@/lib/server/integrations";
 import { downloadReferences, textCapableBackends } from "@/lib/server/prompt-engine";
 import { readTokenPrices, readUnitPrices, recordProviderCalls, textMeter } from "@/lib/server/ai-usage";
@@ -555,9 +556,7 @@ async function finishRun(
         status: "failed", error_message: r.error ?? "workflow_failed", error_class: r.error ?? "workflow_failed",
         latency_ms: durationMs, completed_at: new Date().toISOString(),
       }).eq("id", run.job_id);
-      await supabase.from("notifications").insert({
-        user_id: run.user_id ?? "", type: "generation_failed", title: "generation_failed", body: r.error ?? "workflow_failed", href: "/history",
-      });
+      await notifyGenerationFailed(supabase, { userId: run.user_id ?? "", tool: run.tool_key, jobId: run.job_id });
     } else {
       // The results, as ordinary generation assets of the job — idempotent:
       // a finisher that runs twice finds the rows it already wrote.
@@ -592,9 +591,8 @@ async function finishRun(
         status: "completed", credits_charged: (run.credits ?? 0) - refunded, latency_ms: durationMs,
         completed_at: new Date().toISOString(), ...(executor.providerSlug ? { provider_slug: executor.providerSlug } : {}),
       }).eq("id", run.job_id);
-      await supabase.from("notifications").insert({
-        user_id: run.user_id ?? "", type: "generation_done", title: "generation_done",
-        body: `workflow ×${delivered}`, href: "/library",
+      await notifyGenerationDone(supabase, {
+        userId: run.user_id ?? "", tool: run.tool_key, jobId: run.job_id, count: delivered, generationId: generation?.id ?? null,
       });
       await supabase.rpc("log_activity", {
         p_workspace_id: run.workspace_id ?? "", p_action: "generation.completed",

@@ -4,6 +4,7 @@ import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import { notifyGenerationDone, notifyGenerationFailed } from "@/lib/server/user-notifications";
 import { recordProviderCalls } from "@/lib/server/ai-usage";
 import { withProviderLimit } from "@/lib/server/provider-router";
 import { prepareReferenceImage } from "@/lib/server/reference-image";
@@ -864,7 +865,8 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
     creditsCharged: input.quote.thumbnailCredits,
   });
   if (!usage.ok) {
-    await jobFailed(ctx, job.id, usage.error);
+    // The charge never landed: the panel says why, nothing to announce.
+    await jobFailed(ctx, job.id, usage.error, {}, false);
     return stepFail(usage.error === "insufficient_credits" ? "insufficient_credits" : `charge:${usage.error}`.slice(0, 80));
   }
   await progress(ctx, { stage: "compose" });
@@ -1186,8 +1188,8 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   await derivatives(supabase, asset.id, path, out.bytes);
   // The provider's own bytes are NOT kept in the customer's folder: their
   // hash, size and dimensions are in the admin record (step output).
-  await supabase.from("notifications").insert({
-    user_id: ctx.userId, type: "generation_done", title: "generation_done", body: "thumbnail ×1", href: "/library",
+  await notifyGenerationDone(supabase, {
+    userId: ctx.userId, tool: THUMBNAIL_TOOL_KEY, jobId: d.jobId, count: 1, generationId: gen.id,
   });
   await supabase.rpc("log_activity", {
     p_workspace_id: ctx.workspaceId, p_action: "generation.completed",
@@ -1534,7 +1536,9 @@ async function eventOfJob(ctx: Ctx, jobId: string): Promise<{ id: string; status
   return data[0] ? { id: data[0].id, status: data[0].status } : null;
 }
 
-async function jobFailed(ctx: Ctx, jobId: string, code: string, settingsExtra: Record<string, Json> = {}): Promise<void> {
+async function jobFailed(
+  ctx: Ctx, jobId: string, code: string, settingsExtra: Record<string, Json> = {}, announce = true,
+): Promise<void> {
   // Settings are merged only into settings actually READ (tried twice): an
   // unreadable row is never rewritten from nothing.
   let settings: Record<string, Json> | null = null;
@@ -1549,6 +1553,11 @@ async function jobFailed(ctx: Ctx, jobId: string, code: string, settingsExtra: R
     credits_charged: 0,
     ...(settings ? { settings: settings as Json } : {}),
   }).eq("id", jobId);
+  // Every caller refunds BEFORE this, so the notice can read the ledger. A
+  // cancel is the customer's own decision and is not announced back.
+  if (announce && code !== "cancelled") {
+    await notifyGenerationFailed(ctx.supabase, { userId: ctx.userId, tool: THUMBNAIL_TOOL_KEY, jobId });
+  }
 }
 
 async function recordCall(ctx: Ctx, eventId: string, jobId: string, outcome: SunburstOutcome, cost: SunburstCost): Promise<void> {

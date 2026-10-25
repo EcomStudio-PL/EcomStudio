@@ -2951,7 +2951,70 @@
     "credits_granted": "Du hast Credits erhalten",
     "credits_removed": "Credit-Korrektur",
     "support_reply": "Antwort vom Support-Team",
-    "bonus": "Willkommensbonus"
+    "bonus": "Willkommensbonus",
+    "v2": {
+      "tabImportant": "Wichtig",
+      "tabActivity": "Aktivität",
+      "markAll": "Alle als gelesen markieren",
+      "emptyImportant": "Du hast keine wichtigen Benachrichtigungen",
+      "emptyActivity": "Keine Aktivität",
+      "unreadDot": "Ungelesen",
+      "pinned": "Angeheftet",
+      "see": "Ansehen",
+      "closeBar": "Mitteilung schließen",
+      "markFailed": "Speichern fehlgeschlagen — bitte erneut versuchen.",
+      "openLibrary": "in der Bibliothek öffnen",
+      "images": {
+        "one": "{n} Bild",
+        "few": "{n} Bilder",
+        "many": "{n} Bilder",
+        "other": "{n} Bilder"
+      },
+      "done": {
+        "ecommerce_thumbnail": "Miniaturbild fertig",
+        "retouch": "Retusche fertig",
+        "prompts": "Bild fertig",
+        "generator": "Bild fertig",
+        "named": "{tool} — Ergebnis fertig",
+        "any": "Bild fertig"
+      },
+      "failed": {
+        "ecommerce_thumbnail": "Miniaturbild konnte nicht erstellt werden",
+        "retouch": "Retusche fehlgeschlagen",
+        "prompts": "Bild konnte nicht erstellt werden",
+        "generator": "Bild konnte nicht erstellt werden",
+        "named": "{tool} — fehlgeschlagen",
+        "any": "Bild konnte nicht erstellt werden"
+      },
+      "failedRefunded": "Deine Credits ({n} Cr.) sind wieder auf deinem Konto. Versuche es erneut oder nutze ein anderes Foto.",
+      "failedNotCharged": "Es wurden keine Credits abgebucht. Versuche es erneut oder nutze ein anderes Foto.",
+      "failedRetry": "Versuche es erneut oder nutze ein anderes Foto.",
+      "credits": {
+        "refund": "Credit-Erstattung: {n} Cr.",
+        "bonus": "Bonus: {n} Cr.",
+        "topup": "Aufladung: {n} Cr.",
+        "admin_adjustment": "Saldokorrektur: {n} Cr.",
+        "changed": "Credit-Saldo geändert",
+        "reason": "Grund: {reason}"
+      },
+      "supportReply": "Du hast eine Antwort auf deine Anfrage",
+      "paymentFailed": {
+        "title": "Zahlung für den Plan {plan} fehlgeschlagen",
+        "titleNoPlan": "Zahlung für den Plan fehlgeschlagen"
+      },
+      "renewalFailed": {
+        "title": "Plan {plan} konnte nicht verlängert werden",
+        "titleNoPlan": "Plan konnte nicht verlängert werden"
+      },
+      "updatePaymentBody": "Aktualisiere deine Zahlungsmethode, damit du den Zugang behältst.",
+      "updatePaymentCta": "Zahlung aktualisieren",
+      "planExpiring": {
+        "title": "Der Plan {plan} endet am {date}",
+        "body": "Die Verlängerung wurde gekündigt. Setze den Plan fort, wenn du den Zugang behalten willst.",
+        "cta": "Plan verwalten"
+      },
+      "generic": "Benachrichtigung"
+    }
   },
   "chat": {
     "tickets.title": "Tickets aus dem Kontaktformular",
@@ -5247,6 +5310,85 @@
     "tab.notifications": "Benachrichtigungen",
     "tab.templates": "Vorlagen",
     "tab.channels": "Kanäle",
+    "tab.announcements": "Mitteilungen",
+    "ann": {
+      "title": "Mitteilungen",
+      "sub": "Nachrichten des Teams an Kunden. Sie landen im Tab „Wichtig“ der Glocke und erhöhen den Zähler; Priorität „Wichtig“ wird zusätzlich angeheftet und zeigt eine Leiste unter der Kopfzeile.",
+      "fTitle": "Titel",
+      "fBody": "Text",
+      "fCta": "CTA-Button",
+      "fCtaLabel": "Button-Beschriftung",
+      "fCtaHref": "Link",
+      "fCtaHrefHint": "/pfad oder https://",
+      "fPriority": "Priorität",
+      "fPublish": "Veröffentlichung",
+      "fPublishAt": "Veröffentlichungsdatum",
+      "fExpires": "Ablauf",
+      "fAudience": "Empfänger",
+      "optional": "optional",
+      "priority": {
+        "normal": "Normal",
+        "important": "Wichtig",
+        "normalHint": "im Tab Wichtig",
+        "importantHint": "angeheftet + Leiste"
+      },
+      "publishNow": "Jetzt",
+      "publishLater": "Planen",
+      "aud": {
+        "all": "Alle Nutzer",
+        "noPlan": "Nutzer ohne Plan",
+        "plans": "Ausgewählte Pläne",
+        "user": "Ein bestimmter Nutzer",
+        "plansLabel": "Pläne: {plans}",
+        "userLabel": "Nutzer: {email}"
+      },
+      "noPlans": "Keine aktiven kostenpflichtigen Pläne.",
+      "userSearch": "Nach E-Mail suchen (mind. 3 Zeichen)",
+      "userPicked": "Ausgewählt: {email}",
+      "preview": "Vorschau beim Kunden",
+      "previewTitle": "Titel der Mitteilung",
+      "previewBody": "Text der Mitteilung",
+      "previewBar": "Leiste unter der Kopfzeile (beim nächsten Besuch)",
+      "recipients": "Empfänger",
+      "incomplete": "Formular ausfüllen, um zu veröffentlichen.",
+      "publish": "Veröffentlichen",
+      "schedule": "Planen",
+      "saveDraft": "Entwurf speichern",
+      "confirm": "Bestätigen — an {n} Personen senden",
+      "published": "Mitteilung veröffentlicht",
+      "scheduled": "Mitteilung geplant",
+      "drafted": "Entwurf gespeichert",
+      "saveFailed": "Mitteilung konnte nicht gespeichert werden",
+      "err": {
+        "title": "Titel: 1–120 Zeichen",
+        "body": "Text: 1–600 Zeichen",
+        "cta_label": "Beschriftung: bis 40 Zeichen",
+        "cta_href": "Der Link muss mit / oder https:// beginnen",
+        "cta_pair": "Beschriftung und Link des Buttons zusammen angeben",
+        "audience": "Empfänger wählen",
+        "plans": "Mindestens einen Plan wählen",
+        "user": "Nutzer aus der Liste wählen",
+        "publish_at": "Das Veröffentlichungsdatum muss in der Zukunft liegen",
+        "expires_at": "Ablauf muss nach der Veröffentlichung liegen"
+      },
+      "listTitle": "Gesendet und geplant",
+      "empty": "Noch keine Mitteilungen.",
+      "state": {
+        "draft": "Entwurf",
+        "scheduled": "Geplant",
+        "active": "Aktiv",
+        "expired": "Abgelaufen",
+        "withdrawn": "Zurückgezogen"
+      },
+      "colPublished": "Veröffentlicht",
+      "colExpires": "Läuft ab",
+      "colReads": "Gelesen",
+      "withdraw": "Zurückziehen",
+      "withdrawConfirm": "Wirklich zurückziehen?",
+      "withdrawn": "Mitteilung zurückgezogen",
+      "withdrawFailed": "Mitteilung konnte nicht zurückgezogen werden",
+      "withdrawnAt": "Zurückgezogen {date}"
+    },
     "transportOwned": "Der Postausgangsserver wird oben in der Karte „Post“ gesetzt — die einzige Stelle, an der SMTP-Host, -Port und -Passwort eingetragen werden.",
     "mirrorAlways": "Die Servereinstellungen dieser Karte werden auch für den Systemversand genutzt (Warteliste-Bestätigungen). Absendername und Bestätigungstext bleiben unverändert.",
     "secretUnreadable": "Das zuvor gespeicherte Secret dieser Kanäle kann nicht gelesen werden: {channels}. Kanal öffnen, neuen Wert eingeben und speichern — er wird im Supabase Vault gesichert. Außerhalb dieses Panels ist nichts zu ändern. Die übrigen Kanäle funktionieren normal.",

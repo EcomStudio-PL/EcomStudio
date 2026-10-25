@@ -132,6 +132,7 @@ const admin = [
   "loginSec",
   "media",
   "models",
+  "notif",
   "onb",
   "packs",
   "plans",

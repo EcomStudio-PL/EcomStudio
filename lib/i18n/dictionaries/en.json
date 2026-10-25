@@ -2951,7 +2951,70 @@
     "credits_granted": "You received credits",
     "credits_removed": "Credit adjustment",
     "support_reply": "Reply from support team",
-    "bonus": "Welcome bonus"
+    "bonus": "Welcome bonus",
+    "v2": {
+      "tabImportant": "Important",
+      "tabActivity": "Activity",
+      "markAll": "Mark all as read",
+      "emptyImportant": "You have no important notifications",
+      "emptyActivity": "No activity",
+      "unreadDot": "Unread",
+      "pinned": "Pinned",
+      "see": "View",
+      "closeBar": "Close message",
+      "markFailed": "Could not save — please try again.",
+      "openLibrary": "open in Library",
+      "images": {
+        "one": "{n} image",
+        "few": "{n} images",
+        "many": "{n} images",
+        "other": "{n} images"
+      },
+      "done": {
+        "ecommerce_thumbnail": "Thumbnail ready",
+        "retouch": "Retouch ready",
+        "prompts": "Image ready",
+        "generator": "Image ready",
+        "named": "{tool} — result ready",
+        "any": "Image ready"
+      },
+      "failed": {
+        "ecommerce_thumbnail": "Could not generate the thumbnail",
+        "retouch": "Could not retouch the photo",
+        "prompts": "Could not generate the image",
+        "generator": "Could not generate the image",
+        "named": "{tool} — did not work",
+        "any": "Could not generate the image"
+      },
+      "failedRefunded": "Your credits ({n} cr.) are back in your account. Try again or use a different photo.",
+      "failedNotCharged": "No credits were taken. Try again or use a different photo.",
+      "failedRetry": "Try again or use a different photo.",
+      "credits": {
+        "refund": "Credit refund: {n} cr.",
+        "bonus": "Bonus: {n} cr.",
+        "topup": "Top-up: {n} cr.",
+        "admin_adjustment": "Balance adjustment: {n} cr.",
+        "changed": "Credit balance changed",
+        "reason": "Reason: {reason}"
+      },
+      "supportReply": "You have a reply to your request",
+      "paymentFailed": {
+        "title": "Payment for the {plan} plan failed",
+        "titleNoPlan": "Plan payment failed"
+      },
+      "renewalFailed": {
+        "title": "Could not renew the {plan} plan",
+        "titleNoPlan": "Could not renew your plan"
+      },
+      "updatePaymentBody": "Update your payment method so you keep access.",
+      "updatePaymentCta": "Update payment",
+      "planExpiring": {
+        "title": "The {plan} plan ends on {date}",
+        "body": "Renewal was cancelled. Resume the plan if you want to keep access.",
+        "cta": "Manage plan"
+      },
+      "generic": "Notification"
+    }
   },
   "chat": {
     "tickets.title": "Contact form tickets",
@@ -5247,6 +5310,85 @@
     "tab.notifications": "Notifications",
     "tab.templates": "Templates",
     "tab.channels": "Channels",
+    "tab.announcements": "Announcements",
+    "ann": {
+      "title": "Announcements",
+      "sub": "Messages from the team to customers. They go to the bell's “Important” tab and light the badge; “Important” priority is also pinned and shows a bar under the header.",
+      "fTitle": "Title",
+      "fBody": "Message",
+      "fCta": "CTA button",
+      "fCtaLabel": "Button label",
+      "fCtaHref": "Link",
+      "fCtaHrefHint": "/path or https://",
+      "fPriority": "Priority",
+      "fPublish": "Publishing",
+      "fPublishAt": "Publish date",
+      "fExpires": "Expiry",
+      "fAudience": "Recipients",
+      "optional": "optional",
+      "priority": {
+        "normal": "Normal",
+        "important": "Important",
+        "normalHint": "in the Important tab",
+        "importantHint": "pinned + bar"
+      },
+      "publishNow": "Now",
+      "publishLater": "Schedule",
+      "aud": {
+        "all": "All users",
+        "noPlan": "Users without a plan",
+        "plans": "Selected plans",
+        "user": "A specific user",
+        "plansLabel": "Plans: {plans}",
+        "userLabel": "User: {email}"
+      },
+      "noPlans": "No active paid plans.",
+      "userSearch": "Search by e-mail (3+ characters)",
+      "userPicked": "Selected: {email}",
+      "preview": "Customer preview",
+      "previewTitle": "Announcement title",
+      "previewBody": "Announcement message",
+      "previewBar": "Bar under the header (on next visit)",
+      "recipients": "Recipients",
+      "incomplete": "Complete the form to publish.",
+      "publish": "Publish",
+      "schedule": "Schedule",
+      "saveDraft": "Save draft",
+      "confirm": "Confirm — send to {n} people",
+      "published": "Announcement published",
+      "scheduled": "Announcement scheduled",
+      "drafted": "Draft saved",
+      "saveFailed": "Could not save the announcement",
+      "err": {
+        "title": "Title: 1–120 characters",
+        "body": "Message: 1–600 characters",
+        "cta_label": "Label: up to 40 characters",
+        "cta_href": "The link must start with / or https://",
+        "cta_pair": "Give the button's label and link together",
+        "audience": "Choose recipients",
+        "plans": "Select at least one plan",
+        "user": "Pick a user from the list",
+        "publish_at": "The publish date must be in the future",
+        "expires_at": "Expiry must be after publishing"
+      },
+      "listTitle": "Sent and scheduled",
+      "empty": "No announcements yet.",
+      "state": {
+        "draft": "Draft",
+        "scheduled": "Scheduled",
+        "active": "Active",
+        "expired": "Expired",
+        "withdrawn": "Withdrawn"
+      },
+      "colPublished": "Published",
+      "colExpires": "Expires",
+      "colReads": "Reads",
+      "withdraw": "Withdraw",
+      "withdrawConfirm": "Really withdraw?",
+      "withdrawn": "Announcement withdrawn",
+      "withdrawFailed": "Could not withdraw the announcement",
+      "withdrawnAt": "Withdrawn {date}"
+    },
     "transportOwned": "The outgoing server is set on the Mail card above — the one place an SMTP host, port and password are typed.",
     "mirrorAlways": "The server settings on this card are used by system mail as well (waitlist confirmations). The sender name and the confirmation copy are left untouched.",
     "secretUnreadable": "The secret saved earlier for these channels cannot be read: {channels}. Open the channel, type a new value and save — it will be sealed in Supabase Vault. Nothing outside this panel needs changing. The other channels are working normally.",

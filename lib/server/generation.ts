@@ -22,6 +22,7 @@ import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import { readTokenPrices, readUnitPrices, recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
 import { imageCallCost, sumKnownCosts } from "@/lib/ai/usage-cost";
 import { deliverRetouch, isRetouchDeliverySize, type RetouchDelivered } from "@/lib/server/retouch-delivery";
+import { notifyGenerationDone, notifyGenerationFailed } from "@/lib/server/user-notifications";
 import {
   attachTrialOriginal, decideTrialWatermark, releaseTrialOriginal, sealTrialOutput, stashTrialOriginal, trialStamp,
   type TrialMarked,
@@ -941,10 +942,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         provider_request: lastRequest,
       } as never,
     }).eq("id", job.id);
-    await supabase.from("notifications").insert({
-      user_id: userId, type: "generation_failed", title: "generation_failed",
-      body: safe, href: "/history",
-    });
+    // After the refund above: the customer reads that the credits came back
+    // only if the ledger says so. The error class stays in the job, not here.
+    await notifyGenerationFailed(supabase, { userId, tool: generationToolKey(input), jobId: job.id });
     // Every candidate refused this call, so the fault is upstream, not in what
     // the customer typed — the kind of thing the operator has to hear about
     // while it is still happening. The dedupe key carries the provider, the
@@ -1258,9 +1258,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     request_id: requestId,
     completed_at: new Date().toISOString(),
   }).eq("id", job.id);
-  await supabase.from("notifications").insert({
-    user_id: userId, type: "generation_done", title: "generation_done",
-    body: `${model2.name} ×${stored.length}`, href: "/library",
+  await notifyGenerationDone(supabase, {
+    userId, tool: generationToolKey(input), jobId: job.id, count: stored.length, generationId: generation?.id ?? null,
   });
   await supabase.rpc("log_activity", {
     p_workspace_id: workspaceId, p_action: "generation.completed",
