@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { allDefaults, menuBadge, menuVisible, type AvailabilityMap } from "@/lib/features";
 import { DOCK_SLOTS, dockSlotActive } from "@/lib/bottom-nav";
+import { isPublicToolPath } from "@/lib/public-tools";
+import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,12 +35,18 @@ import { cn } from "@/lib/utils";
  * a gallery is a bar you have to look for. The veil below adds the page's own
  * colour under it, fading out just above the top edge — see `.dock-veil`.
  */
-export function CustomerBottomNav({ availability, isAdmin = false }: {
+export function CustomerBottomNav({ availability, isAdmin = false, guest = false }: {
   availability?: AvailabilityMap;
   isAdmin?: boolean;
+  /** A visitor's dock (Public Tools V1): the same bar. A slot that needs an
+   *  account (Start, Biblioteka, Profil) opens the sign-in dialog where the
+   *  visitor is, with that screen as the way back in, instead of leaving the
+   *  tools for the front door. */
+  guest?: boolean;
 }) {
   const { t } = useI18n();
   const pathname = usePathname();
+  const auth = useOptionalAuthDialog();
   const avail = availability ?? allDefaults();
   // A DISABLED module leaves the dock (its URL 404s anyway); a restricted one
   // keeps its slot with a small warning dot — the page itself explains.
@@ -78,7 +86,12 @@ export function CustomerBottomNav({ availability, isAdmin = false }: {
             <Link
               key={s.key}
               href={s.href}
-              prefetch
+              prefetch={!guest || isPublicToolPath(s.href)}
+              onClick={guest && auth && !isPublicToolPath(s.href) ? (e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                e.preventDefault();
+                auth.open("login", s.href);
+              } : undefined}
               aria-current={active ? "page" : undefined}
               className={cn(slotClass, s.primary ? "text-ink" : active ? "text-accent" : "text-faint")}
             >

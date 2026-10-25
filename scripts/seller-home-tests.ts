@@ -139,7 +139,10 @@ const FROZEN: readonly [string, string][] = [
   // Then: the resume banner also names a category's workflows (Moda, the
   // thumbnail), which a visitor can now prepare too — labels only.
   ["app/(app)/layout.tsx", "880f786814f0a5f86564dc1de047012ebb54f412cff771126fba05fa39dd071f"],
-  ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
+  // Public Tools V1 (activation): a visitor's pages wear the same dock; with
+  // `guest`, the account slots open the sign-in dialog in place. A member's
+  // dock (no `guest`) renders and behaves exactly as before.
+  ["components/layout/customer-bottom-nav.tsx", "ff387b6a2c72923921fcd1c06185605a596f471d42cc8c1b14d2f740ee6c8567"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   // Kontakt V2: the dialog gained one line — a link to /kontakt?temat=problem
   // (a bug) or ?temat=inne (anything else); the button and the dialog's own
@@ -162,7 +165,15 @@ for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync
     + "                primary only where the row has room for it — a phone keeps the\n"
     + "                short label, so the bar never wraps. A shut registration is the\n"
     + "                dialog's to explain (its pre-launch notice). */}\n";
+  // Public Tools V1 (activation): the long promise only while signup is open
+  // (`signupOpen`, default true — every other caller renders as before).
+  const PT_SIGNUP_PROP = "  /** A visitor's primary door promises free credits only while signup is\n"
+    + "   *  open; shut, it is the plain \"Załóż konto\" and the dialog explains. */\n"
+    + "  signupOpen?: boolean;\n";
   const restored = bar
+    .replace(PT_SIGNUP_PROP, "")
+    .replace("guest = false, signupOpen = true, menu:", "guest = false, menu:")
+    .replace('{t(signupOpen ? "auth.signUpFree" : "auth.signUp")}', '{t("auth.signUpFree")}')
     .replace(PT_NOTE, "")
     .replace("border border-line px-3 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-raised sm:inline-flex",
       "px-3 text-sm font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink sm:inline-flex")

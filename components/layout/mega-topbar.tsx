@@ -39,7 +39,7 @@ import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, menuItems, popularTools, searchTags, guest = false, menu: hasMenu = true, brandHref = "/home" }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, menuItems, popularTools, searchTags, guest = false, signupOpen = true, menu: hasMenu = true, brandHref = "/home" }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
   /**
    * NOBODY IS SIGNED IN.
@@ -54,6 +54,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
    * identical, because they are identical facts about the product.
    */
   guest?: boolean;
+  /** A visitor's primary door promises free credits only while signup is
+   *  open; shut, it is the plain "Załóż konto" and the dialog explains. */
+  signupOpen?: boolean;
   /**
    * Whether the hamburger is rendered. It opens the customer drawer, which
    * lives in the (app) layout; a surface without that drawer must not show a
@@ -269,7 +272,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
             <AuthLink mode="register"
               className="cta inline-flex h-9 shrink-0 items-center rounded-xl px-3.5 text-[13px] font-semibold sm:text-sm">
               <span className="xl:hidden">{t("auth.signUp")}</span>
-              <span className="hidden xl:inline">{t("auth.signUpFree")}</span>
+              <span className="hidden xl:inline">{t(signupOpen ? "auth.signUpFree" : "auth.signUp")}</span>
             </AuthLink>
           </>
         ) : (

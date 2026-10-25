@@ -305,6 +305,15 @@ section("I. WHAT MUST NEVER BE POSSIBLE (read from the code)");
     && /if \(seed\) \{ setRegistration\(seed\.registration\); return; \}/.test(modal)
     // The preview's own guarantee is untouched: every server action still refused.
     && /request\.headers\.has\("next-action"\)\)/.test(mw));
+  const dock = read("components/layout/customer-bottom-nav.tsx");
+  check("I19 a visitor's phone gets the customer's dock in the customer's frame; its account slots open the sign-in dialog in place (no trip to the front door)",
+    /<CustomerBottomNav availability=\{availability\} guest \/>/.test(guestShell)
+    && /pt-4 pb-\[var\(--page-bottom\)\] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10/.test(guestShell)
+    && /guest && auth && !isPublicToolPath\(s\.href\)/.test(dock) && /auth\.open\("login", s\.href\)/.test(dock)
+    && /<CustomerBottomNav availability=\{availability\} isAdmin=\{navAdmin\} \/>/.test(read("app/(app)/layout.tsx")));
+  check("I20 the visitor's primary door promises free credits only while signup is open",
+    /signupOpen=\{signupOpen\(access, new Date\(\)\)\}/.test(guestShell)
+    && /t\(signupOpen \? "auth\.signUpFree" : "auth\.signUp"\)/.test(read("components/layout/mega-topbar.tsx")));
 }
 
 function walkFiles(p: string): string[] {
