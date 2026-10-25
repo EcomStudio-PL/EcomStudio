@@ -1425,7 +1425,11 @@ function sectionG() {
   // Moved again to ae6da31 by its review fixes: GenerateInput.routeStartedAt
   // (generation.ts) and the engine passing its own start (engine/tool-run.ts)
   // feed ONLY the trial-image gate; the request is untouched.
-  const BASE = process.env.THUMBNAIL_BASE ?? "ae6da31";
+  // Moved again to 42d2834 by Public Tools V1: components/retouch/workspace.tsx
+  // and app/(app)/retusz/page.tsx gained a visitor's branch (photos kept
+  // locally, Generate → the sign-in dialog, metadata). The member's request is
+  // byte-identical — test:retouchforensic, test:fidelity, test:thumbnailparity.
+  const BASE = process.env.THUMBNAIL_BASE ?? "42d2834";
   const FROZEN = [
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",

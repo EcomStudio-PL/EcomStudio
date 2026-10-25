@@ -470,7 +470,10 @@ async function main() {
       // in engine/tool-run.ts changed there; the Retusz request is untouched.
       // Moved again to ae6da31 by its review fixes: routeStartedAt reaches only
       // the trial-image gate (generation.ts, engine/tool-run.ts).
-      diff = execSync(`git diff --name-only ae6da31 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
+      // Moved again to 42d2834 by Public Tools V1: the Retusz page and
+      // workspace gained a visitor's branch; the request is byte-identical
+      // (test:retouchforensic).
+      diff = execSync(`git diff --name-only 42d2834 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
     } catch (e) { diff = `git failed: ${String(e)}`; }
     check("no Retusz / provider / generation file differs from the release before this fix", diff === "", diff);
     check("no network request was made by this suite", fetches === 0, fetches);
