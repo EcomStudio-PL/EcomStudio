@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
@@ -8,7 +8,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import { createClient, getRequestUser } from "@/lib/supabase/server";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
-import { getAvailabilityMap, isAdminUser } from "@/lib/server/feature-availability";
+import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import { getToolsLayout } from "@/lib/server/tool-layout";
 import { hubSectionsFor, itemReachable, menuItemKeys } from "@/lib/tool-layout";
 import { catalogItem } from "@/lib/tool-cards";
@@ -18,7 +18,7 @@ import { getBonusConfig, readOffer, toView } from "@/lib/server/welcome-bonus";
 import { requireActivePaidPlan } from "@/lib/server/billing";
 import { decideTrialWatermark } from "@/lib/server/trial-watermark/pipeline";
 import {
-  GUEST_PREVIEW_COOKIE, PATH_HEADER, PUBLIC_CATALOGUE_PATH, cleanPath, publicToolForPath,
+  PATH_HEADER, PUBLIC_CATALOGUE_PATH, cleanPath, publicToolForPath,
   type ToolViewerFacts,
 } from "@/lib/public-tools";
 
@@ -28,49 +28,12 @@ import {
  * The pure rules (which panels, which state) are lib/public-tools.ts.
  */
 
-/* ── the switch ──────────────────────────────────────────────────────────── */
+/* ── the switch and the guest preview (lib/server/public-tools-flag.ts) ── */
 
-export const PUBLIC_TOOLS_KEY = "public_tools";
-
-export type PublicToolsFlag = { enabled: boolean; updatedAt: string | null };
-
-const OFF: PublicToolsFlag = { enabled: false, updatedAt: null };
-
-/**
- * FAIL CLOSED. Every other switch in this product fails OPEN (a settings
- * outage must not take the product down for customers). This one is the
- * opposite kind of switch: it opens the tools to strangers, so a read that
- * fails means "off" — the pre-launch page, exactly as before the feature
- * existed. Off is also the default: no row, no visitor access.
- */
-export const getPublicToolsFlag = cache(async (supabase: Client): Promise<PublicToolsFlag> => {
-  try {
-    const { data, error } = await supabase
-      .from("app_settings").select("value, updated_at").eq("key", PUBLIC_TOOLS_KEY).maybeSingle();
-    if (error || !data) return OFF;
-    const value = data.value as { enabled?: unknown } | null;
-    return { enabled: value?.enabled === true, updatedAt: data.updated_at ?? null };
-  } catch {
-    return OFF;
-  }
-});
-
-/* ── "Podgląd jako gość" ────────────────────────────────────────────────── */
-
-/**
- * The cookie alone means nothing: the REAL role (the profiles row, guarded by
- * the self-escalation trigger) is read first, so a customer or a stranger who
- * sets it gets exactly what they had. It works with the switch off — that is
- * what it is for: seeing the visitor's interface before opening it.
- */
-export const guestPreviewActive = cache(async (): Promise<boolean> => {
-  try {
-    if ((await cookies()).get(GUEST_PREVIEW_COOKIE)?.value !== "1") return false;
-    return await isAdminUser(await createClient());
-  } catch {
-    return false;
-  }
-});
+export {
+  PUBLIC_TOOLS_KEY, getPublicToolsFlag, guestPreviewActive, publicCatalogueOpen, type PublicToolsFlag,
+} from "@/lib/server/public-tools-flag";
+import { getPublicToolsFlag, guestPreviewActive } from "@/lib/server/public-tools-flag";
 
 /* ── what the customer catalogue lists ─────────────────────────────────── */
 

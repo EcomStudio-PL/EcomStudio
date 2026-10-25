@@ -7,7 +7,7 @@ import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { WorkflowRuntime } from "@/components/category/workflow-runtime";
-import type { GenModel } from "@/components/genv3/types";
+import type { GalleryItem, GenModel } from "@/components/genv3/types";
 import { findCategory } from "@/lib/categories";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
 import { fashionModel, fashionToolAvailable } from "@/lib/server/fashion";
@@ -23,11 +23,13 @@ import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
 import { publicToolMetadata } from "@/lib/server/public-tool-meta";
 import { publicToolForPath } from "@/lib/public-tools";
 import type { ThumbnailState } from "@/lib/server/thumbnail/settings";
+import type { Client } from "@/lib/services/workspace";
+import type { ConceptModelOption } from "@/lib/server/concept-generation";
 
 export const dynamic = "force-dynamic";
 
-/** A public workflow's (Miniaturka's) title, description, canonical and
- *  robots — Public Tools V1; every other workflow keeps the defaults. */
+/** A workflow's title, description, canonical and robots — Public Tools V1
+ *  (a workflow the catalogue does not list keeps noindex). */
 export async function generateMetadata({ params }: { params: Promise<{ cat: string; wf: string }> }) {
   const { cat, wf } = await params;
   const tool = publicToolForPath(`/k/${cat}/${wf}`);
@@ -47,6 +49,71 @@ function thumbnailView(state: ThumbnailState, admin: boolean) {
       : { available: false as const, unit: null, reason: state.retouch.reason },
     target: state.config?.finish.target ?? 2560,
   };
+}
+
+/** The engines a workflow offers, in the panel's shape — one mapping for a
+ *  member and a visitor. */
+function toGenModels(modelOptions: ConceptModelOption[]): GenModel[] {
+  return modelOptions.map((m) => ({
+    id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
+    description: m.description, pricing: m.pricing,
+    resolutions: m.resolutions, ratios: m.ratios, exactRatios: m.exactRatios,
+    maxOutputs: 1, supportsRefs: true,
+    qualities: m.qualities, qualityPricing: m.qualityPricing,
+  }));
+}
+
+/**
+ * WHAT A VISITOR'S WORKFLOW SCREEN IS GIVEN (Public Tools V1): the same facts
+ * the member's branch below reads — the engines and their prices, whether the
+ * planner can run, the session previews, each Moda tool's availability and
+ * size/price table, Miniaturka's state — read by the server's own client
+ * (guestReadClient, 0157). Nothing of an account: no wallet, no gallery, no
+ * run in progress. The chip row switches workflows on the client, so every
+ * tool of the category gets its data here too, exactly as for a member.
+ */
+async function guestRuntime(reader: Client | null, categoryKey: string, isThumbnail: boolean) {
+  const emptyThumbnail: ThumbnailRuntimeData = {
+    ready: false, blockers: [], maxPhotos: 10, thumbnailCredits: null,
+    retouch: { available: false as const, unit: null, reason: "model_unavailable" as const }, target: 2560,
+    openRunId: null, initialItems: [], initialCursor: null,
+  };
+  if (!reader) {
+    return { models: [] as GenModel[], engineAvailable: false, sessionPreviews: {}, fashion: null, thumbnail: isThumbnail ? emptyThumbnail : null };
+  }
+  const [{ data: plannerProviders }, { data: withKey }, modelOptions, sessionPreviews] = await Promise.all([
+    reader.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
+    reader.rpc("providers_with_credentials"),
+    conceptModelOptions(reader),
+    getSessionPreviews(reader),
+  ]);
+  const keyed = new Set((withKey ?? []) as string[]);
+  const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
+
+  let fashion: FashionRuntimeData | null = null;
+  if (categoryKey === "moda") {
+    const model = await fashionModel(reader);
+    const perTool = await Promise.all(FASHION_TOOLS.map(async (tool) => {
+      const [available, outputsPerRun] = await Promise.all([
+        fashionToolAvailable(reader, tool.toolKey),
+        engineOutputsPerRun(reader, tool.toolKey),
+      ]);
+      return [tool.key, { available: Boolean(model) && available, outputsPerRun, initialItems: [] as GalleryItem[], initialCursor: null }] as const;
+    }));
+    fashion = {
+      resolutions: model?.resolutions ?? [],
+      ratios: model?.ratios ?? [],
+      pricing: model?.pricing ?? {},
+      tools: Object.fromEntries(perTool),
+    };
+  }
+
+  let thumbnail: ThumbnailRuntimeData | null = null;
+  if (isThumbnail) {
+    const state = await readThumbnailState(reader);
+    thumbnail = { ...thumbnailView(state, false), openRunId: null, initialItems: [], initialCursor: null };
+  }
+  return { models: toGenModels(modelOptions), engineAvailable, sessionPreviews, fashion, thumbnail };
 }
 
 /**
@@ -71,34 +138,25 @@ export default async function WorkflowPage({ params }: {
   const workflow = category.workflows.find((w) => w.key === wf);
   if (!workflow || workflow.soon || category.soon) notFound();
 
-  // Public Tools V1: Miniaturka, asked for by a visitor (or an admin's guest
-  // preview) — the same panel priced by the same code, nothing of an account.
-  // Every other workflow needs a session, as before.
+  // Public Tools V1: any workflow of the catalogue, asked for by a visitor (or
+  // an admin's guest preview) — the same runtime and panels, priced by the
+  // same code, nothing of an account. Whether it is listed at all (404
+  // otherwise) is publicToolAudience's to decide, from the catalogue.
+  const isThumbnail = category.key === THUMBNAIL_CATEGORY && workflow.key === THUMBNAIL_WORKFLOW;
   const pub = publicToolForPath(`/k/${category.slug}/${workflow.key}`);
   const audience = pub ? await publicToolAudience(pub.path) : null;
   if (pub && audience?.kind === "guest") {
-    const reader = guestReadClient();
-    const state = reader ? await readThumbnailState(reader) : null;
-    const thumbnail: ThumbnailRuntimeData = {
-      ...(state ? thumbnailView(state, false) : {
-        ready: false, blockers: [], maxPhotos: 10, thumbnailCredits: null,
-        retouch: { available: false as const, unit: null, reason: "model_unavailable" as const }, target: 2560,
-      }),
-      openRunId: null,
-      initialItems: [],
-      initialCursor: null,
-    };
-    return (
-      <FeatureGate feature="ecommerce_thumbnail">
-        <ToolScope tool={pub} audience={audience}>
-          <div className="workspace workspace-page gen-shell">
-            <WorkflowRuntime catSlug={category.slug} initialWorkflow={workflow.key} models={[]} credits={0}
-              workspaceId="" engineAvailable={false} initialItems={[]} initialCursor={null} sessionPreviews={{}}
-              fashion={null} thumbnail={thumbnail} />
-          </div>
-        </ToolScope>
-      </FeatureGate>
+    const data = await guestRuntime(guestReadClient(), category.key, isThumbnail);
+    const guestScreen = (
+      <ToolScope tool={pub} audience={audience}>
+        <div className="workspace workspace-page gen-shell">
+          <WorkflowRuntime catSlug={category.slug} initialWorkflow={workflow.key} models={data.models} credits={0}
+            workspaceId="" engineAvailable={data.engineAvailable} initialItems={[]} initialCursor={null}
+            sessionPreviews={data.sessionPreviews} fashion={data.fashion} thumbnail={data.thumbnail} />
+        </div>
+      </ToolScope>
     );
+    return isThumbnail ? <FeatureGate feature="ecommerce_thumbnail">{guestScreen}</FeatureGate> : guestScreen;
   }
 
   const supabase = await createClient();
@@ -159,7 +217,6 @@ export default async function WorkflowPage({ params }: {
    * results, and the member's run still in progress (resumed after a refresh).
    */
   let thumbnail: ThumbnailRuntimeData | null = null;
-  const isThumbnail = category.key === THUMBNAIL_CATEGORY && workflow.key === THUMBNAIL_WORKFLOW;
   if (isThumbnail) {
     const [state, items, openRunId, admin] = await Promise.all([
       readThumbnailState(supabase),
@@ -175,13 +232,7 @@ export default async function WorkflowPage({ params }: {
     };
   }
 
-  const models: GenModel[] = modelOptions.map((m) => ({
-    id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
-    description: m.description, pricing: m.pricing,
-    resolutions: m.resolutions, ratios: m.ratios, exactRatios: m.exactRatios,
-    maxOutputs: 1, supportsRefs: true,
-    qualities: m.qualities, qualityPricing: m.qualityPricing,
-  }));
+  const models = toGenModels(modelOptions);
 
   const screen = (
     // Same calm workspace scope as /prompts — the compact category header

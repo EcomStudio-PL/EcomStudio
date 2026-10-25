@@ -3,6 +3,8 @@ import { unstable_cache } from "next/cache";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import type { Client } from "@/lib/services/workspace";
+import { PUBLIC_CATALOGUE_ALIAS, PUBLIC_CATALOGUE_PATH } from "@/lib/public-tools";
+import { publicCatalogueOpen } from "@/lib/server/public-tools-flag";
 import {
   isChromeMode,
   type ChromeMode, type CmsBlock, type CmsBlockContent, type CmsCode,
@@ -251,12 +253,22 @@ export async function getGlobalDrafts(supabase: Client): Promise<GlobalSections>
 
 /* ── THE PAGE LIST ───────────────────────────────────────────────────────── */
 
-export type NavPage = { slug: string; title: string; navGroup: string | null; navOrder: number };
+export type NavPage = {
+  slug: string; title: string; navGroup: string | null; navOrder: number;
+  /** Where the menu entry leads when that is not `/<slug>` (see below). */
+  href?: string;
+};
 
 /** Published pages that asked to be in a menu, for the footer and the header.
  *  Built from the page list rather than from links hardcoded in ten places. */
 export async function getNavPages(): Promise<NavPage[]> {
-  return readNavPages();
+  const pages = await readNavPages();
+  // PUBLIC TOOLS V1: while the app catalogue is a visitor's page, "Narzędzia"
+  // IS that catalogue — the link goes straight there, not through the
+  // forward /narzedzia answers with (app/[slug]/page.tsx). Read outside the
+  // cache: it depends on the switch and on this viewer's guest preview.
+  if (!pages.some((p) => p.slug === PUBLIC_CATALOGUE_ALIAS) || !(await publicCatalogueOpen())) return pages;
+  return pages.map((p) => (p.slug === PUBLIC_CATALOGUE_ALIAS ? { ...p, href: PUBLIC_CATALOGUE_PATH } : p));
 }
 
 const readNavPages = unstable_cache(

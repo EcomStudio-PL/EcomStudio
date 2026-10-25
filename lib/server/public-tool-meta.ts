@@ -5,6 +5,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { stegaStrip } from "@/lib/ice/stega";
 import { PUBLIC_CATALOGUE_PATH, PUBLIC_TOOLS, toolPageTextKeys, type PublicTool } from "@/lib/public-tools";
+import { catalogItem } from "@/lib/tool-cards";
+import { itemLabelKey } from "@/lib/tool-layout";
 import { getPublicToolsFlag, listedToolPaths } from "@/lib/server/public-tools";
 
 /**
@@ -25,7 +27,12 @@ import { getPublicToolsFlag, listedToolPaths } from "@/lib/server/public-tools";
 export async function publicToolMetadata(tool: PublicTool): Promise<Metadata> {
   const [{ dict }, supabase] = await Promise.all([getDictionary(), createClient()]);
   const t = makeT(dict);
-  const keys = toolPageTextKeys(tool.key);
+  // A tool without a public block of its own is named by its catalogue card —
+  // the same name and line the visitor clicked on.
+  const card = tool.seo === false ? catalogItem(tool.key) : undefined;
+  const keys = card
+    ? { headline: itemLabelKey(card), lead: card.bodyKey }
+    : toolPageTextKeys(tool.key);
   const title = stegaStrip(t(keys.headline));
   const description = stegaStrip(t(keys.lead));
   const indexable = (await getPublicToolsFlag(supabase)).enabled && (await listedToolPaths(supabase)).has(tool.path);
@@ -61,7 +68,8 @@ export async function publicToolSitemapPaths(): Promise<string[]> {
     const supabase = await createClient();
     if (!(await getPublicToolsFlag(supabase)).enabled) return [];
     const listed = await listedToolPaths(supabase);
-    return [PUBLIC_CATALOGUE_PATH, ...PUBLIC_TOOLS.filter((x) => listed.has(x.path)).map((x) => x.path)];
+    // The tools with a public page of their own (copy, examples, FAQ).
+    return [PUBLIC_CATALOGUE_PATH, ...PUBLIC_TOOLS.filter((x) => x.seo !== false && listed.has(x.path)).map((x) => x.path)];
   } catch {
     return [];
   }

@@ -34,7 +34,7 @@ export const isFaqPage = (v: unknown): v is FaqPage =>
 /** The tools a question may be assigned to (0158, Public Tools V1): the
  *  public tool pages, whose block shows up to three of them. Not a second
  *  table — the item says which tools, as it says which pages. */
-export const FAQ_TOOLS: readonly string[] = PUBLIC_TOOLS.map((t) => t.key);
+export const FAQ_TOOLS: readonly string[] = PUBLIC_TOOLS.filter((t) => t.seo !== false).map((t) => t.key);
 export const isFaqTool = (v: unknown): v is string =>
   typeof v === "string" && FAQ_TOOLS.includes(v);
 

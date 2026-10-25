@@ -10,7 +10,11 @@ import { readToolSearchTags } from "@/lib/server/tool-search-tags";
 import { menuItemKeys } from "@/lib/tool-layout";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
 import { DrawerProvider } from "@/components/layout/shell-context";
+import { accessViewAction } from "@/app/actions/platform-access";
+import { registrationFormConfig } from "@/app/actions/registration-config";
+import type { AuthDialogSeed } from "@/components/auth/auth-dialog-context";
 import { GuestPreviewBar } from "./preview-bar";
+import { AuthDialogSeeder } from "./auth-seed";
 
 /**
  * THE APP'S OWN SHELL, FOR A VISITOR (Public Tools V1) — what app/(app)/layout
@@ -26,10 +30,24 @@ import { GuestPreviewBar } from "./preview-bar";
  * WHAT IT READS: public facts only — the availability map, the catalogue
  * layout, the tool ranking, the search tags. No profile, no wallet, no
  * notifications. In the preview the admin's session exists and is not used.
+ *
+ * THE PREVIEW'S SIGN-IN DIALOG. A visitor's dialog asks two server actions,
+ * when it opens, whether signup is open and what the form needs. The preview
+ * refuses every server action, so here the page reads both itself, with the
+ * same two functions (they read settings only, never the account), and hands
+ * them to the dialog. Generate in the preview then shows exactly the dialog a
+ * visitor gets — the pre-launch notice while signup is closed.
  */
+async function previewAuthSeed(): Promise<AuthDialogSeed> {
+  const [desktop, mobile, registration] = await Promise.all([
+    accessViewAction(false), accessViewAction(true), registrationFormConfig(),
+  ]);
+  return { access: { desktop, mobile }, registration };
+}
+
 export async function GuestShell({ preview, children }: { preview: boolean; children: React.ReactNode }) {
   const supabase = await createClient();
-  const [{ dict }, { dict: appDict }, availability, layout, popularity, searchTags] = await Promise.all([
+  const [{ dict }, { dict: appDict }, availability, layout, popularity, searchTags, seed] = await Promise.all([
     getDictionary(),
     // The app's namespaces on a visitor's page, scoped to this subtree — the
     // same as the signed-in layout sends (see lib/i18n/scopes.ts).
@@ -38,6 +56,7 @@ export async function GuestShell({ preview, children }: { preview: boolean; chil
     getToolsLayout(supabase),
     readToolPopularity(supabase),
     readToolSearchTags(supabase),
+    preview ? previewAuthSeed() : Promise.resolve(null),
   ]);
   const t = makeT(dict);
   return (
@@ -45,6 +64,7 @@ export async function GuestShell({ preview, children }: { preview: boolean; chil
       <DrawerProvider>
         <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col" data-guest-shell={preview ? "preview" : "visitor"}>
           {preview && <GuestPreviewBar />}
+          {seed && <AuthDialogSeeder seed={seed} />}
           <MegaTopbar
             guest
             menu={false}

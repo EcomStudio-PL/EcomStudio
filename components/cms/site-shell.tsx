@@ -77,7 +77,7 @@ export function SiteHeader({ global, nav, locale, t, showAuth, signedIn }: Shell
     .filter((l): l is { label: string; url: string } => Boolean(l.label && l.url));
   const links = authored.length > 0
     ? authored
-    : nav.filter((p) => p.navGroup === "main").map((p) => ({ label: p.title, url: `/${p.slug}` }));
+    : nav.filter((p) => p.navGroup === "main").map((p) => ({ label: p.title, url: p.href ?? `/${p.slug}` }));
 
   const ctaLabel = lt(content.ctaLabel, locale);
   const ctaUrl = href(content.ctaUrl);
@@ -211,7 +211,7 @@ export function footerLinks(content: CmsBlockContent, nav: NavPage[], locale: st
   ];
   const fromPages: FooterLink[] = nav
     .filter((p) => p.navGroup && p.navGroup !== "main")
-    .map((p) => ({ label: p.title, url: `/${p.slug}`, group: groupOf(p.navGroup ?? undefined) }));
+    .map((p) => ({ label: p.title, url: p.href ?? `/${p.slug}`, group: groupOf(p.navGroup ?? undefined) }));
   const seen = new Set<string>();
   return [...authored, ...legal, ...fromPages].filter((l) => {
     if (seen.has(l.url)) return false;

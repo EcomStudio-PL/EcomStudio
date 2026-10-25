@@ -14,6 +14,9 @@ import { RatioValue, ratioIcon, ratioName } from "@/components/genv3/ratio-optio
 import { FASHION_HINT_MAX, type FashionSlotKey, type FashionToolConfig } from "@/lib/fashion-tools";
 import { cn } from "@/lib/utils";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
+import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
+import { BalanceLine, ToolDraftBanner, ToolNotice } from "@/components/public-tools/tool-notice";
+import { useToolViewer } from "@/components/public-tools/tool-viewer";
 
 /**
  * MODA — one panel for every tool in the category.
@@ -130,11 +133,39 @@ export function FashionToolWorkspace({
   const emptyRequired = config.slots.filter(
     (slot) => slot.required && (pools[slot.key]?.length ?? 0) === 0);
 
+  /*
+    PUBLIC TOOLS V1. A visitor prepares the tool exactly as a member does —
+    every pool's photos stay in the browser (never Storage), Generate opens the
+    sign-in dialog — and once signed in the same photos go back into their own
+    pools through `upload` below, like any picked by hand. Without a viewer (no
+    provider) nothing changes.
+  */
+  const viewer = useToolViewer();
+  // `upload` is declared below and reaches the restore through a ref: a saved
+  // preparation is put back once, when the panel mounts.
+  const uploadRef = useRef<(slotKey: FashionSlotKey, files: File[]) => Promise<void>>(async () => {});
+  const session = useToolSession({
+    settings: { resolution, format, hint },
+    // A source id names its pool, so two pools never trade photographs.
+    sources: config.slots.flatMap((slot) => (pools[slot.key] ?? [])
+      .map((ref) => ({ ...refSource(ref), id: `${slot.key}:${ref.key}` }))),
+    apply: (saved: { resolution?: string; format?: string; hint?: string }, files: File[], ids: string[]) => {
+      if (saved.resolution && resolutions.includes(saved.resolution)) setResolution(saved.resolution);
+      if (saved.format && (saved.format === "auto" || ratios.includes(saved.format))) setFormat(saved.format);
+      if (typeof saved.hint === "string") setHint(saved.hint.slice(0, FASHION_HINT_MAX));
+      void (async () => {
+        for (const slot of config.slots) {
+          const mine = files.filter((_, i) => ids[i]?.startsWith(`${slot.key}:`));
+          if (mine.length > 0) await uploadRef.current(slot.key, mine);
+        }
+      })();
+    },
+  });
+
   // ── Upload: the same three ways in, per pool ─────────────────────────────
   const upload = useCallback(async (slotKey: FashionSlotKey, files: File[]) => {
     const slot = config.slots.find((s) => s.key === slotKey);
     if (!slot) return;
-    const supabase = createClient();
     const held = reserved.current[slotKey] ?? 0;
     const room = Math.max(0, slot.max - (pools[slotKey]?.length ?? 0) - held);
     if (files.length > room) toast.error(t("genv3.capReached", { max: slot.max }));
@@ -148,6 +179,18 @@ export function FashionToolWorkspace({
       for (const file of batch) {
         if (!ACCEPTED.includes(file.type)) { toast.error(t("products.invalidType")); continue; }
         if (file.size > MAX_BYTES) { toast.error(t("products.tooLarge")); continue; }
+        if (session.guest) {
+          // A visitor's photo is a local stand-in: no request of any kind.
+          const ref = session.localRef(file);
+          setPools((prev) => {
+            const current = prev[slotKey] ?? [];
+            if (current.length >= slot.max) return prev;
+            return { ...prev, [slotKey]: [...current, ref] };
+          });
+          session.added(1);
+          continue;
+        }
+        const supabase = createClient();
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${workspaceId}/${folder.current}/${slotKey}/${crypto.randomUUID()}.${ext}`;
         const { error } = await supabase.storage.from("product-images").upload(path, file);
@@ -163,7 +206,8 @@ export function FashionToolWorkspace({
       inFlight.current -= 1;
       if (inFlight.current === 0) setUploading(false);
     }
-  }, [config.slots, pools, workspaceId, t]);
+  }, [config.slots, pools, workspaceId, t, session]);
+  uploadRef.current = upload;
 
   /** A page-wide drop lands in the FIRST pool: with two blocks on screen the
    *  drop target is ambiguous, and guessing wrong puts a person's photograph
@@ -273,6 +317,7 @@ export function FashionToolWorkspace({
     // Guarded against the double click that would otherwise pay twice.
     if (running.current || runCount === 0) return;
     running.current = true;
+    session.ran();
     setBusy(true);
     const batch = buildBatch();
     setJobs(batch);
@@ -303,7 +348,9 @@ export function FashionToolWorkspace({
     try { await runOne(job); } finally { setBusy(false); running.current = false; }
   }
 
-  const canRun = available && !busy && !uploading && runCount > 0 && missing === 0;
+  // A visitor's Generate is always the sign-in dialog, so their balance (none)
+  // does not grey it out; a member's is the server-checked wallet, as before.
+  const canRun = available && !busy && !uploading && runCount > 0 && (session.guest || missing === 0);
   const pending = jobs.filter((j) => j.status !== "completed");
   const ctaLabel = t(`wf.moda.${config.key}.cta`);
 
@@ -356,6 +403,7 @@ export function FashionToolWorkspace({
       {/* ── LEFT: the tool ──────────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
+          <ToolDraftBanner session={session} />
           {/* One block per pool. Only the first claims the paste shortcut:
               a single Ctrl+V must not land the same image in both pools.
 
@@ -553,7 +601,17 @@ export function FashionToolWorkspace({
               </p>
             </div>
           </div>
-          {missing > 0 ? (
+          {viewer ? (
+            // The status card below the button says what is missing and what
+            // to do; here only what the tool still needs and the balance.
+            emptyRequired.length > 0 ? (
+              <p className="mt-2 text-center text-[11px] text-muted" data-fashion-need>
+                {t(`fashion.need.${emptyRequired[0]!.key}`)}
+              </p>
+            ) : (
+              <p className="mt-2 text-center text-[10.5px]"><BalanceLine balance={balance} /></p>
+            )
+          ) : missing > 0 ? (
             <p className="mt-2 text-center text-[11px] font-medium text-danger">
               {t("studio.missing", { n: missing })}{" · "}
               <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
@@ -565,7 +623,7 @@ export function FashionToolWorkspace({
           ) : (
             <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
           )}
-          <button type="button" disabled={!canRun} onClick={runAll} data-fashion-cta
+          <button type="button" disabled={!canRun} onClick={() => void session.gate(runAll)} data-fashion-cta
             aria-label={`${ctaLabel} · ${n(total)} ${t("genv3.credits")}`}
             className={cn(
               "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
@@ -575,6 +633,7 @@ export function FashionToolWorkspace({
             <span>{ctaLabel}</span>
             {total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
           </button>
+          {viewer && runCount > 0 && <ToolNotice cost={total} balance={balance} session={session} className="mt-2.5" />}
         </div>
       </div>
 

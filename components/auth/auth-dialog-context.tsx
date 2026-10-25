@@ -4,6 +4,8 @@ import {
 } from "react";
 import { useSearchParams } from "next/navigation";
 import { parseAuthMode, safeReturnTo, type AuthMode } from "@/lib/auth-routes";
+import type { AccessView } from "@/app/actions/platform-access";
+import type { RegistrationFormConfig } from "@/app/actions/registration-config";
 
 /**
  * WHO DECIDES THE DIALOG IS OPEN.
@@ -41,11 +43,26 @@ export type AuthDialogState = {
   intent?: "tool";
 };
 
+/**
+ * The two facts the dialog otherwise asks the server for when it opens (is the
+ * door open, and what the registration form needs), handed over by a page that
+ * already read them with the same functions. Only the admin's "Podgląd jako
+ * gość" does: the preview refuses every server action (lib/supabase/middleware.ts),
+ * so without this its dialog could never learn what a visitor's would show.
+ * `mobile` is the phone wording the dialog picks at ≤640px.
+ */
+export type AuthDialogSeed = {
+  access: { desktop: AccessView; mobile: AccessView };
+  registration: RegistrationFormConfig;
+};
+
 type AuthDialogApi = AuthDialogState & {
   open: (mode: AuthMode, next?: string, options?: { intent?: "tool" }) => void;
   /** Change mode inside the open dialog; pushes history so Back steps back. */
   switchTo: (mode: AuthMode) => void;
   close: () => void;
+  seed: AuthDialogSeed | null;
+  setSeed: (seed: AuthDialogSeed | null) => void;
 };
 
 const CLOSED: AuthDialogState = { mode: null, next: "" };
@@ -80,6 +97,7 @@ export function AuthDialogProvider({ children }: { children: React.ReactNode }) 
   // opens on the first client paint (the dialog is in the main bundle, so
   // there is nothing to download), and every click opens synchronously.
   const [state, setState] = useState<AuthDialogState>(CLOSED);
+  const [seed, setSeed] = useState<AuthDialogSeed | null>(null);
 
   useEffect(() => {
     const fromUrl = readLocation();
@@ -155,8 +173,8 @@ export function AuthDialogProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const api = useMemo<AuthDialogApi>(
-    () => ({ ...state, open, switchTo, close }),
-    [state, open, switchTo, close],
+    () => ({ ...state, open, switchTo, close, seed, setSeed }),
+    [state, open, switchTo, close, seed],
   );
 
   return (

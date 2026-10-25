@@ -28,7 +28,7 @@ export async function ToolScope({ tool, audience, children }: {
     return (
       <ToolViewerProvider value={{ tool: tool.key, path: tool.path, facts: { kind: "guest", preview: audience.preview }, trialWatermark: false }}>
         {children}
-        <PublicToolSeo tool={tool} />
+        {tool.seo !== false && <PublicToolSeo tool={tool} />}
       </ToolViewerProvider>
     );
   }
@@ -36,7 +36,7 @@ export async function ToolScope({ tool, audience, children }: {
   const user = await getRequestUser();
   const workspace = user ? await getCurrentWorkspace(supabase, user.id) : null;
   // iceEditSession is an admin's only (and never during a guest preview).
-  const editing = (await iceEditSession())?.path === tool.path;
+  const editing = tool.seo !== false && (await iceEditSession())?.path === tool.path;
   const block = editing ? <PublicToolSeo tool={tool} editing /> : null;
   if (!user || !workspace) return <>{children}{block}</>;
   const [facts, watermark] = await Promise.all([

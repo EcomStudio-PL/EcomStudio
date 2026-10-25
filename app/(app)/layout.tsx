@@ -31,7 +31,7 @@ import { GuestPreviewBar } from "@/components/public-tools/preview-bar";
 import { DraftResume } from "@/components/public-tools/draft-resume";
 import { guestPreviewActive, publicToolAudience, requestPath } from "@/lib/server/public-tools";
 import { PUBLIC_TOOLS, isPublicToolPath } from "@/lib/public-tools";
-import { catalogItem } from "@/lib/tool-cards";
+import { CATALOG_ITEMS, catalogItem } from "@/lib/tool-cards";
 import { itemLabelKey } from "@/lib/tool-layout";
 
 export default async function AppLayout({ children, searchParams }: {
@@ -235,10 +235,14 @@ export default async function AppLayout({ children, searchParams }: {
   const planCredits = sub?.subscription_plans?.monthly_credits ?? freePlan?.monthly_credits ?? null;
   const isAdmin = profile.role === "admin";
   const displayName = profile.full_name ?? profile.email;
-  const toolLabels = Object.fromEntries(PUBLIC_TOOLS.map((tool) => {
-    const item = catalogItem(tool.key);
-    return [tool.key, item ? t0(itemLabelKey(item)) : tool.key];
-  }));
+  const toolLabels = Object.fromEntries([
+    ...PUBLIC_TOOLS.map((tool) => {
+      const item = catalogItem(tool.key);
+      return [tool.key, item ? t0(itemLabelKey(item)) : tool.key];
+    }),
+    // A category's workflows, keyed as their tool pages key a draft.
+    ...CATALOG_ITEMS.filter((item) => item.workflow).map((item) => [item.key, t0(itemLabelKey(item))]),
+  ]);
   return (
     <I18nScope dict={clientDict}>
     <DrawerProvider>

@@ -27,7 +27,10 @@
 /** The panels a visitor can use, by the kind of component that renders them. */
 export type PublicPanel =
   | "retouch" | "photo" | "thumbnail" | "custom" | "managed"
-  | "resize" | "compress" | "workbench" | "editor";
+  | "resize" | "compress" | "workbench" | "editor"
+  /** A category's workflow: the managed generator in its preset, or a Moda
+   *  tool's own panel — components/category/workflow-runtime.tsx picks. */
+  | "workflow";
 
 export type PublicTool = {
   /** The catalogue key (lib/tool-cards.ts CATALOG_ITEMS) — also the key FAQ
@@ -36,6 +39,13 @@ export type PublicTool = {
   /** The tool's one address. Equal to its catalogue card's href (tested). */
   path: string;
   panel: PublicPanel;
+  /**
+   * false: a tool a visitor can open from the catalogue, without a public
+   * block of its own under the panel (no SEO copy, examples or FAQ yet) —
+   * its title and description are its catalogue card's. Absent: the block,
+   * edited in "Edytuj stronę".
+   */
+  seo?: false;
 };
 
 export const PUBLIC_TOOLS: readonly PublicTool[] = [
@@ -53,7 +63,28 @@ export const PUBLIC_TOOLS: readonly PublicTool[] = [
   { key: "expand", path: "/tools/expand", panel: "workbench" },
   { key: "watermark", path: "/tools/watermark", panel: "workbench" },
   { key: "editor", path: "/tools/editor", panel: "editor" },
+  // The generative edits: the same batch workbench as Upscale.
+  { key: "relight", path: "/tools/relight", panel: "workbench", seo: false },
+  { key: "beautify", path: "/tools/beautify", panel: "workbench", seo: false },
+  { key: "uncrop", path: "/tools/uncrop", panel: "workbench", seo: false },
+  { key: "ghost_mannequin", path: "/tools/ghost_mannequin", panel: "workbench", seo: false },
 ] as const;
+
+/**
+ * EVERY CATEGORY'S WORKFLOWS, by address: /k/<category>/<workflow>. Each opens
+ * the managed generator in its preset or a Moda tool's panel — both adapted —
+ * so any workflow the catalogue lists can be opened by a visitor. Matched by
+ * shape here (this file stays free of the category registry the middleware
+ * would otherwise bundle); the page itself 404s an unknown category or
+ * workflow, and the catalogue decides, as for every tool, whether it is listed.
+ * Miniaturka keeps its own entry above (its panel, its public block).
+ */
+const WORKFLOW_PATH = /^\/k\/([a-z0-9-]+)\/([A-Za-z0-9]+)$/;
+
+function workflowTool(path: string): PublicTool | null {
+  const m = WORKFLOW_PATH.exec(path);
+  return m ? { key: `${m[1]}.${m[2]}`, path, panel: "workflow", seo: false } : null;
+}
 
 /**
  * The request header the middleware stamps with the path being rendered, so a
@@ -79,6 +110,17 @@ export const GUEST_PREVIEW_ROUTE = "/api/admin/guest-preview";
 /** The catalogue itself. Public too, under the same switch. */
 export const PUBLIC_CATALOGUE_PATH = "/tools";
 
+/**
+ * THE CMS PAGE THAT USED TO STAND IN FOR IT. /narzedzia is a published CMS
+ * page ("Narzędzia" in the site menu) with simple tool tiles, made when the
+ * real catalogue sat behind the login. While the catalogue is a visitor's page
+ * (the switch on, or an admin's guest preview) there is ONE catalogue: this
+ * address forwards to /tools and the menu links there directly. The CMS page
+ * itself — content, versions — is untouched, and is what /narzedzia shows
+ * again the moment the switch is off.
+ */
+export const PUBLIC_CATALOGUE_ALIAS = "narzedzia";
+
 /** A path as the router sees it: no query, no trailing slash. */
 export function cleanPath(pathname: string): string {
   const p = (pathname ?? "").split("?")[0].split("#")[0];
@@ -89,7 +131,8 @@ const BY_PATH = new Map(PUBLIC_TOOLS.map((t) => [t.path, t]));
 const BY_KEY = new Map(PUBLIC_TOOLS.map((t) => [t.key, t]));
 
 export function publicToolForPath(pathname: string): PublicTool | null {
-  return BY_PATH.get(cleanPath(pathname)) ?? null;
+  const p = cleanPath(pathname);
+  return BY_PATH.get(p) ?? workflowTool(p);
 }
 
 export function publicToolByKey(key: string): PublicTool | null {
@@ -104,7 +147,7 @@ export function publicToolByKey(key: string): PublicTool | null {
  */
 export function isPublicToolPath(pathname: string): boolean {
   const p = cleanPath(pathname);
-  return p === PUBLIC_CATALOGUE_PATH || BY_PATH.has(p);
+  return p === PUBLIC_CATALOGUE_PATH || BY_PATH.has(p) || WORKFLOW_PATH.test(p);
 }
 
 /* ── the viewer of a tool panel ──────────────────────────────────────────── */

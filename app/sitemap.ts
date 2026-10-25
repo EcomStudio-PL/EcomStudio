@@ -5,6 +5,7 @@ import { getActiveHomepage } from "@/lib/server/homepage";
 import { getBlogSitemap } from "@/lib/server/grovnews-blog";
 import { blogPath } from "@/lib/grovnews-blog";
 import { publicToolSitemapPaths } from "@/lib/server/public-tool-meta";
+import { PUBLIC_CATALOGUE_ALIAS } from "@/lib/public-tools";
 
 /**
  * Only what a signed-out visitor can actually open. GrovBase is a workspace
@@ -57,11 +58,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // own here. Asked through getActiveHomepage() — the one resolver "/" and the
   // redirect use — rather than read off the column a second way.
   const forwarded = home?.kind === "app" ? home.slug : null;
+  // Public Tools V1: with the switch on, /narzedzia forwards to /tools (the
+  // one catalogue, listed below) and is not a page of its own here either.
+  const catalogueAlias = tools.length > 0 ? PUBLIC_CATALOGUE_ALIAS : null;
   const managed = (data ?? [])
     // A page an admin marked "nie indeksuj" must not be advertised here
     // either. Both read the same column, so the sitemap and the page's own
     // robots meta can never disagree — see lib/server/cms-page.ts.
-    .filter((p) => p.kind !== "launch" && p.slug !== forwarded && !RESERVED_SLUGS.has(p.slug) && !isNoindex(p.seo))
+    .filter((p) => p.kind !== "launch" && p.slug !== forwarded && p.slug !== catalogueAlias && !RESERVED_SLUGS.has(p.slug) && !isNoindex(p.seo))
     .map((p) => ({
       url: absoluteUrl(p.slug === "home" ? "/" : `/${p.slug}`),
       lastModified: p.published_at ? new Date(p.published_at) : now,

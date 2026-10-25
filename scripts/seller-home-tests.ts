@@ -114,7 +114,10 @@ const FROZEN: readonly [string, string][] = [
   // social profiles to the renderer (already loaded for the footer).
   // FAQ V1: a page with faq_page, about_faq or contact_page reads the FAQ
   // base (one cached read) and, for /faq, Kontakt's real channel links.
-  ["app/[slug]/page.tsx", "ca7fe24291b071714ce9c7c827272b63ff279181c5b25534dc12aa61d5eef478"],
+  // Public Tools V1 (one catalogue): while the app catalogue is a visitor's
+  // page (switch on, or an admin's guest preview), /narzedzia answers 307 to
+  // /tools and names it canonical; otherwise its CMS page renders as before.
+  ["app/[slug]/page.tsx", "f05fa787574cd42284a0240c3ba8a6cfd33fbaf860fe551cf1c4df8417dc61d8"],
   ["lib/home-sections.ts", "d2a57f246d437d09545d3020943b613183e5c77668ebb4fd7122f612ad68cdb9"],
   ["lib/home-picks.ts", "c01b282598d0c5bff6768dee3bbf2f43429ba72ecf1ea3f040df41d274910fc6"],
   ["components/home/card-art.tsx", "b7c8b8bba3317e7fe64e9b9f29acfb11c7d91756a957416b4846a10a3b1b2faa"],
@@ -133,7 +136,9 @@ const FROZEN: readonly [string, string][] = [
   // public tool page gets GuestShell — publicToolAudience decides, and with
   // the switch off nothing changes; the preview strip while previewing; the
   // local-draft resume banner above the page. Every other path as before.
-  ["app/(app)/layout.tsx", "e6fa8bc737baab5bc1b3765a92c056b41d5b9523af8201a30afaf9b212a5d9c0"],
+  // Then: the resume banner also names a category's workflows (Moda, the
+  // thumbnail), which a visitor can now prepare too — labels only.
+  ["app/(app)/layout.tsx", "880f786814f0a5f86564dc1de047012ebb54f412cff771126fba05fa39dd071f"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   // Kontakt V2: the dialog gained one line — a link to /kontakt?temat=problem

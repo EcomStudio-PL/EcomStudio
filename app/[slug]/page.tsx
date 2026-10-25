@@ -24,6 +24,8 @@ import { ABOUT_SLOT, blockSlotKeys, isAboutType, startCta } from "@/lib/about-pa
 import { isFaqPageType } from "@/lib/faq";
 import { faqTargetsOf, getFaqPages } from "@/lib/server/faq";
 import { faqChannelsOf } from "@/lib/server/faq-page";
+import { PUBLIC_CATALOGUE_ALIAS, PUBLIC_CATALOGUE_PATH } from "@/lib/public-tools";
+import { publicCatalogueOpen } from "@/lib/server/public-tools-flag";
 
 /**
  * EVERY OTHER PUBLIC PAGE.
@@ -44,6 +46,10 @@ type PageProps = Params & { searchParams: Promise<Record<string, string | string
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   if (RESERVED_SLUGS.has(slug)) return {};
+  // Forwarded to the app catalogue (below): it names that one address.
+  if (slug === PUBLIC_CATALOGUE_ALIAS && (await publicCatalogueOpen())) {
+    return { alternates: { canonical: PUBLIC_CATALOGUE_PATH } };
+  }
   const supabase = await createClient();
   const page = await getPublishedPage(supabase, slug);
   // A launch page answers "/" through the homepage switch and 404s here, so
@@ -78,6 +84,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function CmsPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   if (RESERVED_SLUGS.has(slug)) notFound();
+
+  // PUBLIC TOOLS V1 — ONE CATALOGUE. While the app catalogue is a visitor's
+  // page (the switch on, or an admin's "Podgląd jako gość"), /narzedzia is
+  // that catalogue: the same cards, pictures and order a signed-in customer
+  // sees at /tools, not the CMS page's simpler tiles. 307 — the switch can be
+  // turned off again, and /narzedzia then shows its CMS page, kept as it is.
+  if (slug === PUBLIC_CATALOGUE_ALIAS && (await publicCatalogueOpen())) {
+    redirect(withQuery(PUBLIC_CATALOGUE_PATH, await searchParams));
+  }
 
   const supabase = await createClient();
   const [page, access, { data: { user } }] = await Promise.all([

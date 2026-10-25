@@ -16,7 +16,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
-  DRAFT_TTL_MS, DRAFT_VERSION, GUEST_OWNER, GUEST_PREVIEW_COOKIE, GUEST_PREVIEW_ROUTE, PATH_HEADER,
+  DRAFT_TTL_MS, DRAFT_VERSION, GUEST_OWNER, GUEST_PREVIEW_COOKIE, GUEST_PREVIEW_ROUTE, PATH_HEADER, PUBLIC_CATALOGUE_ALIAS,
   PUBLIC_CATALOGUE_PATH, PUBLIC_TOOLS, TOOL_EVENTS, TOOL_EXAMPLE_PAIRS, TOOL_PAGE_SHARED_KEYS,
   cleanPath, draftExpired, draftNeedsConsent, draftOwner, isPublicToolPath, publicToolByKey, publicToolForPath,
   recommendedPack, toolExampleSlot, toolPageTextKeys, toolState, type PackOption, type ToolViewerFacts,
@@ -53,9 +53,19 @@ section("A. WHICH TOOLS ARE PUBLIC");
   const orphan = paths.filter((p) => !hrefs.has(p));
   check("A2 every public tool is a destination the catalogue already lists (no second activation system)", orphan.length === 0, short(orphan));
   check("A3 every public path and the catalogue are public paths", paths.every(isPublicToolPath) && isPublicToolPath(PUBLIC_CATALOGUE_PATH));
-  const closed = ["/library", "/settings", "/credits", "/checkout", "/admin", "/k/fashion/street", "/tools/ghost_mannequin", "/tools/relight", "/support", "/history", "/products"];
+  const closed = ["/library", "/settings", "/credits", "/checkout", "/admin", "/k/moda", "/k", "/k/moda/x/y", "/tools/beautify/x", "/support", "/history", "/products", "/wideo", "/inspirations"];
   const open = closed.filter(isPublicToolPath);
-  check("A4 account pages, money pages and non-adapted panels are NOT public paths", open.length === 0, short(open));
+  check("A4 account pages, money pages and non-tool pages are NOT public paths", open.length === 0, short(open));
+  // EVERY CARD A CUSTOMER CAN OPEN, A VISITOR CAN OPEN: every catalogue item
+  // that leads to a tool screen (not /wideo — "Wkrótce", never a link) is a
+  // public path; the catalogue's own listing still decides whether it shows.
+  const screens = CATALOG_ITEMS.filter((c) => !c.soon && c.href !== "/wideo").map((c) => cleanPath(c.href));
+  const shut = [...new Set(screens.filter((h) => !isPublicToolPath(h)))];
+  check("A4b every catalogue card that opens a screen opens it for a visitor too (workflows, Moda, the generative edits)", shut.length === 0, short(shut));
+  const wf = publicToolForPath("/k/moda/flatlay");
+  check("A4c a category's workflow is a tool keyed like its card, with no public block of its own",
+    wf?.key === "moda.flatlay" && wf.panel === "workflow" && wf.seo === false && CATALOG_ITEMS.some((c) => c.key === wf.key)
+    && publicToolForPath("/k/ecommerce/thumbnail")?.panel === "thumbnail");
   check("A5 a trailing slash and a query do not change the answer", isPublicToolPath("/retusz/") && isPublicToolPath("/tools/remove_bg?x=1") && !isPublicToolPath("/retuszx"));
   check("A6 publicToolForPath / publicToolByKey agree", PUBLIC_TOOLS.every((t) => publicToolForPath(t.path)?.key === t.key && publicToolByKey(t.key)?.path === t.path));
   check("A7 the catalogue is not a tool", publicToolForPath(PUBLIC_CATALOGUE_PATH) === null);
@@ -136,7 +146,7 @@ section("F. THE COPY, IN THREE LANGUAGES");
   const missing: string[] = [];
   const tooLong: string[] = [];
   const keys = [
-    ...PUBLIC_TOOLS.flatMap((t) => Object.values(toolPageTextKeys(t.key))),
+    ...PUBLIC_TOOLS.filter((t) => t.seo !== false).flatMap((t) => Object.values(toolPageTextKeys(t.key))),
     ...Object.values(TOOL_PAGE_SHARED_KEYS),
     "toolPage.catalogue.title", "toolPage.catalogue.description",
   ];
@@ -173,7 +183,7 @@ section("F. THE COPY, IN THREE LANGUAGES");
 /* ── G ─────────────────────────────────────────────────────────────────── */
 section("G. \"EDYTUJ STRONĘ\"");
 {
-  const editable = PUBLIC_TOOLS.filter((t) => t.key !== "retouch");
+  const editable = PUBLIC_TOOLS.filter((t) => t.key !== "retouch" && t.seo !== false);
   const noBlock = editable.filter((t) => !icePageFor(t.path)?.sections.some((s) => s.key === "toolPublic"));
   check("G1 every public tool page but Retusz opens with its public block", noBlock.length === 0, short(noBlock.map((t) => t.path)));
   check("G2 Retusz stays frozen: not opened, and still listed as such", icePageFor("/retusz") === null
@@ -197,7 +207,7 @@ section("G. \"EDYTUJ STRONĘ\"");
 section("H. FAQ: QUESTIONS ASSIGNED TO TOOLS");
 {
   const base = { category_id: "00000000-0000-4000-8000-000000000001", question: { pl: "Pytanie?" }, answer: { pl: "Tak." }, pages: [], visible: true, needs_review: false, only_premiere: false };
-  check("H1 the assignable tools are exactly the public tools", FAQ_TOOLS.join() === PUBLIC_TOOLS.map((t) => t.key).join());
+  check("H1 the assignable tools are exactly the public tools with a public block", FAQ_TOOLS.join() === PUBLIC_TOOLS.filter((t) => t.seo !== false).map((t) => t.key).join());
   const ok = validateFaqItem({ ...base, tools: ["retouch", "ecommerce.thumbnail"] });
   check("H2 known tools are accepted", ok.ok && ok.value.tools.join() === "retouch,ecommerce.thumbnail");
   check("H3 an unknown tool is refused (field 'tools')", (() => { const r = validateFaqItem({ ...base, tools: ["fashion.street"] }); return !r.ok && r.field === "tools"; })());
@@ -244,7 +254,7 @@ section("I. WHAT MUST NEVER BE POSSIBLE (read from the code)");
     server.startsWith('import "server-only"') && !clientImports("lib/server/public-tools"));
   const panels = ["components/retouch/workspace.tsx", "components/tools/photo-tool.tsx", "components/tools/workbench.tsx",
     "components/tools/resize-workbench.tsx", "components/tools/compress-workbench.tsx", "components/thumbnail/workspace.tsx",
-    "components/genv3/workspace.tsx", "components/editor/image-editor.tsx"];
+    "components/genv3/workspace.tsx", "components/editor/image-editor.tsx", "components/fashion/tool-workspace.tsx"];
   const ungated = panels.filter((p) => { const s = read(p); return !s.includes("useToolSession") || !/session\.gate\(/.test(s); });
   check("I9 every adapted panel routes its paid action through the session gate (a visitor's Generate opens the dialog)", ungated.length === 0, short(ungated));
   // Coming back restores settings and photos — it never runs anything.
@@ -258,10 +268,43 @@ section("I. WHAT MUST NEVER BE POSSIBLE (read from the code)");
   const action = read("app/actions/public-tools.ts");
   check("I12 the switch is written only by an admin, audited, and defaults to off",
     /profile\?\.role !== "admin"/.test(action) && /await requireAdmin\(\);\s*\n\s*if \(typeof enabled/.test(action)
-    && /logAudit\(/.test(action) && /enabled: value\?\.enabled === true/.test(server) && /const OFF: PublicToolsFlag = \{ enabled: false/.test(server));
+    && /logAudit\(/.test(action) && /enabled: value\?\.enabled === true/.test(read("lib/server/public-tools-flag.ts"))
+    && /const OFF: PublicToolsFlag = \{ enabled: false/.test(read("lib/server/public-tools-flag.ts")));
   const seo = read("components/public-tools/tool-scope.tsx");
   check("I13 the public block renders for a visitor, or for an admin editing that very page — never for a customer",
-    /<PublicToolSeo tool=\{tool\} \/>/.test(seo) && /iceEditSession\(\)\)\?\.path === tool\.path/.test(seo));
+    /tool\.seo !== false && <PublicToolSeo tool=\{tool\} \/>/.test(seo) && /iceEditSession\(\)\)\?\.path === tool\.path/.test(seo));
+
+  // ONE CATALOGUE (Public Tools V1 fix): /narzedzia — the CMS page with simple
+  // tiles — forwards to /tools while the catalogue is a visitor's page.
+  const cms = read("app/[slug]/page.tsx");
+  const flag = read("lib/server/public-tools-flag.ts");
+  check("I14 /narzedzia forwards to /tools (307, query kept) while the switch is on or an admin previews; its CMS page is untouched otherwise",
+    PUBLIC_CATALOGUE_ALIAS === "narzedzia"
+    && /slug === PUBLIC_CATALOGUE_ALIAS && \(await publicCatalogueOpen\(\)\)\) \{\s*redirect\(withQuery\(PUBLIC_CATALOGUE_PATH/.test(cms)
+    && /if \(await guestPreviewActive\(\)\) return true;\s*return \(await getPublicToolsFlag\(await createClient\(\)\)\)\.enabled;/.test(flag));
+  const site = read("lib/server/public-site.ts");
+  const shell = read("components/cms/site-shell.tsx");
+  const sitemap = read("app/sitemap.ts");
+  check("I15 …the menu's \"Narzędzia\" links /tools directly then, and the sitemap lists /tools instead of /narzedzia",
+    /p\.slug === PUBLIC_CATALOGUE_ALIAS \? \{ \.\.\.p, href: PUBLIC_CATALOGUE_PATH \}/.test(site)
+    && (shell.match(/p\.href \?\? `\/\$\{p\.slug\}`/g) ?? []).length === 2
+    && /p\.slug !== catalogueAlias/.test(sitemap));
+  check("I16 the public site asks only the light switch module (never the tool catalogue) for that",
+    !/lib\/server\/public-tools"/.test(site) && !/lib\/server\/public-tools"/.test(cms) && !/tool-cards|tool-layout/.test(flag));
+  const k = read("app/(app)/k/[cat]/[wf]/page.tsx");
+  check("I17 a visitor's workflow screen gets the member's data through the server's read (engines, previews, Moda tools), never a wallet or a gallery",
+    /const data = await guestRuntime\(guestReadClient\(\), category\.key, isThumbnail\);/.test(k)
+    && /models=\{data\.models\} credits=\{0\}/.test(k) && /fashion=\{data\.fashion\}/.test(k)
+    && !/listGalleryItems\(reader|getWallet\(reader/.test(k));
+  const guestShell = read("components/public-tools/guest-shell.tsx");
+  const modal = read("components/auth/auth-modal.tsx");
+  check("I18 the preview's sign-in dialog shows what a visitor's does: the page reads the two dialog facts itself (the preview refuses server actions), visitors' dialogs still ask",
+    /preview \? previewAuthSeed\(\) : Promise\.resolve\(null\)/.test(guestShell)
+    && /\{seed && <AuthDialogSeeder seed=\{seed\} \/>\}/.test(guestShell)
+    && /if \(seed\) \{ setAccess\(mobile \? seed\.access\.mobile : seed\.access\.desktop\); return; \}\s*void accessViewAction\(mobile\)/.test(modal)
+    && /if \(seed\) \{ setRegistration\(seed\.registration\); return; \}/.test(modal)
+    // The preview's own guarantee is untouched: every server action still refused.
+    && /request\.headers\.has\("next-action"\)\)/.test(mw));
 }
 
 function walkFiles(p: string): string[] {

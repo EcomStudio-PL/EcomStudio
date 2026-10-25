@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
  */
 
 export function AuthModal() {
-  const { mode, next, error, email, intent, close, switchTo } = useAuthDialog();
+  const { mode, next, error, email, intent, close, switchTo, seed } = useAuthDialog();
   const { t } = useI18n();
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -49,8 +49,10 @@ export function AuthModal() {
   useEffect(() => {
     if (!mode || access) return;
     const mobile = window.matchMedia("(max-width: 640px)").matches;
+    // Read by the page already (the admin's guest preview, see AuthDialogSeed).
+    if (seed) { setAccess(mobile ? seed.access.mobile : seed.access.desktop); return; }
     void accessViewAction(mobile).then(setAccess);
-  }, [mode, access]);
+  }, [mode, access, seed]);
 
   // The registration form needs two server-known things: the PUBLIC captcha
   // site key and which optional fields the admin asks for. Fetched the first
@@ -59,12 +61,13 @@ export function AuthModal() {
   // nothing for it.
   useEffect(() => {
     if (!mode || registration || loadingConfig) return;
+    if (seed) { setRegistration(seed.registration); return; }
     setLoadingConfig(true);
     void registrationFormConfig().then((config) => {
       setRegistration(config);
       setLoadingConfig(false);
     });
-  }, [mode, registration, loadingConfig]);
+  }, [mode, registration, loadingConfig, seed]);
 
   // Remember the opener, lock the body, restore both on close. The lock uses
   // position-independent overflow so the page underneath never jumps or loses

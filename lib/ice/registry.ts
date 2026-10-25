@@ -394,7 +394,8 @@ function toolPublicSection(tool: string): IceSection {
 function withPublicBlocks(pages: IcePage[]): IcePage[] {
   const out = [...pages];
   for (const tool of PUBLIC_TOOLS) {
-    if (PUBLIC_BLOCK_EXCLUDED.has(tool.key)) continue;
+    // Retusz (frozen) and every tool without a public block of its own.
+    if (PUBLIC_BLOCK_EXCLUDED.has(tool.key) || tool.seo === false) continue;
     const bulk = {
       key: "toolExamples",
       slots: Array.from({ length: TOOL_EXAMPLE_PAIRS }, (_, i) =>
