@@ -21,6 +21,9 @@ import { getActiveHomepage } from "@/lib/server/homepage";
 import { loadSlots } from "@/lib/server/media-slots";
 import { isContactPageType, topicFromParam } from "@/lib/contact-page";
 import { ABOUT_SLOT, blockSlotKeys, isAboutType, startCta } from "@/lib/about-page";
+import { isFaqPageType } from "@/lib/faq";
+import { faqTargetsOf, getFaqPages } from "@/lib/server/faq";
+import { faqChannelsOf } from "@/lib/server/faq-page";
 
 /**
  * EVERY OTHER PUBLIC PAGE.
@@ -152,6 +155,14 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
     ? { topic: topicFromParam((await searchParams).temat), email: user?.email ?? "" }
     : undefined;
 
+  // FAQ V1: the base's questions, for /faq, O nas' about_faq and the Kontakt
+  // FAQ links — one cached read for the page, none on a page without them.
+  const needsFaq = visible.some((b) => isFaqPageType(b.type) || b.type === "about_faq" || isContactPageType(b.type));
+  const [faq, faqChannels] = await Promise.all([
+    needsFaq ? getFaqPages(locale) : Promise.resolve(undefined),
+    visible.some((b) => isFaqPageType(b.type)) ? faqChannelsOf(supabase, site) : Promise.resolve(undefined),
+  ]);
+
   const shell = {
     global, nav, site, locale, t,
     showAuth: access.showAuthEntry,
@@ -171,7 +182,7 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
           blocks={visible}
           ctx={renderContext({
             locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user), slots, start,
-            site, contact,
+            site: faq ? { ...site, faq: faqTargetsOf(faq) } : site, contact, faq, faqChannels,
           })}
         />
       </main>

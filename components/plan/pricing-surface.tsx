@@ -17,7 +17,8 @@ import { SiteFooter } from "@/components/cms/site-shell";
 import { getGlobalSections, getNavPages, getPublicSite } from "@/lib/server/public-site";
 import { DrawerProvider } from "@/components/layout/shell-context";
 import { PricingPage } from "./pricing-page";
-import { FAQ } from "./pricing-config";
+import { getFaq } from "@/lib/server/faq";
+import { faqJsonLd } from "@/lib/faq";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -61,8 +62,13 @@ export async function PricingSurface({ scope, notice = null }: {
   notice?: string | null;
 }) {
   const supabase = await createClient();
-  const data = await loadPricingPage(supabase);
-  const body = <PricingPage data={data} notice={notice} />;
+  // The FAQ base's /plany questions (FAQ V1): the same for every visitor, in
+  // their language, the premiere one only while it runs.
+  const [data, faq] = await Promise.all([
+    loadPricingPage(supabase),
+    getDictionary().then(({ locale }) => getFaq("plany", locale)),
+  ]);
+  const body = <PricingPage data={data} notice={notice} faq={faq.items} />;
   if (scope === "shell") return body;
 
   const [{ dict, locale }, { dict: appDict }, availability, isAdmin, layout, popularity, searchTags, member, global, nav, site] = await Promise.all([
@@ -84,16 +90,7 @@ export async function PricingSurface({ scope, notice = null }: {
   const t = makeT(dict);
 
   // FAQPage structured data: exactly the questions on the page, in its words.
-  const faq = FAQ.filter((f) => f.when !== "premiere" || data.premiere);
-  const ld = {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: faq.map((f) => ({
-      "@type": "Question",
-      name: t(`pricing.faq.${f.key}.q`),
-      acceptedAnswer: { "@type": "Answer", text: t(`pricing.faq.${f.key}.a`) },
-    })),
-  };
+  const ld = faqJsonLd(faq.items);
 
   return (
     <I18nScope dict={appDict}>
@@ -116,7 +113,7 @@ export async function PricingSurface({ scope, notice = null }: {
         <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10 xl:px-10">
           {body}
         </main>
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(ld) }} />
+        {ld && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(ld) }} />}
         {/* The public site's footer (documents, O nas, Kontakt, Cennik). It
             replaced this page's own thin bar, so there is still exactly one. */}
         <SiteFooter global={global} nav={nav} site={site} locale={locale} t={t} />

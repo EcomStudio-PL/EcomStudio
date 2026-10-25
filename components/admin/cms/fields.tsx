@@ -543,7 +543,7 @@ export function ItemsField({ label, hint, locale, content, onChange, field = "it
                     && (item.value === "instagram" || item.value === "facebook") && (
                     <p className="text-[11.5px] leading-relaxed text-faint" data-item-note={i}>{t("cms.label.contactSiteFallback")}</p>
                   )}
-                  {options.contact === "faq" && faqNeedsConfig(item) && (
+                  {options.contact === "faq" && faqNeedsConfig(item, "shape") && (
                     <p className="text-[11.5px] leading-relaxed text-warning" data-item-note={i}>{t("cms.label.contactNeedsConfig")}</p>
                   )}
                 </div>

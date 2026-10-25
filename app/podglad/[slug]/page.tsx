@@ -15,6 +15,10 @@ import { collectMediaUrls, loadMediaIndex } from "@/lib/server/cms-media";
 import { loadSlots } from "@/lib/server/media-slots";
 import { blockSlotKeys } from "@/lib/about-page";
 import { loadLiveData } from "@/lib/server/cms-data";
+import { isFaqPageType } from "@/lib/faq";
+import { isContactPageType } from "@/lib/contact-page";
+import { faqTargetsOf, getFaqPages } from "@/lib/server/faq";
+import { faqChannelsOf } from "@/lib/server/faq-page";
 
 /**
  * THE DRAFT, SEEN AS A VISITOR WOULD SEE IT.
@@ -70,6 +74,11 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
     aboutKeys.length > 0 ? loadSlots(supabase, aboutKeys) : Promise.resolve(undefined),
   ]);
 
+  // FAQ V1: the base's questions, as the live page paints them.
+  const faq = blocks.some((b) => isFaqPageType(b.type) || b.type === "about_faq" || isContactPageType(b.type))
+    ? await getFaqPages(locale) : undefined;
+  const faqChannels = blocks.some((b) => isFaqPageType(b.type)) ? await faqChannelsOf(supabase, site) : undefined;
+
   const shell = { global, nav, site, locale, t, showAuth: true, signedIn: false };
 
   // The preview wears what the page wears — a landing set to `minimal` has to
@@ -91,7 +100,10 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
           // document whose language (the admin's interface language) is not
           // active yet shows its Polish draft here, with a note, instead of
           // the visitors' "coming soon" — the draft is what is being edited.
-          ctx={renderContext({ locale, t, media, data, admin: true, draftPreview: true, showAuth: true, slots, site })}
+          ctx={renderContext({
+            locale, t, media, data, admin: true, draftPreview: true, showAuth: true, slots,
+            site: faq ? { ...site, faq: faqTargetsOf(faq) } : site, faq, faqChannels,
+          })}
         />
       </main>
       {footerMode === "global" && <SiteFooter {...shell} />}

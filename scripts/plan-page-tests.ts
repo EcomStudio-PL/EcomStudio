@@ -56,8 +56,9 @@ import {
   creditsCheckoutHref, formatCount, formatMoney, formatPerCredit, isFewForm, packCheckoutHref, planCheckoutHref,
 } from "@/components/plan/pricing-model";
 import {
-  CARD_ORDER, CARD_ORDER_PHONE, COMPARE_GROUPS, COMPARE_INITIAL_ROWS, FAQ, PRICING_PAGE, featureOn, planPresentation,
+  CARD_ORDER, CARD_ORDER_PHONE, COMPARE_GROUPS, COMPARE_INITIAL_ROWS, PRICING_PAGE, featureOn, planPresentation,
 } from "@/components/plan/pricing-config";
+import { FAQ_SEED_ITEMS } from "@/lib/faq-seed";
 import { isProtectedPath } from "@/lib/supabase/middleware";
 import { checkoutNotice } from "@/lib/checkout-notice-param";
 
@@ -762,8 +763,9 @@ async function main() {
       /<Gate href=\{cta\.href\} signedIn=\{data\.viewer\.signedIn\}/.test(codeOnly(read("components/plan/plan-cards.tsx"))));
     const bar = codeOnly(read("components/layout/mega-topbar.tsx"));
     check("the header's 'Plany' sends a visitor to /plany, a member to /plan", /href=\{guest \? "\/plany" : "\/plan"\}/.test(bar));
-    check("FAQ structured data is exactly the visible questions", /"@type": "FAQPage"/.test(surface)
-      && /FAQ\.filter\(\(f\) => f\.when !== "premiere" \|\| data\.premiere\)/.test(surface));
+    // FAQ V1: the questions and their FAQPage data are the FAQ base's /plany ones.
+    check("FAQ structured data is exactly the visible questions", /getFaq\("plany", locale\)/.test(surface)
+      && /const ld = faqJsonLd\(faq\.items\)/.test(surface) && /faq=\{faq\.items\}/.test(surface));
   }
 
   console.log("\nJ. CONFIG AND COPY");
@@ -790,7 +792,6 @@ async function main() {
     const files = ["pricing-page.tsx", "plan-cards.tsx", "plan-comparison.tsx", "topups.tsx", "pricing-faq.tsx", "premiere-banner.tsx", "pricing-config.ts", "checkout-notice.tsx"];
     const src = files.map((f) => read(`components/plan/${f}`)).join("\n") + read("components/checkout/checkout-view.tsx");
     const used = new Set([...src.matchAll(/["'`]((?:pricing|plans|packs)\.[A-Za-z0-9_.]+)["'`]/g)].map((m) => m[1]));
-    for (const f of FAQ) { used.add(`pricing.faq.${f.key}.q`); used.add(`pricing.faq.${f.key}.a`); }
     const missing = [...used].flatMap((k) => (["pl", "en", "de"] as const).filter((l) => typeof lookup(dicts[l], k) !== "string").map((l) => `${l}:${k}`));
     check(`every copy key the page uses exists in pl/en/de (${used.size} keys)`, missing.length === 0, missing.join(", "));
     const texts = (["pl", "en", "de"] as const).map((l) => JSON.stringify(dicts[l].pricing));
@@ -799,8 +800,12 @@ async function main() {
     check("no Przelewy24 claim (not active on the account)", texts.every((t) => !/przelewy|p24/i.test(t)));
     check("video is never promised as available", ["pl", "en", "de"].every((l) => /Wkrótce|Soon|Bald/.test(dicts[l].pricing.soon))
       && featureOn("video", "pro", {}) === "soon");
-    check("FAQ: eight questions, the premiere one only while it runs",
-      FAQ.length === 8 && FAQ.filter((f) => f.when === "premiere").map((f) => f.key).join() === "premiere");
+    // FAQ V1: the questions are the FAQ base's (lib/faq-seed.ts → 0155).
+    const planFaq = FAQ_SEED_ITEMS.filter((i) => i.visible && !i.needsReview && i.pages.includes("plany"));
+    check("FAQ: eight questions from the base, the premiere one only while it runs",
+      planFaq.length === 8 && planFaq.filter((i) => i.onlyPremiere).map((i) => i.slug).join() === "jak-dziala-cena-premierowa");
+    const planAnswers = planFaq.map((i) => JSON.stringify(i.answer)).join(" ");
+    check("…and none of them promises a VAT invoice or Przelewy24", !/faktur|VAT|Rechnung|invoice|przelewy|p24/i.test(planAnswers));
     check("the false 'change your plan in the billing portal' copy is gone (the portal cannot)",
       (["pl", "en", "de"] as const).every((l) => !/panelu płatności|billing portal|Zahlungsportal/.test(dicts[l].packs.alreadySubscribed)));
     check("unready capabilities are 'soon', never ✓: seats, priority queue, operator mode",
@@ -840,7 +845,7 @@ async function main() {
     check("comparison: a real table with a pinned first column and internal scroll",
       /<table/.test(cmp) && /sticky left-0/.test(cmp) && /overflow-x-auto/.test(cmp));
     const faq = codeOnly(read("components/plan/pricing-faq.tsx"));
-    check("FAQ: one open at a time, buttons with aria-expanded", /const expanded = open === item\.key/.test(faq) && /aria-expanded=\{expanded\}/.test(faq));
+    check("FAQ: one open at a time, buttons with aria-expanded", /const expanded = open === item\.slug/.test(faq) && /aria-expanded=\{expanded\}/.test(faq));
     check("the subscribed viewer is never offered a second subscription",
       /if \(data\.viewer\.hasLiveSubscription\) return \{ kind: "disabled"/.test(codeOnly(read("components/plan/plan-cards.tsx"))));
     check("PRICING_PAGE opens on monthly unless annual is on sale", PRICING_PAGE.defaultBillingPeriod === "annual"

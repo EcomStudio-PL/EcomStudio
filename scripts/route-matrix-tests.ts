@@ -41,6 +41,7 @@ const PUBLIC: Record<string, string> = {
   "/api/newsletter/open/[recipient]": "open-tracking pixel — fired by a mail client that has no session",
   "/api/newsletter/unsubscribe/[token]": "one-click unsubscribe — the token IS the credential, and RFC 8058 forbids a login wall",
   "/api/public/contact": "contact form for people who do not have an account yet",
+  "/api/public/faq/vote": "FAQ V1 \u201eCzy to pomog\u0142o?\u201d — anonymous by design; one vote per question per browser (hashed cookie), an hourly limit per IP hash, written only through faq_vote() behind the server token, and only for a question a visitor can see",
   "/api/public/contact/uploads": "upload slots for the contact form's pictures (Kontakt V2) — a visitor has no account; the reservation itself is behind the server token (contact_reserve_uploads) and the storage policy admits an upload only to the path it reserved",
   "/api/public/newsletter": "subscribe form on the public site",
   /*

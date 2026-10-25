@@ -264,7 +264,9 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
   about_values: [f("badge", "text", "badge"), HEADING, aboutItems("aboutValues", { hideable: true })],
   about_audience: [f("badge", "text", "badge"), HEADING, aboutItems("aboutCards", { hideable: true, points: true, slots: ABOUT_ITEM_SLOTS.about_audience }, "aboutCardsHint")],
   about_team: [f("badge", "text", "badge"), HEADING, aboutItems("aboutPeople", { hideable: true, slots: ABOUT_ITEM_SLOTS.about_team }, "aboutPeopleHint")],
-  about_faq: [f("badge", "text", "badge"), HEADING, aboutItems("questions", { hideable: true }, "aboutFaqHint")],
+  // FAQ V1: the questions are the shared FAQ base (Strony WWW → FAQ); the
+  // section keeps only its heading.
+  about_faq: [f("badge", "text", "badge"), HEADING, group("faqShared", "faqSharedHint")],
   /*
    * KONTAKT V2 — the whole contact page (lib/contact-page.ts). One long form,
    * top to bottom as the page reads; the dotted keys live in content.fields.
@@ -311,6 +313,36 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
     group("contactGroupCompany", "contactCompanyHint"),
     f("firm.title", "text", "contactCompanyTitle"),
     f("company", "company", "contactCompany"),
+  ],
+  /*
+   * FAQ V1 — the /faq page (components/faq/faq-page.tsx). The questions are
+   * the shared base, edited in Strony WWW → FAQ; these are the page's own
+   * words. The hero line reads "{subtitle} [{ctaLabel}]({ctaUrl}) {description}".
+   */
+  faq_page: [
+    group("faqGroupHero"),
+    f("badge", "text", "badge"), HEADING,
+    f("subtitle", "text", "faqLead"), f("ctaLabel", "text", "faqLeadLink"), f("ctaUrl", "url", "faqLeadUrl"),
+    f("description", "text", "faqLeadTail"),
+    group("faqGroupSearch"),
+    f("find.placeholder", "text", "faqFindPlaceholder"),
+    f("topics.label", "text", "faqTopicsLabel"),
+    f("find.empty", "text", "faqFindEmpty"),
+    f("find.emptyHint", "text", "faqFindEmptyHint"),
+    f("find.emptyCta", "text", "faqFindEmptyCta"),
+    group("faqGroupVotes", "faqVotesHint"),
+    f("vote.question", "text", "faqVoteQuestion"),
+    f("vote.yes", "text", "faqVoteYes"),
+    f("vote.no", "text", "faqVoteNo"),
+    f("vote.thanks", "text", "faqVoteThanks"),
+    f("vote.sorry", "text", "faqVoteSorry"),
+    f("vote.contact", "text", "faqVoteContact"),
+    f("link.copy", "text", "faqLinkCopy"),
+    f("link.copied", "text", "faqLinkCopied"),
+    group("faqGroupEnd", "faqEndHint"),
+    f("end.title", "text", "faqEndTitle"),
+    f("cta2Label", "text", "faqEndCta"), f("cta2Url", "url", "faqEndUrl"),
+    group("faqShared", "faqSharedHint"),
   ],
   about_cta: [
     HEADING, f("subtitle", "textarea", "subheading"),
@@ -515,8 +547,8 @@ export function splitFields(type: string, fields: FieldDef[]): {
   // The launch page is one long form by design — it IS the page, and every
   // field on it is used. Splitting it would hide half a page behind a toggle.
   // A gallery has a single row (its summary), which must not be folded away.
-  // Kontakt V2 is the same kind of page: one form, every field in use.
-  if (type === "launch" || type === "launch_gallery" || type === "contact_page") return { quick: fields, advanced: [] };
+  // Kontakt V2 and the /faq page are the same kind: one form, every field in use.
+  if (type === "launch" || type === "launch_gallery" || type === "contact_page" || type === "faq_page") return { quick: fields, advanced: [] };
   const extra = new Set(EXTRA_QUICK[type] ?? []);
   const quick = fields.filter((f) => ALWAYS_QUICK.has(f.key) || extra.has(f.key));
   const advanced = fields.filter((f) => !quick.includes(f));

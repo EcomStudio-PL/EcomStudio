@@ -35,9 +35,10 @@ import { fieldsFor, splitFields } from "@/lib/cms-schema";
 import { CMS_FIELDS, CMS_LINKS } from "@/lib/ice/registry";
 import { blockFields, blockToggles } from "@/lib/server/ice/cms";
 import { SEED_PAGES } from "@/lib/cms-seed";
-import { FAQ } from "@/components/plan/pricing-config";
+import { PLAN_FAQ_LEGACY } from "@/lib/faq";
+import { FAQ_SEED_ITEMS } from "@/lib/faq-seed";
 import {
-  CONTACT_REQUIRED_TEXTS, CONTACT_TEXT_KEYS, PLAN_FAQ_KEYS, TICKET_TOPICS, channelHref, faqHref, fillTokens,
+  CONTACT_REQUIRED_TEXTS, CONTACT_TEXT_KEYS, TICKET_TOPICS, channelHref, faqHref, fillTokens, type FaqTargets,
   linkValueOk, mailAddress, messengerHref, safeFileName, shownChannels, shownCompany, shownFaq, topicFromParam,
   validateContact,
 } from "@/lib/contact-page";
@@ -69,7 +70,8 @@ type Ctx = Parameters<typeof renderContext>[0];
 const render = (locale: Locale, blocks: CmsBlock[], extra: Partial<Ctx> = {}) =>
   renderToStaticMarkup(createElement(I18nProvider, {
     locale, dict: DICTS[locale],
-    children: createElement(BlockRenderer, { blocks, ctx: renderContext({ locale, t: makeT(DICTS[locale]), ...extra }) }) as ReactElement,
+    // FAQ V1: a FAQ link shows only for a question the base shows.
+    children: createElement(BlockRenderer, { blocks, ctx: renderContext({ locale, t: makeT(DICTS[locale]), ...extra, site: { faq: TARGETS, ...extra.site } }) }) as ReactElement,
   }));
 const count = (html: string, re: RegExp) => (html.match(re) ?? []).length;
 
@@ -111,16 +113,25 @@ check("e-mail channel: mailto or a bare address, nothing else",
   && channelHref("email", "contact@grovbase.com") === "mailto:contact@grovbase.com"
   && channelHref("email", "mailto:a@b.pl?bcc=x@y.pl") === null && mailAddress("javascript:x") === null);
 check("Messenger: m.me / messenger.com only", messengerHref("https://m.me/grovbase") !== null && messengerHref("https://evil.me/x") === null);
-check("FAQ links: an EXISTING /plany question, another page or https — never a random anchor",
-  faqHref("/plany#faq-credits") === "/plany#faq-credits" && faqHref("/plany#faq-invoice") === null
-  && faqHref("/plany#faq-premiere") === null && faqHref("/kontakt") === "/kontakt"
-  && faqHref("//evil.com") === null && faqHref("javascript:alert(1)") === null && faqHref("https://grovbase.com/x") !== null);
-check("the /plany question keys are the pricing config's (minus the premiere one)",
-  JSON.stringify(PLAN_FAQ_KEYS) === JSON.stringify(FAQ.filter((f) => !f.when).map((f) => f.key)), JSON.stringify(PLAN_FAQ_KEYS));
+// FAQ V1: the questions the base shows — /faq#<slug>, and old /plany anchors
+// for as long as their question is on /plany.
+const seedSlugs = (page: "faq" | "plany") => new Set(FAQ_SEED_ITEMS.filter((i) => i.visible && !i.onlyPremiere && i.pages.includes(page)).map((i) => i.slug));
+const TARGETS: FaqTargets = { faq: seedSlugs("faq"), plany: seedSlugs("plany") };
+check("FAQ links: a SHOWN /faq question, an old /plany anchor of a shown one, another page or https — never a random anchor",
+  faqHref("/faq#jak-dzialaja-kredyty", TARGETS) === "/faq#jak-dzialaja-kredyty"
+  && faqHref("/faq#czy-otrzymam-fakture-vat", TARGETS) === null
+  && faqHref("/faq#nie-ma-takiego", TARGETS) === null && faqHref("/faq#Zle", TARGETS) === null
+  && faqHref("/plany#faq-credits", TARGETS) === "/plany#faq-credits" && faqHref("/plany#faq-invoice", TARGETS) === null
+  && faqHref("/plany#faq-premiere", TARGETS) === null && faqHref("/kontakt", TARGETS) === "/kontakt" && faqHref("/faq", TARGETS) === "/faq"
+  && faqHref("//evil.com", TARGETS) === null && faqHref("javascript:alert(1)", TARGETS) === null && faqHref("https://grovbase.com/x", TARGETS) !== null);
+check("every old /plany anchor names a question the base has",
+  Object.values(PLAN_FAQ_LEGACY).every((slug) => FAQ_SEED_ITEMS.some((i) => i.slug === slug && i.pages.includes("plany"))));
 check("the editor's address formats", linkValueOk("channel", "https://instagram.com/x", "instagram")
   && !linkValueOk("channel", "https://instagram.com/x", "tiktok") && linkValueOk("channel", "", "tiktok")
   && linkValueOk("nip", "123-456-78-90") && !linkValueOk("nip", "12<3") && linkValueOk("email", "biuro@firma.pl")
-  && !linkValueOk("email", "biuro@firma") && linkValueOk("faq", "/plany#faq-topups") && !linkValueOk("faq", "/plany#faq-vat")
+  && !linkValueOk("email", "biuro@firma") && linkValueOk("faq", "/plany#faq-topups") && linkValueOk("faq", "/faq#czy-otrzymam-fakture-vat")
+  && !linkValueOk("faq", "/faq#Zle Slug") && !linkValueOk("faq", "javascript:alert(1)")
+  && linkValueOk("page", "/kontakt") && linkValueOk("page", "https://grovbase.com/x") && !linkValueOk("page", "//evil.com") && !linkValueOk("page", "javascript:x")
   && !linkValueOk("messenger", "https://m.me/x y"));
 check("tokens: {czas} and {numer} filled, anything else dropped",
   fillTokens("W ciągu {czas}. #{numer} {inne}", { czas: "1 dnia", numer: "1001" }) === "W ciągu 1 dnia. #1001");
@@ -134,8 +145,8 @@ check("channels: e-mail, Instagram, Facebook, TikTok, YouTube — only the mailb
   && (content.items ?? []).filter((i) => i.url).map((i) => i.url).join() === "mailto:contact@grovbase.com");
 check("no invented profile anywhere in the seed (no social URL, no m.me link)",
   !/https?:\/\/[^"]*(instagram|facebook|tiktok|youtube)\.com|https?:\/\/m\.me\//.test(JSON.stringify(KONTAKT)));
-check("FAQ: the five questions; the VAT one has no link (no such question on /plany)",
-  (content.tiles ?? []).length === 5 && (content.tiles ?? []).slice(0, 4).every((t) => faqHref(t.url) !== null)
+check("FAQ: the five questions; the VAT one has no link in the seed (0156 gives it /faq#czy-otrzymam-fakture-vat)",
+  (content.tiles ?? []).length === 5 && (content.tiles ?? []).slice(0, 4).every((t) => faqHref(t.url, TARGETS) !== null)
   && !(content.tiles ?? [])[4]!.url);
 check("the company tile is off and empty", content.company?.hidden === true && !content.company.title && !content.company.value);
 check("every section text key is in the seed", CONTACT_TEXT_KEYS.every((k) => content.fields?.[k]?.pl));
@@ -465,7 +476,7 @@ void (async () => {
   ].filter((k) => !lookup(DICTS[l], `cms.contact.err.${k}`)).map((k) => `${l}:${k}`));
   check("every refusal the form can show is a sentence in three languages", errMissing.length === 0, errMissing.join(","));
   check("shown parts agree with the model", shownChannels(block.content ?? {}, {}, "pl").length === 1
-    && shownFaq(block.content ?? {}, "pl").length === 4 && shownCompany(block.content ?? {}, "pl") === null);
+    && shownFaq(block.content ?? {}, "pl", TARGETS).length === 4 && shownCompany(block.content ?? {}, "pl") === null);
 
   /* ── F ──────────────────────────────────────────────────────────────────── */
   section("F. THE MAILS");

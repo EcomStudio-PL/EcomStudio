@@ -1642,6 +1642,163 @@ export type Database = {
           },
         ]
       }
+      faq_categories: {
+        Row: {
+          contact_topic: string
+          created_at: string
+          id: string
+          name: Json
+          position: number
+          slug: string
+          updated_at: string
+          updated_by: string | null
+          visible: boolean
+        }
+        Insert: {
+          contact_topic?: string
+          created_at?: string
+          id?: string
+          name?: Json
+          position?: number
+          slug: string
+          updated_at?: string
+          updated_by?: string | null
+          visible?: boolean
+        }
+        Update: {
+          contact_topic?: string
+          created_at?: string
+          id?: string
+          name?: Json
+          position?: number
+          slug?: string
+          updated_at?: string
+          updated_by?: string | null
+          visible?: boolean
+        }
+        Relationships: []
+      }
+      faq_import_snapshots: {
+        Row: {
+          data: Json
+          source: string
+          taken_at: string
+        }
+        Insert: {
+          data: Json
+          source: string
+          taken_at?: string
+        }
+        Update: {
+          data?: Json
+          source?: string
+          taken_at?: string
+        }
+        Relationships: []
+      }
+      faq_items: {
+        Row: {
+          answer: Json
+          category_id: string
+          created_at: string
+          draft_answer: Json | null
+          helpful_count: number
+          id: string
+          import_key: string | null
+          needs_review: boolean
+          only_premiere: boolean
+          pages: string[]
+          position: number
+          question: Json
+          review_note: string | null
+          slug: string
+          unhelpful_count: number
+          updated_at: string
+          updated_by: string | null
+          visible: boolean
+        }
+        Insert: {
+          answer?: Json
+          category_id: string
+          created_at?: string
+          draft_answer?: Json | null
+          helpful_count?: number
+          id?: string
+          import_key?: string | null
+          needs_review?: boolean
+          only_premiere?: boolean
+          pages?: string[]
+          position?: number
+          question: Json
+          review_note?: string | null
+          slug: string
+          unhelpful_count?: number
+          updated_at?: string
+          updated_by?: string | null
+          visible?: boolean
+        }
+        Update: {
+          answer?: Json
+          category_id?: string
+          created_at?: string
+          draft_answer?: Json | null
+          helpful_count?: number
+          id?: string
+          import_key?: string | null
+          needs_review?: boolean
+          only_premiere?: boolean
+          pages?: string[]
+          position?: number
+          question?: Json
+          review_note?: string | null
+          slug?: string
+          unhelpful_count?: number
+          updated_at?: string
+          updated_by?: string | null
+          visible?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faq_items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "faq_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      faq_votes: {
+        Row: {
+          created_at: string
+          helpful: boolean
+          ip_hash: string
+          item_id: string
+          voter: string
+        }
+        Insert: {
+          created_at?: string
+          helpful: boolean
+          ip_hash: string
+          item_id: string
+          voter: string
+        }
+        Update: {
+          created_at?: string
+          helpful?: boolean
+          ip_hash?: string
+          item_id?: string
+          voter?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faq_votes_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "faq_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_packages: {
         Row: {
           active: boolean
@@ -8443,6 +8600,37 @@ export type Database = {
       }
       contact_attachment_readable: {
         Args: { p_name: string }
+        Returns: boolean
+      }
+      faq_public: {
+        Args: never
+        Returns: {
+          slug: string
+          category: string
+          category_name: Json
+          category_position: number
+          category_topic: string
+          position: number
+          question: Json
+          answer: Json
+          pages: string[]
+          only_premiere: boolean
+        }[]
+      }
+      faq_vote: {
+        Args: { p_token: string; p_slug: string; p_voter: string; p_ip_hash: string; p_helpful: boolean }
+        Returns: string
+      }
+      faq_reorder: {
+        Args: { p_kind: string; p_ids: string[]; p_category?: string }
+        Returns: number
+      }
+      faq_restore: {
+        Args: { p_version: string }
+        Returns: Json
+      }
+      faq_text_ok: {
+        Args: { p: string }
         Returns: boolean
       }
       contact_submission_ticket: {

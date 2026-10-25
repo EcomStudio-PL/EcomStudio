@@ -4,7 +4,7 @@
  *
  * WHAT LIVES HERE: which plan is drawn how (theme, icon, badge, the one-line
  * "for whom"), the feature groups on the cards and their order, the comparison
- * table's rows, the FAQ, the service-level copy per plan, and page switches.
+ * table's rows, the service-level copy per plan, and page switches.
  *
  * WHAT NEVER LIVES HERE: a price, a credit amount, a seat count, a discount,
  * a pack, a promo date, a Stripe id. Plans and packs are `subscription_plans` /
@@ -169,22 +169,11 @@ export const COMPARE_INITIAL_ROWS = 9;
 
 /* ── FAQ ───────────────────────────────────────────────────────────────────*/
 
-/**
- * The questions, in order. Answers are dictionary strings written from what
- * the product actually does (lib/server/stripe-webhook.ts, the Stripe account,
- * the ledger) — no legal or refund rule is invented there. `premiere` only
- * renders while the premiere offer runs.
+/*
+ * The questions are not here any more: they are the FAQ base (FAQ V1,
+ * public.faq_items — lib/faq.ts, lib/server/faq.ts), edited in Strony WWW →
+ * FAQ and "Edytuj stronę", the same records /faq and /o-nas show.
  */
-export const FAQ: readonly { key: string; when?: "premiere" }[] = [
-  { key: "credits" },
-  { key: "renewal" },
-  { key: "methods" },
-  { key: "topups" },
-  { key: "refunds" },
-  { key: "howMany" },
-  { key: "change" },
-  { key: "premiere", when: "premiere" },
-];
 
 /* ── page switches ─────────────────────────────────────────────────────────*/
 

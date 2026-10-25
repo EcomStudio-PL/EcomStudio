@@ -112,7 +112,9 @@ const FROZEN: readonly [string, string][] = [
   // Kontakt V2: a page with a contact_page section reads ?temat= and the
   // signed-in customer's own address for its form, and hands the site's
   // social profiles to the renderer (already loaded for the footer).
-  ["app/[slug]/page.tsx", "8381f6f754dac1422fd7e23f0022a227bf1c29848bcd9df84ec23d44fe7951b5"],
+  // FAQ V1: a page with faq_page, about_faq or contact_page reads the FAQ
+  // base (one cached read) and, for /faq, Kontakt's real channel links.
+  ["app/[slug]/page.tsx", "ca7fe24291b071714ce9c7c827272b63ff279181c5b25534dc12aa61d5eef478"],
   ["lib/home-sections.ts", "d2a57f246d437d09545d3020943b613183e5c77668ebb4fd7122f612ad68cdb9"],
   ["lib/home-picks.ts", "c01b282598d0c5bff6768dee3bbf2f43429ba72ecf1ea3f040df41d274910fc6"],
   ["components/home/card-art.tsx", "b7c8b8bba3317e7fe64e9b9f29acfb11c7d91756a957416b4846a10a3b1b2faa"],
@@ -755,7 +757,9 @@ const PAY: readonly [string, string][] = [
   ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
   ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
   ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],
-  ["components/plan/pricing-config.ts", "bc0bec120515ef7fb6ef7146ea456c5e67fba7250da7aadee96201e4d4c59233"],
+  // FAQ V1: only the FAQ question list left this file (the questions are the
+  // FAQ base now); no price, plan, period, pack or Stripe value changed.
+  ["components/plan/pricing-config.ts", "a857b44ac126e1a108659d90e1d02061a870d47d614c938e3a81f9c31e50c89d"],
   ["components/plan/credit-coin-stack.tsx", "e3dd4c91b1917edd8872c3105633c30f170513a97034ea90f59e102caa00247b"],
   ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],
 ];

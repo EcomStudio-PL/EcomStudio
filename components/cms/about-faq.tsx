@@ -2,6 +2,8 @@
 import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FaqRichText } from "@/components/faq/faq-rich";
+import type { FaqRich } from "@/lib/faq";
 
 /**
  * THE "O NAS" QUESTIONS — one open at a time, all of them closable.
@@ -11,19 +13,20 @@ import { cn } from "@/lib/utils";
  * reader announces "expanded / collapsed" and Enter/Space work as on any
  * button. The height animates through a grid row (0fr → 1fr) — no measuring,
  * no layout script — and the global reduced-motion rule turns it into an
- * instant change. Only the questions the server decided to show arrive here.
+ * instant change. Only the questions the server decided to show arrive here:
+ * the FAQ base's, marked for O nas (FAQ V1).
  */
-export function AboutFaq({ items }: { items: { q: string; a: string }[] }) {
+export function AboutFaq({ items }: { items: { slug: string; q: string; a: FaqRich }[] }) {
   const [open, setOpen] = useState<number | null>(null);
   const base = useId();
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-3xl border border-line bg-surface" data-about-faq>
+    <ul className="divide-y divide-line overflow-hidden rounded-3xl border border-line bg-surface" data-about-faq data-faq-shared="o-nas">
       {items.map((it, i) => {
         const expanded = open === i;
         const btn = `${base}-q${i}`;
         const panel = `${base}-a${i}`;
         return (
-          <li key={i} data-faq-item>
+          <li key={it.slug} data-faq-item={it.slug}>
             <h3 className="m-0">
               <button type="button" id={btn} aria-expanded={expanded} aria-controls={panel}
                 onClick={() => setOpen(expanded ? null : i)}
@@ -44,7 +47,9 @@ export function AboutFaq({ items }: { items: { q: string; a: string }[] }) {
               className={cn("grid transition-[grid-template-rows] duration-300 ease-out", expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}
               data-faq-answer={expanded ? "open" : "closed"}>
               <div className="overflow-hidden" {...(!expanded ? { inert: true } : {})}>
-                <p className="px-5 pb-6 text-[14.5px] leading-relaxed text-muted sm:px-7">{it.a}</p>
+                <div className="space-y-3 px-5 pb-6 text-[14.5px] leading-relaxed text-muted sm:px-7">
+                  <FaqRichText rich={it.a} />
+                </div>
               </div>
             </div>
           </li>

@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/services/audit";
 import { usageCounts, mediaUsage } from "@/lib/services/media-slots";
 import { MEDIA_SLOT_TAG } from "@/lib/server/media-slots";
 import { CMS_TAG, getPublicSite, toBlocks } from "@/lib/server/public-site";
+import { faqTargetsOf, getFaqPages } from "@/lib/server/faq";
 import { CONTACT_TOKENS, isContactPageType, linkValueOk, type ContactTextKey } from "@/lib/contact-page";
 import { isObjectFit, isObjectPosition } from "@/lib/media-slots";
 import { lookup } from "@/lib/i18n/t";
@@ -73,8 +74,11 @@ async function cmsPageInfo(supabase: Client, row: CmsPageRow, path: string): Pro
   const blocks = toBlocks(row.published_snapshot);
   const { data: drafts } = await supabase.from("cms_blocks").select("id, updated_at").eq("page_id", row.id);
   const base = new Map((drafts ?? []).map((b) => [b.id as string, b.updated_at as string]));
-  // Kontakt V2: a channel without its own link may use the site's profile.
-  const site = blocks.some((b) => isContactPageType(b.type)) ? await getPublicSite(supabase) : {};
+  // Kontakt V2: a channel without its own link may use the site's profile;
+  // a FAQ link is configured once its question is shown (FAQ V1).
+  const site = blocks.some((b) => isContactPageType(b.type))
+    ? { ...(await getPublicSite(supabase)), faq: faqTargetsOf(await getFaqPages("pl")) }
+    : {};
   return {
     pageId: row.id,
     slug: row.slug,

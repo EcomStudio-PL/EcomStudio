@@ -318,6 +318,12 @@ export const BLOCK_TYPES = [
    * after it) and two sections cannot share a grid (lib/contact-page.ts).
    */
   "contact_page",
+  /*
+   * Added with FAQ V1: the /faq page — hero, live search, category pills,
+   * the questions of the shared FAQ base (lib/faq.ts) and a closing tile.
+   * The questions are not content of the section: they are public.faq_items.
+   */
+  "faq_page",
 ] as const;
 
 /**
@@ -337,7 +343,7 @@ export const SECTION_GROUPS: readonly { key: string; types: readonly string[] }[
   { key: "popular", types: ["hero", "features", "cta", "faq", "gallery", "before_after"] },
   { key: "sales", types: ["offer", "pricing_table", "bonus", "countdown", "urgency_cta", "promo_bar", "sticky_cta", "guarantee", "comparison", "benefits"] },
   { key: "proof", types: ["testimonials", "logo_cloud", "stats", "trust_badges", "text_image", "product_lock"] },
-  { key: "text", types: ["page_hero", "text", "rich_text", "legal", "workflow", "use_cases", "cards"] },
+  { key: "text", types: ["page_hero", "faq_page", "text", "rich_text", "legal", "workflow", "use_cases", "cards"] },
   { key: "media", types: ["media", "video", "showcase"] },
   { key: "product", types: ["tools_grid", "models"] },
   { key: "forms", types: ["contact_page", "contact_hub", "contact", "contact_form", "newsletter"] },

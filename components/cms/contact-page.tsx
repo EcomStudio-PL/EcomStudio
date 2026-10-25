@@ -3,7 +3,7 @@ import { ArrowUpRight, Building2, ChevronRight, Mail, MessageCircle } from "luci
 import type { CmsBlock, CmsBlockContent } from "@/lib/cms";
 import { publicText } from "@/lib/about-page";
 import {
-  CONTACT_REQUIRED_TEXTS, TICKET_TOPICS, contactText, fillTokens, shownChannels, shownCompany, shownFaq,
+  CONTACT_REQUIRED_TEXTS, NO_FAQ_TARGETS, TICKET_TOPICS, contactText, fillTokens, shownChannels, shownCompany, shownFaq,
   type ChannelKind, type ContactTextKey, type ShownChannel,
 } from "@/lib/contact-page";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:rin
 
 /* ── brand marks (lucide 1.x ships none) ─────────────────────────────────── */
 
-function BrandIcon({ kind }: { kind: ChannelKind }) {
+export function BrandIcon({ kind }: { kind: ChannelKind }) {
   const common = { width: 19, height: 19, viewBox: "0 0 24 24", "aria-hidden": true, focusable: "false" } as const;
   switch (kind) {
     case "email":
@@ -121,7 +121,7 @@ export function renderContactPage(block: CmsBlock, ctx: RenderContext, first: bo
   const Heading = first ? "h1" : "h2";
 
   const channels = shownChannels(c, ctx.site ?? {}, locale);
-  const faq = shownFaq(c, locale);
+  const faq = shownFaq(c, locale, ctx.site?.faq ?? NO_FAQ_TARGETS);
   const company = shownCompany(c, locale);
   const channelsTitle = text("channels.title");
   const faqTitle = text("faq.title");

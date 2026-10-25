@@ -2,6 +2,7 @@ import type { CmsBlockContent, CmsItem, LocaleText } from "./cms";
 import { lt } from "./cms";
 import { hasPlaceholder } from "./about-page";
 import { CONTACT_EMAIL_PATTERN } from "./cms-forms";
+import { PLAN_FAQ_LEGACY } from "./faq";
 
 /**
  * KONTAKT V2 — ONE PLACE THAT SAYS WHAT THE CONTACT PAGE IS.
@@ -20,7 +21,7 @@ import { CONTACT_EMAIL_PATTERN } from "./cms-forms";
  *                              url (+ url2: a Messenger link for facebook),
  *                              hidden;
  *   tiles                      the FAQ links ("Zanim napiszesz…"), each a
- *                              question of /plany: url = /plany#faq-<key>;
+ *                              question of the FAQ base: url = /faq#<slug>;
  *   company                    "Dane firmy": name, address, NIP, e-mail —
  *                              hidden until somebody types real data;
  *   fields                     every other text: the form's labels, the topic
@@ -208,8 +209,9 @@ export function messengerHref(url: string | undefined): string | null {
   return httpsOn(url, MESSENGER_HOSTS);
 }
 
-/** The social profiles the site already knows (Ustawienia → public_site). */
-export type ContactSite = { instagramUrl?: string; facebookUrl?: string };
+/** The social profiles the site already knows (Ustawienia → public_site),
+ *  and — for the FAQ links — the questions the FAQ base shows (FAQ V1). */
+export type ContactSite = { instagramUrl?: string; facebookUrl?: string; faq?: FaqTargets };
 
 export type ShownChannel = {
   index: number;
@@ -268,27 +270,38 @@ export function channelProblem(item: CmsItem, site: ContactSite): "kind" | "titl
 /* ── FAQ links ──────────────────────────────────────────────────────────── */
 
 /**
- * The questions /plany always shows (components/plan/pricing-config.ts FAQ,
- * without the premiere-only one — never linked from here). A copy, not an
- * import: the pricing config pulls the pricing dictionary into every public
- * page that reads this file. scripts/contact-page-tests.ts holds the two
- * lists equal, so a question added or removed there fails the build here.
+ * The questions a FAQ tile may point at: those /faq shows (FAQ V1 — the
+ * shared base, /faq#<slug>) and, for a tile still on an address from before
+ * the base, those /plany shows (/plany#faq-<key>, mapped by PLAN_FAQ_LEGACY).
+ * Read on the server from the base (lib/server/faq.ts) and handed in; a page
+ * that has none simply links to no question.
  */
-export const PLAN_FAQ_KEYS: readonly string[] = ["credits", "renewal", "methods", "topups", "refunds", "howMany", "change"];
-export const planFaqAnchor = (key: string): string => `faq-${key}`;
-export const PLAN_FAQ_PATH = "/plany";
+export type FaqTargets = { faq: ReadonlySet<string>; plany: ReadonlySet<string> };
+
+export const NO_FAQ_TARGETS: FaqTargets = { faq: new Set(), plany: new Set() };
 
 /**
- * The link a FAQ tile may carry: a question of /plany that EXISTS
- * (/plany#faq-<key>), another page of the site, or an https page. A tile
- * pointing at a question /plany does not have is not a link to anything.
+ * The link a FAQ tile may carry: a question that EXISTS and is shown
+ * (/faq#<slug>, or an old /plany#faq-<key>), another page of the site, or an
+ * https page. A tile pointing at a question nobody can see is not a link to
+ * anything — it stays off the page and the editor marks it "wymaga
+ * konfiguracji" until the question is published.
+ *
+ * `"shape"` checks the form only — what the editor accepts as typed, before
+ * anyone knows whether the question is published yet.
  */
-export function faqHref(url: string | undefined): string | null {
+export function faqHref(url: string | undefined, targets: FaqTargets | "shape"): string | null {
   const raw = (url ?? "").trim();
   if (!raw || raw.length > 300) return null;
-  const plan = /^\/plany#faq-([A-Za-z0-9_-]{1,40})$/.exec(raw);
-  if (plan) return PLAN_FAQ_KEYS.includes(plan[1]) ? raw : null;
-  if (raw.includes("#faq-")) return null;
+  const faq = /^\/faq#([a-z0-9]+(?:-[a-z0-9]+)*)$/.exec(raw);
+  if (faq) return faq[1].length <= 80 && (targets === "shape" || targets.faq.has(faq[1])) ? raw : null;
+  const plan = /^\/plany#faq-([A-Za-z0-9_-]{1,80})$/.exec(raw);
+  if (plan) {
+    if (targets === "shape") return raw;
+    const slug = targets.plany.has(plan[1]) ? plan[1] : Object.hasOwn(PLAN_FAQ_LEGACY, plan[1]) ? PLAN_FAQ_LEGACY[plan[1]] : null;
+    return slug && targets.plany.has(slug) ? raw : null;
+  }
+  if (raw.includes("#faq-") || raw.startsWith("/faq#")) return null;
   if (/^\/(?!\/)[A-Za-z0-9/_\-.?=&#]*$/.test(raw)) return raw;
   try {
     const u = new URL(raw);
@@ -300,19 +313,20 @@ export function faqHref(url: string | undefined): string | null {
 
 export type ShownFaq = { index: number; title: string; href: string };
 
-export function shownFaq(content: CmsBlockContent, locale: string): ShownFaq[] {
+export function shownFaq(content: CmsBlockContent, locale: string, targets: FaqTargets): ShownFaq[] {
   return (content.tiles ?? []).flatMap((item, index) => {
     if (item.hidden) return [];
     const title = visibleText(item.title, locale);
-    const href = faqHref(item.url);
+    const href = faqHref(item.url, targets);
     return title && href ? [{ index, title, href }] : [];
   });
 }
 
 /** A tile that would be shown but has no question to point at: the editor
- *  marks it "wymaga konfiguracji". */
-export function faqNeedsConfig(item: CmsItem): boolean {
-  return !item.hidden && Boolean(visibleText(item.title, "pl")) && !faqHref(item.url);
+ *  marks it "wymaga konfiguracji" (the builder, which does not read the base,
+ *  checks the address's form only). */
+export function faqNeedsConfig(item: CmsItem, targets: FaqTargets | "shape"): boolean {
+  return !item.hidden && Boolean(visibleText(item.title, "pl")) && !faqHref(item.url, targets);
 }
 
 /* ── the company tile ───────────────────────────────────────────────────── */
@@ -335,7 +349,7 @@ export function shownCompany(content: CmsBlockContent, locale: string): ShownCom
 
 /* ── the editor's address fields ────────────────────────────────────────── */
 
-export type LinkFormat = "channel" | "messenger" | "faq" | "nip" | "email";
+export type LinkFormat = "channel" | "messenger" | "faq" | "nip" | "email" | "page";
 
 /**
  * Whether an address may be saved into a field of this format. EMPTY is
@@ -351,9 +365,11 @@ export function linkValueOk(format: LinkFormat, value: string, kind?: string): b
   switch (format) {
     case "channel": return isChannelKind(kind) && channelHref(kind, v) !== null;
     case "messenger": return messengerHref(v) !== null;
-    case "faq": return faqHref(v) !== null;
+    case "faq": return faqHref(v, "shape") !== null;
     case "nip": return v.length <= CONTACT_LIMITS.nipMax && NIP_PATTERN.test(v);
     case "email": return mailAddress(v) !== null;
+    // FAQ V1: a button of the /faq page — a page of the site or an https page.
+    case "page": return /^\/(?!\/)[A-Za-z0-9/_\-.?=&#%]*$/.test(v) || /^https:\/\/[^\s/]+/.test(v);
   }
 }
 

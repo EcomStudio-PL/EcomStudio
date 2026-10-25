@@ -17,6 +17,8 @@ import { PairPanel } from "./pair-panel";
 import { SamplesPanel } from "./samples-panel";
 import { BulkPanel } from "./bulk-panel";
 import { GalleryPanel } from "./gallery-panel";
+import { FaqPanel } from "./faq-panel";
+import { isFaqPage, type FaqPage } from "@/lib/faq";
 import { useFramed } from "../framed";
 import s from "./editor.module.css";
 
@@ -42,7 +44,9 @@ type Open =
   | { kind: "visibility" }
   /** The launch page's galleries — one panel for all three; `key` is the
    *  section that was clicked (null: the toolbar button). */
-  | { kind: "gallery"; key: GalleryKey | null };
+  | { kind: "gallery"; key: GalleryKey | null }
+  /** FAQ V1: the shared FAQ base, on a page that shows it. */
+  | { kind: "faq" };
 
 type Hover = { box: { x: number; y: number; w: number; h: number }; label: string };
 
@@ -132,9 +136,14 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
     void loadInfo();
   }, [loadInfo]);
 
+  // FAQ V1: a page that paints the shared FAQ (/faq, /plany, /o-nas) marks
+  // its list with data-faq-shared — the "FAQ" button opens the base there.
+  const [faqPage, setFaqPage] = useState<FaqPage | "none">("none");
   const rescan = useCallback(() => {
     if (!info) return;
     setTargets(scanPage(info, session.nonce));
+    const shared = document.querySelector("[data-faq-shared]")?.getAttribute("data-faq-shared");
+    setFaqPage(isFaqPage(shared) ? shared : "none");
   }, [info, session.nonce]);
 
   // Find the elements now, and again whenever the page changes under us (a
@@ -482,6 +491,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
             {t("ice.bar.galleries")}
           </Btn>
         )}
+        {faqPage !== "none" && <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "faq" })}>{t("ice.bar.faq")}</Btn>}
         <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "history" })}>{t("ice.bar.history")}</Btn>
         <Btn small kind="primary" disabled={leaving} onClick={() => void leave()}>{leaving ? t("ice.bar.leaving") : t("ice.bar.leave")}</Btn>
       </div>
@@ -502,6 +512,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
       {ctx && open?.kind === "bulkGroups" && <BulkGroupsPanel ctx={ctx} onPick={(g) => setOpen({ kind: "bulk", group: g })} onClose={close} />}
       {ctx && open?.kind === "bulk" && <BulkPanel key={open.group} ctx={ctx} groupKey={open.group} onClose={close} />}
       {ctx && open?.kind === "visibility" && <VisibilityPanel ctx={ctx} onPick={pickUid} onClose={close} />}
+      {ctx && open?.kind === "faq" && <FaqPanel ctx={ctx} page={faqPage === "none" ? null : faqPage} onClose={close} />}
       {ctx && open?.kind === "gallery" && hasGalleries(info, path) && (
         <GalleryPanel ctx={ctx} focusKey={isGalleryKey(open.key) ? open.key : null} onClose={close}
           onDirtyChange={(dirty) => { galleryDirty.current = dirty; }} />

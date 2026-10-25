@@ -4,7 +4,8 @@ import { Plus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { initialBillingPeriod, type BillingPeriod } from "./pricing-model";
-import { CARD_ORDER, CARD_ORDER_PHONE, FAQ, PRICING_PAGE } from "./pricing-config";
+import { CARD_ORDER, CARD_ORDER_PHONE, PRICING_PAGE } from "./pricing-config";
+import { PLAN_FAQ_LEGACY, type FaqPublicItem } from "@/lib/faq";
 import { CheckoutNotice } from "./checkout-notice";
 import { PremiereBanner } from "./premiere-banner";
 import { PlanCards } from "./plan-cards";
@@ -21,12 +22,17 @@ const A = PRICING_PAGE.anchors;
  * heading with the period pill, the three plans, the comparison, the top-ups,
  * the FAQ. One spacing token between sections, one container width.
  */
-export function PricingPage({ data, notice }: { data: PricingPageData; notice: string | null }) {
+export function PricingPage({ data, notice, faq }: {
+  data: PricingPageData;
+  notice: string | null;
+  /** The FAQ base's questions for /plany (FAQ V1), resolved on the server. */
+  faq: readonly Pick<FaqPublicItem, "slug" | "q" | "a">[];
+}) {
   const { t } = useI18n();
   const [period, setPeriod] = useState<BillingPeriod>(
     () => initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, data.annual.onSale),
   );
-  const [faq, setFaq] = useState<string | null>(null);
+  const [openFaq, setFaq] = useState<string | null>(null);
 
   // Scroll to a section under the sticky top bar (its scroll-margin), then
   // move focus there so a keyboard user continues from where they landed.
@@ -37,16 +43,21 @@ export function PricingPage({ data, notice }: { data: PricingPageData; notice: s
     el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
     el.focus({ preventScroll: true });
   }, []);
-  const toChange = useCallback(() => { setFaq("change"); go(A.faq); }, [go]);
+  // "Jak zmienić plan?" on a card: that question, when the page has it.
+  const changeSlug = PLAN_FAQ_LEGACY.change;
+  const hasChange = faq.some((f) => f.slug === changeSlug);
+  const toChange = useCallback(() => { if (hasChange) setFaq(changeSlug); go(A.faq); }, [go, hasChange, changeSlug]);
 
-  // /plany#faq-<key> (the contact page's "Zanim napiszesz…" links): that
-  // question opens and comes into view. Only a question the page shows; any
-  // other hash is left to the browser.
-  const premiere = Boolean(data.premiere);
+  // /plany#faq-<slug> — and the old #faq-<key> anchors from before the FAQ
+  // base (#faq-credits …): that question opens and comes into view. Only a
+  // question the page shows; any other hash is left to the browser.
+  const slugs = faq.map((f) => f.slug).join(" ");
   useEffect(() => {
+    const shown = new Set(slugs.split(" "));
     const open = () => {
-      const key = /^#faq-([A-Za-z0-9_-]{1,40})$/.exec(window.location.hash)?.[1];
-      if (!key || !FAQ.some((f) => f.key === key && (f.when !== "premiere" || premiere))) return;
+      const raw = /^#faq-([A-Za-z0-9_-]{1,80})$/.exec(window.location.hash)?.[1];
+      const key = raw && (shown.has(raw) ? raw : PLAN_FAQ_LEGACY[raw]);
+      if (!key || !shown.has(key)) return;
       setFaq(key);
       window.requestAnimationFrame(() => {
         const el = document.getElementById(`faq-${key}`);
@@ -58,7 +69,7 @@ export function PricingPage({ data, notice }: { data: PricingPageData; notice: s
     open();
     window.addEventListener("hashchange", open);
     return () => window.removeEventListener("hashchange", open);
-  }, [premiere]);
+  }, [slugs]);
   const toPlans = useCallback(() => go(A.plans), [go]);
 
   const plans = data.plans;
@@ -146,9 +157,11 @@ export function PricingPage({ data, notice }: { data: PricingPageData; notice: s
         <TopUps data={data} onChoosePlan={toPlans} />
       </section>
 
-      <section id={A.faq} tabIndex={-1} className={cn(section, "mx-auto w-full max-w-[700px]")}>
-        <PricingFaq premiere={Boolean(data.premiere)} open={faq} onOpen={setFaq} />
-      </section>
+      {faq.length > 0 && (
+        <section id={A.faq} tabIndex={-1} className={cn(section, "mx-auto w-full max-w-[700px]")}>
+          <PricingFaq items={faq} open={openFaq} onOpen={setFaq} />
+        </section>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Image as ImageIcon, Layers, MousePointerClick, Settings2, Signpost } from "lucide-react";
+import { FileText, HelpCircle, Image as ImageIcon, Layers, MousePointerClick, Settings2, Signpost } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,8 @@ const TABS = [
   // Labelled from the editor's own (admin-only) namespace: the cms namespace
   // ships with every public page, and this label belongs to none of them.
   { href: "/admin/www/edytor", key: "visual", icon: MousePointerClick, exact: false, labelKey: "iceAdmin.nav" },
+  // FAQ V1: the one base of questions /faq, /plany and /o-nas read.
+  { href: "/admin/www/baza-faq", key: "faq", icon: HelpCircle, exact: false },
   { href: "/admin/media", key: "media", icon: ImageIcon, exact: false },
   { href: "/admin/www/sekcje-globalne", key: "global", icon: Layers, exact: false },
   { href: "/admin/www/przekierowania", key: "redirects", icon: Signpost, exact: false },

@@ -40,6 +40,7 @@ import {
 } from "@/lib/about-page";
 import { MEDIA_SLOTS } from "@/lib/media-slots";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
+import { faqPagesFrom } from "@/lib/server/faq";
 import type { ResolvedSlot, SlotMap } from "@/lib/server/media-slots";
 
 let failures = 0;
@@ -61,12 +62,28 @@ const seedBlocks = (): CmsBlock[] => ABOUT.sections.map((s, i) => ({
 }));
 const REGISTER: StartCta = { kind: "register", href: null };
 
+/**
+ * FAQ V1: O nas' questions are the FAQ base's. The tests hand the section the
+ * rows faq_public() would return for the questions written in the seed's
+ * about_faq list — imported the way 0155 imports them (switched off = not
+ * visible) — so every rule below is the base's rule: hidden or placeholder
+ * questions never reach the page.
+ */
+const faqOf = (blocks: CmsBlock[], locale: Locale) => {
+  const items = blocks.find((b) => b.type === "about_faq" && b.visible)?.content.items ?? [];
+  const rows = items.filter((it) => !it.hidden).map((it, n) => ({
+    slug: `o-nas-${n}`, category: "pierwsze-kroki", category_name: { pl: "Pierwsze kroki" }, category_position: 10,
+    category_topic: "app", position: n * 10, question: it.title ?? {}, answer: it.description ?? {},
+    pages: ["faq", "o-nas"], only_premiere: false,
+  }));
+  return faqPagesFrom(rows, locale, false);
+};
 const render = (locale: Locale, blocks: CmsBlock[], opts: { slots?: SlotMap; start?: StartCta } = {}) =>
   renderToStaticMarkup(createElement(I18nProvider, {
     locale, dict: DICTS[locale],
     children: createElement(BlockRenderer, {
       blocks,
-      ctx: renderContext({ locale, t: makeT(DICTS[locale]), slots: opts.slots, start: opts.start ?? REGISTER }),
+      ctx: renderContext({ locale, t: makeT(DICTS[locale]), slots: opts.slots, start: opts.start ?? REGISTER, faq: faqOf(blocks, locale) }),
     }) as ReactElement,
   }));
 

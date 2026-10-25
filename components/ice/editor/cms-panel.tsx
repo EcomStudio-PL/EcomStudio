@@ -37,6 +37,10 @@ export function cmsFieldLabel(t: T, f: IceCmsField): string {
     if (f.path[0] === "tiles") return `${block} · ${t("ice.contact.faqLink", { n: Number(f.path[1]) + 1 })} · ${t(`ice.contact.f.${last}`)}`;
     if (f.path[0] === "company") return `${block} · ${t("ice.contact.company")} · ${t(`ice.contact.company_${last}`)}`;
   }
+  // FAQ V1: the /faq page's hero, closing tile and own words.
+  if (f.blockType === "faq_page") {
+    return `${block} · ${t(`ice.faqField.${(f.path[0] === "fields" ? f.path[1] : f.path[0]).replace(/\./g, "_")}`)}`;
+  }
   const item = f.path[0] === "items" ? Number(f.path[1]) + 1 : null;
   // An audience card's point: "Dla kogo · Element 1 · Punkt 2 · Tytuł".
   const point = item && f.path[2] === "points" ? Number(f.path[3]) + 1 : null;

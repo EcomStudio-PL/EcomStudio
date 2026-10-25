@@ -161,7 +161,7 @@ export type IceCmsField = {
  *  (its host decided by the channel's kind), a Messenger link, a FAQ link
  *  (/plany#faq-<existing question>, a page of the site or https), a NIP or an
  *  e-mail address. */
-export type IceLinkFormat = "channel" | "messenger" | "faq" | "nip" | "email";
+export type IceLinkFormat = "channel" | "messenger" | "faq" | "nip" | "email" | "page";
 
 /** A picture slot a CMS section paints (the O nas page): a media_slots row,
  *  edited with the same panel as /home's — library, crop, phone file, clip. */

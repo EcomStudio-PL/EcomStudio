@@ -123,7 +123,9 @@ export function blockSlotKeys(type: string, content: CmsBlockContent | undefined
 
 /** Sections whose items an editor may switch off one by one. */
 export const ABOUT_HIDEABLE_ITEMS: ReadonlySet<string> = new Set([
-  "about_process", "about_values", "about_audience", "about_team", "about_faq",
+  "about_process", "about_values", "about_audience", "about_team",
+  // about_faq is not here since FAQ V1: its questions are the FAQ base's,
+  // switched on and off there (Strony WWW → FAQ).
 ]);
 
 /** …and the ones whose items carry their own points (each hideable too). */

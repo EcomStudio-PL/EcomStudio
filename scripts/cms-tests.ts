@@ -451,6 +451,10 @@ check("blocks.tsx hands every about_* block to the about renderer",
 const contactHandOff = /if \(isContactPageType\(block\.type\)\) return renderContactPage\(block, ctx, first\);/.test(renderer);
 check("blocks.tsx hands the contact_page block to the contact renderer", contactHandOff);
 if (contactHandOff) rendered.push("contact_page");
+// FAQ V1: the /faq page has its own file (components/faq/faq-page.tsx).
+const faqHandOff = /if \(isFaqPageType\(block\.type\)\) return renderFaqPage\(block, ctx, first\);/.test(renderer);
+check("blocks.tsx hands the faq_page block to the FAQ renderer", faqHandOff);
+if (faqHandOff) rendered.push("faq_page");
 const unrenderable = offered.filter((t) => !rendered.includes(t));
 check("every section the picker offers has a renderer", unrenderable.length === 0, `${unrenderable}`);
 

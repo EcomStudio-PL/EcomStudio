@@ -13,6 +13,7 @@ import {
   ABOUT_SLOT, itemSlot, publicText, shownItems, shownPoints, type AboutSlotKey, type StartCta,
 } from "@/lib/about-page";
 import { stegaStrip } from "@/lib/ice/stega";
+import { faqJsonLd } from "@/lib/faq";
 import type { ResolvedSlot, SlotMap } from "@/lib/server/media-slots";
 import { cn } from "@/lib/utils";
 import type { RenderContext } from "./blocks";
@@ -460,20 +461,13 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
 
     /* 8 ── FAQ ────────────────────────────────────────────────────────────── */
     case "about_faq": {
-      const qa = shownItems(c.items, locale)
-        .map((it) => ({ q: publicText(it.title, locale), a: publicText(it.description, locale) }))
-        .filter((x) => x.q && x.a);
+      // FAQ V1: the questions are the FAQ base's — those marked for O nas,
+      // already filtered and in the visitor's language (lib/server/faq.ts).
+      // The section keeps only its heading.
+      const qa = ctx.faq?.["o-nas"].items ?? [];
       if (qa.length === 0) return null;
-      // Structured data from exactly the questions painted below — the same
-      // filtered list, with the editor's invisible markers stripped.
-      const ld = {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        mainEntity: qa.map((x) => ({
-          "@type": "Question", name: stegaStrip(x.q),
-          acceptedAnswer: { "@type": "Answer", text: stegaStrip(x.a) },
-        })),
-      };
+      // Structured data from exactly the questions painted below.
+      const ld = faqJsonLd(qa);
       return (
         <div data-about="faq" className="mx-auto max-w-[45rem]">
           <Enter className="text-center">
@@ -481,10 +475,12 @@ export function renderAboutBlock(block: CmsBlock, ctx: RenderContext, first: boo
             <Heading className={H2}>{T("title")}</Heading>
           </Enter>
           <Reveal delay={80} className="mt-[clamp(2rem,4vw,3rem)]">
-            <AboutFaq items={qa} />
+            <AboutFaq items={qa.map((x) => ({ slug: x.slug, q: x.q, a: x.a }))} />
           </Reveal>
-          <script type="application/ld+json" data-about-ld
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, "\\u003c") }} />
+          {ld && (
+            <script type="application/ld+json" data-about-ld
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, "\\u003c") }} />
+          )}
         </div>
       );
     }

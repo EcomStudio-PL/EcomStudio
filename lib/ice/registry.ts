@@ -507,7 +507,9 @@ export const CMS_FIELDS: Readonly<Record<string, { text: string[]; media: string
   about_values: { text: ["badge", "title", "items.*.title", "items.*.description"], media: [] },
   about_audience: { text: ["badge", "title", "items.*.title", "items.*.description", "items.*.points.*.title"], media: [] },
   about_team: { text: ["badge", "title", "items.*.title", "items.*.badge", "items.*.description"], media: [] },
-  about_faq: { text: ["badge", "title", "items.*.title", "items.*.description"], media: [] },
+  // FAQ V1: the heading only — the questions are the FAQ base's, edited in
+  // the editor's "FAQ" panel (the same records /faq and /plany show).
+  about_faq: { text: ["badge", "title"], media: [] },
   about_cta: { text: ["title", "subtitle", "ctaLabel", "cta2Label"], media: [] },
   // Kontakt V2: the header, each channel's name and line, each FAQ link's
   // question, the company's name and address. The section's other words live
@@ -516,6 +518,10 @@ export const CMS_FIELDS: Readonly<Record<string, { text: string[]; media: string
     text: ["badge", "title", "subtitle", "items.*.title", "items.*.description", "tiles.*.title", "company.title", "company.description"],
     media: [],
   },
+  // FAQ V1: the /faq page's hero and closing tile; its other words are
+  // content.fields (FAQ_TEXT_KEYS) and its addresses CMS_LINKS. The questions
+  // are the FAQ base's — the editor's "FAQ" panel.
+  faq_page: { text: ["badge", "title", "subtitle", "ctaLabel", "description", "cta2Label"], media: [] },
 };
 
 /** CMS text fields whose value is split into paragraphs on blank lines. */
@@ -533,6 +539,10 @@ export const CMS_LINKS: Readonly<Record<string, readonly { path: string; format:
     { path: "tiles.*.url", format: "faq" },
     { path: "company.value", format: "nip" },
     { path: "company.url", format: "email" },
+  ],
+  faq_page: [
+    { path: "ctaUrl", format: "page" },
+    { path: "cta2Url", format: "page" },
   ],
 };
 

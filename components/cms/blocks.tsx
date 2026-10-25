@@ -8,6 +8,9 @@ import type { SlotMap } from "@/lib/server/media-slots";
 import { renderAboutBlock } from "./about-sections";
 import { isContactPageType, type ContactSite, type TicketTopic } from "@/lib/contact-page";
 import { renderContactPage } from "./contact-page";
+import { renderFaqPage, type FaqChannels } from "@/components/faq/faq-page";
+import { isFaqPageType } from "@/lib/faq";
+import type { FaqPages } from "@/lib/server/faq";
 import { resolveStyle } from "@/lib/cms-style";
 import { sanitizeRichText, sanitizeHtml } from "@/lib/cms-sanitize";
 import { cmsIcon } from "@/lib/cms-icons";
@@ -76,6 +79,12 @@ export type RenderContext = {
   /** Kontakt V2: the topic `?temat=` asked for, and a signed-in customer's
    *  own address to start the form with. */
   contact?: { topic: TicketTopic | null; email: string };
+  /** FAQ V1: the FAQ base's questions per page (lib/server/faq.ts), for the
+   *  /faq section and O nas' about_faq. */
+  faq?: FaqPages;
+  /** FAQ V1: the /faq closing tile's extra buttons — only the Instagram and
+   *  Messenger addresses really configured on the Kontakt page. */
+  faqChannels?: FaqChannels;
 };
 
 export function BlockRenderer({ blocks, ctx }: { blocks: CmsBlock[]; ctx: RenderContext }) {
@@ -117,6 +126,8 @@ export function renderContext(input: {
   start?: StartCta;
   site?: ContactSite;
   contact?: { topic: TicketTopic | null; email: string };
+  faq?: FaqPages;
+  faqChannels?: FaqChannels;
 }): RenderContext {
   return {
     locale: input.locale,
@@ -131,6 +142,8 @@ export function renderContext(input: {
     start: input.start,
     site: input.site,
     contact: input.contact,
+    faq: input.faq,
+    faqChannels: input.faqChannels,
   };
 }
 
@@ -220,6 +233,8 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
   if (isAboutType(block.type)) return renderAboutBlock(block, ctx, first);
   // Kontakt V2: the whole contact page, in its own file.
   if (isContactPageType(block.type)) return renderContactPage(block, ctx, first);
+  // FAQ V1: the /faq page — hero, search, the questions, the closing tile.
+  if (isFaqPageType(block.type)) return renderFaqPage(block, ctx, first);
 
   switch (block.type) {
     /* ── LAYOUT ─────────────────────────────────────────────────────────── */

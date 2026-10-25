@@ -289,6 +289,9 @@ const SERVER_ONLY_BOUNDARIES = [
  */
 const ICE_SCOPED_SUBTREES = [
   join(ROOT, "components/ice/ice-gate.tsx"),
+  // FAQ V1: the FAQ editor in Strony WWW → FAQ is the same component as the
+  // editor's "FAQ" panel, and wraps itself in the same scope.
+  join(ROOT, "components/admin/faq/faq-editor-scope.tsx"),
 ];
 
 const BOUNDARIES = new Set([...SERVER_ONLY_BOUNDARIES, ...ICE_SCOPED_SUBTREES]);

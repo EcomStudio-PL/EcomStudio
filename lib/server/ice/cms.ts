@@ -7,9 +7,10 @@ import {
   ABOUT_HIDEABLE_ITEMS, ABOUT_POINT_ITEMS, blockSlotKeys, hasPlaceholder, isAboutType,
 } from "@/lib/about-page";
 import {
-  CONTACT_TEXT_KEYS, channelProblem, faqNeedsConfig, isContactPageType, type ContactSite,
+  CONTACT_TEXT_KEYS, NO_FAQ_TARGETS, channelProblem, faqNeedsConfig, isContactPageType, type ContactSite,
 } from "@/lib/contact-page";
 import type { CmsBlockContent, CmsItem } from "@/lib/cms";
+import { FAQ_TEXT_KEYS, isFaqPageType } from "@/lib/faq";
 import type { IceCmsField, IceCmsSlot, IceCmsToggle, IceLinkFormat, IceLocale } from "@/lib/ice/types";
 import { iceEditSessions } from "./session";
 
@@ -112,6 +113,8 @@ export function blockFields(block: CmsBlockLike, base: string | null): IceCmsFie
   for (const s of spec.text) for (const p of expand(s, block.content)) push(p, "text");
   // Kontakt V2: the section's own vocabulary, after the shared fields.
   if (isContactPageType(block.type)) for (const k of CONTACT_TEXT_KEYS) push(["fields", k], "text");
+  // FAQ V1: the /faq page's own words, after the shared fields.
+  if (isFaqPageType(block.type)) for (const k of FAQ_TEXT_KEYS) push(["fields", k], "text");
   for (const s of spec.media) for (const p of expand(s, block.content)) push(p, "media");
   // Addresses last: they are never painted, so they carry no marker number
   // that the texts' numbering could depend on.
@@ -270,7 +273,7 @@ function contactToggles(block: CmsBlockLike, id: string, base: string | null, si
       const path = [list, String(i)];
       const problem = list === "items"
         ? (channelProblem(item, site) === "url" ? "no_link" as const : undefined)
-        : (faqNeedsConfig(item) ? "needs_config" as const : undefined);
+        : (faqNeedsConfig(item, site.faq ?? NO_FAQ_TARGETS) ? "needs_config" as const : undefined);
       out.push({
         id: `${id}|${path.join("|")}`, blockId: id, blockType: block.type, path, label: localeValues(item.title),
         hidden: item.hidden === true,
