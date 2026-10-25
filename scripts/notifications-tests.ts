@@ -201,6 +201,8 @@ const bells = sources.filter((p) => /export function NotificationsBell/.test(rea
 check("one bell component", bells.length === 1, bells.join(","));
 const store = read("lib/notifications/bell-store.ts");
 check("one refresh loop: 60 s + tab return", /POLL_MS = 60_000/.test(store) && /visibilitychange/.test(store));
+check("the server render never reads the shared module state (no cross-user leak)",
+  /if \(typeof window === "undefined"\) return;/.test(store) && /\(\) => initial \?\? EMPTY_BELL\)/.test(store));
 const actions = read("app/actions/notifications.ts");
 check("mark/dismiss act only on the caller's rows", (actions.match(/\.eq\("user_id", s\.userId\)/g) ?? []).length >= 4);
 const annActions = read("app/actions/announcements.ts");
@@ -209,6 +211,7 @@ check("every announcement write is audited", (annActions.match(/logAudit\(/g) ??
 const toast = read("components/layout/generation-toast.tsx");
 check("toast: only results that arrive during the visit", /seen\.current === null/.test(toast));
 check("toast: not on the tool's own panel", /pathname === panel \|\| pathname\.startsWith/.test(toast));
+check("toast: its baseline is the page's own server copy (a refresh never re-toasts)", /useBell\(initial\)/.test(toast) && /<GenerationToast initial=\{bell\} \/>/.test(layout));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

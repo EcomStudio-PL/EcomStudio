@@ -1523,6 +1523,83 @@ body:has(.workspace-page)::after { display: none; }
   .card-rail:focus-within { opacity: 1; }
 }
 
+/* ── ULUBIONE V2 ─────────────────────────────────────────────────────────────
+   The favourite has its OWN colour, the same in light and dark, and never
+   the brand magenta: a red heart reads as "liked" everywhere, a magenta one
+   reads as "selected" — which is what the checkbox means here.
+   `--favorite` is the RGB triplet the rest of the system uses (Tailwind's
+   `favorite`), `--color-favorite` the plain colour.
+
+   One button for every gallery (components/media/favorite-button.tsx):
+   a 40×40 hit area around a 32px dark glass pill with an 18px heart.
+     · liked     — always shown, filled red;
+     · not liked — with a pointer: hidden until the tile is hovered or holds
+                   focus (keyboard), outlined white, red outline on its own
+                   hover; on touch: always shown, quieter.
+   The ring around a liked tile is an inset shadow on an overlay, so it never
+   changes a tile's size; an admin can switch it off (data-favorite-ring). */
+:root {
+  --favorite: 239 68 68;
+  --color-favorite: #EF4444;
+}
+.fav-btn {
+  /* No `position` here: the caller places it (absolute in a tile's corner). */
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 9999px; color: #fff;
+  -webkit-tap-highlight-color: transparent;
+}
+.fav-btn:focus { outline: none; }
+.fav-pill {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 9999px;
+  background: rgba(17, 17, 17, 0.6);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.fav-btn:focus-visible .fav-pill { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--color-favorite); }
+.fav-btn svg { width: 18px; height: 18px; transition: fill .2s ease, color .2s ease; }
+.fav-btn[aria-pressed="true"] svg { color: var(--color-favorite); fill: var(--color-favorite); }
+.fav-btn[aria-pressed="false"] svg { fill: none; }
+.fav-btn[aria-pressed="false"]:hover svg { color: var(--color-favorite); }
+.fav-tile { transition: opacity .18s ease; }
+.fav-tile[aria-pressed="false"] .fav-pill { background: rgba(17, 17, 17, 0.32); border-color: rgba(255, 255, 255, 0.18); }
+.fav-tile[aria-pressed="false"] svg { opacity: .85; }
+@media (hover: hover) and (pointer: fine) {
+  .fav-tile[aria-pressed="false"] { opacity: 0; }
+  .group:hover .fav-tile, .group:focus-within .fav-tile, .fav-tile:focus-visible { opacity: 1; }
+  .fav-tile[aria-pressed="false"] .fav-pill { background: rgba(17, 17, 17, 0.6); border-color: rgba(255, 255, 255, 0.25); }
+  .fav-tile[aria-pressed="false"] svg { opacity: 1; }
+}
+/* The larger button with a label, in the image view. */
+.fav-wide {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 12px;
+  border-radius: 9999px; color: #fff; font-size: 13px; font-weight: 600;
+  background: rgba(17, 17, 17, 0.6);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  transition: background-color .18s ease, color .2s ease;
+}
+.fav-wide:hover { background: rgba(17, 17, 17, 0.75); }
+.fav-wide:focus { outline: none; }
+.fav-wide:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--color-favorite); }
+.fav-wide svg { width: 17px; height: 17px; transition: fill .2s ease, color .2s ease; }
+/* Liked: red text needs a near-black glass to stay readable over a white
+   packshot, so the pill darkens with it. */
+.fav-wide[aria-pressed="true"] { color: var(--color-favorite); background: rgba(17, 17, 17, 0.9); }
+.fav-wide[aria-pressed="true"] svg { fill: var(--color-favorite); }
+.fav-wide[aria-pressed="false"] svg { fill: none; }
+/* The like itself: 1 → 1.25 → 1. Un-liking is instant. */
+.fav-pop svg { animation: fav-pop .32s cubic-bezier(.2, .8, .3, 1.3); }
+@keyframes fav-pop { 0% { transform: scale(1); } 45% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.fav-ring { box-shadow: inset 0 0 0 2px rgb(var(--favorite) / 0.7); }
+[data-favorite-ring="off"] .fav-ring { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .fav-pop svg { animation: none; }
+  .fav-btn svg, .fav-wide svg, .fav-pill, .fav-tile, .fav-wide { transition: none; }
+}
+
 /* ── AUTH FORMS ON A PHONE ────────────────────────────────────────────────
    When the browser (or the customer's own tap) scrolls a field into view, it
    stops as soon as the field's edge is visible — which on a keyboard-reduced

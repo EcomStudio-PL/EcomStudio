@@ -34,6 +34,7 @@ import { PUBLIC_TOOLS, isPublicToolPath } from "@/lib/public-tools";
 import { CATALOG_ITEMS, catalogItem } from "@/lib/tool-cards";
 import { itemLabelKey } from "@/lib/tool-layout";
 import { readBell } from "@/lib/server/user-notifications";
+import { favoriteRingEnabled } from "@/lib/server/appearance";
 import { ImportantBanner } from "@/components/layout/important-banner";
 import { GenerationToast } from "@/components/layout/generation-toast";
 
@@ -154,7 +155,7 @@ export default async function AppLayout({ children, searchParams }: {
   // below from re-introducing a serial await.
   const [
     { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, bell,
-    availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout, searchTags,
+    availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout, searchTags, favoriteRing,
   ] = await Promise.all([
     getDictionary(),
     // The customer app's own namespaces, on top of what the root layout already
@@ -191,6 +192,8 @@ export default async function AppLayout({ children, searchParams }: {
     // Admin search tags for the global search (search metadata only). Same
     // batch; any error is "no tags" and the search behaves as before.
     readToolSearchTags(supabase),
+    // Ulubione V2: the ring around a liked tile (admin switch, default ON).
+    favoriteRingEnabled(supabase),
   ]);
   const menuItems = menuItemKeys(toolsLayout);
   const t0 = makeT(appDict);
@@ -255,7 +258,7 @@ export default async function AppLayout({ children, searchParams }: {
           generator) turns this frame into a viewport-height box so the page
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
-      <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
+      <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col" data-favorite-ring={favoriteRing ? "on" : "off"}>
         {/* The admin is previewing as a visitor but opened a page a visitor
             cannot see: their own app, with the way out of the preview. */}
         {preview && <GuestPreviewBar />}
@@ -263,7 +266,7 @@ export default async function AppLayout({ children, searchParams }: {
         {/* An admin message marked „Ważny”: one thin row in the flow, under
             the header — never over it, the dock or a tool's panel. */}
         <ImportantBanner initial={bell} />
-        <GenerationToast />
+        <GenerationToast initial={bell} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone

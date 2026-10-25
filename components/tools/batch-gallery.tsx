@@ -212,7 +212,7 @@ export function BatchGalleryToolbar({
         aria-label={t("batch.favFilter")} title={t("batch.favFilter")}
         onClick={() => patch({ favOnly: !filter.favOnly })}
         className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-45",
-          filter.favOnly ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent"
+          filter.favOnly ? "border-favorite/50 bg-favorite/10 text-favorite"
             : "border-line text-faint hover:text-ink")}>
         <Heart size={14} aria-hidden fill={filter.favOnly ? "currentColor" : "none"} />
       </button>
@@ -394,7 +394,7 @@ function Actions({ item, favourite, running, compact, onDownload, onRemove, onTo
       <button type="button" aria-pressed={favourite}
         aria-label={t("batch.favourite")} title={t("batch.favourite")}
         onClick={() => onToggleFavourite(item.id)}
-        className={cn(button, favourite ? "text-accent" : "text-faint hover:bg-sunken hover:text-ink")}>
+        className={cn(button, favourite ? "text-favorite" : "text-faint hover:bg-sunken hover:text-favorite")}>
         <Heart size={15} aria-hidden fill={favourite ? "currentColor" : "none"} />
       </button>
       {!compact && <StatusMark status={item.status} />}

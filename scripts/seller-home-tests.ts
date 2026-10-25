@@ -140,8 +140,10 @@ const FROZEN: readonly [string, string][] = [
   // thumbnail), which a visitor can now prepare too — labels only.
   // Powiadomienia V2: the bell's state comes from one RPC (readBell — both
   // tabs, the important-only badge, the bar), and the „Ważny” bar plus the
-  // off-panel "ready" toast are mounted under the header. Nothing else moved.
-  ["app/(app)/layout.tsx", "fecb3fffd9abcc692c7b1691dfa37e867461a16da7bd904de26d642ad70c475e"],
+  // off-panel "ready" toast are mounted under the header. Ulubione V2: the
+  // shell carries `data-favorite-ring` (the admin's ring switch, read in the
+  // same batch). Nothing else moved.
+  ["app/(app)/layout.tsx", "a5fb3828f91ace64ff69e0d557b50e8e80b62dcc2a1e966eee35bb872c19093e"],
   // Public Tools V1 (activation): a visitor's pages wear the same dock; with
   // `guest`, the account slots open the sign-in dialog in place. A member's
   // dock (no `guest`) renders and behaves exactly as before.
@@ -209,8 +211,16 @@ check("…the shared media components and tool-thumb are byte-identical to the l
 // Re-pinned by Public Tools V1: the desktop gen-shell viewport lock is lifted
 // on a page that carries a visitor's tool block ([data-public-tool-seo]) —
 // one selector change; /home's rules and the launch page's are untouched.
-check("…globals.css is the reviewed Pre-launch Landing V2 version (+ the Public Tools V1 lock exception)",
-  sha(readFileSync("app/globals.css")) === "8f024ebf826afd750357e2e33559e9be1fc7e7c30e77592b2fcfafc974f1ed73");
+// Ulubione V2 added ONE block after `.card-rail` (the favourite's own red,
+// the shared heart, the ring and its admin switch). Taken out, the file is
+// the same bytes as before.
+{
+  const css = readFileSync("app/globals.css", "utf8");
+  const a = css.indexOf("\n/* ── ULUBIONE V2 ");
+  const b = css.indexOf("\n/* ── AUTH FORMS ON A PHONE");
+  check("…globals.css is the reviewed Pre-launch Landing V2 version (+ the Public Tools V1 lock exception, + the Ulubione V2 block)",
+    a > 0 && b > a && sha(css.slice(0, a) + css.slice(b)) === "8f024ebf826afd750357e2e33559e9be1fc7e7c30e77592b2fcfafc974f1ed73");
+}
 check("/home requires a session (middleware's protected paths)", isProtectedPath("/home") && isProtectedPath("/dashboard"));
 check("/dashboard still forwards to /home", /redirect\("\/home"\)/.test(code("app/(app)/dashboard/page.tsx")));
 const homePage = code("app/(app)/home/page.tsx");
@@ -757,13 +767,19 @@ const ENGINE: readonly [string, string][] = [
   ["components/genv3/uploader.tsx", "38e173c9aaa9e6d18656bf56f550a66f46219d4b0f9b302a2aceacf498754053"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],
-  // Re-pinned by the trial-watermark task: each item carries its trial state
-  // (one state read per page, after the projection). URLs, paths and the
-  // projection itself are unchanged.
-  ["lib/server/gallery.ts", "0a4c1513cd00ac6c86e1e92cfcc2cd93af2715a22267fdfd37c261c39373dfa2"],
   ["lib/services/credits.ts", "1a25606a89ca4ebc6f2640542f59b9185da4595ebad973b69be9f82932cb74fb"],
 ];
 for (const [file, digest] of ENGINE) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
+// lib/server/gallery.ts — re-pinned by the trial-watermark task (each item
+// carries its trial state). Ulubione V2 APPENDED one read, the favourites
+// counter (countFavoriteAssets); with it taken out the projection is the
+// same bytes as before.
+{
+  const g = readFileSync("lib/server/gallery.ts", "utf8");
+  const cut = g.indexOf("\n/**\n * ULUBIONE V2 — how many liked pictures");
+  check("lib/server/gallery.ts unchanged (but for the appended favourites counter)",
+    cut > 0 && sha(g.slice(0, cut)) === "0a4c1513cd00ac6c86e1e92cfcc2cd93af2715a22267fdfd37c261c39373dfa2");
+}
 // The generator workspace gained ONE receiver (in the first redesign) and
 // nothing else: with those lines taken out it is byte-identical to before.
 const ws = read("components/genv3/workspace.tsx");

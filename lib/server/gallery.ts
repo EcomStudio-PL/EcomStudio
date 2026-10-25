@@ -338,3 +338,23 @@ export async function listGalleryItems(
     nextCursor: hasMore ? pageEnd : null,
   };
 }
+
+/**
+ * ULUBIONE V2 — how many liked pictures the Library holds, for the counter
+ * beside „Tylko ulubione”. Counted by the database over the WHOLE shelf
+ * (the same rule the grid uses: completed jobs, this asset type), never from
+ * the tiles that happen to be loaded. Null when it cannot be read — the
+ * counter is then left out rather than wrong.
+ */
+export async function countFavoriteAssets(
+  supabase: Client, workspaceId: string, assetType: "image" | "video",
+): Promise<number | null> {
+  const { count, error } = await supabase
+    .from("generation_assets")
+    .select("id, generations!inner(workspace_id, favorite, generation_jobs!inner(status))", { count: "exact", head: true })
+    .eq("asset_type", assetType)
+    .eq("generations.workspace_id", workspaceId)
+    .eq("generations.favorite", true)
+    .eq("generations.generation_jobs.status", "completed");
+  return error ? null : count ?? 0;
+}

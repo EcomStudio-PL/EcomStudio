@@ -21,6 +21,8 @@ import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 import { StarterGallery } from "@/components/tool-guide/lazy";
 import { useTrialUnlock } from "@/components/trial-watermark/unlock-dialog";
 import { TrialLockButton, TrialLockChip, useTrialDays } from "@/components/trial-watermark/lock";
+import { FavoriteButton, FavoriteRing } from "@/components/media/favorite-button";
+import { useFavoriteToggle } from "@/lib/favorites/use-favorite-toggle";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
 
@@ -387,11 +389,17 @@ export function GenerationGallery({
   }
 
   // ── Card actions ───────────────────────────────────────────────────────
-  async function toggleFavorite(item: GalleryItem) {
-    const next = !item.favorite;
-    mutate(item.generationId, { favorite: next });
-    const { error } = await createClient().rpc("set_generation_favorite", { gen_id: item.generationId, value: next });
-    if (error) { mutate(item.generationId, { favorite: !next }); toast.error(t("common.error")); }
+  // Ulubione V2: the heart changes at once; the shared saver serialises fast
+  // clicks and restores the confirmed state on a refusal.
+  const mutateRef = useRef(mutate);
+  mutateRef.current = mutate;
+  const applyFavorite = useCallback((generationId: string, value: boolean) => {
+    mutateRef.current(generationId, { favorite: value });
+  }, []);
+  const favoriteFailed = useCallback(() => toast.error(t("library.favFailed")), [t]);
+  const saveFavorite = useFavoriteToggle(applyFavorite, favoriteFailed);
+  function toggleFavorite(item: GalleryItem) {
+    void saveFavorite(item.generationId, item.favorite);
   }
 
   function mutate(generationId: string, patch: Partial<GalleryItem>) {
@@ -590,11 +598,11 @@ export function GenerationGallery({
             <SquareDashedMousePointer size={14} aria-hidden />
           </button>
           {/* Favourites filter wears the same HEART the rest of GrovBase
-              uses — outline off, filled + accent on. */}
+              uses — outline off, filled + the favourite red on. */}
           <button type="button" aria-pressed={filter.fav} aria-label={t("genv3.filterFav")} title={t("genv3.filterFav")}
             onClick={() => applyFilter({ fav: !filter.fav })}
             className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
-              filter.fav ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent" : "border-line text-faint hover:text-ink")}>
+              filter.fav ? "border-favorite/50 bg-favorite/10 text-favorite" : "border-line text-faint hover:text-ink")}>
             <Heart size={14} aria-hidden fill={filter.fav ? "currentColor" : "none"} />
           </button>
           <select
@@ -768,11 +776,11 @@ export function GenerationGallery({
               <button type="button" data-row-favorite
                 onClick={() => toggleFavorite(item)}
                 aria-pressed={item.favorite}
-                title={item.favorite ? t("library.unfavorite") : t("library.favorite")}
-                aria-label={item.favorite ? t("library.unfavorite") : t("library.favorite")}
-                className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
-                  item.favorite ? "text-accent hover:bg-accent-soft/50" : "text-faint hover:bg-raised hover:text-ink")}>
-                <Heart size={14} aria-hidden fill={item.favorite ? "currentColor" : "none"} />
+                title={item.favorite ? t("library.favRemove") : t("library.favAdd")}
+                aria-label={item.favorite ? t("library.favRemove") : t("library.favAdd")}
+                className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors",
+                  item.favorite ? "text-favorite hover:bg-favorite/10" : "text-faint hover:bg-raised hover:text-favorite")}>
+                <Heart size={16} aria-hidden fill={item.favorite ? "currentColor" : "none"} />
               </button>
             </div>
           ))}
@@ -902,9 +910,10 @@ function GalleryCard({
           {t("genv3.newBadge")}
         </span>
       )}
-      {item.favorite && !item.fresh && (
-        <span aria-hidden className="absolute bottom-2 left-2 text-accent"><Heart size={14} fill="currentColor" /></span>
-      )}
+      {/* Ulubione V2: the liked card's ring and its heart in the top-right
+          corner — the same button as every other gallery. */}
+      <FavoriteRing active={item.favorite} />
+      <FavoriteButton active={item.favorite} onToggle={onFavorite} className="absolute right-1 top-1 z-20" />
       {/* The lock sits in the one corner nothing else uses — not a fifth rail
           button, which would overflow the card at the default density. Out
           of the way while picking, like the rail. */}
@@ -916,7 +925,7 @@ function GalleryCard({
           tapping at nothing. */}
       {!selecting && (
         <div className={cn(
-          "card-rail absolute right-2 top-2 z-10 flex flex-col items-center rounded-xl border border-white/15 bg-black/45 backdrop-blur-md transition-opacity duration-200",
+          "card-rail absolute right-2 top-12 z-10 flex flex-col items-center rounded-xl border border-white/15 bg-black/45 backdrop-blur-md transition-opacity duration-200",
           compact ? "gap-0.5 p-0.5" : "gap-1 p-1",
         )}>
           {/* Built as a list, then TRIMMED: at the contact-sheet densities the
@@ -928,16 +937,13 @@ function GalleryCard({
               away. No "open" button anywhere — the image is the way in. */}
           {[
             ...(canRegenerate ? [{ key: "regen", icon: RefreshCw, label: t("genv3.regen"), onClick: onRegenerate }] : []),
-            {
-              key: "fav", icon: Heart, onClick: onFavorite,
-              label: item.favorite ? t("library.unfavorite") : t("library.favorite"),
-              active: item.favorite, filled: item.favorite,
-            },
+            // The like is no longer in the rail: it has its own heart in the
+            // corner above (always shown once liked).
             { key: "dl", icon: Download, label: t("common.download"), onClick: onDownload },
             { key: "del", icon: Trash2, label: t("common.delete"), onClick: onDelete, danger: true },
           ].slice(0, compact ? 2 : undefined).map((a) => (
             <CardAction key={a.key} icon={a.icon} label={a.label} onClick={a.onClick}
-              danger={a.danger} active={a.active} filled={a.filled} compact={compact} />
+              danger={"danger" in a ? a.danger : undefined} compact={compact} />
           ))}
         </div>
       )}

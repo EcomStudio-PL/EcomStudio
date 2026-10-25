@@ -473,7 +473,10 @@ async function main() {
       // Moved again to 42d2834 by Public Tools V1: the Retusz page and
       // workspace gained a visitor's branch; the request is byte-identical
       // (test:retouchforensic).
-      diff = execSync(`git diff --name-only 42d2834 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
+      // Moved again to e5f678d by Powiadomienia V2: generation.ts and
+      // engine/workflow.ts write their notification through one helper — the
+      // only lines changed; the request is byte-identical (same suites).
+      diff = execSync(`git diff --name-only e5f678d -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
     } catch (e) { diff = `git failed: ${String(e)}`; }
     check("no Retusz / provider / generation file differs from the release before this fix", diff === "", diff);
     check("no network request was made by this suite", fetches === 0, fetches);

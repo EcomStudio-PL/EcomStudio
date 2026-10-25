@@ -120,10 +120,10 @@ export function NotificationsBell({ initial }: { initial?: BellPayload }) {
       {open && (
         <div role="dialog" aria-label={t("notif.title")}
           className="overlay animate-pop absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl p-1.5">
-          <div className="flex items-center justify-between gap-2 border-b border-line px-3 pb-2 pt-1.5">
-            <p className="overline">{t("notif.title")}</p>
+          <div className="flex items-center justify-between gap-3 border-b border-line px-3 pb-2 pt-1.5">
+            <p className="overline shrink-0 whitespace-nowrap">{t("notif.title")}</p>
             <button type="button" onClick={readAll} disabled={!anyUnread} data-bell-read-all
-              className="text-[11.5px] font-semibold text-accent transition-opacity hover:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline">
+              className="min-w-0 text-right text-[11.5px] font-semibold leading-tight text-accent transition-opacity hover:underline disabled:cursor-default disabled:opacity-40 disabled:no-underline">
               {t("notif.v2.markAll")}
             </button>
           </div>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { toast } from "@/lib/notify";
 import {
   Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Crop, Download,
-  Eraser, Expand, FileText, Heart, Link2, Loader2, Maximize2, Minus, Plus, Ruler, Save, Scaling,
+  Eraser, Expand, FileText, Link2, Loader2, Maximize2, Minus, Plus, Ruler, Save, Scaling,
   Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -18,6 +18,7 @@ import { ZoomPan, ZOOM_MAX, ZOOM_MIN, stepZoom } from "@/components/genv3/zoom-p
 import { ResultFeedback } from "@/components/genv3/result-feedback";
 import { TrialMarkedHint, TrialNotice } from "@/components/trial-watermark/lock";
 import { isMarked } from "@/components/trial-watermark/model";
+import { FavoriteButton } from "@/components/media/favorite-button";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -91,12 +92,18 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       if (editing) return;
       if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);
       if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
+      // Ulubione V2: F likes / un-likes the picture on screen — only here,
+      // never while typing (handled above), never with a modifier.
+      if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {
+        const current = items[index];
+        if (current) { e.preventDefault(); onFavorite(current); }
+      }
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
-  }, [onClose, onIndex, index, items.length, fullscreen]);
+  }, [onClose, onIndex, onFavorite, index, items, fullscreen]);
 
   // A GrovBase tool (Retusz, Miniaturka): the customer bought the tool's
   // result, so the tool is named — never the provider's model behind it.
@@ -266,12 +273,8 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               <span className="absolute left-2.5 top-2.5 z-10 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur">{item.ratio}</span>
             )}
             <div className="absolute right-2.5 top-2.5 z-10 flex gap-1.5">
-              <button type="button" aria-label={item.favorite ? t("library.unfavorite") : t("library.favorite")}
-                aria-pressed={item.favorite}
-                onClick={() => onFavorite(item)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75">
-                <Heart size={14} aria-hidden fill={item.favorite ? "currentColor" : "none"} className={item.favorite ? "text-accent" : undefined} />
-              </button>
+              {/* Ulubione V2: the larger, labelled heart (shortcut F). */}
+              <FavoriteButton variant="wide" active={item.favorite} onToggle={() => onFavorite(item)} />
               <button type="button" aria-label={t("common.delete")} onClick={() => onDelete(item)}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75">
                 <Trash2 size={14} aria-hidden />

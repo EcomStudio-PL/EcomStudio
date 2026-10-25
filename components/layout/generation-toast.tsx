@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { bellSeeded, useBell } from "@/lib/notifications/bell-store";
-import { presentNotification, toolPath } from "@/lib/notifications/catalog";
+import { presentNotification, toolPath, type BellPayload } from "@/lib/notifications/catalog";
 import { notify } from "@/lib/notify";
 
 /**
@@ -16,11 +16,14 @@ import { notify } from "@/lib/notify";
  * shown — the panel already has the result. Activity only: the badge is
  * untouched.
  */
-export function GenerationToast() {
+export function GenerationToast({ initial }: { initial?: BellPayload }) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
-  const bell = useBell();
+  // The SAME server copy the bell starts from: the baseline must be what the
+  // page loaded with, not the empty hydration snapshot — otherwise a refresh
+  // would read every unread result as new and toast it again.
+  const bell = useBell(initial);
   const seen = useRef<Set<string> | null>(null);
 
   useEffect(() => {

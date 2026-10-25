@@ -347,9 +347,13 @@ check("C1 types.ts: GalleryItem.trial?: GalleryTrial | null (and the server's pr
 {
   const card = gallery.slice(gallery.indexOf("function GalleryCard("), gallery.indexOf("function CardAction("));
   const rail = card.slice(card.indexOf("card-rail"), card.indexOf("</div>", card.indexOf("card-rail")));
-  check("C2 gallery card: the chip is mounted outside the rail, hidden while picking; the rail keeps its 4 actions",
+  // Ulubione V2 took the heart out of the rail into its own corner button
+  // (FavoriteButton, the same one every gallery uses): the rail keeps its
+  // other 3 actions, and the lock chip is still outside it.
+  check("C2 gallery card: the chip is mounted outside the rail, hidden while picking; the rail keeps its 3 actions, the heart its own button",
     /\{!selecting && <TrialLockChip trial=\{item\.trial\} onUnlock=\{onUnlock\} \/>\}/.test(card) && !rail.includes("TrialLock")
-    && count(rail, /key: "(regen|fav|dl|del)"/g) === 4 && count(rail, /key: "/g) === 4 && !/Lock/.test(rail));
+    && count(rail, /key: "(regen|dl|del)"/g) === 3 && count(rail, /key: "/g) === 3 && !/Lock/.test(rail)
+    && /<FavoriteButton active=\{item\.favorite\} onToggle=\{onFavorite\}/.test(card));
   check("C3 gallery: an ASSET-keyed patch beside the generation-keyed one, applied to items, fresh items and the open retake",
     /function mutateAsset\(assetId: string, patch: Partial<GalleryItem>\)/.test(gallery)
     && /i\.assetId === assetId \? \{ \.\.\.i, \.\.\.patch \} : i/.test(gallery)
@@ -396,7 +400,7 @@ check("C1 types.ts: GalleryItem.trial?: GalleryTrial | null (and the server's pr
 }
 {
   check("C14 library: trialLocked / unlockAssetId are optional with safe defaults (harnesses that pass neither still compile)",
-    /export function LibraryBrowser\(\{ first, locale, trialLocked = 0, unlockAssetId = null \}/.test(library)
+    /export function LibraryBrowser\(\{ first, locale, trialLocked = 0, unlockAssetId = null, /.test(library)
     && /trialLocked\?: number;/.test(library) && /unlockAssetId\?: string \| null;/.test(library));
   check("C15 library toolbar: \"Usuń znak wodny ze wszystkich ({n})\" only while something is locked, on the photo shelf",
     /\{shelf === "image" && lockedLeft > 0 && \(/.test(library) && /t\("genv3\.wm\.bulkCta", \{ n: lockedLeft \}\)/.test(library)

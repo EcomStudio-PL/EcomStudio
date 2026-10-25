@@ -162,6 +162,7 @@
     "test:faq:sql": "bash scripts/faq-sql-tests.sh",
     "test:notifications:sql": "bash scripts/notifications-sql-tests.sh",
     "test:notifications": "esbuild scripts/notifications-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --outfile=.next/notifications-tests.cjs --log-level=silent && node .next/notifications-tests.cjs",
+    "test:favorites": "esbuild scripts/favorites-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --outfile=.next/favorites-tests.cjs --log-level=silent && node .next/favorites-tests.cjs",
     "test:publictools": "esbuild scripts/public-tools-tests.ts --bundle --platform=node --format=cjs --alias:next/cache=./scripts/stubs/faq-next-cache.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/public-tools-tests.cjs --log-level=error && node .next/public-tools-tests.cjs",
     "test:publictools:sql": "bash scripts/public-tools-sql-tests.sh"
   },

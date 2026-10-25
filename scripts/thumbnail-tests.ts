@@ -1429,7 +1429,11 @@ function sectionG() {
   // and app/(app)/retusz/page.tsx gained a visitor's branch (photos kept
   // locally, Generate → the sign-in dialog, metadata). The member's request is
   // byte-identical — test:retouchforensic, test:fidelity, test:thumbnailparity.
-  const BASE = process.env.THUMBNAIL_BASE ?? "42d2834";
+  // Moved again to e5f678d by Powiadomienia V2: generation.ts and
+  // engine/workflow.ts write their customer notification through one helper
+  // (lib/server/user-notifications.ts) instead of a raw insert — the only
+  // lines that changed there; no request byte moved (same three suites).
+  const BASE = process.env.THUMBNAIL_BASE ?? "e5f678d";
   const FROZEN = [
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",

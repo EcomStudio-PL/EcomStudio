@@ -47,8 +47,11 @@ function subscribe(listener: () => void) {
 }
 
 /** The server render's state, taken once — layouts persist across client
- *  navigation, so a later render's (stale) copy must not overwrite live data. */
+ *  navigation, so a later render's (stale) copy must not overwrite live data.
+ *  BROWSER ONLY: on the server this module is shared by every request, so it
+ *  must never hold anyone's notifications (see useBell's server snapshot). */
 function seed(initial: BellPayload | undefined) {
+  if (typeof window === "undefined") return;
   if (!seeded && initial) { state = initial; seeded = true; }
 }
 
@@ -82,7 +85,9 @@ export function applyBell(change: (s: BellPayload) => BellPayload, confirm?: Pro
 
 export function useBell(initial?: BellPayload): BellPayload {
   seed(initial);
-  return useSyncExternalStore(subscribe, () => state, () => initial ?? state);
+  // The server snapshot is THIS request's own copy, or nothing — never the
+  // module's state, which on the server would be another visitor's.
+  return useSyncExternalStore(subscribe, () => state, () => initial ?? EMPTY_BELL);
 }
 
 /** Whether the server's copy has arrived (or been fetched) yet. */

@@ -19,6 +19,9 @@ import { useTrialUnlock } from "@/components/trial-watermark/unlock-dialog";
 import { useTrialBulkUnlock } from "@/components/trial-watermark/bulk-dialog";
 import { TrialLockButton, TrialLockChip, useTrialDays } from "@/components/trial-watermark/lock";
 import { patchAsset, type TrialAssetPatch } from "@/components/trial-watermark/model";
+import { FavoriteButton, FavoriteRing } from "@/components/media/favorite-button";
+import { useFavoriteToggle } from "@/lib/favorites/use-favorite-toggle";
+import { favoriteCountAction } from "@/app/actions/favorites";
 
 /**
  * BIBLIOTEKA — the asset manager.
@@ -78,13 +81,17 @@ const PAGE = 24;
 /** The one shelf the server renders into the HTML: photos, newest first. */
 const SERVER_KEY = libraryKey({ type: "image", fav: false, order: "desc" });
 
-export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId = null }: {
+export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId = null, openGenerationId = null, favoriteCount = null }: {
   first: GalleryPage;
   locale: string;
   /** Locked trial originals of the workspace (the page's summary); 0 when none or unknown. */
   trialLocked?: number;
   /** `?unlock=<uuid>` — back from the checkout for this image: open its unlock dialog. */
   unlockAssetId?: string | null;
+  /** `?open=<generation>` — from a "ready" notification: open that result. */
+  openGenerationId?: string | null;
+  /** Liked pictures on the photo shelf, counted by the server (null: unknown). */
+  favoriteCount?: number | null;
 }) {
   const { t } = useI18n();
 
@@ -299,27 +306,48 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
     return next;
   });
 
-  /** Favourite is per GENERATION — every asset of it moves together, which is
-   *  what the RPC does and what the heart has always meant here. */
-  async function toggleFavorite(item: GalleryItem) {
-    const next = !item.favorite;
+  /**
+   * ULUBIONE V2. Favourite is per GENERATION — every asset of it moves
+   * together, which is what the RPC does and what the heart has always meant
+   * here. The heart, the image view and the counter change at once; the save
+   * (useFavoriteToggle) serialises fast clicks and puts the last confirmed
+   * state back if the server refuses.
+   */
+  const [favCount, setFavCount] = useState<number | null>(favoriteCount);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const applyFavorite = useCallback((generationId: string, value: boolean) => {
+    // The counter moves by the pictures of this generation on this shelf —
+    // the ones whose heart actually changed.
+    const moved = itemsRef.current.filter((i) => i.generationId === generationId && i.favorite !== value).length;
+    if (moved > 0) setFavCount((n) => (n === null ? n : Math.max(0, n + (value ? moved : -moved))));
     const apply = (list: GalleryItem[]) =>
-      list.map((i) => (i.generationId === item.generationId ? { ...i, favorite: next } : i));
+      list.map((i) => (i.generationId === generationId ? { ...i, favorite: value } : i));
     setItems(apply);
     patchLibrary(apply);
-    const { error } = await createClient().rpc("set_generation_favorite", { gen_id: item.generationId, value: next });
-    if (error) {
-      const undo = (list: GalleryItem[]) =>
-        list.map((i) => (i.generationId === item.generationId ? { ...i, favorite: !next } : i));
-      setItems(undo);
-      patchLibrary(undo);
-      toast.error(t("common.error"));
-      return;
-    }
-    // A favourites-only view drops what was just un-starred, without asking
-    // the server for the shelf again.
-    if (favOnly && !next) setItems((list) => list.filter((i) => i.generationId !== item.generationId));
+  }, []);
+  const favoriteFailed = useCallback(() => toast.error(t("library.favFailed")), [t]);
+  // A favourites-only view drops what was just un-liked once the server has
+  // it, without asking for the shelf again — as it always has.
+  const favOnlyRef = useRef(favOnly);
+  favOnlyRef.current = favOnly;
+  const favoriteSaved = useCallback((generationId: string, value: boolean) => {
+    if (favOnlyRef.current && !value) setItems((list) => list.filter((i) => i.generationId !== generationId));
+  }, []);
+  const saveFavorite = useFavoriteToggle(applyFavorite, favoriteFailed, favoriteSaved);
+  function toggleFavorite(item: GalleryItem) {
+    void saveFavorite(item.generationId, item.favorite);
   }
+  // The counter belongs to the shelf: the server's figure for photos arrives
+  // with the page; a video shelf (or a return to photos) asks once.
+  const countedShelf = useRef<Shelf>("image");
+  useEffect(() => {
+    if (countedShelf.current === shelf) return;
+    countedShelf.current = shelf;
+    let live = true;
+    void favoriteCountAction(shelf === "video" ? "video" : "image").then((n) => { if (live) setFavCount(n); });
+    return () => { live = false; };
+  }, [shelf]);
 
   /**
    * DELETING IS PER GENERATION, because that is what the database offers:
@@ -449,6 +477,24 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unlockAssetId]);
 
+  /**
+   * FROM A "READY" NOTIFICATION. `?open=<generation>` opens that result's
+   * image view once it is on the shelf (a fresh result is on page one), and
+   * the parameter leaves the address so a reload does not reopen it.
+   */
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    if (!openGenerationId || openedFromLink.current || !booted) return;
+    const hit = items.find((i) => i.generationId === openGenerationId);
+    openedFromLink.current = true;
+    if (hit) setPreview(hit);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("open");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    } catch { /* the address keeps it; nothing depends on it */ }
+  }, [openGenerationId, booted, items]);
+
   /* ── the toolbar ───────────────────────────────────────────────────────── */
 
   const tile = DENSITY[density];
@@ -542,14 +588,18 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
           aria-pressed={favOnly}
           title={t("library.onlyFavorites")}
           aria-label={t("library.onlyFavorites")}
+          data-favorites-filter
           className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors duration-200",
+            "flex h-9 min-w-9 shrink-0 items-center justify-center gap-1 rounded-xl border px-2 transition-colors duration-200",
             favOnly
-              ? "border-[rgb(var(--accent)/0.45)] bg-[rgb(var(--accent)/0.14)] text-accent"
+              ? "border-favorite/45 bg-favorite/12 text-favorite"
               : "border-line bg-sunken/60 text-muted hover:text-ink",
           )}
         >
           <Heart size={15} aria-hidden fill={favOnly ? "currentColor" : "none"} />
+          {favCount !== null && favCount > 0 && (
+            <span className="text-[12px] font-semibold tabular-nums" data-favorites-count>{favCount}</span>
+          )}
         </button>
 
         <label className="relative hidden h-9 items-center sm:flex">
@@ -610,6 +660,7 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
               item={item}
               style={grid.itemStyle(assetAspect(item))}
               picked={picked.has(item.assetId)}
+              selecting={picked.size > 0}
               onPick={() => togglePick(item.assetId)}
               onOpen={() => setPreview(item)}
               onFavorite={() => toggleFavorite(item)}
@@ -665,6 +716,7 @@ export function LibraryBrowser({ first, locale, trialLocked = 0, unlockAssetId =
           t={t}
           order={order}
           favOnly={favOnly}
+          favCount={favCount}
           onOrder={setOrder}
           onFav={setFavOnly}
           onClose={() => setFiltersOpen(false)}
@@ -763,9 +815,11 @@ function Segmented({ options, value, onChange, compact = false }: {
  * appears on hover. Nothing is written across the picture: a library of
  * captions is a file listing, and this is meant to be looked at.
  */
-function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, onUnlock, t }: {
+function Tile({ item, picked, selecting, style, onPick, onOpen, onFavorite, onDownload, onUnlock, t }: {
   item: GalleryItem;
   picked: boolean;
+  /** Something is ticked: every tile shows its checkbox (Ulubione V2, B7). */
+  selecting: boolean;
   /** The grid's row span and gutter for this tile. */
   style?: React.CSSProperties;
   onPick: () => void;
@@ -812,37 +866,32 @@ function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, onU
         />
       </button>
 
-      {/* SELECT. Always visible, the way an asset manager's is — a checkbox
-          that only appears on hover is a checkbox a touch screen never has. */}
+      {/* The liked tile's red ring — an inset shadow, so nothing moves. */}
+      <FavoriteRing active={item.favorite} />
+
+      {/* SELECT. On a phone always visible, as before — a touch screen has no
+          hover to reveal it. With a pointer it appears on hover or focus,
+          stays on a ticked tile, and once anything is ticked the whole grid
+          shows its boxes (selection mode) until nothing is. */}
       <button
         type="button"
-        onClick={onPick}
+        onClick={(e) => { e.stopPropagation(); onPick(); }}
         role="checkbox"
         aria-checked={picked}
         aria-label={t("library.selectOn")}
+        data-pick
         className={cn(
-          "absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded-[6px] border transition-colors duration-200",
+          "absolute left-2 top-2 z-[2] flex h-5 w-5 items-center justify-center rounded-[6px] border transition-[opacity,colors] duration-200",
           picked
             ? "border-accent bg-accent text-white"
             : "border-white/60 bg-black/35 text-transparent backdrop-blur-[2px] hover:border-white",
+          !picked && !selecting && "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-visible:opacity-100 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100",
         )}
       >
         <Check size={12} strokeWidth={3.2} aria-hidden />
       </button>
 
-      <button
-        type="button"
-        onClick={onFavorite}
-        aria-pressed={item.favorite}
-        aria-label={item.favorite ? t("library.unfavorite") : t("library.favorite")}
-        className={cn(
-          "absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-lg transition-colors duration-200",
-          item.favorite ? "text-accent" : "text-white/75 hover:text-white",
-        )}
-      >
-        <Heart size={15} aria-hidden fill={item.favorite ? "currentColor" : "none"}
-          className="drop-shadow-[0_1px_3px_rgb(0_0_0/0.55)]" />
-      </button>
+      <FavoriteButton active={item.favorite} onToggle={onFavorite} className="absolute right-1 top-1 z-[2]" />
 
       {item.assetType === "video" && (
         <span className="pointer-events-none absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur-[2px]">
@@ -858,7 +907,7 @@ function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, onU
       {/* HOVER RAIL — pointer devices only. On touch the tile opens and the
           preview carries the same actions, which is one place instead of a
           rail that needs a long press to reach. */}
-      <div className="pointer-events-none absolute right-2 top-10 hidden flex-col gap-1 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 [@media(hover:hover)]:flex">
+      <div className="pointer-events-none absolute right-2 top-12 hidden flex-col gap-1 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 [@media(hover:hover)]:flex">
         <RailButton label={t("library.quickOpen")} onClick={onOpen}><Maximize2 size={13} /></RailButton>
         <RailButton label={t("common.download")} onClick={onDownload}><Download size={13} /></RailButton>
         <RailButton label={t("library.editAsset")} href="/tools"><Wrench size={13} /></RailButton>
@@ -918,10 +967,10 @@ function Row({ item, picked, onPick, onOpen, onFavorite, onUnlock, when, t }: {
       )}
       <TrialLockButton trial={item.trial} onUnlock={onUnlock} className="h-8 w-8" />
       <button type="button" onClick={onFavorite} aria-pressed={item.favorite}
-        aria-label={item.favorite ? t("library.unfavorite") : t("library.favorite")}
-        className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-          item.favorite ? "text-accent" : "text-faint hover:text-ink")}>
-        <Heart size={15} aria-hidden fill={item.favorite ? "currentColor" : "none"} />
+        aria-label={item.favorite ? t("library.favRemove") : t("library.favAdd")}
+        className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors",
+          item.favorite ? "text-favorite" : "text-faint hover:text-favorite")}>
+        <Heart size={16} aria-hidden fill={item.favorite ? "currentColor" : "none"} />
       </button>
     </li>
   );
@@ -930,8 +979,8 @@ function Row({ item, picked, onPick, onOpen, onFavorite, onUnlock, when, t }: {
 /** Sorting and the shelves that are not pictures, in a sheet — a phone gets a
  *  bottom sheet, a desktop the same panel centred. Built to grow: type, tool,
  *  model and date are rows waiting for a column to filter on. */
-function FilterSheet({ t, order, favOnly, onOrder, onFav, onClose }: {
-  t: T; order: Order; favOnly: boolean;
+function FilterSheet({ t, order, favOnly, favCount, onOrder, onFav, onClose }: {
+  t: T; order: Order; favOnly: boolean; favCount: number | null;
   onOrder: (v: Order) => void; onFav: (v: boolean) => void; onClose: () => void;
 }) {
   useEffect(() => {
@@ -967,9 +1016,10 @@ function FilterSheet({ t, order, favOnly, onOrder, onFav, onClose }: {
 
         <button type="button" onClick={() => onFav(!favOnly)} aria-pressed={favOnly}
           className={cn("mb-4 flex h-11 w-full items-center gap-2.5 rounded-xl border px-3 text-[13px] font-semibold transition-colors",
-            favOnly ? "border-[rgb(var(--accent)/0.45)] bg-[rgb(var(--accent)/0.12)] text-ink" : "border-line text-muted hover:text-ink")}>
+            favOnly ? "border-favorite/45 bg-favorite/12 text-favorite" : "border-line text-muted hover:text-ink")}>
           <Heart size={15} aria-hidden fill={favOnly ? "currentColor" : "none"} />
           {t("library.onlyFavorites")}
+          {favCount !== null && favCount > 0 && <span className="ml-auto tabular-nums">{favCount}</span>}
         </button>
 
         <p className="overline mb-1.5">{t("library.more")}</p>

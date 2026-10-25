@@ -6,7 +6,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listJobs } from "@/lib/services/generator";
-import { listGalleryItems } from "@/lib/server/gallery";
+import { countFavoriteAssets, listGalleryItems } from "@/lib/server/gallery";
 import { rpcSummary } from "@/lib/server/trial-watermark/rpc";
 import { isTrialUuid } from "@/lib/server/trial-watermark/unlock";
 import { assetAspect, aspectCss } from "@/lib/asset-ratio";
@@ -50,9 +50,9 @@ const JOB_TONE = { queued: "neutral", processing: "info", completed: "success", 
  * judge whose asset it is and what state it is in.
  */
 export default async function LibraryPage({ searchParams }: {
-  searchParams: Promise<{ tab?: string; unlock?: string | string[] }>;
+  searchParams: Promise<{ tab?: string; unlock?: string | string[]; open?: string | string[] }>;
 }) {
-  const { tab: tabParam, unlock: unlockParam } = await searchParams;
+  const { tab: tabParam, unlock: unlockParam, open: openParam } = await searchParams;
   const tab = tabParam === "history" ? "history" : tabParam === "tools" ? "tools" : "assets";
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
@@ -146,13 +146,18 @@ export default async function LibraryPage({ searchParams }: {
   // shelf on first paint and nothing ever corrects them.
   // The bulk button's count rides along: a failed read is 0 (no button),
   // never a guess.
-  const [first, trial] = await Promise.all([
+  const [first, trial, favoriteCount] = await Promise.all([
     listGalleryItems(supabase, workspace.id, { limit: FIRST_PAGE, assetType: "image" }),
     rpcSummary(supabase, workspace.id),
+    // Ulubione V2: the counter beside „Tylko ulubione” — the whole shelf.
+    countFavoriteAssets(supabase, workspace.id, "image"),
   ]);
   const trialLocked = trial.ok ? trial.data.locked : 0;
   const unlockRaw = Array.isArray(unlockParam) ? unlockParam[0] : unlockParam;
   const unlockAssetId = isTrialUuid(unlockRaw) ? unlockRaw.toLowerCase() : null;
+  // `?open=<generation>` — a "ready" notification's link to its result.
+  const openRaw = Array.isArray(openParam) ? openParam[0] : openParam;
+  const openGenerationId = isTrialUuid(openRaw) ? openRaw.toLowerCase() : null;
 
   return (
     <div>
@@ -172,7 +177,8 @@ export default async function LibraryPage({ searchParams }: {
         header — they have no toolbar, so it is the only thing naming them.
       */}
       <h1 className="sr-only">{t("library.title")}</h1>
-      <LibraryBrowser first={first} locale={locale} trialLocked={trialLocked} unlockAssetId={unlockAssetId} />
+      <LibraryBrowser first={first} locale={locale} trialLocked={trialLocked} unlockAssetId={unlockAssetId}
+        openGenerationId={openGenerationId} favoriteCount={favoriteCount} />
     </div>
   );
 }

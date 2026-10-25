@@ -27,6 +27,8 @@ const config: Config = {
         purple: "rgb(var(--purple) / <alpha-value>)",
         pink: "rgb(var(--pink) / <alpha-value>)",
         "accent2-soft": "rgb(var(--accent2-soft) / <alpha-value>)",
+        // Ulubione V2: its own red, never the brand magenta (globals.css).
+        favorite: "rgb(var(--favorite) / <alpha-value>)",
         info: "rgb(var(--info) / <alpha-value>)",
         success: "rgb(var(--success) / <alpha-value>)",
         warning: "rgb(var(--warning) / <alpha-value>)",
