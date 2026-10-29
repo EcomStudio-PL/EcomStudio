@@ -4,25 +4,29 @@ import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
 import { promptKeyring, type PromptKeyring } from "@/lib/server/prompt-vault";
-import { completeUsage, failUsage, startUsage } from "@/lib/services/usage";
 import { recordProviderCalls, type Consumer } from "@/lib/server/ai-usage";
-import { notifyGenerationDone } from "@/lib/server/user-notifications";
 import { callImageModel, type ImageCallInput, type ImageCallResult } from "@/lib/server/engine/image-call";
 import { beginStep, claimRun, finishStep, patchRun, type RunRow, type StepRunRow, type StepResult } from "@/lib/server/engine/workflow-store";
-import { textCapableBackends, encryptConceptPayload } from "@/lib/server/prompt-engine";
+import { encryptConceptPayload } from "@/lib/server/prompt-engine";
+import { roleBackends } from "@/lib/server/grovshot-v2/backends";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import type { AspectRatio, Resolution } from "@/lib/ai/types";
 import type { VisionBackend } from "@/lib/ai/engine/vision";
 import { TOOL_VARIABLES, compileTemplate } from "@/lib/ai/prompt-variables";
-import { readBlockState } from "@/lib/server/account-block";
+import { blockStateOf } from "@/lib/server/account-block";
 import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import { defaultStateFor } from "@/lib/features";
-import { FRAME_TYPES, parseEngineConfig, recipeById, type EngineConfig } from "@/lib/grovshot-v2/config";
-import { CARD_SCHEMA, GROVSHOT_V2_KEYS, PLAN_SCHEMA, VALIDATE_SCHEMA, qcSchema, type GrovshotStageKey, type RawQc, type RawValidation } from "@/lib/grovshot-v2/stages";
+import { FRAME_TYPES, parseEngineConfig, recipeById, type EngineConfig, type StageRole } from "@/lib/grovshot-v2/config";
+import {
+  CARD_SCHEMA, GROVSHOT_V2_KEYS, PLAN_SCHEMA, USER_MARKER, VALIDATE_SCHEMA, WRITE_SCHEMA, qcSchema, splitShotTemplate,
+  type GrovshotStageKey, type RawQc, type RawValidation, type RawWrite,
+} from "@/lib/grovshot-v2/stages";
 import { decideAfterCard, decideValidation, validationForPrompt, type CustomerNote, type ValidationResult } from "@/lib/grovshot-v2/validation";
 import { cardForPrompt, normaliseCard, photoCatalog, type ProductCard } from "@/lib/grovshot-v2/card";
 import { checkPlan, needsReplan, peopleTargets, renderPeopleTargets, renderPlanFeedback, renderUserPlan, type PlanCheck, type Shot } from "@/lib/grovshot-v2/plan";
-import { qcRules, recipeCatalog, recipeForPlan, referenceMap, shotSpec, shotValues } from "@/lib/grovshot-v2/prompt";
+import {
+  checkWrite, planOverview, qcRules, recipeCatalog, recipeForPlan, referenceMap, shotSpec, shotValues, type WriterBlocks,
+} from "@/lib/grovshot-v2/prompt";
 import { decideQc, pickBest, planRetry, type QcDecision, type QcFinding } from "@/lib/grovshot-v2/qc";
 import { compareColors } from "@/lib/grovshot-v2/color";
 import { fits, generationEstimate } from "@/lib/grovshot-v2/budget";
@@ -35,6 +39,10 @@ import {
   derivatives, eventByKey, eventStatus, freshBalance, jobAsset, jobFailed, markJobCompleted,
   removeFolder, removeLibraryRows, storeNew, walletId,
 } from "@/lib/server/grovshot-v2/library";
+import {
+  srvAnalysis, srvConceptDone, srvContext, srvJobCreate, srvJobs, srvLibraryAdd, srvLog, srvMirror, srvNotifyDone,
+  srvStorageGrant, srvUsageComplete, srvUsageFail, srvUsageStart, type Srv,
+} from "@/lib/server/grovshot-v2/srv";
 
 /**
  * GROVBASE SHOT V2 — THE DRIVER. One order = one `ai_engine_runs` row (run
@@ -69,7 +77,9 @@ import {
 export const INVOCATION_BUDGET_MS = 270_000;
 export const HARD_END_MS = 300_000;
 const STAGE_MARGIN_MS = 15_000;
-const STAGE_TIMEOUT_MS = { validate: 90_000, card: 110_000, plan: 110_000 } as const;
+const STAGE_TIMEOUT_MS = { validate: 90_000, card: 110_000, plan: 110_000, prompt: 90_000 } as const;
+/** Prompt-writer calls in flight at once (one per shot). */
+const WRITE_CONCURRENCY = 3;
 /** A round is begun only with this much of the invocation left. */
 export const ROUND_START_MS = 160_000;
 /** Kept after the candidates for QC and delivery. */
@@ -98,6 +108,12 @@ export type AdvanceResult = "finished" | "yield" | "busy" | "stalled" | "locked"
 /** The lease a stalled invocation leaves: an unwell database or provider is
  *  not asked again every few seconds (a page poll included). */
 const STALL_LEASE_S = 30;
+/** A DEFINITIVE END, before the store's own cap (30 invocations, 0129):
+ *  from here an order begins nothing new — no round, no prompt write — and
+ *  settles what is open (pending charges recovered or refunded), then closes
+ *  like any other order. Never left "running" for ever. */
+const WIND_DOWN_INVOCATIONS = 26;
+const MAX_ORDER_AGE_MS = 3 * 60 * 60 * 1000;
 
 type Ctx = {
   supabase: Client;
@@ -130,9 +146,11 @@ type Ctx = {
   gateUnknown?: boolean;
   /** Each planned shot's first-round candidates (what a lost round may have sent). */
   candidatesOf?: Map<number, number>;
+  /** The whole plan (the prompt writer sees the other shots). */
+  plannedShots?: Shot[];
   qcFailStreak: number;
   photos: Map<number, OrderPhoto>;
-  backends: VisionBackend[] | null;
+  backends: Record<StageRole, VisionBackend[]> | null;
   unitPrices: Awaited<ReturnType<typeof readEngineState>>["unitPrices"];
   tokenPrices: Awaited<ReturnType<typeof readEngineState>>["tokenPrices"];
 };
@@ -150,6 +168,8 @@ function outputOf(s: Pick<StepRunRow, "output"> | undefined | null): Record<stri
   return o && typeof o === "object" && !Array.isArray(o) ? o as Record<string, unknown> : {};
 }
 const consumer = (ctx: Ctx): Consumer => (ctx.test ? "workflow_test" : "generation");
+/** This order, as the invocation holding its lease (the server functions' door). */
+const srv = (ctx: Pick<Ctx, "supabase" | "runId" | "owner">): Srv => ({ supabase: ctx.supabase, runId: ctx.runId, owner: ctx.owner });
 
 async function begin(ctx: Ctx, pos: number, item: number, name: string, op: "ai_text" | "image_generation" | "tool") {
   const b = await beginStep(ctx.supabase, ctx.runId, ctx.owner, pos, item, name, op, leaseSeconds(ctx));
@@ -314,6 +334,11 @@ export async function advanceGrovshotRun(
     writer: Promise.resolve(), reserved: 0, inFlight: new Set(), shotSeq: 0, progressed: false, stopNew: null, qcFailStreak: Number((run.progress as Record<string, unknown> | null)?.qc_fail_streak) || 0,
     photos: new Map(), backends: null, unitPrices: state.unitPrices, tokenPrices: state.tokenPrices,
   };
+  const invocations = Number((run as { invocations?: unknown }).invocations) || 0;
+  if (invocations >= WIND_DOWN_INVOCATIONS || deps.now() - Date.parse(run.created_at) > MAX_ORDER_AGE_MS) {
+    ctx.stopNew = "unavailable";
+    await addNotes(ctx, [{ code: "wind_down" }]);
+  }
 
   let outcome: "finished" | "yield" | "busy" | "lost";
   try {
@@ -339,7 +364,9 @@ async function drive(ctx: Ctx): Promise<Drive> {
   // Gates a customer order re-checks on every invocation, before anything new
   // is charged: a blocked account or a feature switched off stops new shots.
   if (!ctx.test) {
-    const blocked = await readBlockState(ctx.supabase, ctx.userId).then((s) => s.blocked).catch(() => null);
+    // The owner's account, read fresh in the server context (0163).
+    const c = await srvContext(srv(ctx)).catch(() => null);
+    const blocked = c && c.member ? (c.profile ? blockStateOf(c.profile).blocked : false) : c ? true : null;
     const map = blocked === false ? await getAvailabilityMap(ctx.supabase).catch(() => null) : null;
     if (blocked === true) ctx.stopNew = "account_blocked";
     else if (blocked === null || !map) ctx.gateUnknown = true;
@@ -354,23 +381,143 @@ async function drive(ctx: Ctx): Promise<Drive> {
   if (!analysed && ctx.gateUnknown) return "busy";
   const analysis = await analyse(ctx);
   if (typeof analysis === "string") return analysis;
-  const mirror = await ensureMirror(ctx, analysis.card, analysis.plan.shots);
+  ctx.plannedShots = analysis.plan.shots;
+  // ── Etap 3 — the prompt writer, one call per shot ──
+  const written = await writePhase(ctx, analysis.card, analysis.plan.shots);
+  if (typeof written === "string") return written;
+  // An admin's prompt test stops here: Claude ran, no image is generated.
+  if (ctx.test && ctx.input.test_mode === "prompts") return closePromptTest(ctx, analysis.plan.shots, written);
+  const mirror = await ensureMirror(ctx, analysis.card, analysis.plan.shots, written);
   if (typeof mirror === "string") return mirror;
-  return shotsPhase(ctx, analysis.card, analysis.plan.shots, mirror);
+  return shotsPhase(ctx, analysis.card, analysis.plan.shots, mirror, written);
+}
+
+/* ══ Etap 3 · the prompt writer ═══════════════════════════════════════════*/
+
+type Written = Map<number, WriterBlocks | null>;
+
+function blocksOf(x: unknown): WriterBlocks | null {
+  const c = checkWrite(x as RawWrite, { refs: 99, people: "hands" });
+  return c.ok ? c.blocks : null;
+}
+
+/**
+ * One shot's blocks from the prompt writer (round 0), or its rewrite for an
+ * AMENDED retry (round 1: the QC correction and the previous blocks go to the
+ * writer as data). A text stage: no image, no charge; re-sent on resume a few
+ * times. An answer that fails `checkWrite` fails this shot only — never the
+ * order, never a substitute prompt.
+ */
+async function writeStep(ctx: Ctx, card: ProductCard, shot: Shot, round: number,
+  correction: string | null, previous: WriterBlocks | null,
+): Promise<WriterBlocks | "failed" | Drive> {
+  const item = itemOf(shot.index, round);
+  const s = stepOf(ctx, P.write, item);
+  if (s?.status === "succeeded") return blocksOf(outputOf(s).blocks) ?? "failed";
+  if (s?.status === "failed") return "failed";
+  if (left(ctx) < STAGE_TIMEOUT_MS.prompt + STAGE_MARGIN_MS) return "yield";
+  const b = await begin(ctx, P.write, item, "write", "ai_text");
+  if (b.state === "done") return blocksOf(outputOf({ output: b.output }).blocks) ?? "failed";
+  if (b.state === "busy") return "busy";
+  if (b.state === "not_owner") return "lost";
+  if (b.state !== "run") return "failed";
+  const fail = async (code: string, cost: StepResult["cost"] = { basis: "estimated", usdMicros: 0 }, ms = 0) => {
+    await finish(ctx, P.write, item, { status: "failed", attempts: b.attempts + 1, cost, errorCode: code, durationMs: ms });
+    return "failed" as const;
+  };
+  if (b.attempts >= TEXT_RESUME_LIMIT) return fail("resume_limit", { basis: "unknown" });
+  const split = splitShotTemplate(ctx.bodies.grovshot_v2_shot);
+  if (!split) return fail("template_layout");
+  const values = {
+    ...shotValues({
+      shot, card, recipe: recipeById(ctx.config, card.recipe_id), config: ctx.config,
+      aspectRatio: ctx.input.aspect_ratio, resolution: ctx.input.resolution, fidelityRules: buildFidelityInstructions(), correction,
+    }),
+    product_card: cardForPrompt(card), shot_spec: shotSpec(shot, card), plan_overview: planOverview(ctx.plannedShots ?? [shot]),
+    previous_blocks: previous ? JSON.stringify(previous) : "",
+  };
+  const t0 = ctx.deps.now();
+  const res = await ctx.deps.callStage<RawWrite>(ctx.supabase, {
+    key: "grovshot_v2_shot", body: `${split.system}\n${USER_MARKER}\n${split.user}`, values, images: [],
+    schema: WRITE_SCHEMA, timeoutMs: STAGE_TIMEOUT_MS.prompt, deadlineAt: ctx.deadlineAt, backends: await backends(ctx, "prompt"),
+    tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
+  }, { consumer: consumer(ctx), actorKind: ctx.test ? "admin" : "customer", userId: ctx.userId, workspaceId: ctx.workspaceId, runRef: ctx.runId });
+  if (!res.ok) return fail(res.error.slice(0, 80), res.cost, ctx.deps.now() - t0);
+  const checked = checkWrite(res.data, { refs: shot.references.length, people: shot.people });
+  if (!checked.ok) return fail(`prompt_invalid:${checked.problems[0]}`.slice(0, 80), res.cost, ctx.deps.now() - t0);
+  // An admin's TEST keeps the compiled image prompt for its preview (what
+  // Nano Banana Pro would receive); a customer's order keeps its hash only.
+  const compiled = compileShot(ctx, shot, card, checked.blocks);
+  await finish(ctx, P.write, item, {
+    status: "succeeded", attempts: b.attempts + 1, providerSlug: res.trace.provider, model: res.trace.model,
+    cost: res.cost, durationMs: ctx.deps.now() - t0,
+    output: {
+      blocks: checked.blocks, round, amended: Boolean(correction), trace: res.trace as unknown as Json, unknown_calls: res.unknownCalls,
+      prompt_sha256: compiled.ok ? sha256(compiled.text) : null,
+      ...(ctx.test && compiled.ok ? { prompt_text: compiled.text } : {}),
+    } as unknown as Json,
+  });
+  return checked.blocks;
+}
+
+/** Every planned shot's blocks (null = the writer could not give this shot
+ *  a usable prompt; that shot is settled without an image, never charged). */
+async function writePhase(ctx: Ctx, card: ProductCard, shots: Shot[]): Promise<Written | Drive> {
+  const out: Written = new Map();
+  const pending = shots.filter((sh) => {
+    const st = stepOf(ctx, P.write, itemOf(sh.index, 0));
+    if (st?.status === "succeeded") { out.set(sh.index, blocksOf(outputOf(st).blocks)); return false; }
+    if (st?.status === "failed") { out.set(sh.index, null); return false; }
+    return true;
+  });
+  if (pending.length === 0) return out;
+  // Stopping (account, tool, the definitive end): no new paid write.
+  if (ctx.stopNew) { for (const sh of pending) out.set(sh.index, null); return out; }
+  await setProgress(ctx, { stage: "scenes" });
+  const stops: Drive[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < pending.length) {
+      const shot = pending[next++];
+      const r = await writeStep(ctx, card, shot, 0, null, null);
+      if (r === "failed") out.set(shot.index, null);
+      else if (typeof r === "string") { stops.push(r); if (r === "lost") return; }
+      else out.set(shot.index, r);
+    }
+  };
+  await Promise.allSettled(Array.from({ length: Math.min(WRITE_CONCURRENCY, pending.length) }, worker));
+  if (stops.includes("lost")) return "lost";
+  if (stops.length > 0) return stops.includes("yield") ? "yield" : "busy";
+  return out;
+}
+
+/** An admin's prompt test: card, plan and prompts, no image — closed here. */
+async function closePromptTest(ctx: Ctx, shots: Shot[], written: Written): Promise<Drive> {
+  const ok = shots.filter((sh) => written.get(sh.index)).length;
+  const known = ctx.steps.reduce((sum, st) => sum + (st.cost_basis !== "unknown" && st.cost_usd_micros !== null ? st.cost_usd_micros : 0), 0);
+  const unknown = ctx.steps.reduce((sum, st) => sum + (Number(outputOf(st).unknown_calls) || 0), 0);
+  await close(ctx, ok === 0 ? "failed" : ok === shots.length ? "ok" : "partial", ok === 0 ? "prompt_invalid" : null, {
+    credits: 0, api_cost_usd_micros: known, cost_unknown: unknown,
+  });
+  return "finished";
 }
 
 /* ══ A · analysis (Etap 0–2) ══════════════════════════════════════════════*/
 
 type Analysis = { validation: ValidationResult; card: ProductCard; plan: PlanCheck };
 
-async function backends(ctx: Ctx): Promise<VisionBackend[]> {
-  ctx.backends ??= await textCapableBackends(ctx.supabase).catch(() => []);
-  return ctx.backends;
+/** The role's configured model (and its admin-set fallback) — nothing else. */
+async function backends(ctx: Ctx, role: StageRole): Promise<VisionBackend[]> {
+  ctx.backends ??= (await roleBackends(ctx.supabase, ctx.config.models).catch(() => null))?.backends ?? null;
+  return ctx.backends?.[role] ?? [];
 }
 
 async function photos(ctx: Ctx, numbers: readonly number[]): Promise<OrderPhoto[] | "changed" | "unreadable"> {
   const missing = numbers.filter((n) => !ctx.photos.has(n));
   if (missing.length > 0) {
+    // The order's own photos, armed for this read (0163) — nothing else.
+    const paths = missing.map((n) => ctx.input.photos[n - 1]).filter(Boolean);
+    if (!(await srvStorageGrant(srv(ctx), "product-images", paths, ["read"]))) return "unreadable";
     const r = await readOrderPhotos(ctx.supabase, ctx.input.photos, ctx.input.photo_shas, missing);
     if (!r.ok) return r.error === "reference_changed" ? "changed" : "unreadable";
     for (const p of r.photos) ctx.photos.set(p.number, p);
@@ -381,10 +528,7 @@ async function photos(ctx: Ctx, numbers: readonly number[]): Promise<OrderPhoto[
 let lookupCache: { runId: string; value: { validate: unknown; card: unknown } | null } | null = null;
 async function analysisLookup(ctx: Ctx): Promise<{ validate: Record<string, unknown> | null; card: Record<string, unknown> | null }> {
   if (lookupCache?.runId !== ctx.runId) {
-    const { data, error } = await ctx.supabase.rpc("grovshot_analysis_lookup", {
-      p_token: dispatchToken() ?? "", p_workspace_id: ctx.workspaceId, p_photo_key: ctx.input.photo_key, p_card_key: ctx.input.card_key,
-    });
-    lookupCache = { runId: ctx.runId, value: error ? null : (data as { validate: unknown; card: unknown } | null) };
+    lookupCache = { runId: ctx.runId, value: await srvAnalysis(srv(ctx)) };
   }
   const v = lookupCache.value;
   const obj = (x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : null);
@@ -464,8 +608,8 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
       key: "grovshot_v2_validate", body: ctx.bodies.grovshot_v2_validate,
       values: { photo_count: String(photoCount), session_type: "lifestyle" },
       images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: VALIDATE_SCHEMA,
-      timeoutMs: STAGE_TIMEOUT_MS.validate, deadlineAt: ctx.deadlineAt, backends: await backends(ctx),
-      models: config.models, tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
+      timeoutMs: STAGE_TIMEOUT_MS.validate, deadlineAt: ctx.deadlineAt, backends: await backends(ctx, "validate"),
+      tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
     };
   });
   if (typeof v0 === "string" || v0 === null) return v0 ?? "finished";
@@ -490,8 +634,8 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
       // Every photo, in upload order — the numbering IS the order; the photos
       // Etap 0 set aside are marked so in the summary.
       images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: CARD_SCHEMA,
-      timeoutMs: STAGE_TIMEOUT_MS.card, deadlineAt: ctx.deadlineAt, backends: await backends(ctx),
-      models: config.models, tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
+      timeoutMs: STAGE_TIMEOUT_MS.card, deadlineAt: ctx.deadlineAt, backends: await backends(ctx, "card"),
+      tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
     };
   });
   if (typeof c1 === "string" || c1 === null) return c1 ?? "finished";
@@ -521,8 +665,8 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
   });
   const planCall = (feedback: string) => async (): Promise<StageCall> => ({
     key: "grovshot_v2_plan", body: ctx.bodies.grovshot_v2_plan, values: planValues(feedback), images: [],
-    schema: PLAN_SCHEMA, timeoutMs: STAGE_TIMEOUT_MS.plan, deadlineAt: ctx.deadlineAt, backends: await backends(ctx),
-    models: config.models, tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
+    schema: PLAN_SCHEMA, timeoutMs: STAGE_TIMEOUT_MS.plan, deadlineAt: ctx.deadlineAt, backends: await backends(ctx, "plan"),
+    tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
   });
   const check = (raw: unknown) => checkPlan(raw, { card, shots: input.shots, userRows: input.user_rows ?? undefined, config });
   const p0 = await stageStep<unknown>(ctx, P.plan, 0, "plan", null, STAGE_TIMEOUT_MS.plan, planCall(""));
@@ -549,19 +693,23 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
 
 type Mirror = { sessionId: string | null; concepts: Record<number, string> };
 
-function compileShot(ctx: Ctx, shot: Shot, card: ProductCard, correction: string | null): { ok: true; text: string } | { ok: false; error: string } {
+/** The image prompt: the template's PROMPT section compiled with the
+ *  writer's blocks — exactly what Nano Banana Pro receives. */
+function compileShot(ctx: Ctx, shot: Shot, card: ProductCard, blocks: WriterBlocks): { ok: true; text: string } | { ok: false; error: string } {
+  const split = splitShotTemplate(ctx.bodies.grovshot_v2_shot);
+  if (!split) return { ok: false, error: "template_layout" };
   const values = shotValues({
     shot, card, recipe: recipeById(ctx.config, card.recipe_id), config: ctx.config,
     aspectRatio: ctx.input.aspect_ratio, resolution: ctx.input.resolution,
-    fidelityRules: buildFidelityInstructions(), correction,
+    fidelityRules: buildFidelityInstructions(), blocks,
   });
-  const tooLong = checkLimits("grovshot_v2_shot", ctx.bodies.grovshot_v2_shot, values);
+  const tooLong = checkLimits("grovshot_v2_shot", split.prompt, values);
   if (tooLong) return { ok: false, error: `variable_too_long:${tooLong}`.slice(0, 80) };
-  const c = compileTemplate(ctx.bodies.grovshot_v2_shot, TOOL_VARIABLES.grovshot_v2_shot ?? [], values);
+  const c = compileTemplate(split.prompt, TOOL_VARIABLES.grovshot_v2_shot ?? [], values);
   return c.ok ? { ok: true, text: c.text } : { ok: false, error: `variable_missing:${c.missing[0] ?? c.unknown[0] ?? ""}`.slice(0, 80) };
 }
 
-async function ensureMirror(ctx: Ctx, card: ProductCard, shots: Shot[]): Promise<Mirror | Drive> {
+async function ensureMirror(ctx: Ctx, card: ProductCard, shots: Shot[], written: Written): Promise<Mirror | Drive> {
   const s = stepOf(ctx, P.mirror, -1);
   const read = (o: Record<string, unknown>): Mirror => ({
     sessionId: typeof o.session_id === "string" ? o.session_id : null,
@@ -581,40 +729,33 @@ async function ensureMirror(ctx: Ctx, card: ProductCard, shots: Shot[]): Promise
   }
   // Customer-visible rows, never read back as truth: the session (its photos
   // in upload order) and one concept per shot — the sealed base prompt, the
-  // shot's title and summary — so 👍/👎 and „Regeneruj” work per shot.
-  const { data: session, error } = await ctx.supabase.from("prompt_sessions").insert({
-    workspace_id: ctx.workspaceId, user_id: ctx.userId, product_id: null,
-    product_name: card.name.slice(0, 120), description: null, extra_info: null,
-    aspect_ratio: ctx.input.aspect_ratio, style: null, resolution: ctx.input.resolution,
-    reference_paths: ctx.input.photos, status: "ready", mode: "engine", session_type: "lifestyle",
-  }).select("id").single();
-  if (error || !session) {
+  // shot's title and summary — so 👍/👎 and „Regeneruj” work per shot. Written
+  // by the order's server function (its workspace, its owner — 0163).
+  const rows: Record<string, Json>[] = [];
+  for (const shot of shots) {
+    const blocks = written.get(shot.index);
+    if (!blocks) continue;
+    const prompt = compileShot(ctx, shot, card, blocks);
+    if (!prompt.ok) continue;
+    const sealed = encryptConceptPayload(ctx.ring, prompt.text, "", { tv: ctx.versions.grovshot_v2_shot });
+    rows.push({
+      concept_name: shot.title, customer_title: shot.title, customer_description: shot.summary || shot.argument,
+      prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
+      primary_reference: shot.references[0] ?? 1, reference_indices: shot.references,
+      format: ctx.input.aspect_ratio, priority: shot.index + 1, model_id: ctx.input.model.id,
+    });
+  }
+  const mirrored = await srvMirror(srv(ctx), {
+    product_name: card.name.slice(0, 120), aspect_ratio: ctx.input.aspect_ratio, resolution: ctx.input.resolution,
+  }, rows);
+  if (!mirrored) {
     await finish(ctx, P.mirror, -1, { status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "session_create_failed", durationMs: 0 });
     await close(ctx, "failed", "unavailable");
     return "finished";
   }
-  const rows = [];
-  for (const shot of shots) {
-    const prompt = compileShot(ctx, shot, card, null);
-    if (!prompt.ok) continue;
-    const sealed = encryptConceptPayload(ctx.ring, prompt.text, "", { tv: ctx.versions.grovshot_v2_shot });
-    rows.push({
-      product_id: null, workspace_id: ctx.workspaceId, session_id: session.id,
-      concept_name: shot.title, shot_type: "scene", scene_type: null,
-      customer_title: shot.title, customer_description: shot.summary || shot.argument,
-      prompt_text: "", negative_prompt: null,
-      prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
-      primary_reference: shot.references[0] ?? 1, supporting_references: [] as never,
-      reference_indices: shot.references, reference_image_ids: [], reference_rationale: null,
-      format: ctx.input.aspect_ratio, style: null, priority: shot.index + 1, status: "ready" as const, lock_strength: "LOW",
-      model_id: ctx.input.model.id,
-    });
-  }
-  const { data: inserted } = rows.length > 0
-    ? await ctx.supabase.from("generated_prompts").insert(rows).select("id, priority")
-    : { data: [] as { id: string; priority: number }[] };
+  const session = { id: mirrored.sessionId };
   const concepts: Record<number, string> = {};
-  for (const r of inserted ?? []) concepts[(r.priority ?? 0) - 1] = r.id;
+  for (const r of mirrored.concepts) concepts[(r.priority ?? 0) - 1] = r.id;
   const out = { session_id: session.id, concepts };
   await finish(ctx, P.mirror, -1, { status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: out as Json, durationMs: 0 });
   return read(out);
@@ -627,7 +768,7 @@ const settled = (ctx: Ctx, n: number) => {
   return s?.status === "succeeded" || s?.status === "failed";
 };
 
-async function shotsPhase(ctx: Ctx, card: ProductCard, shots: Shot[], mirror: Mirror): Promise<Drive> {
+async function shotsPhase(ctx: Ctx, card: ProductCard, shots: Shot[], mirror: Mirror, written: Written): Promise<Drive> {
   ctx.candidatesOf = new Map(shots.map((s) => [s.index, s.candidates]));
   const pending = shots.filter((s) => !settled(ctx, s.index));
   if (pending.length === 0) return closeRun(ctx, shots);
@@ -639,7 +780,7 @@ async function shotsPhase(ctx: Ctx, card: ProductCard, shots: Shot[], mirror: Mi
       const shot = pending[next++];
       let r: ShotOutcome;
       try {
-        r = await runShot(ctx, card, shot, mirror);
+        r = await runShot(ctx, card, shot, mirror, written.get(shot.index) ?? null);
       } catch (e) {
         console.error("[grovshot-v2] shot error", ctx.runId.slice(0, 8), shot.index, e instanceof Error ? e.name : "error");
         r = "yield";
@@ -712,7 +853,7 @@ function reasonOf(round: StepRunRow | undefined): string {
   return "unavailable";
 }
 
-async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror): Promise<ShotOutcome> {
+async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror, base: WriterBlocks | null): Promise<ShotOutcome> {
   const n = shot.index;
   for (let guard = 0; guard < 6; guard++) {
     if (settled(ctx, n)) return "settled";
@@ -757,8 +898,24 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
     if (ctx.stopNew) return settle(ctx, n, false, ctx.stopNew);
     if (ctx.gateUnknown) return "yield";
     if (left(ctx) < roundStartMs(ctx)) return "yield";
+    // The writer gave this shot no usable prompt: no image, nothing charged.
+    if (!base) return settle(ctx, n, false, "prompt_invalid");
 
     const correction = prevRetry?.mode === "amended" && typeof prevRetry.correction === "string" ? prevRetry.correction : null;
+    // A SYSTEMATIC error: the writer rewrites the shot's blocks for the one
+    // retry (the QC correction and the previous blocks as data). A random
+    // error reuses the same prompt. A rewrite that fails also reuses it, and
+    // the round says so.
+    let blocks = base;
+    let rewrite: "none" | "rewritten" | "same_prompt" = "none";
+    if (correction) {
+      const w = await writeStep(ctx, card, shot, used, correction, base);
+      if (w === "yield" || w === "busy" || w === "lost") return w;
+      if (w === "finished") return "yield";
+      if (w === "failed") rewrite = "same_prompt";
+      else { blocks = w; rewrite = "rewritten"; }
+      if (left(ctx) < roundStartMs(ctx)) return "yield";
+    }
     let candidates: number = used === 0 ? shot.candidates : ctx.config.retry.candidates;
     // Paid image requests for this shot, every round and re-issue counted.
     const allowance = ctx.config.limits.max_paid_images_per_shot - paidImages(ctx, shot);
@@ -787,7 +944,7 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
     const charged = () => { ctx.inFlight.delete(place); };
     try {
       if (!ctx.test) {
-        const bal = await freshBalance(ctx.supabase, ctx.workspaceId);
+        const bal = await freshBalance(srv(ctx));
         if (bal === null) return "busy";
         // Not even this shot: it ends here (every other shot checks its own).
         if (bal < ctx.input.quote.unit) return settle(ctx, n, false, "insufficient_credits");
@@ -800,7 +957,7 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
       const refs = await photos(ctx, shot.references);
       if (refs === "changed") { ctx.stopNew = "reference_changed"; return settle(ctx, n, false, "reference_changed"); }
       if (refs === "unreadable") return "busy";
-      const prompt = compileShot(ctx, shot, card, correction);
+      const prompt = compileShot(ctx, shot, card, blocks);
       if (!prompt.ok) return settle(ctx, n, false, "prompt_unconfigured");
 
       const release = await acquireImages(candidates);
@@ -818,7 +975,10 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
           continue;
         }
         await setProgress(ctx, { stage: "images" });
-        const round = await executeRound(ctx, card, shot, { prompt: prompt.text, refs, candidates, round: used, correction, item, attempts: b.attempts, free, calls });
+        const round = await executeRound(ctx, card, shot, {
+          prompt: prompt.text, refs, candidates, round: used, correction, item, attempts: b.attempts, free, calls,
+          write: { item: rewrite === "rewritten" ? itemOf(n, used) : itemOf(n, 0), rewrite },
+        });
         if (round === "lost") return "lost";
         // The round's real cost is in its row now.
         releaseBudget();
@@ -909,6 +1069,8 @@ async function genCandidate(ctx: Ctx, prompt: string, refs: Awaited<ReturnType<t
 async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
   prompt: string; refs: OrderPhoto[]; candidates: number; round: number; correction: string | null; item: number; attempts: number; free: () => void;
   calls: CallBudget;
+  /** Which writer step's blocks this prompt was compiled from. */
+  write: { item: number; rewrite: "none" | "rewritten" | "same_prompt" };
 }): Promise<{ accepted: Accepted | null } | "lost"> {
   const t0 = ctx.deps.now();
   const refsForModel = await Promise.all(r.refs.map(forImageModel));
@@ -940,7 +1102,7 @@ async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
       const res = await ctx.deps.callStage<RawQc>(ctx.supabase, {
         key: "grovshot_v2_qc", body: ctx.bodies.grovshot_v2_qc, values: qcValues,
         images: [...refVision, candVision], schema, timeoutMs: Math.min(qcTimeout, room - 5_000),
-        deadlineAt: ctx.hardEndAt - DELIVER_RESERVE_MS, backends: await backends(ctx), models: ctx.config.models,
+        deadlineAt: ctx.hardEndAt - DELIVER_RESERVE_MS, backends: await backends(ctx, "qc"),
         tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
       }, { consumer: consumer(ctx), actorKind: ctx.test ? "admin" : "customer", userId: ctx.userId, workspaceId: ctx.workspaceId, runRef: ctx.runId });
       if (res.cost.basis !== "unknown") qcCost += res.cost.usdMicros;
@@ -1002,9 +1164,20 @@ async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
     })) as Json,
     qc: qcTraces,
     retry: retry.retry ? { mode: retry.mode, correction: retry.correction } : null,
-    prompt: { sha256: sha256(r.prompt), amended: Boolean(r.correction), correction: r.correction, version: ctx.versions.grovshot_v2_shot },
+    prompt: {
+      sha256: sha256(r.prompt), amended: Boolean(r.correction), correction: r.correction, version: ctx.versions.grovshot_v2_shot,
+      write_item: r.write.item, rewrite: r.write.rewrite,
+    },
     references: shot.references,
+    // THE REFERENCE MANIFEST: what Nano Banana Pro received, in send order —
+    // „zdjęcie 1” of the prompt is entry 1 (the stored bytes' sha256).
+    references_sent: r.refs.map((p, i) => {
+      const role = card.photos.find((x) => x.photo === p.number);
+      return { n: i + 1, photo: p.number, sha256: p.sha256, role: role?.role ?? null, state: role?.state ?? null, whole: role?.whole ?? null };
+    }) as unknown as Json,
     cost_usd_micros: imageCost + qcCost,
+    image_cost_usd_micros: imageCost,
+    qc_cost_usd_micros: qcCost,
     unknown_calls: unknownCalls,
   };
   const ok = await finish(ctx, P.round, r.item, {
@@ -1040,7 +1213,7 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
   const ext = acc.mime === "image/jpeg" ? "jpg" : acc.mime === "image/webp" ? "webp" : "png";
   if (ctx.test) {
     // An admin test: no ledger, no library — the image lands in the test folder.
-    const path = await storeNew(ctx.supabase, `${ctx.workspaceId}/gsv2-test/${ctx.runId}`, ext, acc.bytes, acc.mime);
+    const path = await storeNew(srv(ctx), `${ctx.workspaceId}/gsv2-test/${ctx.runId}`, ext, acc.bytes, acc.mime);
     if (!path) return (await settle(ctx, n, false, "storage_failed")) === "lost" ? "lost" : "released";
     const s = await settle(ctx, n, true, "", { path, test: true, verdict: acc.decision.verdict });
     return s === "lost" ? "lost" : s === "busy" ? "busy" : "delivered";
@@ -1048,33 +1221,29 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
 
   const t0 = ctx.deps.now();
   // An unreadable wallet is not a charge failure: nothing is begun.
-  const wallet = await walletId(ctx.supabase, ctx.workspaceId);
+  const wallet = await walletId(srv(ctx));
   if (!wallet) return "busy";
   const b = await begin(ctx, P.charge, item, "charge", "tool");
   if (b.state === "not_owner") return "lost";
   if (b.state !== "run" || b.attempts > 0) return "busy";
   const conceptId = mirror.concepts[n] ?? null;
   const refPaths = shot.references.map((x) => ctx.input.photos[x - 1]);
-  const { data: job, error: jobErr } = await ctx.supabase.from("generation_jobs").insert({
-    workspace_id: ctx.workspaceId, user_id: ctx.userId, model_id: ctx.input.model.id, provider_slug: ctx.input.model.provider,
-    prompt_text: null, aspect_ratio: ctx.input.aspect_ratio, quantity: 1, resolution: ctx.input.resolution,
+  const jobId = await srvJobCreate(srv(ctx), {
+    model_id: ctx.input.model.id, provider_slug: ctx.input.model.provider,
+    aspect_ratio: ctx.input.aspect_ratio, resolution: ctx.input.resolution,
     prompt_id: conceptId, prompt_session_id: mirror.sessionId, prompt_origin: "ecomstudio",
-    status: "processing", started_at: new Date(t0).toISOString(), reference_image_ids: [],
-    settings: {
-      engine: "grovshot_v2", run_id: ctx.runId, shot: n + 1, shot_item: item, concept_id: conceptId,
-      resolution: ctx.input.resolution, reference_paths: refPaths,
-    } as Json,
-  }).select("id").single();
-  if (jobErr || !job) {
+    settings: { shot: n + 1, shot_item: item, concept_id: conceptId, resolution: ctx.input.resolution, reference_paths: refPaths } as Json,
+  });
+  const job = jobId ? { id: jobId } : null;
+  if (!job) {
     await finish(ctx, P.charge, item, { status: "failed", attempts: 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "job_create_failed", durationMs: 0 });
     return "released";
   }
-  const usage = await startUsage(ctx.supabase, {
-    serverToken: dispatchToken(), userId: ctx.userId, workspaceId: ctx.workspaceId, walletId: wallet,
-    serviceSlug: "image_generation", providerSlug: ctx.input.model.provider, modelSlug: ctx.input.model.identifier,
-    generationJobId: job.id, idempotencyKey: chargeKey(ctx, n, slot),
-    metadata: { operation: "grovshot_v2", quantity: 1, run_id: ctx.runId, session_id: mirror.sessionId, shot: n + 1, round, slot },
-    creditsCharged: ctx.input.quote.unit,
+  // The price is the order's quoted unit, decided in SQL (0163), not here.
+  const usage = await srvUsageStart(srv(ctx), {
+    walletId: wallet, jobId: job.id, key: chargeKey(ctx, n, slot),
+    providerSlug: ctx.input.model.provider, modelSlug: ctx.input.model.identifier,
+    metadata: { quantity: 1, session_id: mirror.sessionId, shot: n + 1, round, slot },
   });
   if (!usage.ok) {
     if (!CHARGE_FINAL.has(usage.error)) {
@@ -1082,7 +1251,7 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
       // recovery settles it from the ledger — never a second charge now.
       return "busy";
     }
-    await jobFailed(ctx.supabase, job.id, usage.error);
+    await jobFailed(srv(ctx), job.id, usage.error);
     await finish(ctx, P.charge, item, { status: "failed", attempts: 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: `charge:${usage.error}`.slice(0, 80), durationMs: 0 });
     ctx.stopNew = usage.error === "insufficient_credits" ? "insufficient_credits" : "unavailable";
     const s = await settle(ctx, n, false, usage.error === "insufficient_credits" ? "insufficient_credits" : "unavailable");
@@ -1097,23 +1266,23 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
 
   const d = await begin(ctx, P.deliver, item, "deliver", "tool");
   if (d.state === "not_owner") {
-    await failUsage(ctx.supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet, error: "deliver_lost" });
+    await srvUsageFail(srv(ctx), usage.eventId, "deliver_lost");
     return "lost";
   }
   const release = async (code: string): Promise<DeliverOutcome> => {
     // Nothing refunded stays readable: library rows first, then files; if
     // either cannot be confirmed, nothing is refunded yet (next call does it).
-    if (!(await removeLibraryRows(ctx.supabase, job.id))) return "busy";
-    if (!(await removeFolder(ctx.supabase, `${ctx.workspaceId}/${job.id}`))) return "busy";
-    await failUsage(ctx.supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet, error: code, apiCostUsdMicros: shotCost(ctx, n) });
-    await jobFailed(ctx.supabase, job.id, code);
+    if (!(await removeLibraryRows(srv(ctx), job.id))) return "busy";
+    if (!(await removeFolder(srv(ctx), `${ctx.workspaceId}/${job.id}`))) return "busy";
+    await srvUsageFail(srv(ctx), usage.eventId, code, shotCost(ctx, n));
+    await jobFailed(srv(ctx), job.id, code);
     if (d.state === "run") await finish(ctx, P.deliver, item, { status: "failed", attempts: d.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: code, durationMs: ctx.deps.now() - t0 });
     return "released";
   };
   if (d.state !== "run") return release("deliver_failed");
 
-  const completed = await markJobCompleted(ctx.supabase, job.id, ctx.input.quote.unit, {
-    latency_ms: ctx.deps.now() - Date.parse(ctx.run.created_at),
+  const completed = await markJobCompleted(srv(ctx), job.id, {
+    latencyMs: ctx.deps.now() - Date.parse(ctx.run.created_at),
   }, {
     provider_output: [{
       provider_returned_width: acc.width, provider_returned_height: acc.height, provider_mime: acc.mime,
@@ -1121,19 +1290,15 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
     }] as unknown as Json,
   });
   if (!completed) return release("library_failed");
-  const path = await storeNew(ctx.supabase, `${ctx.workspaceId}/${job.id}`, ext, acc.bytes, acc.mime);
+  const path = await storeNew(srv(ctx), `${ctx.workspaceId}/${job.id}`, ext, acc.bytes, acc.mime);
   if (!path) return release("storage_failed");
-  const { data: gen, error: genErr } = await ctx.supabase.from("generations").insert({
-    job_id: job.id, workspace_id: ctx.workspaceId,
-    quality_status: acc.decision.verdict === "warning" ? "warning" : "passed",
-    product_match_score: matchScore(acc.decision),
-  }).select("id").single();
-  if (genErr || !gen) return release("library_failed");
-  const { data: asset, error: assetErr } = await ctx.supabase.from("generation_assets").insert({
-    generation_id: gen.id, asset_type: "image", storage_path: path, width: acc.width, height: acc.height,
-    metadata: { tool: "prompts", engine: "grovshot_v2", shot: n + 1 } as Json,
-  }).select("id").single();
-  if (assetErr || !asset) return release("library_failed");
+  const added = await srvLibraryAdd(srv(ctx), {
+    jobId: job.id, path, width: acc.width, height: acc.height,
+    quality: acc.decision.verdict === "warning" ? "warning" : "passed", score: matchScore(acc.decision), shot: n + 1,
+  });
+  if (!added) return release("library_failed");
+  const gen = { id: added.generationId };
+  const asset = { id: added.assetId };
 
   // DELIVERED — the server's own mark, before the charge closes: library rows
   // a member can delete never decide a refund.
@@ -1142,25 +1307,21 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
     await finish(ctx, P.mark, item, { status: "succeeded", attempts: m.attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
       output: { job_id: job.id, generation_id: gen.id, asset_id: asset.id, path }, durationMs: 0 });
   }
-  await completeUsage(ctx.supabase, dispatchToken(), usage.eventId, 1, {
-    apiCostUsdMicros: shotCost(ctx, n), executor: { providerSlug: ctx.input.model.provider, modelSlug: ctx.input.model.identifier },
-  });
-  const status = await eventStatus(ctx.supabase, usage.eventId);
+  await srvUsageComplete(srv(ctx), usage.eventId, shotCost(ctx, n), ctx.input.model.provider, ctx.input.model.identifier);
+  const status = await eventStatus(srv(ctx), usage.eventId);
   if (status === "unknown" || status === "pending") return "busy";
   if (status !== "succeeded") {
     // The ledger closed it otherwise (the reconciler refunded a stalled
     // shot): the image is not delivered for free.
-    if (!(await removeLibraryRows(ctx.supabase, job.id)) || !(await removeFolder(ctx.supabase, `${ctx.workspaceId}/${job.id}`))) return "busy";
-    await jobFailed(ctx.supabase, job.id, "charge_closed");
+    if (!(await removeLibraryRows(srv(ctx), job.id)) || !(await removeFolder(srv(ctx), `${ctx.workspaceId}/${job.id}`))) return "busy";
+    await jobFailed(srv(ctx), job.id, "charge_closed");
     await finish(ctx, P.deliver, item, { status: "failed", attempts: d.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "charge_closed", durationMs: 0 });
     return "released";
   }
-  await derivatives(ctx.supabase, asset.id, path, acc.bytes);
-  if (conceptId) await ctx.supabase.from("generated_prompts").update({ last_job_id: job.id, generation_count: 1 }).eq("id", conceptId);
-  await ctx.supabase.rpc("log_activity", {
-    p_workspace_id: ctx.workspaceId, p_action: "generation.completed", p_entity_type: "generation_job", p_entity_id: job.id,
-    p_metadata: { tool: "prompts", engine: "grovshot_v2", run_id: ctx.runId, shot: n + 1, round, credits: ctx.input.quote.unit },
-  });
+  await derivatives(srv(ctx), asset.id, path, acc.bytes);
+  if (conceptId) await srvConceptDone(srv(ctx), conceptId, job.id);
+  await srvLog(srv(ctx), "generation.completed", "generation_job", job.id,
+    { tool: "prompts", engine: "grovshot_v2", run_id: ctx.runId, shot: n + 1, round, credits: ctx.input.quote.unit });
   await finish(ctx, P.deliver, item, { status: "succeeded", attempts: d.attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
     output: { job_id: job.id, generation_id: gen.id, path }, durationMs: ctx.deps.now() - t0 });
   const s = await settle(ctx, n, true, "", { job_id: job.id, generation_id: gen.id, verdict: acc.decision.verdict, round });
@@ -1194,24 +1355,22 @@ async function recoverDelivery(ctx: Ctx, n: number, charge: StepRunRow): Promise
   let jobId = typeof out.job_id === "string" ? out.job_id : null;
   let eventId = typeof out.event_id === "string" ? out.event_id : null;
   if (!jobId || !eventId) {
-    const ev = await eventByKey(ctx.supabase, chargeKey(ctx, n, slot));
+    const ev = await eventByKey(srv(ctx), chargeKey(ctx, n, slot));
     if (ev === "unknown") return "busy";
     jobId = jobId ?? ev?.jobId ?? null;
     eventId = eventId ?? ev?.id ?? null;
     if (!jobId) {
       // A job written before the charge: found by its run and item, failed.
-      const { data: orphans } = await ctx.supabase.from("generation_jobs").select("id")
-        .eq("workspace_id", ctx.workspaceId).eq("settings->>run_id", ctx.runId).eq("settings->>shot_item", String(item))
-        .in("status", ["queued", "processing"]).limit(3);
-      for (const o of orphans ?? []) await jobFailed(ctx.supabase, o.id, "charge_interrupted");
+      const orphans = (await srvJobs(srv(ctx), item)) ?? [];
+      for (const o of orphans.filter((j) => j.status === "queued" || j.status === "processing")) await jobFailed(srv(ctx), o.id, "charge_interrupted");
     }
   }
   const markRow = stepOf(ctx, P.mark, item);
-  const asset = jobId ? await jobAsset(ctx.supabase, ctx.workspaceId, jobId) : null;
+  const asset = jobId ? await jobAsset(srv(ctx), ctx.workspaceId, jobId) : null;
   if (asset === "unknown") return "busy";
-  const wallet = await walletId(ctx.supabase, ctx.workspaceId);
+  const wallet = await walletId(srv(ctx));
   if (!wallet) return "busy";
-  const status = eventId ? await eventStatus(ctx.supabase, eventId) : null;
+  const status = eventId ? await eventStatus(srv(ctx), eventId) : null;
   if (status === "unknown") return "busy";
   const closeRow = async (pos: number, ok: boolean, code: string) => {
     const r = stepOf(ctx, pos, item);
@@ -1222,13 +1381,10 @@ async function recoverDelivery(ctx: Ctx, n: number, charge: StepRunRow): Promise
     }
   };
   if (jobId && (markRow?.status === "succeeded" || asset) && status !== "refunded" && status !== "failed") {
-    if (!(await markJobCompleted(ctx.supabase, jobId, ctx.input.quote.unit))) return "busy";
+    if (!(await markJobCompleted(srv(ctx), jobId))) return "busy";
     if (eventId && status === "pending") {
-      await completeUsage(ctx.supabase, dispatchToken(), eventId, 1, {
-        apiCostUsdMicros: shotCost(ctx, n) || undefined,
-        executor: { providerSlug: ctx.input.model.provider, modelSlug: ctx.input.model.identifier },
-      });
-      const after = await eventStatus(ctx.supabase, eventId);
+      await srvUsageComplete(srv(ctx), eventId, shotCost(ctx, n) || null, ctx.input.model.provider, ctx.input.model.identifier);
+      const after = await eventStatus(srv(ctx), eventId);
       if (after !== "succeeded") return "busy";
     }
     await closeRow(P.charge, true, "");
@@ -1238,13 +1394,13 @@ async function recoverDelivery(ctx: Ctx, n: number, charge: StepRunRow): Promise
     return s === "lost" ? "lost" : s === "busy" ? "busy" : "delivered";
   }
   if (jobId) {
-    if (!(await removeLibraryRows(ctx.supabase, jobId))) return "busy";
-    if (!(await removeFolder(ctx.supabase, `${ctx.workspaceId}/${jobId}`))) return "busy";
+    if (!(await removeLibraryRows(srv(ctx), jobId))) return "busy";
+    if (!(await removeFolder(srv(ctx), `${ctx.workspaceId}/${jobId}`))) return "busy";
   }
   if (eventId && status === "pending") {
-    await failUsage(ctx.supabase, { serverToken: dispatchToken(), eventId, walletId: wallet, error: "deliver_interrupted" });
+    await srvUsageFail(srv(ctx), eventId, "deliver_interrupted");
   }
-  if (jobId) await jobFailed(ctx.supabase, jobId, "deliver_interrupted");
+  if (jobId) await jobFailed(srv(ctx), jobId, "deliver_interrupted");
   await closeRow(P.charge, false, "deliver_interrupted");
   await closeRow(P.deliver, false, "deliver_interrupted");
   // A deliver row that never began still marks this charge as handled.
@@ -1281,20 +1437,20 @@ async function closeRun(ctx: Ctx, shots: Shot[]): Promise<Drive> {
   const unknown = ctx.steps.reduce((sum, s) => sum + (Number(outputOf(s).unknown_calls) || 0) + (s.cost_basis === "unknown" && s.position <= P.round ? 1 : 0), 0);
   const status = delivered.length === 0 ? "failed" : delivered.length === ctx.input.shots ? "ok" : "partial";
   const outputs = delivered.map((s) => ({ job_id: String(outputOf(s).job_id ?? ""), path: String(outputOf(s).path ?? ""), step: P.settle, item: s!.item_index }));
-  await close(ctx, status, status === "failed" ? "not_delivered" : null, {
-    credits, api_cost_usd_micros: known, cost_unknown: unknown, model_label: ctx.input.model.identifier,
-    outputs: outputs as unknown as Json,
-  });
+  // The owner's notification and the activity row BEFORE the order closes:
+  // the server may act for an order only while it is open (0163).
   if (!ctx.test && delivered.length > 0) {
     const first = outputOf(delivered[0]);
-    await notifyGenerationDone(ctx.supabase, {
-      userId: ctx.userId, tool: "prompts", jobId: String(first.job_id), count: delivered.length,
+    await srvNotifyDone(srv(ctx), {
+      jobId: String(first.job_id), count: delivered.length,
       generationId: typeof first.generation_id === "string" ? first.generation_id : null,
     });
   }
-  await ctx.supabase.rpc("log_activity", {
-    p_workspace_id: ctx.workspaceId, p_action: "grovshot_v2.completed", p_entity_type: "ai_engine_run", p_entity_id: ctx.runId,
-    p_metadata: { delivered: delivered.length, planned: shots.length, ordered: ctx.input.shots, test: ctx.test, credits },
+  await srvLog(srv(ctx), "grovshot_v2.completed", "ai_engine_run", ctx.runId,
+    { delivered: delivered.length, planned: shots.length, ordered: ctx.input.shots, test: ctx.test, credits });
+  await close(ctx, status, status === "failed" ? "not_delivered" : null, {
+    credits, api_cost_usd_micros: known, cost_unknown: unknown, model_label: ctx.input.model.identifier,
+    outputs: outputs as unknown as Json,
   });
   return "finished";
 }

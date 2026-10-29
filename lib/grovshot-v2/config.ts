@@ -13,6 +13,7 @@
  * explicit variables ({{style_light}}, {{quality_footer}}, {{negative_prompt}}
  * …). Nothing in this file is appended to a prompt by code.
  */
+import { isAnthropicEffort, type AnthropicEffort } from "@/lib/ai/anthropic-options";
 
 /* ── fixed vocabularies (code contracts, not admin text) ──────────────────*/
 
@@ -100,7 +101,27 @@ export type PeopleRow = {
   hands: [number, number];
 };
 
-export type StageModel = { provider: "openai" | "google"; model: string };
+/** The text/vision roles of the engine, each with its own model. */
+export const STAGE_ROLES = ["validate", "card", "plan", "prompt", "qc"] as const;
+export type StageRole = (typeof STAGE_ROLES)[number];
+/** Providers a text/vision role can run on (image models are separate). */
+export const STAGE_PROVIDERS = ["anthropic", "openai", "google"] as const;
+export type StageProvider = (typeof STAGE_PROVIDERS)[number];
+export type StageModelRef = { provider: StageProvider; model: string; effort?: AnthropicEffort };
+/** The Claude models an admin picks from (official API ids; any other id
+ *  that the config parser accepts may still be typed in). */
+export const CLAUDE_STAGE_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"] as const;
+/** The same shape check the config parser applies to one role's model. */
+export function isStageModelRef(m: unknown): m is StageModelRef {
+  if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+  const r = m as Record<string, unknown>;
+  return (STAGE_PROVIDERS as readonly string[]).includes(String(r.provider))
+    && /^[a-z0-9][a-z0-9.\-]{1,60}$/.test(String(r.model))
+    && (r.effort === undefined || (r.provider === "anthropic" && isAnthropicEffort(r.effort)));
+}
+/** A role's model — and a second one ONLY when an admin set it: the engine
+ *  never falls back to anything that is not written here. */
+export type StageModel = StageModelRef & { fallback?: StageModelRef };
 
 export type EngineConfig = {
   v: 1;
@@ -188,8 +209,9 @@ export type EngineConfig = {
     /** Re-plans allowed when the plan breaks a hard rule (before any charge). */
     replans: 0 | 1;
   };
-  /** Optional per-stage text/vision model; absent = the GrovShot planner chain. */
-  models: Partial<Record<"validate" | "card" | "plan" | "qc", StageModel>>;
+  /** The model of every text/vision role (all five required). Nothing else
+   *  is ever asked: no planner chain, no implicit fallback. */
+  models: Record<StageRole, StageModel>;
   /**
    * The words the shot prompt uses for the code's closed values. They are
    * admin text (published, versioned) so that no word of the image prompt is
@@ -316,9 +338,15 @@ export function parseEngineConfig(raw: unknown): ConfigParse {
     || !(c.limits.replans === 0 || c.limits.replans === 1)) e.push("limits");
   if (!isObj(c.models)) e.push("models");
   else {
-    for (const [k, m] of Object.entries(c.models)) {
-      if (!["validate", "card", "plan", "qc"].includes(k) || !isObj(m) || !(m.provider === "openai" || m.provider === "google")
-        || !/^[a-z0-9][a-z0-9.\-]{1,60}$/.test(String(m.model))) e.push(`models.${k}`);
+    const ref = isStageModelRef;
+    for (const k of Object.keys(c.models)) if (!(STAGE_ROLES as readonly string[]).includes(k)) e.push(`models.${k}`);
+    for (const k of STAGE_ROLES) {
+      const m = c.models[k];
+      if (!ref(m)) { e.push(`models.${k}`); continue; }
+      const f = (m as Record<string, unknown>).fallback;
+      if (f !== undefined && (!ref(f) || (isObj(f) && f.provider === (m as Record<string, unknown>).provider && f.model === (m as Record<string, unknown>).model))) {
+        e.push(`models.${k}.fallback`);
+      }
     }
   }
   if (!isObj(c.labels)) e.push("labels");

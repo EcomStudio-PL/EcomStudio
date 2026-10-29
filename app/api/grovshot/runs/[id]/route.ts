@@ -25,11 +25,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const run = data as { status?: string; driving?: boolean };
   if ((run.status === "queued" || run.status === "running") && !run.driving) {
     const workspace = await getCurrentWorkspace(supabase, user.id);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (workspace) {
-      driveGrovshotAfterResponse(supabase, user.id, workspace.id, id, startedAt,
-        session?.access_token ? { origin: new URL(request.url).origin, token: session.access_token } : null);
-    }
+    if (workspace) driveGrovshotAfterResponse(user.id, workspace.id, id, startedAt, { origin: new URL(request.url).origin });
   }
   return NextResponse.json({ ok: true, run: data }, { headers: { "Cache-Control": "no-store" } });
 }

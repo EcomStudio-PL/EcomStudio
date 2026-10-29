@@ -1,5 +1,7 @@
 import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
 import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
+import type { AnthropicEffort } from "@/lib/ai/anthropic-options";
 
 /**
  * Vision layer for the prompt engine — REAL image understanding, never
@@ -21,7 +23,7 @@ export const VISION_FALLBACKS = ["gemini-3.5-flash", "gemini-3-flash-preview", "
 export const OPENAI_VISION_MODELS = ["gpt-5", "gpt-4.1", "gpt-4o"];
 
 export type VisionCredential = { apiKey: string; baseUrl?: string | null };
-export type VisionProvider = "google" | "openai";
+export type VisionProvider = "google" | "openai" | "anthropic";
 
 /**
  * One HTTP request to a provider, as the provider reported it. Tokens are what
@@ -46,14 +48,20 @@ export type VisionAttempt = {
 export type VisionBackend = {
   provider: VisionProvider;
   cred: VisionCredential;
-  /** Preferred model id; the backend still falls through its own id list. */
+  /** Preferred model id; the backend still falls through its own id list.
+   *  Anthropic has no id list: its model is the one chosen, or none. */
   model?: string;
+  /** Anthropic only: the effort the chosen model works at (omitted = the
+   *  model's own default). */
+  effort?: AnthropicEffort;
   /**
    * Told about every request this backend makes, successful or not — so a
    * caller can record what it spent without this layer knowing where the
    * record goes. It must not throw; a throwing meter is ignored.
    */
   meter?: (attempt: VisionAttempt) => void;
+  /** Tests only: the HTTP layer the Anthropic SDK sends through. */
+  fetch?: typeof fetch;
 };
 
 type Usage = { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number };
@@ -135,9 +143,13 @@ export async function callVisionJson<T>(
 
 /** Try a backend across its own model ids, retrying transient hiccups. */
 async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promise<{ data: T; model: string }> {
-  const ids = backend.provider === "google"
-    ? dedupe([backend.model ?? VISION_MODEL, ...VISION_FALLBACKS])
-    : dedupe([backend.model, ...OPENAI_VISION_MODELS].filter(Boolean) as string[]);
+  // Anthropic: exactly the model an admin chose — never a guessed id.
+  const ids = backend.provider === "anthropic"
+    ? dedupe([backend.model ?? ""])
+    : backend.provider === "google"
+      ? dedupe([backend.model ?? VISION_MODEL, ...VISION_FALLBACKS])
+      : dedupe([backend.model, ...OPENAI_VISION_MODELS].filter(Boolean) as string[]);
+  if (ids.length === 0) throw new ProviderError("analysis_model_missing", false);
 
   let lastError: unknown = new ProviderError("analysis_unavailable");
   for (const model of ids) {
@@ -145,9 +157,11 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
       const started = Date.now();
       const usage: Usage = {};
       try {
-        const data = backend.provider === "google"
-          ? await callGemini<T>(backend.cred, req, model, usage)
-          : await callOpenAI<T>(backend.cred, req, model, usage);
+        const data = backend.provider === "anthropic"
+          ? await callAnthropic<T>(backend, req, model, usage)
+          : backend.provider === "google"
+            ? await callGemini<T>(backend.cred, req, model, usage)
+            : await callOpenAI<T>(backend.cred, req, model, usage);
         meter(backend, { provider: backend.provider, model, ok: true, durationMs: Date.now() - started, ...usage });
         return { data, model };
       } catch (e) {
@@ -330,6 +344,106 @@ async function callOpenAI<T>(cred: VisionCredential, req: VisionRequest, model: 
   usage.outputTokens = tokenCount(json.usage?.completion_tokens);
   usage.cachedInputTokens = tokenCount(json.usage?.prompt_tokens_details?.cached_tokens);
   return parseJson<T>(json.choices?.[0]?.message?.content ?? "");
+}
+
+/**
+ * The stage schema (Gemini's OpenAPI dialect) as the JSON Schema Claude's
+ * structured outputs take: lower-case types, every object closed
+ * (`additionalProperties: false`, which the API requires) and every property
+ * required exactly as the stage declares. Only shape is carried — no
+ * descriptions, bounds or text — so nothing here can steer the model.
+ */
+export function anthropicJsonSchema(schema: unknown): Record<string, unknown> {
+  const s = (schema && typeof schema === "object" ? schema : {}) as Record<string, unknown>;
+  const type = typeof s.type === "string" ? s.type.toLowerCase() : undefined;
+  const out: Record<string, unknown> = {};
+  if (type) out.type = type;
+  if (Array.isArray(s.enum)) out.enum = [...s.enum];
+  if (type === "object") {
+    const props = (s.properties && typeof s.properties === "object" ? s.properties : {}) as Record<string, unknown>;
+    out.properties = Object.fromEntries(Object.entries(props).map(([k, v]) => [k, anthropicJsonSchema(v)]));
+    out.required = Array.isArray(s.required) ? [...s.required] : Object.keys(props);
+    out.additionalProperties = false;
+  }
+  if (type === "array") out.items = anthropicJsonSchema(s.items);
+  return out;
+}
+
+/** Media types Claude accepts for an image block. */
+const ANTHROPIC_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+/** The Messages API's failures in the engine's vocabulary — by status and
+ *  the API's error TYPE, never by message text. */
+export function classifyAnthropicError(e: unknown): ProviderError {
+  if (e instanceof Anthropic.APIConnectionTimeoutError) return new ProviderError("analysis_timeout", true);
+  if (e instanceof Anthropic.APIConnectionError) return new ProviderError("analysis_unreachable", true);
+  if (e instanceof Anthropic.APIError) {
+    const type = typeof e.type === "string" ? e.type.slice(0, 60) : undefined;
+    const status = e.status ?? 0;
+    if (status === 401 || status === 403) return new ProviderError("analysis_unavailable", true, type);
+    if (status === 402 || type === "billing_error") return new ProviderError("analysis_quota", false, type);
+    if (status === 404) return new ProviderError("analysis_model_missing", true, type);
+    if (status === 429) return new ProviderError("analysis_rate_limited", true, type);
+    if (status === 529 || status === 503 || type === "overloaded_error") return new ProviderError("analysis_overloaded", true, type);
+    if (status >= 500) return new ProviderError("analysis_error", true, type);
+    return new ProviderError("analysis_error", false, type ?? `http_${status}`);
+  }
+  return new ProviderError("analysis_error", false);
+}
+
+/**
+ * CLAUDE (Anthropic Messages API, the official SDK). The system text is the
+ * stage's own; the user turn is the stage's images in order, then its data.
+ * The output contract is the stage schema through `output_config.format`
+ * (structured outputs), so the reply is JSON by construction and is parsed
+ * strictly — and the stage validates it after. No retries inside the SDK:
+ * this layer decides what is retried (transient failures only). The tokens
+ * are what the response's usage reported, cache reads included.
+ */
+async function callAnthropic<T>(backend: VisionBackend, req: VisionRequest, model: string, usage: Usage): Promise<T> {
+  const client = new Anthropic({
+    apiKey: backend.cred.apiKey,
+    baseURL: backend.cred.baseUrl?.replace(/\/$/, "") || undefined,
+    maxRetries: 0,
+    timeout: requestTimeout(req),
+    ...(backend.fetch ? { fetch: backend.fetch } : {}),
+  });
+  const images = req.images.map((r): Anthropic.ImageBlockParam => {
+    if (!ANTHROPIC_IMAGE_TYPES.has(r.mime)) throw new ProviderError("analysis_bad_image", false);
+    return { type: "image", source: { type: "base64", media_type: r.mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: r.base64 } };
+  });
+  let message: Anthropic.Message;
+  try {
+    message = await client.messages.create({
+      model,
+      max_tokens: 16_000,
+      system: req.system,
+      messages: [{ role: "user", content: [...images, { type: "text", text: req.user }] }],
+      output_config: {
+        format: { type: "json_schema", schema: anthropicJsonSchema(req.schema) },
+        ...(backend.effort ? { effort: backend.effort } : {}),
+      },
+    });
+  } catch (e) {
+    throw classifyAnthropicError(e);
+  }
+  const u = message.usage;
+  const read = tokenCount(u.cache_read_input_tokens);
+  const created = tokenCount(u.cache_creation_input_tokens);
+  const fresh = tokenCount(u.input_tokens);
+  usage.inputTokens = fresh === undefined && read === undefined && created === undefined ? undefined : (fresh ?? 0) + (read ?? 0) + (created ?? 0);
+  usage.cachedInputTokens = read;
+  usage.outputTokens = tokenCount(u.output_tokens);
+  if (message.stop_reason === "refusal") throw new ProviderError("analysis_refused", false, "refusal");
+  // Cut off: the JSON is incomplete, and the same request would be cut again.
+  if (message.stop_reason === "max_tokens") throw new ProviderError("analysis_truncated", false, "max_tokens");
+  const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  if (!text.trim()) throw new ProviderError("analysis_empty", true);
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ProviderError("analysis_invalid", true);
+  }
 }
 
 function parseJson<T>(text: string): T {

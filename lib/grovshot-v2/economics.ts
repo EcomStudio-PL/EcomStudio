@@ -3,7 +3,8 @@
  *
  * The customer pays the model price per DELIVERED image (ai_models.pricing,
  * per size — unchanged by V2). GrovBase pays every call: the three analysis
- * stages, each candidate, each QC call, the one retry. This module projects
+ * stages, the prompt writer per shot, each candidate, each QC call, the one
+ * retry. This module projects
  * both for an order of N shots under three named scenarios and gives the
  * gross margin against the billing floor (billing.min_margin_percent).
  *
@@ -20,12 +21,14 @@
  * A text/vision call — or an image call's tokens — without a published
  * token price is counted at the config's estimate and flagged, never as free.
  */
-import type { EngineConfig } from "@/lib/grovshot-v2/config";
+import type { EngineConfig, StageRole } from "@/lib/grovshot-v2/config";
 
 export const ECON_SCENARIOS = ["best", "typical", "worst", "nothing"] as const;
 export type EconScenario = (typeof ECON_SCENARIOS)[number];
 
-export const TYPICAL_ASSUMPTIONS = { complexShare: 0.4, retryShare: 0.25, deliveredShare: 0.9 } as const;
+/** amendedShare: of the retries, the part that is SYSTEMATIC — the prompt
+ *  writer is asked again (a random retry reuses the same prompt). */
+export const TYPICAL_ASSUMPTIONS = { complexShare: 0.4, retryShare: 0.25, deliveredShare: 0.9, amendedShare: 0.5 } as const;
 
 export type EconInput = {
   shots: number;
@@ -35,8 +38,9 @@ export type EconInput = {
   imageUsdMicros: number;
   /** One image call's tokens at their known price, or null (then the config's allowance). */
   imageTokenUsdMicros: number | null;
-  /** One text/vision call: its known cost, or null (then the config's estimate). */
-  textCallUsdMicros: number | null;
+  /** One call of each text/vision role at its model's published price, or
+   *  null (then the config's estimate, flagged). */
+  roleCalls: Record<StageRole, number | null>;
   billing: { plnPerCredit: number; usdToPln: number; minMarginPercent: number };
   config: Pick<EngineConfig, "candidates" | "retry" | "budget" | "limits" | "qc">;
 };
@@ -56,35 +60,40 @@ export type EconRow = {
   estimated: boolean;
 };
 
-const STAGE_CALLS = 3; // Etap 0, 1, 2
-
 export function projectOrder(input: EconInput, scenario: EconScenario): EconRow {
   const { shots: n, config } = input;
   const perImage = input.imageUsdMicros + (input.imageTokenUsdMicros ?? config.budget.image_token_allowance_usd_micros);
-  const textCall = input.textCallUsdMicros ?? config.budget.unknown_text_call_usd_micros;
+  const call = (role: StageRole) => input.roleCalls[role] ?? config.budget.unknown_text_call_usd_micros;
   const cap = config.limits.max_paid_images_per_shot;
   const qcPerImage = scenario === "worst" || scenario === "nothing" ? 1 + config.qc.reask : 1;
 
   let imagesPerShot: number;
   let delivered: number;
-  let stageCalls = STAGE_CALLS;
+  let plans = 1;
+  // Prompt-writer calls per shot: one, plus one for each AMENDED retry.
+  let writesPerShot = 1;
   if (scenario === "best") {
     imagesPerShot = 1;
     delivered = n;
   } else if (scenario === "typical") {
     const first = 1 + TYPICAL_ASSUMPTIONS.complexShare * (config.candidates.people_or_complex - 1)
       + (1 - TYPICAL_ASSUMPTIONS.complexShare) * (config.candidates.default - 1);
-    const retry = config.retry.max_rounds > 0 ? TYPICAL_ASSUMPTIONS.retryShare * config.retry.candidates : 0;
-    imagesPerShot = Math.min(cap, first + retry);
+    const retries = config.retry.max_rounds > 0 ? TYPICAL_ASSUMPTIONS.retryShare : 0;
+    imagesPerShot = Math.min(cap, first + retries * config.retry.candidates);
+    writesPerShot = 1 + retries * TYPICAL_ASSUMPTIONS.amendedShare;
     delivered = Math.round(n * TYPICAL_ASSUMPTIONS.deliveredShare * 100) / 100;
   } else {
     imagesPerShot = cap;
     delivered = scenario === "worst" ? n : 0;
-    stageCalls = STAGE_CALLS + config.limits.replans;
+    plans = 1 + config.limits.replans;
+    writesPerShot = 1 + config.retry.max_rounds;
   }
   const images = n * imagesPerShot;
-  const textCalls = stageCalls + images * qcPerImage;
-  const costUsd = (images * perImage + textCalls * textCall) / 1_000_000;
+  const qcCalls = images * qcPerImage;
+  const writes = n * writesPerShot;
+  const textCalls = 2 + plans + writes + qcCalls;
+  const textCost = call("validate") + call("card") + plans * call("plan") + writes * call("prompt") + qcCalls * call("qc");
+  const costUsd = (images * perImage + textCost) / 1_000_000;
   const revenuePln = delivered * input.unitCredits * input.billing.plnPerCredit;
   const costPln = costUsd * input.billing.usdToPln;
   const marginPercent = revenuePln > 0 ? ((revenuePln - costPln) / revenuePln) * 100 : null;
@@ -93,7 +102,7 @@ export function projectOrder(input: EconInput, scenario: EconScenario): EconRow 
     costUsd: round4(costUsd), revenuePln: round2(revenuePln), costPln: round2(costPln),
     marginPercent: marginPercent === null ? null : Math.round(marginPercent * 10) / 10,
     meetsFloor: marginPercent !== null && marginPercent >= input.billing.minMarginPercent,
-    estimated: input.textCallUsdMicros === null || input.imageTokenUsdMicros === null,
+    estimated: Object.values(input.roleCalls).some((v) => v === null) || input.imageTokenUsdMicros === null,
   };
 }
 

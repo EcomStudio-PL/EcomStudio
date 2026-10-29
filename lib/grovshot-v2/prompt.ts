@@ -1,21 +1,23 @@
 /**
  * GROVBASE SHOT V2 · ETAP 3 — the values of one shot prompt.
  *
- * No model is involved: the published `grovshot_v2_shot` template (the ten
- * blocks KIERUNEK … NEGATIVE PROMPT, written by the admin) is compiled with
- * the values below. Every value is ATOMIC data from the card, the plan, the
- * chosen recipe and the published config: a number, a model-written phrase,
- * an admin-written label, or a list of those joined by a fixed separator.
- * Code writes no word of the prompt — every sentence around the values is
- * the template's, every label is the config's. Nothing is appended after the
- * compile, and the adapter sends the compiled text as it is. The photos are
- * named in the exact order they are sent („zdjęcie 1” = the first image of
- * the request).
+ * Two steps, both explicit. (1) The PROMPT WRITER (a text model, Claude by
+ * default) is asked with the shot template's SYSTEM + USER sections and the
+ * data below (the shared card, this shot's plan, the photo map, the other
+ * shots); it answers with this shot's eight blocks as JSON, which
+ * `checkWrite` validates. (2) The template's PROMPT section — the ten blocks
+ * KIERUNEK … NEGATIVE PROMPT, written by the admin — is compiled with those
+ * blocks, the config's footer and the negative (config base + card risks +
+ * the writer's additions). Code writes no word of the prompt; nothing is
+ * appended after the compile, and the adapter sends the compiled text as it
+ * is. The photos are named in the exact order they are sent („zdjęcie 1” =
+ * the first image of the request), and a block may name only those.
  */
 import type { EngineConfig, StyleRecipe } from "@/lib/grovshot-v2/config";
 import type { ProductCard } from "@/lib/grovshot-v2/card";
 import type { Shot } from "@/lib/grovshot-v2/plan";
 import type { CompileValues } from "@/lib/ai/prompt-variables";
+import type { RawWrite } from "@/lib/grovshot-v2/stages";
 
 /** The only list formatter: input strings and a fixed separator. */
 export const list = (items: readonly (string | number | null | undefined)[], sep = ", "): string =>
@@ -69,7 +71,60 @@ export type ShotPromptInput = {
   fidelityRules: string;
   /** Amended retry only: the QC correction(s). */
   correction?: string | null;
+  /** The writer's blocks for this shot (the image prompt only). */
+  blocks?: WriterBlocks | null;
 };
+
+/** The writer's eight blocks, validated (`checkWrite`). */
+export type WriterBlocks = {
+  direction: string; product: string; scale: string; state_grip: string; moment: string;
+  frame: string; person: string; scenery: string; negative_additions: string[];
+};
+
+/** Per-block size limits (characters) — the variables' own maxima. */
+const BLOCK_MAX: Record<Exclude<keyof WriterBlocks, "negative_additions">, number> = {
+  direction: 700, product: 2400, scale: 900, state_grip: 900, moment: 1200, frame: 1200, person: 900, scenery: 1800,
+};
+
+/**
+ * Is the writer's answer usable for THIS shot? Every block present and within
+ * its size, a person only when the plan has one, and every „zdjęcie N” it
+ * names among the N photos this shot sends (the request numbers them 1…N in
+ * the plan's order) — a prompt that names a photo the request does not carry
+ * would point the image model at nothing.
+ */
+export function checkWrite(raw: RawWrite | null | undefined, ctx: { refs: number; people: Shot["people"] }):
+  { ok: true; blocks: WriterBlocks } | { ok: false; problems: string[] } {
+  const r = raw ?? {};
+  const problems: string[] = [];
+  const text = (k: keyof typeof BLOCK_MAX): string => {
+    const v = typeof r[k] === "string" ? (r[k] as string).trim() : "";
+    if (v.length > BLOCK_MAX[k]) problems.push(`too_long:${k}`);
+    return v;
+  };
+  const blocks: WriterBlocks = {
+    direction: text("direction"), product: text("product"), scale: text("scale"), state_grip: text("state_grip"),
+    moment: text("moment"), frame: text("frame"), person: text("person"), scenery: text("scenery"),
+    negative_additions: (Array.isArray(r.negative_additions) ? r.negative_additions : [])
+      .filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter((x) => x && x.length <= 120).slice(0, 20),
+  };
+  for (const k of ["direction", "product", "scale", "state_grip", "moment", "frame", "scenery"] as const) {
+    if (!blocks[k]) problems.push(`missing:${k}`);
+  }
+  if (ctx.people !== "none" && !blocks.person) problems.push("missing:person");
+  for (const k of Object.keys(BLOCK_MAX) as (keyof typeof BLOCK_MAX)[]) {
+    for (const m of blocks[k].matchAll(/zdj(?:ę|e)ci(?:e|u|a|em)\s+(?:nr\s*)?(\d{1,2})/gi)) {
+      const n = Number(m[1]);
+      if (!(n >= 1 && n <= ctx.refs)) problems.push(`photo_out_of_range:${k}:${n}`);
+    }
+  }
+  return problems.length > 0 ? { ok: false, problems: [...new Set(problems)] } : { ok: true, blocks };
+}
+
+/** {{plan_overview}} — the set's other shots, so each prompt stays distinct. */
+export function planOverview(shots: readonly Shot[]): string {
+  return JSON.stringify(shots.map((x) => ({ shot: x.index + 1, title: x.title, frame_type: x.frame_type, place: x.place, argument: x.argument })));
+}
 
 export function shotValues(input: ShotPromptInput): CompileValues {
   const { shot, card, recipe, config } = input;
@@ -120,7 +175,15 @@ export function shotValues(input: ShotPromptInput): CompileValues {
     shot_scenery: shot.scenery,
     shot_correction: input.correction?.trim() ?? "",
     quality_footer: config.footers[shot.footer],
-    shot_negative: list(negative),
+    shot_negative: list(dedupe([...negative, ...(input.blocks?.negative_additions ?? [])])),
+    p_direction: input.blocks?.direction ?? "",
+    p_product: input.blocks?.product ?? "",
+    p_scale: input.blocks?.scale ?? "",
+    p_state: input.blocks?.state_grip ?? "",
+    p_moment: input.blocks?.moment ?? "",
+    p_frame: input.blocks?.frame ?? "",
+    p_person: input.blocks?.person ?? "",
+    p_scenery: input.blocks?.scenery ?? "",
     aspect_ratio: input.aspectRatio,
     resolution: input.resolution,
     fidelity_rules: input.fidelityRules,

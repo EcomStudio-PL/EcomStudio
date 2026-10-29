@@ -164,6 +164,7 @@
     "test:notifications:sql": "bash scripts/notifications-sql-tests.sh",
     "test:inflight:sql": "bash scripts/inflight-sql-tests.sh",
     "test:grovshot2:sql": "bash scripts/grovshot-v2-sql-tests.sh",
+    "test:grovshot2:worker:sql": "bash scripts/grovshot-v2-worker-sql-tests.sh",
     "test:grovshot2": "esbuild scripts/grovshot-v2-tests.ts --bundle --platform=node --format=cjs --alias:@/lib/server/engine/workflow-store=./scripts/stubs/thumb-store.ts --alias:@/lib/services/usage=./scripts/stubs/thumb-usage.ts --alias:@/lib/server/ai-usage=./scripts/stubs/thumb-ai-usage.ts --alias:@/lib/server/server-token=./scripts/stubs/thumb-server-token.ts --alias:@/lib/server/grovshot-v2/settings=./scripts/stubs/gsv2-settings.ts --alias:@/lib/server/prompt-vault=./scripts/stubs/gsv2-prompt-vault.ts --alias:@/lib/server/prompt-engine=./scripts/stubs/gsv2-prompt-engine.ts --alias:@/lib/server/feature-availability=./scripts/stubs/gsv2-feature-availability.ts --alias:@/lib/server/thumbnail/run=./scripts/stubs/gsv2-thumbnail-run.ts --alias:next/server=./scripts/stubs/fidelity-next-server.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovshot-v2-tests.cjs --log-level=error && node .next/grovshot-v2-tests.cjs",
     "test:inflight": "esbuild scripts/inflight-tests.ts --bundle --platform=node --format=cjs --alias:next/server=./scripts/stubs/forensic-next-server.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/inflight-tests.cjs --log-level=error && node .next/inflight-tests.cjs",
     "test:notifications": "esbuild scripts/notifications-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --outfile=.next/notifications-tests.cjs --log-level=silent && node .next/notifications-tests.cjs",
@@ -172,6 +173,7 @@
     "test:publictools:sql": "bash scripts/public-tools-sql-tests.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@stripe/react-stripe-js": "^3.11.0",

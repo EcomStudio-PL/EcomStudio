@@ -150,6 +150,18 @@ const GS = {
   shot_person: gs("shot_person", "ai", "block", 600, "(postać z planu)"),
   shot_scenery: gs("shot_scenery", "ai", "block", 1500, "(scenografia z planu)"),
   shot_correction: gs("shot_correction", "ai", "block", 800, "(poprawka z kontroli jakości)"),
+  // Etap 3 — the prompt writer's data (USER section) and its output (the
+  // blocks of the image prompt, PROMPT section only).
+  plan_overview: gs("plan_overview", "ai", "block", 3000, "[{\"shot\":1,\"title\":\"…\",\"frame_type\":\"hero\",\"place\":\"…\"}]"),
+  previous_blocks: gs("previous_blocks", "ai", "block", 9000, "{\"direction\":\"…\",\"product\":\"…\"}"),
+  p_direction: gs("p_direction", "ai", "block", 700, "(KIERUNEK — napisany przez autora promptu)"),
+  p_product: gs("p_product", "ai", "block", 2400, "(PRODUKT — napisany przez autora promptu)"),
+  p_scale: gs("p_scale", "ai", "block", 900, "(SKALA — napisana przez autora promptu)"),
+  p_state: gs("p_state", "ai", "block", 900, "(STAN / CHWYT — napisany przez autora promptu)"),
+  p_moment: gs("p_moment", "ai", "block", 1200, "(MOMENT — napisany przez autora promptu)"),
+  p_frame: gs("p_frame", "ai", "block", 1200, "(KADR — napisany przez autora promptu)"),
+  p_person: gs("p_person", "ai", "block", 900, "(POSTAĆ — napisana przez autora promptu)"),
+  p_scenery: gs("p_scenery", "ai", "block", 1800, "(SCENOGRAFIA — napisana przez autora promptu)"),
 } satisfies Record<string, VariableDef>;
 
 const IMAGE_EDIT_COMMON: VariableDef[] = [
@@ -209,19 +221,28 @@ export const TOOL_VARIABLES: Record<string, VariableDef[]> = {
     GS.shot_state, GS.shot_grip, GS.shot_moment, GS.shot_motion, GS.shot_frame_type, GS.shot_mode, GS.shot_angle_deg,
     GS.shot_height, GS.shot_distance, GS.shot_lens_mm, GS.shot_placement, GS.shot_person, GS.shot_scenery,
     GS.shot_correction, GS.quality_footer, GS.shot_negative, V.aspect_ratio, V.resolution, V.fidelity_rules,
+    GS.product_card, GS.shot_spec, GS.plan_overview, GS.previous_blocks,
+    GS.p_direction, GS.p_product, GS.p_scale, GS.p_state, GS.p_moment, GS.p_frame, GS.p_person, GS.p_scenery,
   ],
   grovshot_v2_qc: [GS.reference_map, GS.product_card, GS.shot_spec, GS.is_hero, GS.qc_rules],
   // The engine config is a JSON body: no placeholder of any kind.
   grovshot_v2_config: [],
 };
 
-/** One anchor variable per block of the shot prompt, in the spec's fixed
- *  order (Etap 3: KIERUNEK, PRODUKT, SKALA, STAN/CHWYT, MOMENT, KADR, POSTAĆ,
- *  SCENOGRAFIA, STOPKA, NEGATIVE PROMPT). The publish gate checks the order. */
+/** One anchor variable per block of the IMAGE PROMPT (the shot template's
+ *  PROMPT section), in the spec's fixed order (Etap 3: KIERUNEK, PRODUKT,
+ *  SKALA, STAN/CHWYT, MOMENT, KADR, POSTAĆ, SCENOGRAFIA, STOPKA, NEGATIVE
+ *  PROMPT). The publish gate checks the order. */
 export const GROVSHOT_V2_SHOT_BLOCKS = [
-  "style_genre", "product_name", "dims_estimated", "shot_state", "shot_moment",
-  "shot_frame_type", "shot_person", "shot_scenery", "quality_footer", "shot_negative",
+  "p_direction", "p_product", "p_scale", "p_state", "p_moment",
+  "p_frame", "p_person", "p_scenery", "quality_footer", "shot_negative",
 ] as const;
+
+/** The writer's output: placed only in the PROMPT section (they do not
+ *  exist while the writer is being asked). */
+export const GROVSHOT_V2_WRITER_OUTPUTS: ReadonlySet<string> = new Set([
+  "p_direction", "p_product", "p_scale", "p_state", "p_moment", "p_frame", "p_person", "p_scenery",
+]);
 
 /** Placeholders a V2 stage template must place, or the stage cannot do its
  *  job (the shot prompt names the photos in send order and always ends with
@@ -230,7 +251,7 @@ export const GROVSHOT_V2_REQUIRED: Record<string, string[]> = {
   grovshot_v2_validate: ["photo_count"],
   grovshot_v2_card: ["photo_count", "allegro_description", "validation_summary"],
   grovshot_v2_plan: ["shot_count", "product_card", "photo_catalog"],
-  grovshot_v2_shot: ["reference_map", ...GROVSHOT_V2_SHOT_BLOCKS],
+  grovshot_v2_shot: ["reference_map", "product_card", "shot_spec", ...GROVSHOT_V2_SHOT_BLOCKS],
   grovshot_v2_qc: ["reference_map", "qc_rules"],
 };
 

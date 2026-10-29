@@ -24,12 +24,12 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import { parseEngineConfig, recipeById, type EngineConfig, type RecipeId } from "@/lib/grovshot-v2/config";
-import { GROVSHOT_V2_KEYS, USER_MARKER, splitStageTemplate, type GrovshotStageKey, type RawQc } from "@/lib/grovshot-v2/stages";
+import { GROVSHOT_V2_KEYS, USER_MARKER, splitShotTemplate, splitStageTemplate, type GrovshotStageKey, type RawQc } from "@/lib/grovshot-v2/stages";
 import { grovshotTemplateProblems } from "@/lib/grovshot-v2/gate";
 import { decideAfterCard, decideValidation } from "@/lib/grovshot-v2/validation";
 import { cardForPrompt, normaliseCard, CARD_PROMPT_MAX, type ProductCard } from "@/lib/grovshot-v2/card";
 import { checkPlan, selectReferences, type Shot } from "@/lib/grovshot-v2/plan";
-import { referenceMap, shotValues } from "@/lib/grovshot-v2/prompt";
+import { checkWrite, referenceMap, shotValues } from "@/lib/grovshot-v2/prompt";
 import { decideQc, pickBest, planRetry } from "@/lib/grovshot-v2/qc";
 import { compareColors } from "@/lib/grovshot-v2/color";
 import { projectOrder, customerRolloutAllowed, ECON_SCENARIOS, ECON_SHOT_COUNTS } from "@/lib/grovshot-v2/economics";
@@ -42,7 +42,12 @@ import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
 import {
   HOP_CLAIM_TRIES, HOP_CLAIM_WAIT_MS, STALL_WAITS_MS, advanceWhenFree, chainSignature, chainSignatureOk, handOver, parseStalls,
 } from "@/lib/server/grovshot-v2/drive";
-import { textCallCost } from "@/lib/server/grovshot-v2/rollout";
+import { roleCallCosts } from "@/lib/server/grovshot-v2/rollout";
+import { roleBackends } from "@/lib/server/grovshot-v2/backends";
+import { srvDue } from "@/lib/server/grovshot-v2/srv";
+import { callVisionJson, type VisionAttempt } from "@/lib/ai/engine/vision";
+import { STAGE_ROLES } from "@/lib/grovshot-v2/config";
+import { startUsage, completeUsage, failUsage } from "./stubs/thumb-usage";
 import { readEngineState } from "@/lib/server/grovshot-v2/settings";
 import type { StageCall, StageResult } from "@/lib/server/grovshot-v2/stage-call";
 import type { ImageCallInput, ImageCallResult } from "@/lib/server/engine/image-call";
@@ -322,16 +327,22 @@ section("B. THE STAGES IN CODE");
 /* ══ C ═════════════════════════════════════════════════════════════════════*/
 section("C. THE SPEC'S 8 PRODUCTS + THE PROSTOWNICA (synthetic cards and plans, not real images)");
 {
-  const tpl = specDraft("grovshot_v2_shot");
+  const tpl = splitShotTemplate(specDraft("grovshot_v2_shot"))!.prompt;
   for (const p of PRODUCTS) {
     const card = cardOf(p);
     const n = p.photos >= 4 ? 5 : 3;
     const plan = checkPlan(rawPlan(p, n), { card, shots: n, userRows: undefined, config: CONFIG });
     const recipe = recipeById(CONFIG, card.recipe_id);
+    // The writer's blocks are Claude's (synthetic here); what CODE places
+    // around them is what these checks hold to.
     const prompts = plan.shots.map((shot: Shot) => {
-      const values = shotValues({ shot, card, recipe, config: CONFIG, aspectRatio: "4:5", resolution: "2K", fidelityRules: buildFidelityInstructions(), correction: null });
+      const w = checkWrite({ direction: "Prawdziwe zdjęcie.", product: "Produkt jak na zdjęciu 1.", scale: "Skala.", state_grip: "Stan.", moment: "Moment.",
+        frame: "Kadr.", person: shot.people === "none" ? "" : "Dłonie.", scenery: "Scena.", negative_additions: [] }, { refs: shot.references.length, people: shot.people });
+      const values = shotValues({ shot, card, recipe, config: CONFIG, aspectRatio: "4:5", resolution: "2K", fidelityRules: buildFidelityInstructions(),
+        blocks: w.ok ? w.blocks : undefined });
       return compileTemplate(tpl, TOOL_VARIABLES.grovshot_v2_shot ?? [], values);
     });
+    const writerCard = cardForPrompt(card);
     const allOk = prompts.every((x) => x.ok);
     const texts = prompts.map((x) => (x.ok ? x.text : ""));
     const facts: string[] = [];
@@ -340,9 +351,11 @@ section("C. THE SPEC'S 8 PRODUCTS + THE PROSTOWNICA (synthetic cards and plans, 
     if (card.recipe_id !== p.recipe) facts.push(`recipe:${card.recipe_id}`);
     if (!texts.every((x) => x.includes(recipe.genre.slice(0, 20)))) facts.push("genre");
     if (!texts.every((x) => x.includes(CONFIG.negative_base.slice(0, 30)))) facts.push("negative");
-    if (!texts.every((x) => x.includes("30"))) facts.push("dims");
+    // Dimensions and the product's texts reach the writer in its card (it
+    // writes SKALA / PRODUKT from them).
+    if (!writerCard.includes("30")) facts.push("dims");
     if (plan.shots.filter((s) => s.whole).length > 2) facts.push("whole");
-    if (p.texts?.length && !texts.some((x) => x.includes(p.texts![0]))) facts.push("texts");
+    if (p.texts?.length && !writerCard.includes(p.texts[0])) facts.push("texts");
     if (p.seasonal && !plan.shots.every((s) => s.seasonal_motif)) facts.push("season");
     if (p.handheld && !plan.shots.some((s) => s.grip)) facts.push("grip");
     if (p.vehicle && !plan.shots.some((s) => s.footer === "motion")) facts.push("motion_footer");
@@ -363,9 +376,13 @@ section("C. THE SPEC'S 8 PRODUCTS + THE PROSTOWNICA (synthetic cards and plans, 
 /* ══ D ═════════════════════════════════════════════════════════════════════*/
 section("D. ECONOMICS — a projection under stated assumptions (not production data)");
 const billing = { plnPerCredit: 0.19, usdToPln: 4, minMarginPercent: 50 };
+const NO_ROLE_PRICES = Object.fromEntries(STAGE_ROLES.map((r) => [r, null])) as Record<(typeof STAGE_ROLES)[number], number | null>;
+const ROLE_PRICES_20K = Object.fromEntries(STAGE_ROLES.map((r) => [r, 20_000])) as Record<(typeof STAGE_ROLES)[number], number | null>;
+/** The seed's role model (Claude) and its list price in the tests' token list. */
+const CLAUDE_PRICE = { providerSlug: "anthropic", model: "claude-opus-5-5", inputPerMTok: 4_000_000, outputPerMTok: 20_000_000, cachedInputPerMTok: 200_000 };
 {
   const rows = ECON_SHOT_COUNTS.flatMap((shots) => ECON_SCENARIOS.map((sc) => ({ shots, ...projectOrder({
-    shots, unitCredits: 7, imageUsdMicros: 134_000, imageTokenUsdMicros: null, textCallUsdMicros: null, billing, config: CONFIG }, sc) })));
+    shots, unitCredits: 7, imageUsdMicros: 134_000, imageTokenUsdMicros: null, roleCalls: NO_ROLE_PRICES, billing, config: CONFIG }, sc) })));
   for (const r of rows.filter((x) => x.scenario !== "nothing")) {
     console.log(`    ${String(r.shots).padStart(2)} × 2K  ${r.scenario.padEnd(8)} images ${String(r.images).padStart(5)}  text ${String(r.textCalls).padStart(5)}  revenue ${r.revenuePln.toFixed(2).padStart(6)} zł  cost ${r.costPln.toFixed(2).padStart(6)} zł  margin ${r.marginPercent === null ? "—" : `${r.marginPercent.toFixed(1)}%`}`);
   }
@@ -375,7 +392,7 @@ const billing = { plnPerCredit: 0.19, usdToPln: 4, minMarginPercent: 50 };
   check("the typical order is below the floor at every size", rows.filter((r) => r.scenario === "typical").every((r) => !r.meetsFloor));
   check("…so V2 may NOT be offered to customers at today's prices", !customerRolloutAllowed(rows));
   check("nothing delivered: the customer pays 0 and the loss is GrovBase's", rows.filter((r) => r.scenario === "nothing").every((r) => r.revenuePln === 0 && r.costPln > 0));
-  const priced = ECON_SHOT_COUNTS.map((shots) => projectOrder({ shots, unitCredits: 20, imageUsdMicros: 134_000, imageTokenUsdMicros: 30_000, textCallUsdMicros: 20_000, billing, config: CONFIG }, "typical"));
+  const priced = ECON_SHOT_COUNTS.map((shots) => projectOrder({ shots, unitCredits: 20, imageUsdMicros: 134_000, imageTokenUsdMicros: 30_000, roleCalls: ROLE_PRICES_20K, billing, config: CONFIG }, "typical"));
   check("at a higher price and priced text calls the same gate opens (the decision is a price, not code)", customerRolloutAllowed(priced), priced.map((r) => r.marginPercent));
 }
 
@@ -442,11 +459,180 @@ function from(name: string) {
   return api;
 }
 const rpcLog: string[] = [];
+/** The order the server may act for, as 0163's grovshot_srv_scope decides:
+ *  an open GrovShot order whose live lease is the caller's. */
+function srvScope(args: Row): Row | null {
+  const r = db().runs.get(String(args.p_run_id));
+  if (!r || !["grovshot", "grovshot_test"].includes(String(r.run_kind)) || !["queued", "running"].includes(String(r.status))) return null;
+  if (r.lease_owner !== args.p_owner || typeof r.locked_until !== "number" || (r.locked_until as number) <= db().now) return null;
+  return r;
+}
+const runJobs = (run: Row) => tableRows("generation_jobs").filter((j) => (j.settings as Row | undefined)?.run_id === run.id);
+const srvDenied: string[] = [];
+let jobUpdateFails = 0;
+/** In-memory twins of the 0163 server functions (the SQL itself is tested in
+ *  test:grovshot2:sql). Null when `name` is not one of them. */
+function srvRpc(name: string, args: Row): { data: unknown; error: unknown } | null {
+  if (!name.startsWith("grovshot_srv_")) return null;
+  const d = db();
+  const fail = (m: string) => { srvDenied.push(`${name}:${m}`); return { data: null, error: { message: m } }; };
+  if (name === "grovshot_srv_due") {
+    const open = [...d.runs.values()].filter((r) => ["grovshot", "grovshot_test"].includes(String(r.run_kind)) && ["queued", "running"].includes(String(r.status))
+      && (typeof r.locked_until !== "number" || (r.locked_until as number) < d.now));
+    return { data: open.slice(0, Math.max(1, Math.min(5, Number(args.p_limit) || 1))).map((r) => ({ id: r.id, user_id: r.user_id, workspace_id: r.workspace_id })), error: null };
+  }
+  const run = srvScope(args);
+  if (!run) return fail("not_owner");
+  const f = d.faults;
+  switch (name) {
+    case "grovshot_srv_context": {
+      const pr = tableRows("profiles").find((x) => x.id === run.user_id);
+      return { data: { profile: pr ? { blocked: pr.blocked ?? false, blocked_until: null, blocked_reason: null } : null, member: true, wallet_id: d.wallet.id, balance: d.wallet.balance }, error: null };
+    }
+    case "grovshot_srv_analysis": {
+      const inp = run.input as Row;
+      const pick = (pos: number, field: string) => {
+        const runs = [...d.runs.values()].filter((r) => !["queued", "running"].includes(String(r.status)) && (r.input as Row)[field] === inp[field]);
+        for (const r of runs.reverse()) {
+          const st = d.steps.find((x) => x.run_id === r.id && x.position === pos && x.item_index === -1 && x.status === "succeeded");
+          if (st) return st.output;
+        }
+        return null;
+      };
+      return { data: { validate: pick(1, "photo_key"), card: pick(2, "card_key") }, error: null };
+    }
+    case "grovshot_srv_mirror": {
+      if (run.run_kind !== "grovshot") return fail("not_found");
+      const sid = id("sess");
+      tableRows("prompt_sessions").push({ id: sid, workspace_id: run.workspace_id, user_id: run.user_id, ...(args.p_session as Row), status: "ready", mode: "engine" });
+      const out = (args.p_concepts as Row[]).map((c) => {
+        const cid = id("conc");
+        tableRows("generated_prompts").push({ id: cid, workspace_id: run.workspace_id, session_id: sid, ...c, prompt_text: "" });
+        return { id: cid, priority: c.priority };
+      });
+      return { data: { session_id: sid, concepts: out }, error: null };
+    }
+    case "grovshot_srv_job_create": {
+      if (run.run_kind !== "grovshot") return fail("not_found");
+      if (f.has("generation_jobs:insert") || f.delete("generation_jobs:insert:once")) return fail("fault");
+      const j = args.p_job as Row;
+      const jid = id("job");
+      tableRows("generation_jobs").push({ ...j, id: jid, workspace_id: run.workspace_id, user_id: run.user_id, status: "processing", created_at: iso(d.now),
+        settings: { ...(j.settings as Row ?? {}), engine: "grovshot_v2", run_id: run.id } });
+      return { data: jid, error: null };
+    }
+    case "grovshot_srv_job_update": {
+      // A crash between the charge and the delivery: this invocation cannot
+      // close the job (both of its tries fail); the next one recovers.
+      if (f.delete("generation_jobs:update:throw")) jobUpdateFails = 2;
+      if (jobUpdateFails > 0) { jobUpdateFails--; return fail("fault"); }
+      if (f.has("generation_jobs:update")) return fail("fault");
+      const j = runJobs(run).find((x) => x.id === args.p_job_id);
+      if (!j) return { data: false, error: null };
+      const unit = Number(((run.input as Row).quote as Row)?.unit ?? 0);
+      Object.assign(j, { status: args.p_status, credits_charged: args.p_status === "completed" ? unit : 0, error_message: args.p_status === "failed" ? args.p_error : j.error_message ?? null,
+        latency_ms: args.p_latency_ms ?? j.latency_ms ?? null });
+      if (args.p_settings && typeof args.p_settings === "object") j.settings = { ...(j.settings as Row), ...(args.p_settings as Row), run_id: run.id, engine: "grovshot_v2" };
+      return { data: true, error: null };
+    }
+    case "grovshot_srv_jobs": {
+      if (f.has("generation_jobs:select")) return fail("fault");
+      const item = args.p_item;
+      return { data: runJobs(run).filter((j) => item === null || item === undefined || String((j.settings as Row)?.shot_item) === String(item))
+        .map((j) => ({ id: j.id, status: j.status, settings: j.settings })), error: null };
+    }
+    case "grovshot_srv_library_add": {
+      const j = runJobs(run).find((x) => x.id === args.p_job_id);
+      if (!j) return fail("not_found");
+      if (!new RegExp(`^${run.workspace_id}/${j.id}/[A-Za-z0-9_.-]+$`).test(String(args.p_path))) return fail("invalid_path");
+      if (f.has("generation_assets:insert") || f.delete("generation_assets:insert:once")) return fail("fault");
+      const gid = id("gen");
+      const aid = id("asset");
+      tableRows("generations").push({ id: gid, job_id: j.id, workspace_id: run.workspace_id, quality_status: args.p_quality, product_match_score: args.p_score, created_at: iso(d.now) });
+      tableRows("generation_assets").push({ id: aid, generation_id: gid, asset_type: "image", storage_path: args.p_path, width: args.p_width, height: args.p_height, metadata: { shot: args.p_shot } });
+      return { data: { generation_id: gid, asset_id: aid }, error: null };
+    }
+    case "grovshot_srv_library_rows": {
+      if (f.has("generations:select")) return fail("fault");
+      const gens = tableRows("generations").filter((g) => g.job_id === args.p_job_id && runJobs(run).some((j) => j.id === g.job_id));
+      return { data: gens.flatMap((g) => {
+        const as = tableRows("generation_assets").filter((a) => a.generation_id === g.id);
+        return as.length ? as.map((a) => ({ generation_id: g.id, asset_id: a.id, storage_path: a.storage_path })) : [{ generation_id: g.id, asset_id: null, storage_path: null }];
+      }), error: null };
+    }
+    case "grovshot_srv_library_remove": {
+      if (!runJobs(run).some((j) => j.id === args.p_job_id)) return { data: 0, error: null };
+      const gids = new Set(tableRows("generations").filter((g) => g.job_id === args.p_job_id).map((g) => g.id));
+      d.tables.generation_assets = tableRows("generation_assets").filter((a) => !gids.has(a.generation_id));
+      d.tables.generations = tableRows("generations").filter((g) => !gids.has(g.id));
+      return { data: tableRows("generations").filter((g) => g.job_id === args.p_job_id).length, error: null };
+    }
+    case "grovshot_srv_concept_done": {
+      const c = tableRows("generated_prompts").find((x) => x.id === args.p_concept_id);
+      if (c) { c.last_job_id = args.p_job_id; c.generation_count = 1; }
+      return { data: Boolean(c), error: null };
+    }
+    case "grovshot_srv_usage_start": {
+      if (run.run_kind !== "grovshot") return fail("not_found");
+      if (!String(args.p_key).startsWith(`gsv2:${run.id}:`)) return fail("invalid_key");
+      if (!runJobs(run).some((j) => j.id === args.p_job_id)) return fail("not_found");
+      const unit = Number(((run.input as Row).quote as Row)?.unit ?? 0);
+      if (!(unit > 0)) return fail("invalid_amount");
+      const meta = { ...(args.p_metadata as Row), operation: "grovshot_v2", run_id: run.id };
+      // The ledger's own start (0100 semantics), unchanged.
+      return { data: null, error: null, pending: startUsage(null, {
+        serverToken: "t", userId: String(run.user_id), workspaceId: String(run.workspace_id), walletId: String(args.p_wallet_id),
+        serviceSlug: "image_generation", providerSlug: String(args.p_provider_slug), modelSlug: String(args.p_model_slug),
+        generationJobId: String(args.p_job_id), idempotencyKey: String(args.p_key), metadata: meta, creditsCharged: unit,
+      }).then((r) => {
+        if (r.ok) { const e = d.events.find((x) => x.id === r.eventId)!; e.metadata = meta; e.workspace_id = run.workspace_id; }
+        return { data: [r.ok ? { event_id: r.eventId, status: "ok" } : { event_id: null, status: r.error }], error: null };
+      }) } as { data: unknown; error: unknown };
+    }
+    case "grovshot_srv_usage_complete":
+    case "grovshot_srv_usage_fail": {
+      const e = d.events.find((x) => x.id === args.p_event_id && (x.metadata as Row | undefined)?.run_id === run.id);
+      if (!e) return fail("not_found");
+      const done = name === "grovshot_srv_usage_complete"
+        ? completeUsage(null, "t", String(args.p_event_id), 1, { apiCostUsdMicros: args.p_api_cost_usd_micros as number })
+        : failUsage(null, { serverToken: "t", eventId: String(args.p_event_id), walletId: d.wallet.id, error: String(args.p_error), apiCostUsdMicros: args.p_api_cost_usd_micros as number });
+      return { data: null, error: null, pending: done.then(() => ({ data: true, error: null })) } as { data: unknown; error: unknown };
+    }
+    case "grovshot_srv_event": {
+      if (f.has("usage_events:select")) return fail("fault");
+      const mine = d.events.filter((e) => (e.metadata as Row | undefined)?.run_id === run.id)
+        .filter((e) => (args.p_event_id ? e.id === args.p_event_id : args.p_key ? e.idempotency_key === args.p_key : false));
+      const e = mine[mine.length - 1];
+      return { data: e ? { id: e.id, status: e.status, job_id: e.generation_job_id } : null, error: null };
+    }
+    case "grovshot_srv_derivatives": return { data: "ok", error: null };
+    case "grovshot_srv_log": tableRows("activity_logs").push({ action: args.p_action, entity_id: args.p_entity_id, metadata: args.p_metadata, user_id: run.user_id }); return { data: null, error: null };
+    case "grovshot_srv_notify": {
+      if (run.run_kind !== "grovshot") return { data: null, error: null };
+      if (!tableRows("notifications").some((n) => n.dedupe_key === args.p_dedupe)) {
+        tableRows("notifications").push({ user_id: run.user_id, type: "generation_done", href: args.p_href, meta: args.p_meta, dedupe_key: args.p_dedupe });
+      }
+      return { data: null, error: null };
+    }
+    case "grovshot_srv_storage_grant": {
+      if (f.has("storage:grant")) return fail("fault");
+      return { data: (args.p_names as string[]).length, error: null };
+    }
+  }
+  return fail("unknown_function");
+}
 const client = {
   from,
   async rpc(name: string, args: Row) {
     const d = db();
     rpcLog.push(name);
+    const srv = srvRpc(name, args) as ({ data: unknown; error: unknown; pending?: Promise<{ data: unknown; error: unknown }> } | null);
+    if (srv) return srv.pending ? await srv.pending : srv;
+    // The provider panel's runtime door (credentials in the vault).
+    if (name === "provider_credential_read") {
+      return { data: d.env.credential ? [{ base_url: null, encrypted_value: "vault", iv: null, auth_tag: null }] : [], error: null };
+    }
+    if (name === "secret_read") return { data: d.env.credential?.apiKey ?? null, error: null };
     if (name === "grovshot_run_create") {
       const run = args.p_run as Row;
       let key = String(run.idempotency_key);
@@ -536,6 +722,20 @@ type Scenario = {
 };
 
 type World = { stageCalls: StageCall[]; imageCalls: ImageCallInput[]; deps: Partial<GrovshotDeps>; sc: Scenario };
+/** The prompt writer's answer for a shot, as Claude would give it (distinct
+ *  per shot; an amended rewrite carries the QC correction). */
+function rawWrite(call: StageCall): Record<string, unknown> {
+  const spec = String(call.values.shot_spec ?? "");
+  const n = Number(/Argument (\d+)/.exec(spec)?.[1] ?? 1);
+  const fix = String(call.values.shot_correction ?? "").trim();
+  return {
+    direction: `Ujęcie ${n}: kierunek tego kadru, osobny od pozostałych.${fix ? ` ${fix}` : ""}`,
+    product: `Produkt dokładnie jak na zdjęciu 1, ujęcie ${n}.`, scale: "Skala 30 × 20 × 15 cm względem dłoni.",
+    state_grip: "Stan jak na zdjęciu 1.", moment: `Moment ${n}.`, frame: `Kadr ${n}, produkt w centrum.`,
+    person: /hands|person/.test(spec) || /"people":"(hands|person)"/.test(spec) ? "Dłonie dorosłej osoby." : "Dłonie dorosłej osoby.",
+    scenery: `Scenografia ${n}.`, negative_additions: [`bez rekwizytu ${n}`],
+  };
+}
 
 async function world(sc: Scenario, opts: { balance?: number; role?: "admin" | "user"; flag?: boolean; roles?: string[] | null } = {}): Promise<World> {
   freshDb();
@@ -544,13 +744,16 @@ async function world(sc: Scenario, opts: { balance?: number; role?: "admin" | "u
   d.tables.profiles = [{ id: USER, role: opts.role ?? "admin", blocked: false }];
   d.tables.feature_flags = [{ flag: "grovshot_engine_v2", enabled: opts.flag ?? true, roles: opts.roles === undefined ? ["admin"] : opts.roles, plans: null, rollout_percent: 100 }];
   d.tables.app_settings = [{ key: "billing", value: { price_per_100_credits: 19, usd_to_pln: 4, min_margin_percent: 50 } }];
+  // The seed's roles run on Claude: the provider is on and its key opens.
+  d.tables.ai_providers = [{ id: "prov-anthropic", slug: "anthropic", active: true }];
+  d.env.credential = { apiKey: "sk-ant-test-key", baseUrl: null };
   for (let i = 0; i < sc.product.photos; i++) d.storage.set(`product-images:${WS}/p/${i + 1}.png`, await solidPng(COLORS[i % COLORS.length]));
   const env = gsv2Env();
   env.bodies = Object.fromEntries(GROVSHOT_V2_KEYS.map((k) => {
     const text = specDraft(k);
     return [k, { key: k, version: 1, text, sha256: sha(text) }];
   }));
-  env.modelReady = true; env.ringUp = true; env.textBackends = 1; env.tokenPrices = [];
+  env.modelReady = true; env.ringUp = true; env.roleState = "ok"; env.tokenPrices = [];
   env.pricing = { "2K": 7, "4K": 12 }; env.imagePrice = { "2K": 134_000, "4K": 240_000 };
   const w: World = { stageCalls: [], imageCalls: [], sc, deps: {} };
   const qcCount = new Map<string, number>();
@@ -564,6 +767,7 @@ async function world(sc: Scenario, opts: { balance?: number; role?: "admin" | "u
       if (call.key === "grovshot_v2_validate") return okRes(sc.validation ?? rawValidation(sc.product.photos));
       if (call.key === "grovshot_v2_card") return okRes((sc.card ?? rawCard)(sc.product));
       if (call.key === "grovshot_v2_plan") return okRes((sc.plan ?? rawPlan)(sc.product, Number(call.values.shot_count)));
+      if (call.key === "grovshot_v2_shot") return okRes(rawWrite(call));
       // QC: which shot and round from the shot spec the call carries.
       // Which shot: its argument („Argument N — …”, one per shot in rawPlan).
       const shotN = Math.max(0, Number(/Argument (\d+)/.exec(String(call.values.shot_spec ?? ""))?.[1] ?? 1) - 1);
@@ -618,7 +822,7 @@ async function partE() {
     check("E1 flag on for everyone, a customer at today's prices: V1 (the margin gate), nothing created", !r.ok && r.error === "engine_v1" && db().runs.size === 0, r);
     const wb = await world({ product: PRODUCTS[1] }, { role: "user", roles: null });
     gsv2Env().pricing = { "2K": 40, "4K": 60 };
-    gsv2Env().tokenPrices = [{ providerSlug: "google", model: "gemini-2.5-flash", inputPerMTok: 300_000, outputPerMTok: 2_500_000 }];
+    gsv2Env().tokenPrices = [CLAUDE_PRICE];
     const rc = await startOrder(wb, { quotedTotal: 120 });
     check("E1c …but not while the image model's tokens have no published price (the allowance is only an estimate)",
       !rc.ok && rc.error === "engine_v1", rc);
@@ -887,26 +1091,32 @@ async function partE() {
   }
   {
     await world({ product: PRODUCTS[1] });
-    const zeroEstimate = { ...CONFIG, budget: { ...CONFIG.budget, vision_call_usd_micros: 0 } };
-    gsv2Env().tokenPrices = [{ providerSlug: "google", model: "gemini-2.5-flash", inputPerMTok: 300_000, outputPerMTok: 2_500_000 }];
-    const state = await readEngineState(SUPA);
-    const priced = textCallCost(state, zeroEstimate);
+    gsv2Env().tokenPrices = [CLAUDE_PRICE];
+    const priced = roleCallCosts(await readEngineState(SUPA), CONFIG);
+    gsv2Env().tokenPrices = [{ ...CLAUDE_PRICE, model: "claude-sonnet-5-5" }];
+    const other = roleCallCosts(await readEngineState(SUPA), CONFIG);
     gsv2Env().tokenPrices = [];
-    const unpriced = textCallCost(await readEngineState(SUPA), CONFIG);
-    check("E46 the customer gate prices text calls from the published token list (an estimate of 0 cannot open it)",
-      priced !== null && priced > 0 && unpriced === null, { priced, unpriced });
+    check("E46 each role is priced from the published list for ITS model (Claude), per role — unknown is never 0",
+      STAGE_ROLES.every((r) => (priced[r] ?? 0) > 0) && STAGE_ROLES.every((r) => other[r] === null), { priced, other });
   }
   {
-    // The runtime's first stage model: a backend with no preferred id asks
-    // the vision layer's first default, priced by the longest listed prefix.
-    await world({ product: PRODUCTS[1] });
-    gsv2Env().textModels = [{ provider: "google", model: null }];
-    gsv2Env().tokenPrices = [{ providerSlug: "google", model: "gemini-flash", inputPerMTok: 300_000, outputPerMTok: 2_500_000 }];
-    const noModels = { ...CONFIG, models: {} };
-    const viaDefault = textCallCost(await readEngineState(SUPA), noModels);
-    gsv2Env().textModels = [{ provider: "google", model: "gemini-2.5-flash" }];
-    check("E47 the gate prices the model the runtime would really ask first (no preferred id → the vision default, by prefix)",
-      viaDefault !== null && viaDefault > 0, { viaDefault });
+    // No silent fallback: the role's provider switched off → no backend at
+    // all (nothing else is asked), and the order is refused before any call.
+    const w = await world({ product: PRODUCTS[1] });
+    const on = await roleBackends(SUPA, CONFIG.models);
+    tableRows("ai_providers")[0].active = false;
+    const off = await roleBackends(SUPA, CONFIG.models);
+    const r = await startOrder(w);
+    check("E47 a role whose provider is off has NO backend (never another provider), and the order is refused with its reason, 0 calls",
+      STAGE_ROLES.every((x) => on.backends[x].length === 1 && on.backends[x][0].provider === "anthropic" && on.backends[x][0].model === "claude-opus-5-5")
+      && STAGE_ROLES.every((x) => off.backends[x].length === 0) && !r.ok && r.error === "analysis_unavailable"
+      && (r as { blockers?: string[] }).blockers?.includes("models.validate:inactive") === true && w.stageCalls.length === 0 && db().runs.size === 0,
+      { on: on.status.map((x) => x.usable), r });
+    const withFb = { ...CONFIG.models, plan: { ...CONFIG.models.plan, fallback: { provider: "anthropic" as const, model: "claude-sonnet-5-5" } } };
+    tableRows("ai_providers")[0].active = true;
+    const fb = await roleBackends(SUPA, withFb);
+    check("E47b a fallback is used only when an admin wrote one, and it is exactly that model",
+      fb.backends.plan.length === 2 && fb.backends.plan[1].model === "claude-sonnet-5-5" && fb.backends.card.length === 1);
   }
   {
     // A database that cannot be read: nothing claimed, the chain told to wait.
@@ -977,6 +1187,206 @@ async function partE() {
     check("E55 a slow transport failure is re-issued within the round (not wasted on a whole retry round)",
       rounds.length === 1 && cand?.reissued === true && cand?.calls === 2 && runOf(r.runId).status === "ok",
       { rounds: rounds.length, cand, status: runOf(r.runId).status });
+  }
+
+  // ── the Anthropic adapter (the official SDK, its HTTP layer replaced) ──
+  {
+    type Sent = { url: string; headers: Record<string, string>; body: Record<string, unknown> };
+    const sent: Sent[] = [];
+    const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "request-id": "req_test" } });
+    const message = (over: Record<string, unknown> = {}) => ({
+      id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5", stop_sequence: null,
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }], stop_reason: "end_turn",
+      usage: { input_tokens: 1200, output_tokens: 80, cache_read_input_tokens: 300, cache_creation_input_tokens: 0 }, ...over,
+    });
+    let next: () => Response = () => reply(200, message());
+    const fakeFetch = (async (url: unknown, init?: { headers?: unknown; body?: unknown }) => {
+      const h = new Headers(init?.headers as ConstructorParameters<typeof Headers>[0]);
+      sent.push({ url: String(url), headers: Object.fromEntries(h.entries()), body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> });
+      return next();
+    }) as unknown as typeof fetch;
+    const img = await solidPng([10, 20, 30], 32);
+    const attempts: VisionAttempt[] = [];
+    const schema = { type: "OBJECT", properties: { ok: { type: "BOOLEAN" } } };
+    const ask = (effort?: "high") => callVisionJson<{ ok: boolean }>([{
+      provider: "anthropic", cred: { apiKey: "sk-ant-test-key", baseUrl: null }, model: "claude-opus-5-5", ...(effort ? { effort } : {}),
+      fetch: fakeFetch, meter: (a) => { attempts.push(a); },
+    }], { images: [{ base64: img.toString("base64"), mime: "image/png" }, { base64: img.toString("base64"), mime: "image/png" }],
+      system: "SYSTEM TEXT", user: "USER DATA", schema, timeoutMs: 30_000, maxAttemptsPerModel: 1 });
+    const ok = await ask("high");
+    const req = sent[0];
+    const content = ((req?.body.messages as { content: { type: string; text?: string }[] }[] | undefined)?.[0]?.content) ?? [];
+    const oc = req?.body.output_config as { format?: { type?: string; schema?: Record<string, unknown> }; effort?: string } | undefined;
+    check("E56 Claude: the official Messages endpoint, the key in its auth header, the stage's system text, the images in order then the data",
+      Boolean(req) && /\/v1\/messages$/.test(req.url) && Boolean(req.headers["anthropic-version"])
+      // The API takes the key in x-api-key or as a bearer; this SDK release sends the bearer.
+      && (req.headers["x-api-key"] === "sk-ant-test-key" || req.headers.authorization === "Bearer sk-ant-test-key")
+      && req.body.model === "claude-opus-5-5" && req.body.system === "SYSTEM TEXT"
+      && content.length === 3 && content[0].type === "image" && content[1].type === "image" && content[2].type === "text" && content[2].text === "USER DATA",
+      { url: req?.url, model: req?.body.model, types: content.map((c) => c.type) });
+    check("E56b structured output through output_config.format (a strict JSON schema), the admin's effort, no temperature, a token limit",
+      oc?.format?.type === "json_schema" && oc.format.schema?.type === "object" && oc.format.schema?.additionalProperties === false
+      && oc.effort === "high" && !("temperature" in (req?.body ?? {})) && typeof req?.body.max_tokens === "number" && ok.data.ok === true, oc);
+    check("E56c usage as the response reported it: input (cache reads included), output, cached",
+      attempts.length === 1 && attempts[0].ok && attempts[0].inputTokens === 1500 && attempts[0].outputTokens === 80 && attempts[0].cachedInputTokens === 300, attempts[0]);
+    const codes: Record<string, string> = {};
+    for (const [label, res] of [
+      ["401", () => reply(401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } })],
+      ["429", () => reply(429, { type: "error", error: { type: "rate_limit_error", message: "slow down" } })],
+      ["529", () => reply(529, { type: "error", error: { type: "overloaded_error", message: "overloaded" } })],
+      ["500", () => reply(500, { type: "error", error: { type: "api_error", message: "boom" } })],
+      ["refusal", () => reply(200, message({ stop_reason: "refusal", content: [] }))],
+      ["max_tokens", () => reply(200, message({ stop_reason: "max_tokens", content: [{ type: "text", text: "{\"ok\":" }] }))],
+    ] as const) {
+      next = res;
+      const before = sent.length;
+      try { await ask(); codes[label] = "no_error"; } catch (e) { codes[label] = `${e instanceof Error ? (e as { safeMessage?: string }).safeMessage ?? e.message : "?"}:${sent.length - before}`; }
+    }
+    check("E57 failures in the engine's vocabulary, ONE request each (no hidden SDK retry): 401 key, 429 limit, 529 overload, 5xx, refusal, cut-off",
+      codes["401"] === "analysis_unavailable:1" && codes["429"] === "analysis_rate_limited:1" && codes["529"] === "analysis_overloaded:1"
+      && codes["500"] === "analysis_error:1" && codes.refusal === "analysis_refused:1" && codes.max_tokens === "analysis_truncated:1", codes);
+    check("E57b the key never appears in what the engine keeps (attempt codes and usage only)", !JSON.stringify(attempts).includes("sk-ant"));
+  }
+
+  // ── Etap 3: one prompt per shot, the right prompt to each image call ──
+  {
+    const w = await world({ product: PRODUCTS[1] });
+    const r = await startOrder(w, { shots: 4, quotedTotal: 28 });
+    if (!r.ok) { check("E58 start", false, r); return; }
+    await drive(w, r.runId, 8);
+    const writes = stepsOf(r.runId, P.write).filter((s) => s.status === "succeeded" && s.item_index % 5 === 0);
+    const writerCalls = w.stageCalls.filter((c) => c.key === "grovshot_v2_shot");
+    const roundSha = new Map(stepsOf(r.runId, P.round).filter((s) => s.item_index % 5 === 0).map((s) => [Math.floor(s.item_index / 5), ((s.output as Row).prompt as Row).sha256]));
+    const writeSha = new Map(writes.map((s) => [Math.floor(s.item_index / 5), (s.output as Row).prompt_sha256]));
+    const prompts = [...new Set(w.imageCalls.map((c) => c.prompt))];
+    check("E58 four shots: Claude writes four prompts (one call per shot), each with the set's other shots as data",
+      writerCalls.length === 4 && writes.length === 4 && writerCalls.every((c) => String(c.values.plan_overview).includes("Ujęcie 4")), { calls: writerCalls.length, writes: writes.length });
+    check("E59 …four genuinely different image prompts, and every image call carries ITS shot's compiled prompt",
+      prompts.length === 4 && [0, 1, 2, 3].every((n) => roundSha.get(n) && roundSha.get(n) === writeSha.get(n))
+      && w.imageCalls.every((c) => [...roundSha.values()].includes(sha(c.prompt))), { prompts: prompts.length, roundSha: [...roundSha.values()].map((x) => String(x).slice(0, 8)) });
+    const input = runOf(r.runId).input as Row;
+    const shas = input.photo_shas as string[];
+    const manifests = stepsOf(r.runId, P.round).map((s) => ({ refs: (s.output as Row).references as number[], sent: (s.output as Row).references_sent as Row[] }));
+    check("E60 the reference manifest: what the image model received, in send order — „zdjęcie 1” is entry 1, by the stored bytes' sha",
+      manifests.length >= 4 && manifests.every((m) => m.sent.length === m.refs.length && m.sent.every((x, i) => x.n === i + 1 && x.photo === m.refs[i] && x.sha256 === shas[m.refs[i] - 1])),
+      manifests.slice(0, 2));
+    check("E61 a customer order keeps the prompt's hash only (no prompt text in its steps)",
+      writes.every((s) => !("prompt_text" in (s.output as Row))) && w.imageCalls.length > 0 && runOf(r.runId).status === "ok");
+    // Driving a finished order again: nothing more happens, nothing charged twice.
+    const evBefore = charges().length;
+    const callsBefore = w.imageCalls.length;
+    const again = await advanceGrovshotRun(SUPA, USER, WS, r.runId, { deadlineAt: db().now + 270_000, deps: w.deps });
+    check("E62 a finished order driven again (a late hop, the worker): finished, no new call, no second charge",
+      again === "finished" && charges().length === evBefore && w.imageCalls.length === callsBefore && charges().every((e) => e.status !== "pending"));
+  }
+  {
+    // A systematic QC error: the writer rewrites THAT shot's prompt with the correction; a random one reuses it.
+    const w = await world({
+      product: PRODUCTS[1],
+      qc: (shot, nth) => (shot === 0 && nth === 0
+        ? { product_visible: true, findings: [{ category: "product_logo_on_props", confidence: 0.95, kind: "systematic" }], correction: "Rekwizyty bez żadnego logo." }
+        : shot === 1 && nth === 0 ? { product_visible: true, findings: [{ category: "distorted_anatomy", confidence: 0.95, kind: "random" }] } : null) as RawQc,
+    });
+    const r = await startOrder(w);
+    if (!r.ok) { check("E63 start", false, r); return; }
+    await drive(w, r.runId);
+    const shotWrites = (n: number) => w.stageCalls.filter((c) => c.key === "grovshot_v2_shot" && String(c.values.shot_spec).includes(`Argument ${n}`));
+    const amended = stepsOf(r.runId, P.write).find((s) => s.item_index === 1);
+    check("E63 an AMENDED retry is a new writer call with the QC correction and the previous blocks as data; a random retry reuses the prompt",
+      shotWrites(1).length === 2 && String(shotWrites(1)[1].values.shot_correction).includes("Rekwizyty bez") && String(shotWrites(1)[1].values.previous_blocks).length > 10
+      && (amended?.output as Row | undefined)?.amended === true && shotWrites(2).length === 1,
+      { s1: shotWrites(1).length, s2: shotWrites(2).length, amended: (amended?.output as Row | undefined)?.amended });
+  }
+
+  // ── an admin's prompt test: Claude only ──
+  {
+    const w = await world({ product: PRODUCTS[1] });
+    const bodies = gsv2Env().bodies as Record<GrovshotStageKey, { key: GrovshotStageKey; version: number; text: string; sha256: string }>;
+    const r = await startGrovshotRun(SUPA, USER, WS, {
+      photos: PHOTOS(3), shots: 2, aspectRatio: "4:5", resolution: "2K", sessionType: "lifestyle", description: "Opis testowy 30 × 20 × 15 cm.",
+    }, { test: { bodies, mode: "prompts" } });
+    if (!r.ok) { check("E64 start", false, r); return; }
+    await drive(w, r.runId);
+    const run = runOf(r.runId);
+    const writes = stepsOf(r.runId, P.write).filter((s) => s.status === "succeeded");
+    check("E64 „Test promptów”: validation, card, plan and one prompt per shot from Claude — no image, no QC, no charge",
+      run.run_kind === "grovshot_test" && run.status === "ok" && w.imageCalls.length === 0 && charges().length === 0
+      && !w.stageCalls.some((c) => c.key === "grovshot_v2_qc") && writes.length === 2, { status: run.status, images: w.imageCalls.length });
+    check("E64b …and the admin sees each compiled prompt (test runs only), exactly the PROMPT section with the writer's blocks",
+      writes.every((s) => typeof (s.output as Row).prompt_text === "string" && String((s.output as Row).prompt_text).includes("KIERUNEK:")
+        && sha(String((s.output as Row).prompt_text)) === (s.output as Row).prompt_sha256));
+  }
+
+  // ── the worker: an order nobody's page drives ──
+  {
+    const w = await world({ product: PRODUCTS[1] });
+    const r = await startOrder(w, { shots: 2, quotedTotal: 14 });
+    if (!r.ok) { check("E65 start", false, r); return; }
+    // The browser is closed: no page ever asks again. The worker's ticks:
+    let ticks = 0;
+    for (; ticks < 8 && ["queued", "running"].includes(String(runOf(r.runId).status)); ticks++) {
+      const due = await srvDue(SUPA, 2);
+      for (const o of due) await advanceGrovshotRun(SUPA, o.userId, o.workspaceId, o.id, { deadlineAt: db().now + 270_000, deps: w.deps });
+      db().now += 60_000;
+    }
+    check("E65 the worker finds the order without a driver and finishes it in the server context (no page, no customer token)",
+      runOf(r.runId).status === "ok" && charges().filter((e) => e.status === "succeeded").length === 2 && ticks <= 3, { status: runOf(r.runId).status, ticks });
+    const r2 = await startOrder(w, { shots: 1, quotedTotal: 7 });
+    if (!r2.ok) { check("E66 start", false, r2); return; }
+    runOf(r2.runId).locked_until = db().now + 60_000;
+    runOf(r2.runId).lease_owner = "gsv2:someone-else";
+    const listed = (await srvDue(SUPA, 2)).some((o) => o.id === r2.runId);
+    const intruder = await client.rpc("grovshot_srv_job_create", { p_token: "t", p_run_id: r2.runId, p_owner: "gsv2:not-the-lease", p_job: {} });
+    check("E66 an order someone drives is not handed out, and the server may act for it only with ITS live lease",
+      !listed && Boolean(intruder.error) && srvDenied.some((x) => x.startsWith("grovshot_srv_job_create:not_owner")));
+  }
+
+  // ── the definitive end ──
+  {
+    const w = await world({ product: PRODUCTS[1] });
+    const r = await startOrder(w);
+    if (!r.ok) { check("E67 start", false, r); return; }
+    runOf(r.runId).invocations = 26;
+    await advanceGrovshotRun(SUPA, USER, WS, r.runId, { deadlineAt: db().now + 270_000, deps: w.deps });
+    const run = runOf(r.runId);
+    check("E67 an order at its invocation limit before the analysis: closed (unavailable), no paid call, nothing charged, the customer told",
+      run.status === "failed" && run.error === "unavailable" && w.stageCalls.length === 0 && charges().length === 0
+      && ((run.progress as Row).notes as Row[]).some((n) => n.code === "wind_down"), { status: run.status, error: run.error });
+    const w2 = await world({ product: PRODUCTS[1], image: () => { db().now += 120_000; return "ok"; } });
+    const r2 = await startOrder(w2);
+    if (!r2.ok) { check("E68 start", false, r2); return; }
+    await advanceGrovshotRun(SUPA, USER, WS, r2.runId, { deadlineAt: db().now + 270_000, deps: w2.deps });
+    const mid = runOf(r2.runId);
+    const begun = w2.imageCalls.length;
+    mid.invocations = 26;
+    mid.locked_until = null;
+    db().now += 60_000;
+    await advanceGrovshotRun(SUPA, USER, WS, r2.runId, { deadlineAt: db().now + 270_000, deps: w2.deps });
+    const end = runOf(r2.runId);
+    const delivered = stepsOf(r2.runId, P.settle).filter((s) => s.status === "succeeded").length;
+    check("E68 …mid-order: nothing new begins, what was delivered is charged, the rest never, no charge left open, the order ends",
+      ["ok", "partial", "failed"].includes(String(end.status)) && w2.imageCalls.length === begun
+      && charges().filter((e) => e.status === "succeeded").length === delivered && charges().every((e) => e.status !== "pending")
+      && db().wallet.balance === 200 - 7 * delivered, { status: end.status, begun, after: w2.imageCalls.length, delivered, ev: charges().map((e) => e.status) });
+  }
+
+  // ── after acceptance nothing waits for the customer's session ──
+  {
+    const read = (f: string) => readFileSync(f, "utf8");
+    const drive = read("lib/server/grovshot-v2/drive.ts");
+    const routes = ["app/api/grovshot/runs/route.ts", "app/api/grovshot/runs/[id]/route.ts", "app/api/generations/active/route.ts",
+      "app/api/grovshot/runs/[id]/drive/route.ts", "app/api/admin/grovshot-v2/test/route.ts"].map(read);
+    check("E69 the driver uses the server context only: no bearer client, no access token, no session read",
+      !/Bearer|access_token|getSession|bearerClient/.test(drive) && /serverClient\(\)/.test(drive) && routes.every((x) => !/getSession|access_token/.test(x)));
+    const worker = read("app/api/grovshot/worker/route.ts");
+    check("E70 the worker route: POST only, refuses without the dispatch token or CRON_SECRET (constant-time)",
+      /export async function POST/.test(worker) && !/export async function GET/.test(worker) && /secretMatches/.test(worker) && /status: 403/.test(worker));
+    const adminTest = read("lib/server/grovshot-v2/admin-test.ts");
+    check("E71 an admin's full test needs its confirmation (paid calls) and is 1–3 shots",
+      /confirmation_required/.test(adminTest) && /TEST_MAX_SHOTS = 3/.test(adminTest));
+    const run = read("lib/server/grovshot-v2/run.ts");
+    check("E72 no store write of the run goes around the order's server functions (every ledger, job and library write is srv_*)",
+      !/supabase\.from\(|startUsage\(|completeUsage\(|failUsage\(/.test(run) && !/\.from\(/.test(read("lib/server/grovshot-v2/library.ts").replace(/storage\.from\(BUCKET\)/g, "")));
   }
 }
 

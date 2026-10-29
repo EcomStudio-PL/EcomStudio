@@ -4,9 +4,8 @@ import { billingFrom, type BillingConfig } from "@/lib/images/pricing";
 import {
   ECON_SCENARIOS, ECON_SHOT_COUNTS, customerRolloutAllowed, projectOrder, type EconRow,
 } from "@/lib/grovshot-v2/economics";
-import type { EngineConfig, StageModel } from "@/lib/grovshot-v2/config";
+import { STAGE_ROLES, type EngineConfig, type StageRole } from "@/lib/grovshot-v2/config";
 import { findTokenPrice } from "@/lib/ai/usage-cost";
-import { OPENAI_VISION_MODELS, VISION_MODEL } from "@/lib/ai/engine/vision";
 import { imageUnitPrice, readEngineState, type EngineState } from "@/lib/server/grovshot-v2/settings";
 
 /**
@@ -26,7 +25,10 @@ export type EconTable = {
 
 export type V2Economics = {
   billing: BillingConfig;
+  /** Every role's model is priced from the published list. */
   textPriced: boolean;
+  /** One call of each role, USD micros (null = no published price). */
+  roleCalls: Record<StageRole, number | null>;
   /** The image model's tokens are priced from the published list. */
   imageTokensPriced: boolean;
   tables: EconTable[];
@@ -34,44 +36,39 @@ export type V2Economics = {
   customerAllowed: boolean;
 };
 
-/** Tokens one text/vision stage call is assumed to use for this projection
- *  (several photos in, a JSON answer out) — stated, conservative. */
-export const TEXT_CALL_TOKENS = { input: 8_000, output: 2_000 } as const;
+/**
+ * Tokens one call of each text/vision role is assumed to use for this
+ * projection — stated, conservative (thinking counts as output): the photo
+ * check and the card read every photo; the plan and the prompt writer are
+ * text; QC reads the shot's references and one candidate.
+ */
+export const ROLE_CALL_TOKENS: Record<StageRole, { input: number; output: number }> = {
+  validate: { input: 8_000, output: 2_000 },
+  card: { input: 10_000, output: 4_000 },
+  plan: { input: 6_000, output: 5_000 },
+  prompt: { input: 5_000, output: 2_500 },
+  qc: { input: 7_000, output: 1_500 },
+};
+
+/**
+ * One call of each role at the PUBLISHED token price of the model that role
+ * is configured to ask first. Null for a role whose model has no published
+ * price — the projection then uses the config's estimate and says so, and
+ * the customer gate stays shut. No floor and no guessed figure.
+ */
+export function roleCallCosts(state: EngineState, config: EngineConfig | null): Record<StageRole, number | null> {
+  return Object.fromEntries(STAGE_ROLES.map((role) => {
+    const m = config?.models[role];
+    const price = m ? findTokenPrice(state.tokenPrices, m.provider, m.model) : null;
+    const t = ROLE_CALL_TOKENS[role];
+    return [role, price ? Math.ceil((t.input * price.inputPerMTok + t.output * price.outputPerMTok) / 1_000_000) : null];
+  })) as Record<StageRole, number | null>;
+}
 
 /** Tokens one image call is assumed to use beyond its per-image price (the
  *  shot's reference photos and prompt in, the model's thinking out) —
  *  stated, conservative. */
 export const IMAGE_CALL_TOKENS = { input: 6_000, thinking: 1_500 } as const;
-
-/** The model a stage's FIRST request goes to, picked as the runtime picks it
- *  (stage-call.ts, vision.ts): the published per-stage model when the chain
- *  has its provider, else the chain's first backend — its preferred id, or
- *  the first id the vision layer tries. */
-function firstStageModel(state: EngineState, pick: StageModel | undefined): { provider: string; model: string } | null {
-  if (pick && state.textModels.some((b) => b.provider === pick.provider)) return pick;
-  const b = state.textModels[0];
-  if (!b) return null;
-  return { provider: b.provider, model: b.model ?? (b.provider === "google" ? VISION_MODEL : OPENAI_VISION_MODELS[0]) };
-}
-
-/**
- * What one text/vision stage call costs at the PUBLISHED token prices of
- * every stage model (the dearest of them), never below the config's own
- * estimate — so an estimate set to 0 cannot open the customer gate. Null
- * when any stage model has no published price.
- */
-export function textCallCost(state: EngineState, config: EngineConfig | null): number | null {
-  if (!config) return null;
-  let dearest = 0;
-  for (const k of ["validate", "card", "plan", "qc"] as const) {
-    const m = firstStageModel(state, config.models[k]);
-    const price = m ? findTokenPrice(state.tokenPrices, m.provider, m.model) : null;
-    if (!price) return null;
-    const cost = (TEXT_CALL_TOKENS.input * price.inputPerMTok + TEXT_CALL_TOKENS.output * price.outputPerMTok) / 1_000_000;
-    dearest = Math.max(dearest, Math.ceil(cost));
-  }
-  return Math.max(dearest, config.budget.vision_call_usd_micros);
-}
 
 /**
  * The tokens of one image call at the image model's PUBLISHED token prices,
@@ -89,8 +86,8 @@ export function imageTokenCost(state: EngineState, config: EngineConfig | null):
 export function economicsFor(state: EngineState, billing: BillingConfig): V2Economics | null {
   if (!state.config || !state.model) return null;
   const config = state.config;
-  const textCall = textCallCost(state, config);
-  const textPriced = textCall !== null;
+  const roleCalls = roleCallCosts(state, config);
+  const textPriced = Object.values(roleCalls).every((v) => v !== null);
   const imageTokens = imageTokenCost(state, config);
   const tables: EconTable[] = state.model.resolutions.map((resolution) => {
     const unitCredits = state.model!.pricing[resolution] ?? 0;
@@ -101,7 +98,7 @@ export function economicsFor(state: EngineState, billing: BillingConfig): V2Econ
         ...projectOrder({
           shots, unitCredits, imageUsdMicros,
           imageTokenUsdMicros: imageTokens,
-          textCallUsdMicros: textCall,
+          roleCalls,
           billing, config,
         }, scenario),
       })));
@@ -109,7 +106,7 @@ export function economicsFor(state: EngineState, billing: BillingConfig): V2Econ
   });
   // Every size the customer can order must pass — not only the cheapest.
   const allowed = tables.length > 0 && tables.every((t) => t.rows.length > 0 && customerRolloutAllowed(t.rows));
-  return { billing, textPriced, imageTokensPriced: imageTokens !== null, tables, customerAllowed: allowed };
+  return { billing, textPriced, roleCalls, imageTokensPriced: imageTokens !== null, tables, customerAllowed: allowed };
 }
 
 /** For the flag check: may a NON-admin be routed to V2 at today's prices? */

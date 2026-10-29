@@ -29,7 +29,7 @@ export const NOTE_CODES = [
   "photo_blurry", "photo_other_product", "photo_other_variant", "photo_stock", "photo_cropped",
   "photo_overlay", "photo_additions", "description_conflict", "dimensions_missing",
   "dimensions_ambiguous", "dimensions_estimated", "licensed_character", "no_usable_photo",
-  "mixed_products", "no_clean_photo", "no_whole_photo", "user_photo_excluded", "plan_short",
+  "mixed_products", "no_clean_photo", "no_whole_photo", "user_photo_excluded", "plan_short", "wind_down",
 ] as const;
 export type NoteCode = (typeof NOTE_CODES)[number];
 

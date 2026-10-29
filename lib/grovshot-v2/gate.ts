@@ -9,11 +9,20 @@
  *   · a template may place only its stage's variables, and must place the
  *     ones the stage cannot work without;
  *   · a vision/text template has exactly one `### USER ###` marker, and its
- *     SYSTEM section places no customer- or model-sourced variable.
+ *     SYSTEM section places no customer- or model-sourced variable;
+ *   · the shot template has the writer's SYSTEM and USER sections and then
+ *     `### PROMPT ###`: the writer's blocks appear only in PROMPT (they are its
+ *     output), the PROMPT section places the ten blocks in the spec's order,
+ *     and the USER section gives the writer the card, the shot and the photos.
  */
-import { GROVSHOT_V2_REQUIRED, GROVSHOT_V2_SHOT_BLOCKS, TOOL_VARIABLES, parsePlaceholders } from "@/lib/ai/prompt-variables";
+import {
+  GROVSHOT_V2_REQUIRED, GROVSHOT_V2_SHOT_BLOCKS, GROVSHOT_V2_WRITER_OUTPUTS, TOOL_VARIABLES, parsePlaceholders,
+} from "@/lib/ai/prompt-variables";
 import { parseEngineConfig } from "@/lib/grovshot-v2/config";
-import { SPLIT_STAGE_KEYS, USER_MARKER, splitStageTemplate, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
+import { SPLIT_STAGE_KEYS, splitShotTemplate, splitStageTemplate, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
+
+/** What the shot template's USER section must give the writer. */
+const WRITER_INPUTS = ["product_card", "shot_spec", "reference_map"] as const;
 
 const UNTRUSTED = new Set(["customer", "ai", "knowledge", "workflow"]);
 
@@ -36,12 +45,23 @@ export function grovshotTemplateProblems(key: GrovshotStageKey, body: string): s
       if (def && UNTRUSTED.has(def.source)) problems.push(`system_section:${p.name}`);
     }
   } else {
-    if (body.split(/\r?\n/).some((l) => l.trim() === USER_MARKER)) problems.push("layout:unexpected_marker");
-    // The ten blocks in the spec's order: each block's anchor variable first
-    // appears after the previous block's.
-    const first = (n: string) => names.indexOf(n);
-    const at = GROVSHOT_V2_SHOT_BLOCKS.map(first);
-    if (at.every((i) => i >= 0) && at.some((i, k) => k > 0 && i < at[k - 1])) problems.push("block_order");
+    const split = splitShotTemplate(body);
+    if (!split) return [...problems, "layout:prompt_marker"];
+    for (const p of parsePlaceholders(split.system)) {
+      const def = byKey.get(p.name);
+      if (def && UNTRUSTED.has(def.source)) problems.push(`system_section:${p.name}`);
+    }
+    const userNames = parsePlaceholders(split.user).map((p) => p.name);
+    for (const n of [...parsePlaceholders(split.system).map((p) => p.name), ...userNames]) {
+      if (GROVSHOT_V2_WRITER_OUTPUTS.has(n)) problems.push(`writer_output_outside_prompt:${n}`);
+    }
+    for (const req of WRITER_INPUTS) if (!userNames.includes(req)) problems.push(`user_section_required:${req}`);
+    // The ten blocks in the spec's order, all in the PROMPT section: each
+    // block's anchor variable first appears after the previous block's.
+    const promptNames = parsePlaceholders(split.prompt).map((p) => p.name);
+    const at = GROVSHOT_V2_SHOT_BLOCKS.map((n) => promptNames.indexOf(n));
+    if (at.some((i) => i < 0)) for (const [k, n] of GROVSHOT_V2_SHOT_BLOCKS.entries()) { if (at[k] < 0) problems.push(`prompt_section_required:${n}`); }
+    else if (at.some((i, k) => k > 0 && i < at[k - 1])) problems.push("block_order");
   }
   return [...new Set(problems)];
 }

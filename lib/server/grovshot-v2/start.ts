@@ -11,6 +11,7 @@ import type { UserRow } from "@/lib/grovshot-v2/plan";
 import { GROVSHOT_V2_KEYS, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
 import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
 import { readOrderPhotos, sha256 } from "@/lib/server/grovshot-v2/media";
+import { roleBackends } from "@/lib/server/grovshot-v2/backends";
 import { imageUnitPrice, readEngineState, type StageBody } from "@/lib/server/grovshot-v2/settings";
 
 /**
@@ -28,7 +29,8 @@ import { imageUnitPrice, readEngineState, type StageBody } from "@/lib/server/gr
  * invocation runs on exactly those texts, whatever is published later.
  */
 
-export const ENGINE_VERSION = "grovshot-v2.1";
+/** 2.2: Claude per role, the Etap 3 prompt writer, the server worker. */
+export const ENGINE_VERSION = "grovshot-v2.2";
 export const DESCRIPTION_MAX = 20_000;
 const UNITS = ["cm", "mm", "m", "in"] as const;
 
@@ -38,6 +40,9 @@ export type StoredInput = {
   v: 1;
   engine: "grovshot_v2";
   test: boolean;
+  /** Admin tests only: "prompts" = Claude's stages up to the prompts, no
+   *  image call; "full" = the whole order (still never charged). */
+  test_mode?: "prompts" | "full";
   photos: string[];
   photo_shas: string[];
   photo_key: string;
@@ -95,7 +100,7 @@ export function parseDimensions(raw: unknown):
 
 export async function startGrovshotRun(
   supabase: Client, userId: string, workspaceId: string, body: StartBody,
-  opts: { test?: { bodies: Record<GrovshotStageKey, StageBody> } } = {},
+  opts: { test?: { bodies: Record<GrovshotStageKey, StageBody>; mode: "prompts" | "full" } } = {},
 ): Promise<StartResult> {
   const test = Boolean(opts.test);
   const photos = Array.isArray(body.photos) ? body.photos : [];
@@ -122,10 +127,14 @@ export async function startGrovshotRun(
   const missing = GROVSHOT_V2_KEYS.filter((k) => !bodies[k]);
   if (missing.length > 0) return { ok: false, error: "prompt_unconfigured", blockers: missing };
   if (!state.model) return { ok: false, error: "model_unavailable", blockers: state.blockers };
-  if (state.textBackends === 0) return { ok: false, error: "analysis_unavailable", blockers: state.blockers };
   const parsed = parseEngineConfig(bodies.grovshot_v2_config!.text);
   if (!parsed.ok) return { ok: false, error: "config_invalid" };
   const config = parsed.config;
+  // Every role of THIS config (a test may run a draft) must be answerable
+  // now — by its own model or the fallback an admin set, nothing else.
+  const roles = (await roleBackends(supabase, config.models).catch(() => null))?.status ?? [];
+  const unusable = roles.filter((r) => !r.usable).map((r) => `models.${r.role}:${r.primary.state}`);
+  if (roles.length === 0 || unusable.length > 0) return { ok: false, error: "analysis_unavailable", blockers: unusable.length ? unusable : ["models:unreadable"] };
 
   const ratio = typeof body.aspectRatio === "string" ? body.aspectRatio : "";
   const resolution = typeof body.resolution === "string" ? body.resolution : "";
@@ -162,7 +171,7 @@ export async function startGrovshotRun(
   const acknowledge = body.acknowledge === true;
 
   const input: StoredInput = {
-    v: 1, engine: "grovshot_v2", test,
+    v: 1, engine: "grovshot_v2", test, ...(opts.test ? { test_mode: opts.test.mode } : {}),
     photos: photos as string[], photo_shas: shas, photo_key: photoKey, card_key: cardKey,
     shots, aspect_ratio: ratio, resolution, session_type: "lifestyle",
     description, description_sha256: descriptionSha,
@@ -179,7 +188,7 @@ export async function startGrovshotRun(
   // or a retry after a lost answer is the same order, never a second one.
   const bucket = Math.floor(Date.now() / 300_000);
   const key = `gsv2:${workspaceId}:${bucket}:${sha256(JSON.stringify({
-    shas, descriptionSha, dims: dims.text, shots, ratio, resolution, userRows, acknowledge, test,
+    shas, descriptionSha, dims: dims.text, shots, ratio, resolution, userRows, acknowledge, test, mode: opts.test?.mode ?? null,
   })).slice(0, 40)}`;
 
   const { data, error } = await supabase.rpc("grovshot_run_create", {

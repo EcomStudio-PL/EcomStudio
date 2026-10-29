@@ -8,8 +8,8 @@ export type Gsv2Env = {
   modelReady: boolean;
   pricing: Record<string, number>;
   imagePrice: Record<string, number | null>;
-  textBackends: number;
-  textModels: { provider: string; model: string | null }[];
+  /** Every role's provider key state (the config's models answer, or not). */
+  roleState: "ok" | "inactive" | "no_key";
   tokenPrices: { providerSlug: string; model: string; inputPerMTok: number; outputPerMTok: number; cachedInputPerMTok?: number | null }[];
   ringUp: boolean;
 };
@@ -19,7 +19,7 @@ const g = globalThis as unknown as { __GSV2_ENV?: Gsv2Env };
 export function gsv2Env(): Gsv2Env {
   g.__GSV2_ENV ??= {
     bodies: {}, modelReady: true, pricing: { "1K": 7, "2K": 7, "4K": 12 }, imagePrice: { "1K": 134_000, "2K": 134_000, "4K": 240_000 },
-    textBackends: 1, textModels: [{ provider: "google", model: "gemini-2.5-flash" }], tokenPrices: [], ringUp: true,
+    roleState: "ok", tokenPrices: [], ringUp: true,
   };
   return g.__GSV2_ENV;
 }

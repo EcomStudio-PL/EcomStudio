@@ -7,7 +7,6 @@ import { TOOL_VARIABLES, compileTemplate, parsePlaceholders, sanitizeValue, type
 import { tokenCost, type Cost, type TokenPrice } from "@/lib/ai/usage-cost";
 import { recordProviderCalls, type Consumer } from "@/lib/server/ai-usage";
 import { splitStageTemplate, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
-import type { EngineConfig } from "@/lib/grovshot-v2/config";
 import { sha256 } from "@/lib/server/grovshot-v2/media";
 
 /**
@@ -29,7 +28,7 @@ import { sha256 } from "@/lib/server/grovshot-v2/media";
  * silently.
  */
 
-export type StageKey = Exclude<GrovshotStageKey, "grovshot_v2_shot" | "grovshot_v2_config">;
+export type StageKey = Exclude<GrovshotStageKey, "grovshot_v2_config">;
 
 export type StageCall = {
   key: StageKey;
@@ -39,8 +38,9 @@ export type StageCall = {
   schema: Record<string, unknown>;
   timeoutMs: number;
   deadlineAt: number;
+  /** Exactly the stage's configured model, then its fallback when (and only
+   *  when) an admin set one — never the rest of a chain. */
   backends: VisionBackend[];
-  models?: EngineConfig["models"];
   tokenPrices: readonly TokenPrice[];
   now: () => number;
 };
@@ -51,25 +51,13 @@ export type StageTrace = {
   system_sha256: string;
   user_sha256: string;
   images: number;
-  attempts: { provider: string; model: string; ok: boolean; ms: number; error?: string; in?: number; out?: number }[];
+  attempts: { provider: string; model: string; ok: boolean; ms: number; error?: string; in?: number; out?: number; cached?: number }[];
   duration_ms: number;
 };
 
 export type StageResult<T> =
   | { ok: true; data: T; trace: StageTrace; cost: Cost; unknownCalls: number; attempts: VisionAttempt[] }
   | { ok: false; error: string; trace: StageTrace | null; cost: Cost; unknownCalls: number; attempts: VisionAttempt[] };
-
-const STAGE_MODEL_KEY: Record<StageKey, keyof EngineConfig["models"]> = {
-  grovshot_v2_validate: "validate", grovshot_v2_card: "card", grovshot_v2_plan: "plan", grovshot_v2_qc: "qc",
-};
-
-/** The published per-stage model, first; the chain's own order otherwise. */
-function orderBackends(backends: VisionBackend[], key: StageKey, models?: EngineConfig["models"]): VisionBackend[] {
-  const pick = models?.[STAGE_MODEL_KEY[key]];
-  if (!pick) return backends;
-  const preferred = backends.filter((b) => b.provider === pick.provider).map((b) => ({ ...b, model: pick.model }));
-  return [...preferred, ...backends.filter((b) => b.provider !== pick.provider)];
-}
 
 /** Every referenced value within its variable's limit — or the call fails
  *  (the name of the first one that is not). */
@@ -106,7 +94,7 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
   // Only as many backends as the time left can hold, at one request each.
   const room = Math.max(1, Math.floor(left / (timeoutMs + 5_000)));
   const attempts: VisionAttempt[] = [];
-  const backends = orderBackends(call.backends, call.key, call.models).slice(0, room).map((b) => ({
+  const backends = call.backends.slice(0, room).map((b) => ({
     ...b, meter: (a: VisionAttempt) => { attempts.push(a); b.meter?.(a); },
   }));
   const started = call.now();
@@ -151,6 +139,7 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
       ...(a.error ? { error: a.error } : {}),
       ...(a.inputTokens != null ? { in: a.inputTokens } : {}),
       ...(a.outputTokens != null ? { out: a.outputTokens } : {}),
+      ...(a.cachedInputTokens != null ? { cached: a.cachedInputTokens } : {}),
     })),
     duration_ms: call.now() - started,
   };

@@ -7,6 +7,7 @@ import { GROVSHOT_V2_FLAG, GROVSHOT_V2_KEYS, type GrovshotStageKey } from "@/lib
 import { readEngineState, type EngineState } from "@/lib/server/grovshot-v2/settings";
 import { economicsFor, type V2Economics } from "@/lib/server/grovshot-v2/rollout";
 import { P as P_ADMIN } from "@/lib/grovshot-v2/steps";
+import { orderBudget, type StageModel, type StageRole } from "@/lib/grovshot-v2/config";
 
 /**
  * GROVBASE SHOT V2 — what the admin tab shows (admin session only; the page
@@ -23,11 +24,27 @@ export type V2RoundView = {
   round: number; status: string; decision: string | null; images: number; reissued: number;
   verdicts: string[]; rejecting: string[]; retry: string | null; costUsdMicros: number | null;
   executor: string | null; error: string | null;
+  /** The reference manifest: what the image model received, in send order. */
+  refs: { n: number; photo: number; role: string | null }[];
+  promptSha: string | null;
+};
+/** One prompt-writer call of a shot (round 0, or the amended rewrite). */
+export type V2WriteView = {
+  round: number; status: string; amended: boolean; executor: string | null; error: string | null;
+  costUsdMicros: number | null; promptSha: string | null;
+  /** Test runs only: the writer's blocks and the compiled image prompt. */
+  blocks: Record<string, string> | null; prompt: string | null;
 };
 export type V2ShotView = {
   n: number; state: "delivered" | "not_delivered" | "open"; reason: string | null;
-  rounds: V2RoundView[]; charges: number; released: number;
+  rounds: V2RoundView[]; writes: V2WriteView[]; charges: number; released: number;
 };
+/** One provider request of a text/vision stage (from the stage traces). */
+export type V2CallView = {
+  stage: string; provider: string; model: string | null; ok: boolean; error: string | null;
+  input: number | null; output: number | null; cached: number | null; usdMicros: number | null;
+};
+export type V2StageCost = { stage: string; usdMicros: number; unknown: number; calls: number; input: number; output: number; cached: number };
 export type V2RunView = {
   id: string; kind: string; status: string; error: string | null; createdAt: string; durationMs: number | null;
   credits: number; costUsdMicros: number | null; costUnknown: number; ordered: number; planned: number | null;
@@ -36,12 +53,22 @@ export type V2RunView = {
   shots: V2ShotView[];
   /** Test runs only: the delivered test images (signed for the admin). */
   results: string[];
+  /** Test runs: "prompts" (Claude only) or "full". */
+  mode: "prompts" | "full" | null;
+  calls: V2CallView[];
+  costByStage: V2StageCost[];
+  /** Test runs only: Claude's card and plan, as answered (capped). */
+  preview: { card: string | null; plan: string | null } | null;
 };
 
 export type GrovshotAdmin = {
-  state: Pick<EngineState, "ready" | "blockers" | "textBackends"> & {
+  state: Pick<EngineState, "ready" | "blockers" | "roles"> & {
     model: { identifier: string; resolutions: string[]; ratios: string[]; pricing: Record<string, number> } | null;
     configOk: boolean;
+    /** The published config's role models (what the pickers start from). */
+    models: Partial<Record<StageRole, StageModel>> | null;
+    /** The per-order API budget of a 1-, 2- and 3-shot test (USD micros). */
+    testBudgets: number[] | null;
   };
   stages: V2StageRow[];
   flag: FlagView;
@@ -64,11 +91,13 @@ export async function readGrovshotAdmin(supabase: Client): Promise<GrovshotAdmin
   }));
   return {
     state: {
-      ready: state.ready, blockers: state.blockers, textBackends: state.textBackends,
+      ready: state.ready, blockers: state.blockers, roles: state.roles,
       model: state.model ? {
         identifier: state.model.identifier, resolutions: state.model.resolutions, ratios: state.model.ratios, pricing: state.model.pricing,
       } : null,
       configOk: state.config !== null,
+      models: state.config?.models ?? null,
+      testBudgets: state.config ? [1, 2, 3].map((n) => orderBudget(state.config!, n)) : null,
     },
     stages,
     flag: {
@@ -91,11 +120,28 @@ type StepRow = {
   output: unknown;
 };
 
+const num = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
+const PREVIEW_CAP = 20_000;
+const capped = (x: unknown): string | null => (x === undefined || x === null ? null : JSON.stringify(x, null, 2).slice(0, PREVIEW_CAP));
+
+/** The provider requests a stage trace records (tokens as reported; cost per
+ *  request is the step's when it made one request, else unknown here). */
+function callsOf(stage: string, trace: unknown, stepCost: number | null): V2CallView[] {
+  const attempts = arr(obj(trace).attempts).map(obj);
+  return attempts.map((a) => ({
+    stage, provider: str(a.provider) ?? "?", model: str(a.model), ok: a.ok === true, error: str(a.error),
+    input: num(a.in), output: num(a.out), cached: num(a.cached),
+    usdMicros: attempts.length === 1 ? stepCost : null,
+  }));
+}
+
 const obj = (x: unknown): Record<string, unknown> => (x && typeof x === "object" && !Array.isArray(x) ? x as Record<string, unknown> : {});
 const arr = (x: unknown): unknown[] => (Array.isArray(x) ? x : []);
 const str = (x: unknown): string | null => (typeof x === "string" && x ? x : null);
 const executorOf = (s: StepRow) => [s.provider_slug, s.model].filter(Boolean).join(" / ") || null;
 const STAGE_NAMES: Record<string, string> = { "1:-1": "validate", "2:-1": "card", "3:0": "plan", "3:1": "replan", "4:-1": "mirror" };
+/** The cost groups of an order, in pipeline order. */
+const COST_STAGES = ["validate", "card", "plan", "prompt", "image", "qc"] as const;
 
 export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot" | "grovshot_test"; ids?: string[]; limit?: number } = {}): Promise<V2RunView[]> {
   let q = supabase.from("ai_engine_runs")
@@ -132,6 +178,28 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
       return typeof v === "number" ? [[k, v]] : [];
     })) as Partial<Record<GrovshotStageKey, number>>;
     const planned = typeof progress.planned === "number" ? progress.planned : null;
+    const isTest = r.run_kind === "grovshot_test";
+    // Every provider request of the text/vision stages, and the cost per stage.
+    const calls: V2CallView[] = [];
+    const costs = new Map<string, V2StageCost>(COST_STAGES.map((k) => [k, { stage: k, usdMicros: 0, unknown: 0, calls: 0, input: 0, output: 0, cached: 0 }]));
+    const charge = (stage: string, usd: number | null, list: V2CallView[]) => {
+      const c = costs.get(stage)!;
+      if (usd === null) c.unknown += 1; else c.usdMicros += usd;
+      for (const x of list) { c.calls += 1; c.input += x.input ?? 0; c.output += x.output ?? 0; c.cached += x.cached ?? 0; }
+      calls.push(...list);
+    };
+    for (const s of st) {
+      const o = obj(s.output);
+      const stepCost = s.cost_basis === "unknown" ? null : s.cost_usd_micros;
+      const stage = s.position === P_ADMIN.validate ? "validate" : s.position === P_ADMIN.card ? "card"
+        : s.position === P_ADMIN.plan ? "plan" : s.position === P_ADMIN.write ? "prompt" : null;
+      if (stage) { if (o.cached !== true) charge(stage, stepCost, callsOf(stage, o.trace, stepCost)); continue; }
+      if (s.position === P_ADMIN.round) {
+        const qc = arr(o.qc).map(obj).flatMap((q) => callsOf("qc", q.trace, null));
+        charge("image", num(o.image_cost_usd_micros) ?? (num(o.qc_cost_usd_micros) === null ? stepCost : null), []);
+        charge("qc", num(o.qc_cost_usd_micros), qc);
+      }
+    }
     const shotCount = Math.max(0, Math.min(10, planned ?? (r.status === "queued" || r.status === "running" ? r.expected_outputs ?? 0 : 0)));
     const shots: V2ShotView[] = Array.from({ length: shotCount }, (_, n) => {
       const inShot = (pos: number) => st.filter((s) => s.position === pos && s.item_index >= n * 5 && s.item_index < n * 5 + 5);
@@ -156,6 +224,20 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
             retry: str(retry.mode),
             costUsdMicros: typeof o.cost_usd_micros === "number" ? o.cost_usd_micros : s.cost_usd_micros,
             executor: executorOf(s), error: s.error_code,
+            refs: arr(o.references_sent).map(obj).map((x) => ({ n: num(x.n) ?? 0, photo: num(x.photo) ?? 0, role: str(x.role) })),
+            promptSha: str(obj(o.prompt).sha256),
+          };
+        }),
+        writes: inShot(P_ADMIN.write).map((s) => {
+          const o = obj(s.output);
+          const blocks = obj(o.blocks);
+          return {
+            round: s.item_index - n * 5, status: s.status, amended: o.amended === true, executor: executorOf(s), error: s.error_code,
+            costUsdMicros: s.cost_basis === "unknown" ? null : s.cost_usd_micros, promptSha: str(o.prompt_sha256),
+            blocks: isTest && Object.keys(blocks).length > 0
+              ? Object.fromEntries(Object.entries(blocks).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]))
+              : null,
+            prompt: isTest ? str(o.prompt_text) : null,
           };
         }),
       };
@@ -176,6 +258,13 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
         ? st.filter((s) => s.position === P_ADMIN.settle && s.status === "succeeded")
             .map((s) => urlOf.get(str(obj(s.output).path) ?? "")).filter((u): u is string => Boolean(u))
         : [],
+      mode: isTest ? (input.test_mode === "prompts" ? "prompts" : "full") : null,
+      calls,
+      costByStage: [...costs.values()],
+      preview: isTest ? {
+        card: capped(obj(st.find((s) => s.position === P_ADMIN.card && s.item_index === -1)?.output).raw),
+        plan: capped(obj((st.filter((s) => s.position === P_ADMIN.plan && s.status === "succeeded").pop())?.output).raw),
+      } : null,
     };
   });
 }

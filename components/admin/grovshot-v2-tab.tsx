@@ -7,11 +7,16 @@ import { PromptDraftProvider, ToolPromptEditor, ToolPromptHistory } from "@/comp
 import { GROVSHOT_V2_KEYS, isGrovshotV2Key, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
 import { TYPICAL_ASSUMPTIONS } from "@/lib/grovshot-v2/economics";
 import { readGrovshotAdmin, readStageVersions } from "@/lib/server/grovshot-v2/admin";
+import { readReadiness } from "@/lib/server/grovshot-v2/readiness";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
-import { GsV2RunCard, GsV2SeedDrafts, GsV2TestPanel } from "@/components/admin/grovshot-v2-client";
+import { formatDate } from "@/lib/utils";
+import { GsV2RoleModels, GsV2RunCard, GsV2SeedDrafts, GsV2TestPanel } from "@/components/admin/grovshot-v2-client";
 
 /**
  * SILNIK V2 — GrovShot's Lifestyle Engine V2 in the GrovShot tool page:
+ *   0 the readiness centre (every line read now: Anthropic key, the model of
+ *     each role, Nano Banana Pro, templates, worker, margin gate, the last
+ *     full test), the stage models and the launch sequence,
  *   1 status (readiness, flag, may customers get it at today's prices),
  *   2 the six stage keys (versioned like every prompt: draft · publish ·
  *     rollback, audited) with the spec drafts loader,
@@ -35,6 +40,9 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
     user ? getCurrentWorkspace(supabase, user.id) : Promise.resolve(null),
   ]);
   const { state, flag, economics, stages } = admin;
+  const rc = await readReadiness(supabase, admin);
+  const states = Object.fromEntries(state.roles.map((r) => [r.role, r.primary.state]));
+  const toDo = rc.checks.filter((c) => !c.good).length;
   const allVersions = await Promise.all(GROVSHOT_V2_KEYS.map((k) => (k === selected ? Promise.resolve(versions) : readStageVersions(supabase, k))));
   const pickable = Object.fromEntries(GROVSHOT_V2_KEYS.map((k, i) => [k,
     allVersions[i].filter((v) => v.status === "draft" || v.status === "published").map((v) => ({ id: v.id, version: v.version, status: v.status }))]));
@@ -42,6 +50,64 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
 
   return (
     <div className="space-y-4" data-grovshot-v2-admin>
+      <Card className="p-4 sm:p-5" data-gsv2-readiness={rc.ready ? "ready" : "not_ready"}>
+        <CardHeader title={`0. ${t("aicc.gsv2.rc")}`} sub={t("aicc.gsv2.rcSub")} />
+        <div className="space-y-4 pt-4">
+          <Badge tone={rc.ready ? "success" : "warning"} dot>
+            {rc.ready ? t("aicc.gsv2.rcReady") : t("aicc.gsv2.rcNotReady", { n: toDo, of: rc.checks.length })}
+          </Badge>
+          <ul className="grid gap-1.5 sm:grid-cols-2" data-gsv2-checks>
+            {rc.checks.map((c) => (
+              <li key={c.key} className="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-raised px-3 py-2 text-[12.5px]" data-gsv2-check={c.key} data-status={c.status}>
+                <span className="min-w-0">
+                  <span className="font-semibold">{t(`aicc.gsv2.check.${c.key}`)}</span>
+                  {c.detail && <code className="block break-words font-mono text-[11px] text-muted">{c.detail}</code>}
+                </span>
+                <Badge tone={c.good ? "success" : c.status === "error" || c.status === "blocked" ? "danger" : "warning"}>{t(`aicc.gsv2.cs.${c.status}`)}</Badge>
+              </li>
+            ))}
+          </ul>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Fact label={t("aicc.gsv2.anthropic")}>
+              <Badge tone={rc.anthropic.state === "ok" ? "success" : "warning"} dot>{t(`aicc.gsv2.anthropicState.${rc.anthropic.state}`)}</Badge>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">{t("aicc.gsv2.anthropicHelp")}</p>
+              <Link href="/admin/ai/modele" className="mt-1 inline-block text-xs font-semibold text-accent hover:underline">{t("aicc.gsv2.anthropicOpen")}</Link>
+              <p className="mt-1.5 break-words text-xs text-muted" data-gsv2-anthropic-error>
+                {t("aicc.gsv2.lastError")}: {rc.anthropic.lastError
+                  ? `${rc.anthropic.lastError.code}${rc.anthropic.lastError.model ? ` · ${rc.anthropic.lastError.model}` : ""} · ${formatDate(rc.anthropic.lastError.at, locale)}`
+                  : t("aicc.gsv2.noError")}
+              </p>
+              <p className="mt-1 break-words text-xs text-muted" data-gsv2-anthropic-usage>
+                {t("aicc.gsv2.usage", {
+                  calls: rc.anthropic.usage.calls, input: rc.anthropic.usage.input, output: rc.anthropic.usage.output,
+                  cached: rc.anthropic.usage.cached, cost: `$${(rc.anthropic.usage.usdMicros / 1_000_000).toFixed(4)}`,
+                })}
+                {rc.anthropic.usage.unknown ? t("aicc.gsv2.usageUnknown", { n: rc.anthropic.usage.unknown }) : ""}
+              </p>
+            </Fact>
+            <Fact label={t("aicc.gsv2.lastTest")}>
+              <p className="text-[13px]" data-gsv2-last-test>
+                {rc.lastTest
+                  ? t("aicc.gsv2.lastTestValue", {
+                      mode: rc.lastTest.mode ? t(`aicc.gsv2.mode.${rc.lastTest.mode}`) : "—",
+                      status: t(`aicc.runs.status.${rc.lastTest.status}`), n: rc.lastTest.delivered, date: formatDate(rc.lastTest.at, locale),
+                    })
+                  : t("aicc.gsv2.noTest")}
+              </p>
+              <p className="mt-2 text-xs font-semibold text-muted">{t("aicc.gsv2.seq")}</p>
+              <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs text-muted" data-gsv2-sequence>
+                {[1, 2, 3, 4, 5, 6].map((n) => <li key={n}>{t(`aicc.gsv2.seq.${n}`)}</li>)}
+              </ol>
+            </Fact>
+          </div>
+          <div>
+            <p className="text-[13px] font-semibold">{t("aicc.gsv2.models")}</p>
+            <p className="mb-2 text-xs leading-relaxed text-muted">{t("aicc.gsv2.modelsSub")}</p>
+            <GsV2RoleModels models={state.models} states={states} />
+          </div>
+        </div>
+      </Card>
+
       <Card className="p-4 sm:p-5" data-gsv2-status>
         <CardHeader title={`1. ${t("aicc.gsv2.status")}`} sub={t("aicc.gsv2.statusSub")} />
         <div className="grid gap-3 pt-4 sm:grid-cols-3">
@@ -75,7 +141,7 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
             ? t("aicc.gsv2.modelLine", {
                 model: state.model.identifier,
                 prices: state.model.resolutions.map((r) => `${r} ${state.model!.pricing[r] ?? "—"} kr.`).join(" · "),
-                backends: state.textBackends,
+                backends: state.roles.filter((r) => r.usable).length,
               })
             : t("aicc.gsv2.noModel")}
         </p>
@@ -171,7 +237,7 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
         <CardHeader title={`4. ${t("aicc.gsv2.test")}`} sub={t("aicc.gsv2.testSub")} />
         <div className="pt-4">
           <GsV2TestPanel versions={pickable} ratios={state.model?.ratios ?? []} resolutions={state.model?.resolutions ?? []}
-            workspaceId={workspace?.id ?? null} />
+            workspaceId={workspace?.id ?? null} budgets={state.testBudgets} />
         </div>
       </Card>
 

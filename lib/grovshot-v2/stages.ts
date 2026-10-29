@@ -14,7 +14,12 @@
  * (the message the model receives as data) holds every value that came from
  * the customer or from a model. Customer text therefore never reaches a
  * model with system authority. The publish gate refuses any other layout.
- * The shot template (one image prompt) and the config (JSON) have no marker.
+ *
+ * The SHOT template (Etap 3) has a third section after `### PROMPT ###`:
+ * SYSTEM + USER are the prompt writer's call (Claude writes the shot's blocks
+ * as JSON); PROMPT is the image prompt itself — the ten blocks in the spec's
+ * order, placing the writer's blocks and the config's footer and negative.
+ * The config (JSON) has no marker.
  */
 import { FIDELITY_MODES, FRAME_TYPES, PEOPLE_MODES, PHOTO_ROLES, RECIPE_IDS, SHOT_PURPOSES } from "@/lib/grovshot-v2/config";
 
@@ -43,6 +48,7 @@ export const GROVSHOT_V2_ENGINE = "grovshot_v2";
 export const GROVSHOT_V2_STOP_CODES: ReadonlySet<string> = new Set(["needs_attention", "needs_dimensions", "blocked_input"]);
 
 export const USER_MARKER = "### USER ###";
+export const PROMPT_MARKER = "### PROMPT ###";
 
 /** Split a stage template into its system and user sections (null = not
  *  exactly one marker line, or an empty section). */
@@ -53,6 +59,20 @@ export function splitStageTemplate(body: string): { system: string; user: string
   const system = lines.slice(0, at[0]).join("\n").trim();
   const user = lines.slice(at[0] + 1).join("\n").trim();
   return system && user ? { system, user } : null;
+}
+
+/** Split the shot template into the writer's system and user sections and
+ *  the image prompt pattern (null = not exactly one of each marker, in that
+ *  order, or an empty section). */
+export function splitShotTemplate(body: string): { system: string; user: string; prompt: string } | null {
+  const lines = body.split(/\r?\n/);
+  const users = lines.flatMap((l, i) => (l.trim() === USER_MARKER ? [i] : []));
+  const prompts = lines.flatMap((l, i) => (l.trim() === PROMPT_MARKER ? [i] : []));
+  if (users.length !== 1 || prompts.length !== 1 || prompts[0] < users[0]) return null;
+  const system = lines.slice(0, users[0]).join("\n").trim();
+  const user = lines.slice(users[0] + 1, prompts[0]).join("\n").trim();
+  const prompt = lines.slice(prompts[0] + 1).join("\n").trim();
+  return system && user && prompt ? { system, user, prompt } : null;
 }
 
 /* ── schema helpers (Gemini OpenAPI subset; no `description` keys) ────────*/
@@ -178,6 +198,27 @@ export const PLAN_SCHEMA = obj({
     }),
   },
 });
+
+/* ── Stage 3: the prompt writer (one shot) ────────────────────────────────*/
+
+/** The shot's blocks, in the spec's order (STOPKA and the negative base are
+ *  the config's; the writer adds only this shot's extra risks). */
+export const WRITE_SCHEMA = obj({
+  direction: str,
+  product: str,
+  scale: str,
+  state_grip: str,
+  moment: str,
+  frame: str,
+  person: str,
+  scenery: str,
+  negative_additions: strs,
+});
+
+export type RawWrite = {
+  direction?: string; product?: string; scale?: string; state_grip?: string; moment?: string;
+  frame?: string; person?: string; scenery?: string; negative_additions?: string[];
+};
 
 /* ── Stage 4: quality control ─────────────────────────────────────────────*/
 

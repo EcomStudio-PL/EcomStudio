@@ -1,48 +1,47 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import { after } from "next/server";
-import { createClient as createSupabase } from "@supabase/supabase-js";
-import type { Database } from "@/lib/database.types";
-import type { Client } from "@/lib/services/workspace";
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
-import { fetchWithSkewRetry } from "@/lib/supabase/skew-retry";
 import { dispatchToken } from "@/lib/server/server-token";
 import { secretMatches } from "@/lib/server/cron-auth";
+import { serverClient, srvDue } from "@/lib/server/grovshot-v2/srv";
 import { HARD_END_MS, INVOCATION_BUDGET_MS, advanceGrovshotRun, type AdvanceResult } from "@/lib/server/grovshot-v2/run";
 
 /**
- * GROVBASE SHOT V2 — WHO DRIVES AN ORDER. Nobody has to keep a page open.
+ * GROVBASE SHOT V2 — WHO DRIVES AN ORDER. Nobody has to keep a page open,
+ * and nobody's session has to stay valid.
  *
- * The request that starts an order also drives it, after its response
- * (`after()`, within the route's 300 s). When that invocation's time is up
- * and work remains, it hands the order to the NEXT invocation itself: one
- * request to this deployment's own drive route, carrying the customer's
- * session token (the ledger acts only in the customer's session) and a
- * server-only signature over the run id, so nothing but this server can
- * start a hop. The invocation that hands over has just released the run
- * (a short lease the database will not let go below 10 s); the hop waits
- * that lease out and claims, a few times, instead of giving up on the first
- * refusal. An invocation that could begin nothing (`stalled`: the database or
- * a key unreadable for the moment) hands over LATER, each time later, and
- * only a few times in a row — the count, signed with the run id, travels
- * with the hop and starts again once work is done. The chain ends when the
- * order is finished, when another driver keeps it, after those stalls, or
- * when the session token is about to expire — after which any page the
- * customer opens resumes it (GET /api/generations/active).
+ * The order is accepted in the customer's own session (the start route:
+ * account, workspace, quote, credits). From then on every step runs in the
+ * SERVER context (srv.ts, migration 0163): the server's own client, the
+ * order's id and the lease of the invocation that holds it — never a
+ * customer token, so closing Safari or a token expiring changes nothing.
+ *
+ * Three things start an invocation, all of them inside a request's own time
+ * (`after()`, within the route's 300 s — nothing is left running unowned):
+ *   · the request that accepted the order (and a page poll, while the order
+ *     has no driver);
+ *   · the HOP: when an invocation's time is up and work remains, it hands the
+ *     order to the next one itself — a request to this deployment's own
+ *     drive route signed with a server-only HMAC over the run id (and the
+ *     stall count), so nothing but this server can start one;
+ *   · the WORKER: a pg_cron tick every minute (0163) wakes /api/grovshot/worker
+ *     while an order has no driver — a lost hop, a dead invocation, a stall
+ *     that ran out of hops: the order is picked up again, oldest first.
  *
  * The run's lease is the one guarantee: one driver at a time; a paid unit is
  * never executed twice; a unit whose invocation died is recovered from what
- * it left, never re-sent.
+ * it left, never re-sent. The order itself ends for good (run.ts: the
+ * definitive end) — the hops and the worker never keep it alive for ever.
  */
 
 const CHAIN_HEADER = "x-grovshot-chain";
 /** Stalled invocations in a row before this hop (signed with the run id). */
 const STALL_HEADER = "x-grovshot-stalls";
-/** A hop is only made while the token outlives a whole invocation. */
-const TOKEN_MIN_LEFT_S = 320;
 /** How long a stalled invocation waits before handing over, by how many
- *  stalled in a row before it; after the last, the order waits for a page. */
+ *  stalled in a row before it; after the last, the worker picks it up. */
 export const STALL_WAITS_MS = [30_000, 60_000, 90_000, 120_000] as const;
+/** Orders one worker invocation drives side by side. */
+export const WORKER_BATCH = 2;
 
 export function chainSignature(runId: string, stalls = 0): string {
   return createHmac("sha256", dispatchToken() ?? "")
@@ -62,41 +61,20 @@ export function chainSignatureOk(runId: string, presented: string | null, stalls
   return secretMatches(presented ?? "", chainSignature(runId, stalls));
 }
 
-/** Seconds left on a Supabase access token (0 when unreadable). */
-export function tokenSecondsLeft(token: string, nowMs = Date.now()): number {
-  try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as { exp?: number };
-    return typeof payload.exp === "number" ? Math.floor(payload.exp - nowMs / 1000) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** A database client acting as the holder of `token` (RLS and auth.uid()
- *  as that user) — the anon key, never a service key. */
-export function bearerClient(token: string): Client {
-  return createSupabase<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: `Bearer ${token}` }, fetch: fetchWithSkewRetry() },
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-  }) as unknown as Client;
-}
-
-export type Chain = { origin: string; token: string; stalls?: number } | null;
+/** Where the next invocation is asked for (this deployment's own origin). */
+export type Chain = { origin: string; stalls?: number } | null;
 
 async function hop(runId: string, chain: NonNullable<Chain>, stalls: number): Promise<void> {
-  if (tokenSecondsLeft(chain.token) < TOKEN_MIN_LEFT_S || !dispatchToken()) return;
+  if (!dispatchToken()) return;
   try {
     await fetch(`${chain.origin}/api/grovshot/runs/${runId}/drive`, {
       method: "POST",
-      headers: {
-        authorization: `Bearer ${chain.token}`, [CHAIN_HEADER]: chainSignature(runId, stalls),
-        ...(stalls > 0 ? { [STALL_HEADER]: String(stalls) } : {}),
-      },
+      headers: { [CHAIN_HEADER]: chainSignature(runId, stalls), ...(stalls > 0 ? { [STALL_HEADER]: String(stalls) } : {}) },
       signal: AbortSignal.timeout(10_000),
       cache: "no-store",
     });
   } catch {
-    // The order waits for the customer's next page instead.
+    // The worker's next tick picks the order up instead.
   }
 }
 
@@ -129,27 +107,66 @@ export async function handOver(
   return go(stalls + 1);
 }
 
+const wait = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+
+/** One invocation of one order in the server context, then the hand-over. */
+async function driveOne(
+  userId: string, workspaceId: string, runId: string, requestStartedAt: number, chain: Chain, awaitLease: boolean,
+): Promise<void> {
+  const supabase = serverClient();
+  if (!supabase) { console.error("[grovshot-v2] no server token; order waits", runId.slice(0, 8)); return; }
+  const r = await advanceWhenFree(() => advanceGrovshotRun(supabase, userId, workspaceId, runId, {
+    deadlineAt: requestStartedAt + INVOCATION_BUDGET_MS, hardEndAt: requestStartedAt + HARD_END_MS,
+  }), { awaitLease, wait });
+  // Work remains: the next invocation takes over without waiting for the
+  // worker — at once after work, later after a stall (within this route's
+  // own time, the hop's request included).
+  if (chain) {
+    await handOver(r, chain.stalls ?? 0, (stalls) => hop(runId, chain, stalls), wait,
+      requestStartedAt + HARD_END_MS - 15_000 - Date.now());
+  }
+}
+
+/** Drive an order after this request's response. `userId`/`workspaceId` are
+ *  the order's owner as verified when it was accepted (the run refuses any
+ *  other); no session of theirs is used. */
 export function driveGrovshotAfterResponse(
-  supabase: Client, userId: string, workspaceId: string, runId: string, requestStartedAt: number, chain: Chain,
+  userId: string, workspaceId: string, runId: string, requestStartedAt: number, chain: Chain,
   opts: { awaitLease?: boolean } = {},
 ): void {
   after(async () => {
     try {
-      const wait = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
-      const r = await advanceWhenFree(() => advanceGrovshotRun(supabase, userId, workspaceId, runId, {
-        deadlineAt: requestStartedAt + INVOCATION_BUDGET_MS, hardEndAt: requestStartedAt + HARD_END_MS,
-      }), { awaitLease: opts.awaitLease === true, wait });
-      // Work remains: the next invocation takes over without waiting for a
-      // page — at once after work, later after a stall (within this route's
-      // own time, the hop's request included).
-      if (chain) {
-        await handOver(r, chain.stalls ?? 0, (stalls) => hop(runId, chain, stalls), wait,
-          requestStartedAt + HARD_END_MS - 15_000 - Date.now());
-      }
+      await driveOne(userId, workspaceId, runId, requestStartedAt, chain, opts.awaitLease === true);
     } catch {
       console.error("[grovshot-v2] drive aborted", runId.slice(0, 8));
     }
   });
+}
+
+/** The order's owner, read in the server context (the hop and the worker
+ *  know only the run id). Null when it is not an open GrovShot order. */
+export async function openOrderOwner(runId: string): Promise<{ userId: string; workspaceId: string } | null> {
+  const supabase = serverClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc("ai_engine_run_read", { p_token: dispatchToken() ?? "", p_run_id: runId });
+  const row = !error && Array.isArray(data) ? data[0] : null;
+  if (!row || (row.run_kind !== "grovshot" && row.run_kind !== "grovshot_test")) return null;
+  if (row.status !== "queued" && row.status !== "running") return null;
+  return row.user_id && row.workspace_id ? { userId: row.user_id, workspaceId: row.workspace_id } : null;
+}
+
+/** THE WORKER: the orders nobody drives, a few side by side, after the
+ *  response. Returns how many were picked up. */
+export async function driveDueOrders(requestStartedAt: number, origin: string): Promise<number> {
+  const supabase = serverClient();
+  if (!supabase) return 0;
+  const due = await srvDue(supabase, WORKER_BATCH);
+  if (due.length === 0) return 0;
+  after(async () => {
+    await Promise.all(due.map((o) => driveOne(o.userId, o.workspaceId, o.id, requestStartedAt, { origin }, false)
+      .catch(() => console.error("[grovshot-v2] worker drive aborted", o.id.slice(0, 8)))));
+  });
+  return due.length;
 }
 
 export { CHAIN_HEADER, STALL_HEADER };

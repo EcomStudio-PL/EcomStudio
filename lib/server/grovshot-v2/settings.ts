@@ -8,6 +8,7 @@ import { imageCallCost, type TokenPrice, type UnitPrice } from "@/lib/ai/usage-c
 import { priceFor } from "@/lib/ai/types";
 import { parseEngineConfig, type EngineConfig } from "@/lib/grovshot-v2/config";
 import { grovshotTemplateProblems } from "@/lib/grovshot-v2/gate";
+import { roleBackends, type RoleStatus } from "@/lib/server/grovshot-v2/backends";
 import { GROVSHOT_V2_KEYS, GROVSHOT_V2_MODEL_IDENTIFIER, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
 
 /**
@@ -15,8 +16,8 @@ import { GROVSHOT_V2_KEYS, GROVSHOT_V2_MODEL_IDENTIFIER, type GrovshotStageKey }
  *
  * Everything comes from what an admin published: the five stage templates
  * and the engine config (ai_tool_prompts, one key each), the Nano Banana Pro
- * model row (its prices per size, its ratios and sizes), the text/vision
- * backends of the GrovShot planner chain and the provider price lists. A
+ * model row (its prices per size, its ratios and sizes), the model of every
+ * text/vision role (provider active, key opens) and the price lists. A
  * missing piece is a BLOCKER, named — the engine never substitutes a
  * built-in text or a guessed price for it.
  */
@@ -43,9 +44,9 @@ export type EngineState = {
   bodies: Partial<Record<GrovshotStageKey, StageBody>>;
   config: EngineConfig | null;
   model: V2Model | null;
-  textBackends: number;
-  /** The planner chain's backends, in order (provider + preferred model). */
-  textModels: { provider: string; model: string | null }[];
+  /** Each text/vision role's configured model and whether it can be asked
+   *  now (empty until a config is published). */
+  roles: RoleStatus[];
   unitPrices: UnitPrice[];
   tokenPrices: TokenPrice[];
 };
@@ -68,13 +69,9 @@ async function publishedBody(supabase: Client, key: GrovshotStageKey): Promise<S
 
 export async function readEngineState(supabase: Client): Promise<EngineState> {
   const blockers: string[] = [];
-  const [bodiesList, usable, backends, unitPrices, tokenPrices] = await Promise.all([
+  const [bodiesList, usable, unitPrices, tokenPrices] = await Promise.all([
     Promise.all(GROVSHOT_V2_KEYS.map((k) => publishedBody(supabase, k))),
     getUsableModels(supabase).catch(() => [] as UsableModel[]),
-    // Loaded when called: a static import put the whole GrovShot planner (and
-    // the knowledge base's PDF reader) into the admin page's graph and the
-    // production build ran out of memory.
-    import("@/lib/server/prompt-engine").then((m) => m.textCapableBackends(supabase)).catch(() => []),
     readUnitPrices(supabase),
     readTokenPrices(supabase),
   ]);
@@ -98,11 +95,11 @@ export async function readEngineState(supabase: Client): Promise<EngineState> {
     model: m,
   } : null;
   if (!model) blockers.push("model_unavailable");
-  if (backends.length === 0) blockers.push("text_backend_unavailable");
-  return {
-    ready: blockers.length === 0, blockers, bodies, config, model, textBackends: backends.length,
-    textModels: backends.map((b) => ({ provider: b.provider, model: b.model ?? null })), unitPrices, tokenPrices,
-  };
+  const roles = config ? (await roleBackends(supabase, config.models).catch(() => null))?.status ?? [] : [];
+  // A role nobody can answer is named: models.<role>:<why> (inactive, no_key).
+  for (const r of roles) if (!r.usable) blockers.push(`models.${r.role}:${r.primary.state}`);
+  if (config && roles.length === 0) blockers.push("models:unreadable");
+  return { ready: blockers.length === 0, blockers, bodies, config, model, roles, unitPrices, tokenPrices };
 }
 
 /** The official provider price of one NBP image at a size (USD micros), or

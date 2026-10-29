@@ -44,13 +44,9 @@ export async function GET(request: Request) {
     const { undrivenV2, ...body } = snapshot;
     for (const runId of undrivenRuns.slice(0, 3)) driveThumbnailAfterResponse(supabase, user.id, workspace.id, runId, startedAt);
     // GrovShot V2: at most ONE order per poll (each one can hold the image
-    // lane for a whole invocation), with this request's fresh session token
-    // so the order can continue on its own after the page is closed.
-    if (undrivenV2.length > 0) {
-      const { data: { session } } = await supabase.auth.getSession();
-      driveGrovshotAfterResponse(supabase, user.id, workspace.id, undrivenV2[0], startedAt,
-        session?.access_token ? { origin: new URL(request.url).origin, token: session.access_token } : null);
-    }
+    // lane for a whole invocation). The order does not need this page: the
+    // server context and the worker drive it once it is accepted.
+    if (undrivenV2.length > 0) driveGrovshotAfterResponse(user.id, workspace.id, undrivenV2[0], startedAt, { origin: new URL(request.url).origin });
     return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });

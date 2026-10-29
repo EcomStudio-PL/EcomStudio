@@ -36,11 +36,9 @@ export async function POST(request: Request) {
   let body: StartBody = {};
   try { body = (await request.json()) as StartBody; } catch { /* validated below */ }
   const result = await startGrovshotRun(supabase, user.id, workspace.id, body);
-  if (result.ok) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const chain = session?.access_token ? { origin: new URL(request.url).origin, token: session.access_token } : null;
-    driveGrovshotAfterResponse(supabase, user.id, workspace.id, result.runId, startedAt, chain);
-  }
+  // Accepted in the customer's session; driven from here in the server
+  // context (no session of theirs is needed for any later step).
+  if (result.ok) driveGrovshotAfterResponse(user.id, workspace.id, result.runId, startedAt, { origin: new URL(request.url).origin });
   const status = result.ok ? 202
     : result.error === "insufficient_credits" ? 402
       : result.error === "concurrency_limit" || result.error === "too_many_runs" || result.error === "rate_limited" || result.error === "analysis_limit" ? 429
