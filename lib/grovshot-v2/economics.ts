@@ -17,8 +17,8 @@
  *            (the most a delivered order can cost).
  * `nothing` is the boundary loss: the worst spend with nothing delivered.
  *
- * A text/vision call without a published token price is counted at the
- * config's estimate and flagged — never as free.
+ * A text/vision call — or an image call's tokens — without a published
+ * token price is counted at the config's estimate and flagged, never as free.
  */
 import type { EngineConfig } from "@/lib/grovshot-v2/config";
 
@@ -33,6 +33,8 @@ export type EconInput = {
   unitCredits: number;
   /** Official provider price of one image at this size (USD micros). */
   imageUsdMicros: number;
+  /** One image call's tokens at their known price, or null (then the config's allowance). */
+  imageTokenUsdMicros: number | null;
   /** One text/vision call: its known cost, or null (then the config's estimate). */
   textCallUsdMicros: number | null;
   billing: { plnPerCredit: number; usdToPln: number; minMarginPercent: number };
@@ -50,7 +52,7 @@ export type EconRow = {
   marginPercent: number | null;
   /** At or above the billing floor. */
   meetsFloor: boolean;
-  /** Text calls were counted at the estimate (no published price). */
+  /** Text calls or image tokens were counted at the estimate (no published price). */
   estimated: boolean;
 };
 
@@ -58,7 +60,7 @@ const STAGE_CALLS = 3; // Etap 0, 1, 2
 
 export function projectOrder(input: EconInput, scenario: EconScenario): EconRow {
   const { shots: n, config } = input;
-  const perImage = input.imageUsdMicros + config.budget.image_token_allowance_usd_micros;
+  const perImage = input.imageUsdMicros + (input.imageTokenUsdMicros ?? config.budget.image_token_allowance_usd_micros);
   const textCall = input.textCallUsdMicros ?? config.budget.unknown_text_call_usd_micros;
   const cap = config.limits.max_paid_images_per_shot;
   const qcPerImage = scenario === "worst" || scenario === "nothing" ? 1 + config.qc.reask : 1;
@@ -91,7 +93,7 @@ export function projectOrder(input: EconInput, scenario: EconScenario): EconRow 
     costUsd: round4(costUsd), revenuePln: round2(revenuePln), costPln: round2(costPln),
     marginPercent: marginPercent === null ? null : Math.round(marginPercent * 10) / 10,
     meetsFloor: marginPercent !== null && marginPercent >= input.billing.minMarginPercent,
-    estimated: input.textCallUsdMicros === null,
+    estimated: input.textCallUsdMicros === null || input.imageTokenUsdMicros === null,
   };
 }
 
@@ -100,7 +102,7 @@ export const ECON_SHOT_COUNTS = [1, 3, 5, 10] as const;
 /**
  * May V2 be offered to CUSTOMERS at these prices? Only when the typical
  * order of every offered size (1, 3, 5, 10 shots) meets the billing floor
- * with text calls priced from a published list. Admins may test regardless.
+ * with text calls and image tokens priced from a published list. Admins may test regardless.
  */
 export function customerRolloutAllowed(rows: readonly EconRow[]): boolean {
   const typical = rows.filter((r) => r.scenario === "typical");

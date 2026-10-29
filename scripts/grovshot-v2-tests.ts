@@ -39,7 +39,9 @@ import { SPEC_CONFIG, specDraft } from "@/lib/server/grovshot-v2/seed";
 import { startGrovshotRun } from "@/lib/server/grovshot-v2/start";
 import { advanceGrovshotRun, P, type GrovshotDeps } from "@/lib/server/grovshot-v2/run";
 import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
-import { advanceWhenFree, HOP_CLAIM_TRIES, HOP_CLAIM_WAIT_MS } from "@/lib/server/grovshot-v2/drive";
+import {
+  HOP_CLAIM_TRIES, HOP_CLAIM_WAIT_MS, STALL_WAITS_MS, advanceWhenFree, chainSignature, chainSignatureOk, handOver, parseStalls,
+} from "@/lib/server/grovshot-v2/drive";
 import { textCallCost } from "@/lib/server/grovshot-v2/rollout";
 import { readEngineState } from "@/lib/server/grovshot-v2/settings";
 import type { StageCall, StageResult } from "@/lib/server/grovshot-v2/stage-call";
@@ -363,7 +365,7 @@ section("D. ECONOMICS — a projection under stated assumptions (not production 
 const billing = { plnPerCredit: 0.19, usdToPln: 4, minMarginPercent: 50 };
 {
   const rows = ECON_SHOT_COUNTS.flatMap((shots) => ECON_SCENARIOS.map((sc) => ({ shots, ...projectOrder({
-    shots, unitCredits: 7, imageUsdMicros: 134_000, textCallUsdMicros: null, billing, config: CONFIG }, sc) })));
+    shots, unitCredits: 7, imageUsdMicros: 134_000, imageTokenUsdMicros: null, textCallUsdMicros: null, billing, config: CONFIG }, sc) })));
   for (const r of rows.filter((x) => x.scenario !== "nothing")) {
     console.log(`    ${String(r.shots).padStart(2)} × 2K  ${r.scenario.padEnd(8)} images ${String(r.images).padStart(5)}  text ${String(r.textCalls).padStart(5)}  revenue ${r.revenuePln.toFixed(2).padStart(6)} zł  cost ${r.costPln.toFixed(2).padStart(6)} zł  margin ${r.marginPercent === null ? "—" : `${r.marginPercent.toFixed(1)}%`}`);
   }
@@ -373,7 +375,7 @@ const billing = { plnPerCredit: 0.19, usdToPln: 4, minMarginPercent: 50 };
   check("the typical order is below the floor at every size", rows.filter((r) => r.scenario === "typical").every((r) => !r.meetsFloor));
   check("…so V2 may NOT be offered to customers at today's prices", !customerRolloutAllowed(rows));
   check("nothing delivered: the customer pays 0 and the loss is GrovBase's", rows.filter((r) => r.scenario === "nothing").every((r) => r.revenuePln === 0 && r.costPln > 0));
-  const priced = ECON_SHOT_COUNTS.map((shots) => projectOrder({ shots, unitCredits: 20, imageUsdMicros: 134_000, textCallUsdMicros: 20_000, billing, config: CONFIG }, "typical"));
+  const priced = ECON_SHOT_COUNTS.map((shots) => projectOrder({ shots, unitCredits: 20, imageUsdMicros: 134_000, imageTokenUsdMicros: 30_000, textCallUsdMicros: 20_000, billing, config: CONFIG }, "typical"));
   check("at a higher price and priced text calls the same gate opens (the decision is a price, not code)", customerRolloutAllowed(priced), priced.map((r) => r.marginPercent));
 }
 
@@ -471,10 +473,12 @@ const client = {
       return { data: { validate: pick(1, "photo_key", args.p_photo_key), card: pick(2, "card_key", args.p_card_key) }, error: null };
     }
     if (name === "ai_engine_run_read") {
+      if (d.faults.has("rpc:run_read")) return { data: null, error: { message: "fault" } };
       const r = d.runs.get(String(args.p_run_id));
       return { data: r ? [JSON.parse(JSON.stringify(r))] : [], error: null };
     }
     if (name === "ai_engine_step_runs_read") {
+      if (d.faults.has("rpc:steps_read")) return { data: null, error: { message: "fault" } };
       return { data: JSON.parse(JSON.stringify(d.steps.filter((x) => x.run_id === args.p_run_id))), error: null };
     }
     if (name === "delete_generation") {
@@ -615,8 +619,12 @@ async function partE() {
     const wb = await world({ product: PRODUCTS[1] }, { role: "user", roles: null });
     gsv2Env().pricing = { "2K": 40, "4K": 60 };
     gsv2Env().tokenPrices = [{ providerSlug: "google", model: "gemini-2.5-flash", inputPerMTok: 300_000, outputPerMTok: 2_500_000 }];
+    const rc = await startOrder(wb, { quotedTotal: 120 });
+    check("E1c …but not while the image model's tokens have no published price (the allowance is only an estimate)",
+      !rc.ok && rc.error === "engine_v1", rc);
+    gsv2Env().tokenPrices.push({ providerSlug: "google", model: "gemini-3-pro-image", inputPerMTok: 2_000_000, outputPerMTok: 12_000_000 });
     const rb = await startOrder(wb, { quotedTotal: 120 });
-    check("E1b …at prices that meet the floor (an owner's decision), the same customer gets V2", rb.ok, rb);
+    check("E1b …at prices that meet the floor (an owner's decision), every call priced, the same customer gets V2", rb.ok, rb);
     const w2 = await world({ product: PRODUCTS[1] }, { flag: false });
     const r2 = await startOrder(w2);
     check("E2 flag off: V1 for everyone, admins included", !r2.ok && r2.error === "engine_v1", r2);
@@ -887,6 +895,88 @@ async function partE() {
     const unpriced = textCallCost(await readEngineState(SUPA), CONFIG);
     check("E46 the customer gate prices text calls from the published token list (an estimate of 0 cannot open it)",
       priced !== null && priced > 0 && unpriced === null, { priced, unpriced });
+  }
+  {
+    // The runtime's first stage model: a backend with no preferred id asks
+    // the vision layer's first default, priced by the longest listed prefix.
+    await world({ product: PRODUCTS[1] });
+    gsv2Env().textModels = [{ provider: "google", model: null }];
+    gsv2Env().tokenPrices = [{ providerSlug: "google", model: "gemini-flash", inputPerMTok: 300_000, outputPerMTok: 2_500_000 }];
+    const noModels = { ...CONFIG, models: {} };
+    const viaDefault = textCallCost(await readEngineState(SUPA), noModels);
+    gsv2Env().textModels = [{ provider: "google", model: "gemini-2.5-flash" }];
+    check("E47 the gate prices the model the runtime would really ask first (no preferred id → the vision default, by prefix)",
+      viaDefault !== null && viaDefault > 0, { viaDefault });
+  }
+  {
+    // A database that cannot be read: nothing claimed, the chain told to wait.
+    const w = await world({ product: PRODUCTS[1] });
+    const r = await startOrder(w);
+    if (!r.ok) { check("E48 start", false, r); return; }
+    db().faults.add("rpc:run_read");
+    const unread = await advanceGrovshotRun(SUPA, USER, WS, r.runId, { deadlineAt: db().now + 270_000, deps: w.deps });
+    db().faults.delete("rpc:run_read");
+    check("E48 an unreadable run is a stall, not \"busy\": nothing claimed, no invocation spent",
+      unread === "stalled" && Number(runOf(r.runId).invocations ?? 0) === 0 && runOf(r.runId).lease_owner === null, { unread, inv: runOf(r.runId).invocations });
+    db().faults.add("rpc:steps_read");
+    const noSteps = await advanceGrovshotRun(SUPA, USER, WS, r.runId, { deadlineAt: db().now + 270_000, deps: w.deps });
+    db().faults.delete("rpc:steps_read");
+    check("E49 claimed but its steps unreadable: a stall that leaves a 30 s lease (no poll every few seconds), nothing begun",
+      noSteps === "stalled" && Number(runOf(r.runId).locked_until) - db().now === 30_000 && stepsOf(r.runId).length === 0,
+      { noSteps, lease: Number(runOf(r.runId).locked_until) - db().now });
+  }
+  {
+    const log: string[] = [];
+    const go = async (n: number) => { log.push(`go:${n}`); };
+    const wait = async (ms: number) => { log.push(`wait:${ms}`); };
+    await handOver("yield", 3, go, wait, 200_000);
+    await handOver("busy", 0, go, wait, 200_000);
+    const afterWork = log.splice(0);
+    for (let n = 0; n < STALL_WAITS_MS.length; n++) await handOver("stalled", n, go, wait, 200_000);
+    const stalls = log.splice(0);
+    await handOver("stalled", STALL_WAITS_MS.length, go, wait, 200_000);
+    for (const r of ["locked", "finished", "not_found"] as const) await handOver(r, 0, go, wait, 200_000);
+    const none = log.splice(0);
+    await handOver("stalled", 3, go, wait, 40_000);
+    const capped = log.splice(0);
+    check("E50 after work the next invocation comes at once and the stall count starts again",
+      afterWork.join() === "go:0,go:0", afterWork);
+    check("E51 after a stall it comes later each time, a few times in a row, then the order waits for a page",
+      stalls.join() === STALL_WAITS_MS.map((ms, n) => `wait:${ms},go:${n + 1}`).join() && none.length === 0, { stalls, none });
+    check("E52 a stall's wait never outlasts the route's own time", capped.join() === "wait:40000,go:4", capped);
+    const id2 = "11111111-2222-4333-8444-555555555555";
+    check("E53 the stall count travels signed with the run id (a hop cannot reset it)",
+      chainSignatureOk(id2, chainSignature(id2, 2), 2) && !chainSignatureOk(id2, chainSignature(id2, 2), 0)
+      && !chainSignatureOk(id2, chainSignature(id2), 1) && chainSignatureOk(id2, chainSignature(id2), 0)
+      && parseStalls(null) === 0 && parseStalls("3") === 3 && parseStalls("9") === null && parseStalls("x") === null);
+  }
+  {
+    // Exactly one image's credits, two shots begun together: the first one
+    // proceeds, the second is not refused because of it — it waits for the
+    // next call, which sees the real balance.
+    const w = await world({ product: PRODUCTS[1] }, { balance: 7 });
+    const r = await startOrder(w, { shots: 2, quotedTotal: 14 });
+    if (!r.ok) { check("E54 start", false, r); return; }
+    await drive(w, r.runId);
+    const settles = stepsOf(r.runId, P.settle);
+    check("E54 concurrent shots do not refuse each other: one image's credits deliver the FIRST shot (the hero), the other ends insufficient_credits",
+      charges().filter((e) => e.status === "succeeded").length === 1 && db().wallet.balance === 0 && runOf(r.runId).status === "partial"
+      && settles.find((s) => s.item_index === 0)?.status === "succeeded"
+      && settles.filter((s) => s.status === "failed").every((s) => s.error_code === "insufficient_credits"),
+      { ev: charges().map((e) => e.status), balance: db().wallet.balance, status: runOf(r.runId).status, settles: settles.map((s) => [s.status, s.error_code]) });
+  }
+  {
+    // A transport failure that took its time: the re-issue still fits before
+    // the round's limit, so it is made (the cap counts it — it can happen).
+    const w = await world({ product: PRODUCTS[1], image: (i) => { db().now += 30_000; return i === 0 ? "fail" : "ok"; } });
+    const r = await startOrder(w, { shots: 1, quotedTotal: 7 });
+    if (!r.ok) { check("E55 start", false, r); return; }
+    await drive(w, r.runId);
+    const rounds = stepsOf(r.runId, P.round);
+    const cand = ((rounds[0]?.output as { candidates?: { reissued?: boolean; calls?: number }[] } | null)?.candidates ?? [])[0];
+    check("E55 a slow transport failure is re-issued within the round (not wasted on a whole retry round)",
+      rounds.length === 1 && cand?.reissued === true && cand?.calls === 2 && runOf(r.runId).status === "ok",
+      { rounds: rounds.length, cand, status: runOf(r.runId).status });
   }
 }
 

@@ -7441,6 +7441,7 @@
     "gsv2.econUnavailable": "Brak opublikowanej konfiguracji lub modelu — nie ma czego policzyć.",
     "gsv2.econBilling": "1 kredyt = {pln} zł · 1 USD = {fx} zł · minimalna marża {floor}%.",
     "gsv2.econTextEstimated": "Modele tekstu nie mają cennika tokenów — ich koszt to szacunek z konfiguracji.",
+    "gsv2.econImageTokensEstimated": "Model obrazu nie ma cennika tokenów — koszt jego tokenów to szacunek z konfiguracji.",
     "gsv2.perImage": "zdjęcie",
     "gsv2.providerImage": "koszt API zdjęcia",
     "gsv2.econNoPrice": "Brak ceny dostawcy dla tego rozmiaru.",

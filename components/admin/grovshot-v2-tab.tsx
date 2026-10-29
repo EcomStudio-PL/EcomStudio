@@ -123,6 +123,7 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
                 pln: economics.billing.plnPerCredit.toFixed(2), fx: economics.billing.usdToPln.toFixed(2), floor: economics.billing.minMarginPercent,
               })}
               {!economics.textPriced && <span className="text-warning"> {t("aicc.gsv2.econTextEstimated")}</span>}
+              {!economics.imageTokensPriced && <span className="text-warning"> {t("aicc.gsv2.econImageTokensEstimated")}</span>}
             </p>
             {economics.tables.map((tb) => (
               <div key={tb.resolution} className="min-w-0" data-gsv2-econ={tb.resolution}>

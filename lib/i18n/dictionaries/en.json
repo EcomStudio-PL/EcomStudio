@@ -7441,6 +7441,7 @@
     "gsv2.econUnavailable": "No published config or model — nothing to compute.",
     "gsv2.econBilling": "1 credit = {pln} PLN · 1 USD = {fx} PLN · margin floor {floor}%.",
     "gsv2.econTextEstimated": "The text models have no token price list — their cost is the config's estimate.",
+    "gsv2.econImageTokensEstimated": "The image model has no token price list — its token cost is the config's estimate.",
     "gsv2.perImage": "image",
     "gsv2.providerImage": "API cost per image",
     "gsv2.econNoPrice": "No provider price for this size.",

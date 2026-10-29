@@ -90,8 +90,14 @@ export type GrovshotDeps = {
 };
 const DEFAULT_DEPS: GrovshotDeps = { callImage: callImageModel, callStage, now: () => Date.now() };
 
-/** `locked`: another invocation still holds the run's lease (nothing done). */
-export type AdvanceResult = "finished" | "yield" | "busy" | "locked" | "not_found";
+/** `locked`: another invocation still holds the run's lease (nothing done).
+ *  `stalled`: nothing could be begun (the run, its steps or its key could not
+ *  be read, or every unit was busy) — the next call should come later. */
+export type AdvanceResult = "finished" | "yield" | "busy" | "stalled" | "locked" | "not_found";
+
+/** The lease a stalled invocation leaves: an unwell database or provider is
+ *  not asked again every few seconds (a page poll included). */
+const STALL_LEASE_S = 30;
 
 type Ctx = {
   supabase: Client;
@@ -113,7 +119,12 @@ type Ctx = {
   progress: Record<string, Json>;
   writer: Promise<unknown>;
   reserved: number;
-  inFlightShots: number;
+  /** Shots of this invocation past the balance check and not charged yet,
+   *  by the order they were begun in (their credits are still in the balance). */
+  inFlight: Set<number>;
+  shotSeq: number;
+  /** A step was begun by this invocation (it was not a stall). */
+  progressed: boolean;
   stopNew: string | null;
   /** The account / availability gates could not be read: no new round now. */
   gateUnknown?: boolean;
@@ -141,7 +152,9 @@ function outputOf(s: Pick<StepRunRow, "output"> | undefined | null): Record<stri
 const consumer = (ctx: Ctx): Consumer => (ctx.test ? "workflow_test" : "generation");
 
 async function begin(ctx: Ctx, pos: number, item: number, name: string, op: "ai_text" | "image_generation" | "tool") {
-  return beginStep(ctx.supabase, ctx.runId, ctx.owner, pos, item, name, op, leaseSeconds(ctx));
+  const b = await beginStep(ctx.supabase, ctx.runId, ctx.owner, pos, item, name, op, leaseSeconds(ctx));
+  if (b.state === "run") ctx.progressed = true;
+  return b;
 }
 
 /** Finish a step and keep the local snapshot in step with it. */
@@ -206,20 +219,20 @@ function acquireImages(n: number): Promise<() => void> {
 
 /** Spend so far: known step costs; a call without a price at the config's
  *  estimate; a round that did not finish at its worst case (every image it
- *  may have sent, each with its QC) — never as one cheap call. */
+ *  may have sent within the shot's paid-image cap, each with its QC) — never
+ *  as one cheap call. */
 function spentSoFar(ctx: Ctx): number {
   let total = 0;
   const est = generationEstimate(ctx.input.unit_price_usd_micros, ctx.config.budget);
   const maxCandidates = Math.max(ctx.config.candidates.default, ctx.config.candidates.people_or_complex);
-  const lostRound = (item: number) => {
-    const shot = Math.floor(item / 5);
-    const candidates = item % 5 === 0 ? (ctx.candidatesOf?.get(shot) ?? maxCandidates) : ctx.config.retry.candidates;
-    return Math.min(ctx.config.limits.max_paid_images_per_shot, candidates * (1 + ctx.config.retry.transport_reissues)) * est;
-  };
+  const images = new Map<number, number>();
+  for (const shot of new Set(ctx.steps.filter((s) => s.position === P.round).map((s) => Math.floor(s.item_index / 5)))) {
+    for (const r of roundImages(ctx, { index: shot, candidates: ctx.candidatesOf?.get(shot) ?? maxCandidates })) images.set(r.item, r.images);
+  }
   for (const s of ctx.steps) {
     const unknown = Number(outputOf(s).unknown_calls) || 0;
     if (s.cost_basis !== "unknown" && s.cost_usd_micros !== null) total += s.cost_usd_micros;
-    else if (s.position === P.round && s.status !== "pending") total += lostRound(s.item_index);
+    else if (s.position === P.round && s.status !== "pending") total += (images.get(s.item_index) ?? 0) * est;
     else if (s.position < P.round && s.status !== "pending") total += ctx.config.budget.unknown_text_call_usd_micros;
     total += unknown * ctx.config.budget.unknown_text_call_usd_micros;
   }
@@ -254,7 +267,8 @@ export async function advanceGrovshotRun(
 ): Promise<AdvanceResult> {
   const deps: GrovshotDeps = { ...DEFAULT_DEPS, ...opts.deps };
   const first = await readRunRow(supabase, runId);
-  if (first === "unknown") return "busy";
+  // Unreadable: nothing claimed, nothing done — ask again later, not at once.
+  if (first === "unknown") return "stalled";
   if (!first || (first.run_kind !== "grovshot" && first.run_kind !== "grovshot_test")
     || first.user_id !== userId || first.workspace_id !== workspaceId) return "not_found";
   if (first.status !== "queued" && first.status !== "running") return "finished";
@@ -263,8 +277,12 @@ export async function advanceGrovshotRun(
   const claim = await claimRun(supabase, runId, owner, Math.max(10, Math.ceil((hardEndAt + 15_000 - deps.now()) / 1000)));
   if (!claim.claimed) return claim.reason === "finished" ? "finished" : "locked";
 
+  const stall = async (): Promise<AdvanceResult> => {
+    await patchRun(supabase, runId, owner, { lease_seconds: STALL_LEASE_S });
+    return "stalled";
+  };
   const run = await readRunRow(supabase, runId);
-  if (run === "unknown" || !run) { await patchRun(supabase, runId, owner, { lease_seconds: 10 }); return "yield"; }
+  if (run === "unknown" || !run) return stall();
   const base = { supabase, userId, workspaceId, runId, owner, deadlineAt: opts.deadlineAt, hardEndAt, deps, run };
   const input = parseInput(run.input);
   if (!input) { await closeEarly(base, "failed", "common_error"); return "finished"; }
@@ -278,9 +296,8 @@ export async function advanceGrovshotRun(
     const opened = st ? ring.open({ ciphertext: st.sealed.ciphertext, iv: st.sealed.iv, authTag: st.sealed.authTag }) : null;
     if (!opened || sha256(opened.text) !== st.sha256) {
       // The key is unreachable right now (or the text was tampered with): not
-      // a reason to run on anything else. Wait for the next call.
-      await patchRun(supabase, runId, owner, { lease_seconds: 10 });
-      return "yield";
+      // a reason to run on anything else. Wait for a later call.
+      return stall();
     }
     bodies[k] = opened.text;
     versions[k] = st.version;
@@ -288,13 +305,13 @@ export async function advanceGrovshotRun(
   const parsed = parseEngineConfig(bodies.grovshot_v2_config);
   if (!parsed.ok) { await closeEarly(base, "failed", "config_invalid"); return "finished"; }
   const steps = await readSteps(supabase, runId);
-  if (!steps) { await patchRun(supabase, runId, owner, { lease_seconds: 10 }); return "yield"; }
+  if (!steps) return stall();
   const state = await readEngineState(supabase);
 
   const ctx: Ctx = {
     ...base, input, config: parsed.config, bodies, versions, ring, test: run.run_kind === "grovshot_test",
     steps, progress: { ...((run.progress && typeof run.progress === "object" && !Array.isArray(run.progress)) ? run.progress as Record<string, Json> : {}) },
-    writer: Promise.resolve(), reserved: 0, inFlightShots: 0, stopNew: null, qcFailStreak: Number((run.progress as Record<string, unknown> | null)?.qc_fail_streak) || 0,
+    writer: Promise.resolve(), reserved: 0, inFlight: new Set(), shotSeq: 0, progressed: false, stopNew: null, qcFailStreak: Number((run.progress as Record<string, unknown> | null)?.qc_fail_streak) || 0,
     photos: new Map(), backends: null, unitPrices: state.unitPrices, tokenPrices: state.tokenPrices,
   };
 
@@ -306,9 +323,12 @@ export async function advanceGrovshotRun(
     outcome = "yield";
   }
   await ctx.writer;
-  if (outcome === "lost") return "busy";
   if (outcome === "finished") return "finished";
-  // Hand the run back quickly so the next call does not wait out a lease.
+  // Hand the run back quickly so the next call does not wait out a lease —
+  // also when it was lost (the patch is a no-op unless the lease is still
+  // ours, so a driver that really took over keeps it). An invocation that
+  // could begin nothing leaves a longer lease and says so.
+  if (!ctx.progressed) return stall();
   await patchRun(supabase, runId, owner, { lease_seconds: outcome === "busy" ? 60 : 10 });
   return outcome === "busy" ? "busy" : "yield";
 }
@@ -325,11 +345,13 @@ async function drive(ctx: Ctx): Promise<Drive> {
     else if (blocked === null || !map) ctx.gateUnknown = true;
     else if ((["prompts", "generator"] as const).some((k) => (map[k] ?? defaultStateFor(k)).status !== "ACTIVE")) ctx.stopNew = "feature_unavailable";
   }
-  // Not analysed yet and stopped (account blocked, tool switched off): no
-  // paid analysis at all. Gates that cannot be read: nothing new now.
-  const planned = stepOf(ctx, P.plan, 0)?.status === "succeeded";
-  if (!planned && ctx.stopNew) { await close(ctx, "failed", ctx.stopNew); return "finished"; }
-  if (!planned && ctx.gateUnknown) return "busy";
+  // Not analysed yet — the analysis is complete once its shots are mirrored
+  // (plan, any re-plan, the session rows) — and stopped (account blocked,
+  // tool switched off): no further paid analysis; nothing was charged yet.
+  // Gates that cannot be read: nothing new now.
+  const analysed = stepOf(ctx, P.mirror, -1)?.status === "succeeded";
+  if (!analysed && ctx.stopNew) { await close(ctx, "failed", ctx.stopNew); return "finished"; }
+  if (!analysed && ctx.gateUnknown) return "busy";
   const analysis = await analyse(ctx);
   if (typeof analysis === "string") return analysis;
   const mirror = await ensureMirror(ctx, analysis.card, analysis.plan.shots);
@@ -656,21 +678,30 @@ function roundStartMs(ctx: Ctx): number {
 
 /** The most paid image requests one round may make: its candidates, each
  *  re-issued at most transport_reissues times. */
-function roundWorstCase(ctx: Ctx, shot: Pick<Shot, "candidates">, round: number): number {
+function roundWorstCase(ctx: Ctx, shot: { candidates: number }, round: number): number {
   const candidates = round === 0 ? shot.candidates : ctx.config.retry.candidates;
   return candidates * (1 + ctx.config.retry.transport_reissues);
 }
 
-/** Paid image requests a shot has made so far. A round that did not finish
- *  (its invocation died) counts its WORST case within what it was allowed —
- *  it may have sent everything. */
-function paidImages(ctx: Ctx, shot: Pick<Shot, "index" | "candidates">): number {
+/** Paid image requests of each of a shot's rounds, in order. A round that did
+ *  not finish (its invocation died) counts its WORST case within what the
+ *  shot was still allowed — it may have sent everything. */
+function roundImages(ctx: Ctx, shot: { index: number; candidates: number }): { item: number; images: number }[] {
   const cap = ctx.config.limits.max_paid_images_per_shot;
-  return rowsOf(ctx, P.round, shot.index).reduce((sum, r) => {
-    if (r.status !== "succeeded") return sum + Math.max(0, Math.min(cap - sum, roundWorstCase(ctx, shot, r.item_index - shot.index * 5)));
+  let paid = 0;
+  return rowsOf(ctx, P.round, shot.index).map((r) => {
     const cands = outputOf(r).candidates;
-    return sum + (Array.isArray(cands) ? cands.reduce((a: number, c) => a + (Number((c as { calls?: unknown }).calls) || 1), 0) : 0);
-  }, 0);
+    const images = r.status !== "succeeded"
+      ? Math.max(0, Math.min(cap - paid, roundWorstCase(ctx, shot, r.item_index - shot.index * 5)))
+      : Array.isArray(cands) ? cands.reduce((a: number, c) => a + (Number((c as { calls?: unknown }).calls) || 1), 0) : 0;
+    paid += images;
+    return { item: r.item_index, images };
+  });
+}
+
+/** Paid image requests a shot has made so far. */
+function paidImages(ctx: Ctx, shot: Pick<Shot, "index" | "candidates">): number {
+  return roundImages(ctx, shot).reduce((sum, r) => sum + r.images, 0);
 }
 
 /** Why a shot ends without an image, from its last round. */
@@ -739,20 +770,32 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
     if (candidates === 0) return settle(ctx, n, false, used === 0 ? "budget" : reasonOf(last));
 
     // Reserved at once (before anything is awaited), so a concurrent shot
-    // checks the budget and the balance against this one too; released on
-    // every way out, with whatever its re-issues reserved.
+    // checks the budget and the balance against this one too. The budget is
+    // released once the round's real cost is recorded, the balance place once
+    // the shot is charged (its credits have then left the balance) — and both
+    // on every way out, with whatever the re-issues reserved.
     const calls: CallBudget = { left: Math.max(0, allowance - candidates), est, reserved: 0 };
-    ctx.reserved += candidates * est;
-    ctx.inFlightShots++;
+    let held = candidates * est;
+    ctx.reserved += held;
+    const releaseBudget = () => {
+      ctx.reserved = Math.max(0, ctx.reserved - held - calls.reserved);
+      held = 0;
+      calls.reserved = 0;
+    };
+    const place = ++ctx.shotSeq;
+    ctx.inFlight.add(place);
+    const charged = () => { ctx.inFlight.delete(place); };
     try {
       if (!ctx.test) {
         const bal = await freshBalance(ctx.supabase, ctx.workspaceId);
         if (bal === null) return "busy";
-        // Enough for this shot and every shot this invocation may still charge.
-        if (bal < ctx.input.quote.unit * ctx.inFlightShots) {
-          ctx.stopNew = "insufficient_credits";
-          return settle(ctx, n, false, "insufficient_credits");
-        }
+        // Not even this shot: it ends here (every other shot checks its own).
+        if (bal < ctx.input.quote.unit) return settle(ctx, n, false, "insufficient_credits");
+        // Enough for this shot alone, not with the uncharged shots begun
+        // before it: whether they are delivered decides — the next call
+        // checks again (the first of them always proceeds).
+        const ahead = [...ctx.inFlight].filter((p) => p < place).length;
+        if (bal < ctx.input.quote.unit * (ahead + 1)) return "yield";
       }
       const refs = await photos(ctx, shot.references);
       if (refs === "changed") { ctx.stopNew = "reference_changed"; return settle(ctx, n, false, "reference_changed"); }
@@ -777,6 +820,8 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
         await setProgress(ctx, { stage: "images" });
         const round = await executeRound(ctx, card, shot, { prompt: prompt.text, refs, candidates, round: used, correction, item, attempts: b.attempts, free, calls });
         if (round === "lost") return "lost";
+        // The round's real cost is in its row now.
+        releaseBudget();
         if (round.accepted) {
           await setProgress(ctx, { stage: "results" });
           // The accepted image is in memory: its delivery is tried again
@@ -784,7 +829,7 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
           for (let attempt = 0; attempt < 2; attempt++) {
             const slot = rowsOf(ctx, P.charge, n).length;
             if (slot > 4 || (attempt > 0 && ctx.hardEndAt - ctx.deps.now() < DELIVER_RESERVE_MS)) break;
-            const d = await deliver(ctx, shot, mirror, round.accepted, used, slot);
+            const d = await deliver(ctx, shot, mirror, round.accepted, used, slot, charged);
             if (d === "lost" || d === "busy") return d;
             if (d === "delivered" || settled(ctx, n)) return "settled";
           }
@@ -794,8 +839,8 @@ async function runShot(ctx: Ctx, card: ProductCard, shot: Shot, mirror: Mirror):
         free();
       }
     } finally {
-      ctx.reserved = Math.max(0, ctx.reserved - candidates * est - calls.reserved);
-      ctx.inFlightShots = Math.max(0, ctx.inFlightShots - 1);
+      releaseBudget();
+      charged();
     }
   }
   return "busy";
@@ -811,7 +856,9 @@ type Candidate = {
 type CallBudget = { left: number; est: number; reserved: number };
 type Accepted = { bytes: Buffer; mime: string; width: number | null; height: number | null; sha256: string; decision: QcDecision; costMicros: number };
 
-async function genCandidate(ctx: Ctx, prompt: string, refs: Awaited<ReturnType<typeof forImageModel>>[], deadlineAt: number, budget: CallBudget): Promise<Candidate> {
+/** `limitAt`: when the round's image calls must be over (its QC and the
+ *  delivery still fit after it); each call has at most IMAGE_CALL_MS. */
+async function genCandidate(ctx: Ctx, prompt: string, refs: Awaited<ReturnType<typeof forImageModel>>[], limitAt: number, budget: CallBudget): Promise<Candidate> {
   let reissued = false;
   let costMicros = 0;
   let unknown = 0;
@@ -819,9 +866,10 @@ async function genCandidate(ctx: Ctx, prompt: string, refs: Awaited<ReturnType<t
   const t0 = ctx.deps.now();
   for (let attempt = 0; attempt <= ctx.config.retry.transport_reissues; attempt++) {
     if (attempt > 0) {
-      // A re-issue (same prompt) only when a whole call still fits, the
-      // shot's paid-image cap allows one more, and so does the budget.
-      if (deadlineAt - ctx.deps.now() < IMAGE_CALL_MS || budget.left <= 0) break;
+      // A re-issue (same prompt) only when a whole call still fits before the
+      // round's limit, the shot's paid-image cap allows one more, and so
+      // does the budget.
+      if (limitAt - ctx.deps.now() < IMAGE_CALL_MS || budget.left <= 0) break;
       if (!fits(spentSoFar(ctx) + ctx.reserved, ctx.input.budget_cap_usd_micros, budget.est)) break;
       budget.left--;
       ctx.reserved += budget.est;
@@ -832,7 +880,7 @@ async function genCandidate(ctx: Ctx, prompt: string, refs: Awaited<ReturnType<t
     const r = await ctx.deps.callImage(ctx.supabase, {
       candidateModelIds: [ctx.input.model.id], prompt, references: refs,
       aspectRatio: ctx.input.aspect_ratio as AspectRatio, resolution: ctx.input.resolution as Resolution,
-      maxAttempts: 1, deadlineAt, unitPrices: ctx.unitPrices, tokenPrices: ctx.tokenPrices,
+      maxAttempts: 1, deadlineAt: Math.min(limitAt, ctx.deps.now() + IMAGE_CALL_MS), unitPrices: ctx.unitPrices, tokenPrices: ctx.tokenPrices,
     });
     for (const a of r.attempts) { if (a.cost.basis === "unknown") unknown++; else costMicros += a.cost.usdMicros; }
     await recordProviderCalls(ctx.supabase, r.attempts.map((a) => ({
@@ -865,8 +913,8 @@ async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
   const t0 = ctx.deps.now();
   const refsForModel = await Promise.all(r.refs.map(forImageModel));
   const qcTimeout = ctx.config.qc.timeout_ms;
-  const imageDeadline = Math.min(ctx.hardEndAt - DELIVER_RESERVE_MS - qcTimeout, ctx.deps.now() + IMAGE_CALL_MS);
-  const cands = await Promise.all(Array.from({ length: r.candidates }, () => genCandidate(ctx, r.prompt, refsForModel, imageDeadline, r.calls)));
+  const imageLimit = ctx.hardEndAt - DELIVER_RESERVE_MS - qcTimeout;
+  const cands = await Promise.all(Array.from({ length: r.candidates }, () => genCandidate(ctx, r.prompt, refsForModel, imageLimit, r.calls)));
   r.free();
 
   // ── Etap 4 — every candidate with an image is checked ──
@@ -986,7 +1034,7 @@ function matchScore(d: QcDecision): number {
   return Math.round((1 - worst) * 10000) / 100;
 }
 
-async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, round: number, slot: number): Promise<DeliverOutcome> {
+async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, round: number, slot: number, charged: () => void): Promise<DeliverOutcome> {
   const n = shot.index;
   const item = itemOf(n, slot);
   const ext = acc.mime === "image/jpeg" ? "jpg" : acc.mime === "image/webp" ? "webp" : "png";
@@ -1040,6 +1088,8 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
     const s = await settle(ctx, n, false, usage.error === "insufficient_credits" ? "insufficient_credits" : "unavailable");
     return s === "lost" ? "lost" : s === "busy" ? "busy" : "released";
   }
+  // The credits have left the balance: no longer counted as still to charge.
+  charged();
   await finish(ctx, P.charge, item, {
     status: "succeeded", attempts: 1, cost: { basis: "estimated", usdMicros: 0 },
     output: { job_id: job.id, event_id: usage.eventId, credits: ctx.input.quote.unit, round, slot }, durationMs: 0,

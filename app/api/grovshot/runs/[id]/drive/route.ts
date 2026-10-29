@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { bearerToken } from "@/lib/server/cron-auth";
 import { readBlockState } from "@/lib/server/account-block";
 import { getCurrentWorkspaceFresh } from "@/lib/services/workspace";
-import { CHAIN_HEADER, bearerClient, chainSignatureOk, driveGrovshotAfterResponse } from "@/lib/server/grovshot-v2/drive";
+import {
+  CHAIN_HEADER, STALL_HEADER, bearerClient, chainSignatureOk, driveGrovshotAfterResponse, parseStalls,
+} from "@/lib/server/grovshot-v2/drive";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -13,15 +15,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * GROVBASE SHOT V2 — THE NEXT INVOCATION OF AN ORDER, started by the server
  * itself (lib/server/grovshot-v2/drive.ts). POST only. Two credentials, both
- * required: the server-only signature over the run id (so no browser, link
- * or prefetch can start one) and the customer's own session token (the
+ * required: the server-only signature over the run id and the hop's stall
+ * count (so no browser, link or prefetch can start one, nor reset the count)
+ * and the customer's own session token (the
  * ledger acts only in the customer's session; RLS and the run's own checks
  * do the rest — the driver refuses a run that is not this user's).
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const startedAt = Date.now();
   const { id } = await params;
-  if (!UUID.test(id) || !chainSignatureOk(id, request.headers.get(CHAIN_HEADER))) {
+  const stalls = parseStalls(request.headers.get(STALL_HEADER));
+  if (!UUID.test(id) || stalls === null || !chainSignatureOk(id, request.headers.get(CHAIN_HEADER), stalls)) {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
   const token = bearerToken(request.headers.get("authorization"));
@@ -35,6 +39,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
   // A hop: the previous invocation has just released the run — wait its
   // short lease out rather than give up on the first refusal.
-  driveGrovshotAfterResponse(supabase, user.id, workspace.id, id, startedAt, { origin: new URL(request.url).origin, token }, { awaitLease: true });
+  driveGrovshotAfterResponse(supabase, user.id, workspace.id, id, startedAt, { origin: new URL(request.url).origin, token, stalls }, { awaitLease: true });
   return NextResponse.json({ ok: true }, { status: 202 });
 }
