@@ -4,7 +4,6 @@ import type { Client } from "@/lib/services/workspace";
 import { resolveEngine } from "@/lib/server/ai-engine";
 import { getUsableModels, type UsableModel } from "@/lib/ai/router";
 import { readTokenPrices, readUnitPrices } from "@/lib/server/ai-usage";
-import { textCapableBackends } from "@/lib/server/prompt-engine";
 import { imageCallCost, type TokenPrice, type UnitPrice } from "@/lib/ai/usage-cost";
 import { priceFor } from "@/lib/ai/types";
 import { parseEngineConfig, type EngineConfig } from "@/lib/grovshot-v2/config";
@@ -72,7 +71,10 @@ export async function readEngineState(supabase: Client): Promise<EngineState> {
   const [bodiesList, usable, backends, unitPrices, tokenPrices] = await Promise.all([
     Promise.all(GROVSHOT_V2_KEYS.map((k) => publishedBody(supabase, k))),
     getUsableModels(supabase).catch(() => [] as UsableModel[]),
-    textCapableBackends(supabase).catch(() => []),
+    // Loaded when called: a static import put the whole GrovShot planner (and
+    // the knowledge base's PDF reader) into the admin page's graph and the
+    // production build ran out of memory.
+    import("@/lib/server/prompt-engine").then((m) => m.textCapableBackends(supabase)).catch(() => []),
     readUnitPrices(supabase),
     readTokenPrices(supabase),
   ]);
