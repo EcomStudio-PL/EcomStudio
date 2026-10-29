@@ -6,7 +6,7 @@ import { withKeyStates } from "@/lib/server/prompt-vault-admin";
 import { GROVSHOT_V2_FLAG, GROVSHOT_V2_KEYS, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
 import { readEngineState, type EngineState } from "@/lib/server/grovshot-v2/settings";
 import { economicsFor, type V2Economics } from "@/lib/server/grovshot-v2/rollout";
-import { P as P_ADMIN } from "@/lib/server/grovshot-v2/run";
+import { P as P_ADMIN } from "@/lib/grovshot-v2/steps";
 
 /**
  * GROVBASE SHOT V2 — what the admin tab shows (admin session only; the page

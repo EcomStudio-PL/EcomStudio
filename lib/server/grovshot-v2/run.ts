@@ -26,6 +26,7 @@ import { qcRules, recipeCatalog, recipeForPlan, referenceMap, shotSpec, shotValu
 import { decideQc, pickBest, planRetry, type QcDecision, type QcFinding } from "@/lib/grovshot-v2/qc";
 import { compareColors } from "@/lib/grovshot-v2/color";
 import { fits, generationEstimate } from "@/lib/grovshot-v2/budget";
+import { P, itemOf } from "@/lib/grovshot-v2/steps";
 import { callStage, checkLimits, type StageCall, type StageResult } from "@/lib/server/grovshot-v2/stage-call";
 import { forImageModel, forVision, pixelsOf, readOrderPhotos, sha256, dimensionsOf, type OrderPhoto } from "@/lib/server/grovshot-v2/media";
 import { readEngineState } from "@/lib/server/grovshot-v2/settings";
@@ -80,8 +81,7 @@ const TEXT_RESUME_LIMIT = 3;
 /** Nano Banana Pro calls in flight per instance, across every V2 order. */
 const IMAGE_SLOTS = 2;
 
-export const P = { validate: 1, card: 2, plan: 3, mirror: 4, round: 5, charge: 6, deliver: 7, mark: 8, settle: 9 } as const;
-const itemOf = (shot: number, round: number) => shot * 5 + round;
+export { P };
 
 export type GrovshotDeps = {
   callImage: (supabase: Client, input: ImageCallInput) => Promise<ImageCallResult>;
