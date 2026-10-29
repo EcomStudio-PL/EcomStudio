@@ -172,6 +172,9 @@ async function main() {
     const NON_TILE = new Set<string>([
       // Single full image by design, no grid.
       "app/(app)/tools/editor/page.tsx",
+      // GrovShot V2 admin test runs: a handful of an admin's own test images
+      // in its diagnostics, never a customer gallery.
+      "lib/server/grovshot-v2/admin.ts",
       // Hands over originals on purpose.
       "app/api/library/zip/route.ts",
       // Writes derivatives; signs what it just made.

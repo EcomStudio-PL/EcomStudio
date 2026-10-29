@@ -95,6 +95,11 @@ const SERVER_TOKEN: Record<string, string> = {
   */
   "/api/hooks/stripe": "Stripe webhook, verified by an HMAC over the raw body (STRIPE_WEBHOOK_SECRET), then gated again by the dispatch token inside every ledger function",
   "/api/waitlist": "server-to-server token (server_call_ok)",
+  // GrovShot V2 continuing an order on its own: POST only, an HMAC over the
+  // run id (server secret — no browser, link or prefetch can start one) AND
+  // the customer's own session token, verified with auth.getUser(token)
+  // (401 without it); the driver refuses a run that is not this user's.
+  "/api/grovshot/runs/[id]/drive": "server HMAC over the run id (x-grovshot-chain) + the customer's bearer session, checked with auth.getUser(token)",
 };
 
 function routeFiles(dir: string, out: string[] = []): string[] {
