@@ -6,7 +6,7 @@ import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
-import { readGrovshotTestAction, seedSpecDraftsAction, startGrovshotTestAction } from "@/app/actions/grovshot-v2-admin";
+import { seedSpecDraftsAction } from "@/app/actions/grovshot-v2-admin";
 import type { V2RunView } from "@/lib/server/grovshot-v2/admin";
 import { GROVSHOT_V2_KEYS } from "@/lib/grovshot-v2/stages";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,21 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
  * versions, never charged) and one run's diagnostics. No prompt body ever
  * reaches this file — only versions, codes, verdicts, timings and costs.
  */
+
+/** „Test silnika” goes through the admin-only route (app/api/admin/grovshot-v2/test). */
+type TestReply = { ok: boolean; error?: string; blockers?: string[]; runId?: string; run?: V2RunView };
+async function testApi(init?: { body: unknown } | { run: string }): Promise<TestReply> {
+  try {
+    const res = init && "run" in init
+      ? await fetch(`/api/admin/grovshot-v2/test?run=${encodeURIComponent(init.run)}`, { cache: "no-store" })
+      : await fetch("/api/admin/grovshot-v2/test", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(init?.body ?? {}),
+        });
+    return (await res.json()) as TestReply;
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
 
 const errText = (t: ReturnType<typeof useI18n>["t"], code: string | undefined) => {
   const key = `aicc.gsv2.err.${code ?? "generic"}`;
@@ -79,7 +94,7 @@ export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId }: {
     if (!runId) return;
     let stop = false;
     const tick = async () => {
-      const res = await readGrovshotTestAction(runId);
+      const res = await testApi({ run: runId });
       if (stop) return;
       if (res.ok && res.run) {
         setRun(res.run);
@@ -110,9 +125,9 @@ export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId }: {
 
   function startTest() {
     start(async () => {
-      const res = await startGrovshotTestAction({
+      const res = await testApi({ body: {
         versions: chosen, photos: photos.map((p) => p.path), shots, aspectRatio: ratio, resolution, description,
-      });
+      } });
       if (res.ok && res.runId) { setRun(null); setRunId(res.runId); return; }
       toast.error(`${errText(t, res.error)}${res.blockers?.length ? ` (${res.blockers.join(", ")})` : ""}`);
     });
