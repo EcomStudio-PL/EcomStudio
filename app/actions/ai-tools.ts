@@ -10,10 +10,18 @@ import {
   ENGINE_MODES, MODEL_ASSIGNMENT_RUNTIME, TOOL_ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
 } from "@/lib/services/ai-tools";
 import { TOOL_VARIABLES, malformedPlaceholders, parsePlaceholders } from "@/lib/ai/prompt-variables";
+import { isGrovshotV2Key } from "@/lib/grovshot-v2/stages";
+import { grovshotTemplateProblems } from "@/lib/grovshot-v2/gate";
+
+/** Tool keys with a versioned prompt: the tools, plus the stages of the
+ *  GrovShot Lifestyle Engine V2 (which are not tools of their own). */
+const isPromptKey = (key: string): boolean => isAiToolKey(key) || isGrovshotV2Key(key);
 
 /** Placeholders a tool cannot resolve. Publishing one would make every run
  *  of the tool stop at the fail-safe, so publishing is refused instead. */
 function unresolvable(toolKey: string, body: string): string[] {
+  // V2 stages: their own gate (layout, required variables, the config JSON).
+  if (isGrovshotV2Key(toolKey)) return grovshotTemplateProblems(toolKey, body);
   const known = new Set((TOOL_VARIABLES[toolKey] ?? []).map((d) => d.key));
   const names = parsePlaceholders(body).map((p) => p.name);
   const bad = [...new Set(names.filter((n) => !known.has(n)))];
@@ -84,7 +92,8 @@ async function requireAdmin() {
 
 const refresh = (toolKey: string) => {
   revalidatePath("/admin/ai");
-  revalidatePath(`/admin/ai/${toolKey}`);
+  // A V2 stage is edited on the GrovShot page (its "Silnik V2" tab).
+  revalidatePath(`/admin/ai/${isGrovshotV2Key(toolKey) ? "prompts" : toolKey}`);
 };
 
 /* ── engine configuration ─────────────────────────────────────────────────*/
@@ -284,7 +293,7 @@ export async function savePromptAction(input: {
 }): Promise<Result & { version?: number }> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    if (!isAiToolKey(input.toolKey)) return { ok: false, error: "unknown_tool" };
+    if (!isPromptKey(input.toolKey)) return { ok: false, error: "unknown_tool" };
     const body = input.body.trim();
     if (!body) return { ok: false, error: "empty_body" };
     if (Array.from(body).length > PROMPT_MAX) return { ok: false, error: "too_long" };

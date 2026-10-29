@@ -43,6 +43,9 @@ export type VariableDef = {
    *  trusted slot is inserted without a DATA fence, so it only ever takes
    *  values from a closed set (a ratio, a size, tak/nie…). */
   allow?: RegExp;
+  /** Keep the characters exactly (no compatibility folding: ™ stays ™).
+   *  Controls, invisible characters and our markers are still removed. */
+  exact?: boolean;
 };
 
 export const DATA_OPEN = "<<<DANE_KLIENTA";
@@ -76,6 +79,76 @@ const stepVars = (n: number): VariableDef[] =>
     key: `step${i + 1}`, source: "workflow" as const, render: "block" as const, max: 4000,
     sample: `(wynik kroku ${i + 1})`,
   }));
+
+/* GrovShot Lifestyle Engine V2 (lib/grovshot-v2): one template per stage.
+ * Customer text and model output are untrusted blocks and may stand only in
+ * a stage's USER section (lib/grovshot-v2/stages.ts); config text (recipes,
+ * footers, labels, the negative base) is admin text; numbers and closed
+ * values are trusted with an anchored allow-list. Samples are neutral
+ * placeholders — this registry ships to the admin's browser. */
+const gs = (key: string, source: VariableSource, render: VariableDef["render"], max: number, sample: string, extra: Partial<VariableDef> = {}): VariableDef =>
+  ({ key, source, render, max, sample, ...extra });
+const GS = {
+  photo_count: gs("photo_count", "system", "trusted", 2, "4", { allow: /^(10|[1-9])$/ }),
+  shot_count: gs("shot_count", "system", "trusted", 2, "5", { allow: /^(10|[1-9])$/ }),
+  is_hero: gs("is_hero", "system", "trusted", 3, "nie", { allow: /^(tak|nie)$/ }),
+  dims_estimated: gs("dims_estimated", "system", "trusted", 3, "nie", { allow: /^(tak|nie)$/ }),
+  visible_units: gs("visible_units", "ai", "trusted", 2, "3", { allow: /^\d{1,2}$/ }),
+  shot_angle_deg: gs("shot_angle_deg", "ai", "trusted", 3, "15", { allow: /^-?\d{1,2}$/ }),
+  shot_lens_mm: gs("shot_lens_mm", "ai", "trusted", 3, "70", { allow: /^\d{2,3}$/ }),
+  allegro_description: gs("allegro_description", "customer", "block", 20000, "(opis produktu wklejony przez sprzedawcę)"),
+  customer_dimensions: gs("customer_dimensions", "customer", "inline", 200, "(wymiary podane przez klienta)"),
+  user_shot_plan: gs("user_shot_plan", "customer", "block", 6000, "[{\"row\":1,\"text\":\"…\",\"photo\":2,\"keep_framing\":false}]"),
+  validation_summary: gs("validation_summary", "ai", "block", 4000, "[{\"photo\":1,\"status\":\"ok\",\"state\":\"…\",\"angle\":\"…\",\"reasons\":[]}]"),
+  product_card: gs("product_card", "ai", "block", 16000, "{\"name\":\"…\",\"construction\":[\"…\"]}"),
+  photo_catalog: gs("photo_catalog", "ai", "block", 3000, "[{\"photo\":1,\"role\":\"product\",\"state\":\"…\",\"whole\":true}]"),
+  shot_spec: gs("shot_spec", "ai", "block", 6000, "{\"frame_type\":\"hero\",\"product_state\":\"…\"}"),
+  plan_feedback: gs("plan_feedback", "system", "block", 3000, "[{\"code\":\"frame_repeat\",\"frame\":\"hero\",\"count\":3}]"),
+  people_targets: gs("people_targets", "system", "block", 400, "{\"person\":[1,1],\"hands\":[1,1]}"),
+  style_recipes: gs("style_recipes", "system", "block", 8000, "[{\"id\":\"…\",\"name\":\"…\",\"categories\":[\"…\"]}]"),
+  style_recipe: gs("style_recipe", "system", "block", 6000, "{\"id\":\"…\",\"genre\":\"…\",\"light\":\"…\"}"),
+  shared_rules: gs("shared_rules", "system", "block", 6000, "(zasady wspólne z konfiguracji)"),
+  banned_cliches: gs("banned_cliches", "system", "inline", 2000, "(zakazane klisze z konfiguracji)"),
+  frame_types: gs("frame_types", "system", "inline", 300, "hero, wide_environment, medium, tight_closeup, in_hand, top_down"),
+  qc_rules: gs("qc_rules", "system", "block", 10000, "[{\"id\":\"…\",\"level\":\"reject_always\",\"label\":\"…\"}]"),
+  style_genre: gs("style_genre", "system", "block", 600, "(hasło gatunku z przepisu)"),
+  style_light: gs("style_light", "system", "block", 1500, "(światło z przepisu)"),
+  style_scenery: gs("style_scenery", "system", "block", 1500, "(scenografia z przepisu)"),
+  style_effects: gs("style_effects", "system", "block", 1500, "(efekty z przepisu)"),
+  style_product_rules: gs("style_product_rules", "system", "block", 1500, "(zasady produktu z przepisu)"),
+  style_forbidden: gs("style_forbidden", "system", "block", 3000, "(zakazy z przepisu); (zakazane klisze)"),
+  quality_footer: gs("quality_footer", "system", "block", 600, "(stopka jakości z konfiguracji)"),
+  color_guard: gs("color_guard", "system", "block", 400, "(zdanie chroniące kolor pastelowy z konfiguracji)"),
+  shot_frame_type: gs("shot_frame_type", "system", "inline", 120, "(nazwa typu kadru z konfiguracji)"),
+  shot_mode: gs("shot_mode", "system", "inline", 120, "(nazwa trybu z konfiguracji)"),
+  shot_negative: gs("shot_negative", "ai", "block", 4000, "(baza negative z konfiguracji), (ryzyka z karty)"),
+  reference_map: gs("reference_map", "ai", "block", 1500, "1: produkt · zamknięty · przód · całość; 2: …"),
+  product_name: gs("product_name", "ai", "inline", 200, "(nazwa produktu z karty)"),
+  product_variant: gs("product_variant", "ai", "inline", 200, "(wariant z karty)"),
+  product_construction: gs("product_construction", "ai", "block", 1500, "(budowa z karty)"),
+  product_counts: gs("product_counts", "ai", "block", 600, "(element): (liczba)"),
+  product_colors: gs("product_colors", "ai", "inline", 400, "(kolory z karty)"),
+  product_materials: gs("product_materials", "ai", "inline", 400, "(materiały z karty)"),
+  // Inscriptions are copied character for character (™, ®, ² stay as they are).
+  product_texts: gs("product_texts", "ai", "inline", 400, "(napisy z karty)", { exact: true }),
+  product_not: gs("product_not", "ai", "inline", 400, "(czym produkt nie jest)"),
+  reference_additions: gs("reference_additions", "ai", "inline", 400, "(dodatki z referencji, których nie kopiujemy)"),
+  dims_cm: gs("dims_cm", "ai", "inline", 60, "110 × 30 × 120"),
+  dims_in: gs("dims_in", "ai", "inline", 60, "43,3 × 11,8 × 47,2"),
+  dims_text: gs("dims_text", "ai", "inline", 200, "(wymiary słowami z karty)"),
+  proportion: gs("proportion", "ai", "block", 300, "(proporcja z karty)"),
+  scale_anchors: gs("scale_anchors", "ai", "block", 800, "(odniesienia skali z karty)"),
+  shot_state: gs("shot_state", "ai", "inline", 200, "(stan produktu w ujęciu)"),
+  shot_grip: gs("shot_grip", "ai", "block", 600, "(chwyt z planu)"),
+  shot_moment: gs("shot_moment", "ai", "block", 800, "(moment z planu)"),
+  shot_motion: gs("shot_motion", "ai", "block", 400, "(element ruchu z planu)"),
+  shot_height: gs("shot_height", "ai", "inline", 120, "(wysokość kamery z planu)"),
+  shot_distance: gs("shot_distance", "ai", "inline", 120, "(odległość z planu)"),
+  shot_placement: gs("shot_placement", "ai", "block", 400, "(położenie elementów w kadrze z planu)"),
+  shot_person: gs("shot_person", "ai", "block", 600, "(postać z planu)"),
+  shot_scenery: gs("shot_scenery", "ai", "block", 1500, "(scenografia z planu)"),
+  shot_correction: gs("shot_correction", "ai", "block", 800, "(poprawka z kontroli jakości)"),
+} satisfies Record<string, VariableDef>;
 
 const IMAGE_EDIT_COMMON: VariableDef[] = [
   V.tool_name, V.aspect_ratio, V.resolution, V.image_count, V.fidelity_rules,
@@ -119,6 +192,44 @@ export const TOOL_VARIABLES: Record<string, VariableDef[]> = {
   // placed, so the published text IS the request text (the publish gate
   // refuses any {{…}}).
   ecommerce_thumbnail: [],
+  // GrovShot Lifestyle Engine V2 — one registry per stage (lib/grovshot-v2).
+  grovshot_v2_validate: [GS.photo_count, V.session_type],
+  grovshot_v2_card: [GS.photo_count, GS.validation_summary, GS.allegro_description, GS.customer_dimensions, GS.style_recipes, V.session_type],
+  grovshot_v2_plan: [
+    GS.shot_count, GS.product_card, GS.photo_catalog, GS.style_recipe, GS.shared_rules, GS.banned_cliches,
+    GS.frame_types, GS.people_targets, GS.user_shot_plan, GS.plan_feedback, V.aspect_ratio, V.session_type,
+  ],
+  grovshot_v2_shot: [
+    GS.style_genre, GS.style_light, GS.style_scenery, GS.style_effects, GS.style_product_rules, GS.style_forbidden,
+    GS.shared_rules, GS.product_name, GS.product_variant, GS.product_construction, GS.product_counts, GS.visible_units,
+    GS.product_colors, GS.color_guard, GS.product_materials, GS.product_texts, GS.product_not, GS.reference_additions,
+    GS.reference_map, GS.dims_cm, GS.dims_in, GS.dims_text, GS.dims_estimated, GS.proportion, GS.scale_anchors,
+    GS.shot_state, GS.shot_grip, GS.shot_moment, GS.shot_motion, GS.shot_frame_type, GS.shot_mode, GS.shot_angle_deg,
+    GS.shot_height, GS.shot_distance, GS.shot_lens_mm, GS.shot_placement, GS.shot_person, GS.shot_scenery,
+    GS.shot_correction, GS.quality_footer, GS.shot_negative, V.aspect_ratio, V.resolution, V.fidelity_rules,
+  ],
+  grovshot_v2_qc: [GS.reference_map, GS.product_card, GS.shot_spec, GS.is_hero, GS.qc_rules],
+  // The engine config is a JSON body: no placeholder of any kind.
+  grovshot_v2_config: [],
+};
+
+/** One anchor variable per block of the shot prompt, in the spec's fixed
+ *  order (Etap 3: KIERUNEK, PRODUKT, SKALA, STAN/CHWYT, MOMENT, KADR, POSTAĆ,
+ *  SCENOGRAFIA, STOPKA, NEGATIVE PROMPT). The publish gate checks the order. */
+export const GROVSHOT_V2_SHOT_BLOCKS = [
+  "style_genre", "product_name", "dims_estimated", "shot_state", "shot_moment",
+  "shot_frame_type", "shot_person", "shot_scenery", "quality_footer", "shot_negative",
+] as const;
+
+/** Placeholders a V2 stage template must place, or the stage cannot do its
+ *  job (the shot prompt names the photos in send order and always ends with
+ *  the footer and the negative prompt — spec, Etap 3). */
+export const GROVSHOT_V2_REQUIRED: Record<string, string[]> = {
+  grovshot_v2_validate: ["photo_count"],
+  grovshot_v2_card: ["photo_count", "allegro_description", "validation_summary"],
+  grovshot_v2_plan: ["shot_count", "product_card", "photo_catalog"],
+  grovshot_v2_shot: ["reference_map", ...GROVSHOT_V2_SHOT_BLOCKS],
+  grovshot_v2_qc: ["reference_map", "qc_rules"],
 };
 
 /** Variables available inside a workflow step at `position` (1-based). */
@@ -186,11 +297,20 @@ function stripControls(value: string): string {
 }
 
 /** Make an untrusted value safe to place inside an admin prompt. */
-export function sanitizeValue(value: string, def: Pick<VariableDef, "render" | "max">): string {
+/** An exact value keeps its characters (™, ®, accents) — only the fullwidth
+ *  and small-form ASCII look-alikes NFKC would fold are folded, so a marker
+ *  or a placeholder cannot be forged from them either. */
+function foldDelimiters(value: string): string {
+  return value
+    .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[\uFE5B\uFE5C\uFE64\uFE65]/g, (c) => ({ "\uFE5B": "{", "\uFE5C": "}", "\uFE64": "<", "\uFE65": ">" })[c] ?? c);
+}
+
+export function sanitizeValue(value: string, def: Pick<VariableDef, "render" | "max" | "exact">): string {
   // Fold look-alikes first (fullwidth brackets → ASCII) and drop invisible
   // format characters (zero-width space/joiners, BOM), so a marker cannot be
   // smuggled in a form the model reads but the checks below do not.
-  let v = stripControls(value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").replace(/\u{10FFFD}/gu, "");
+  let v = stripControls(def.exact ? foldDelimiters(value) : value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").replace(/\u{10FFFD}/gu, "");
   // Our delimiters and the placeholder grammar can never be forged from data.
   // Removal is repeated until nothing changes: a single pass could itself
   // assemble a new marker out of the pieces around a removed one.

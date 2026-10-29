@@ -826,9 +826,12 @@ check("…the Inteligentny prompt wiring is all present (a vanished piece is not
 check("the generator workspace has exactly ONE /home receiver (and its import)",
   ws.split(RECEIVER).length === 2 && ws.split("useHomeHandoff(").length === 2 && ws.split(RECEIVER_IMPORT).length === 2);
 // Re-pinned by Generator UX V3 (was 6937614c… with the earlier tasks' pieces
-// taken out): the rewrite described above.
+// taken out): the rewrite described above. Re-pinned by GrovShot V2 (was
+// 42e5e976…): the Allegro description / dimensions fields, the engine notes
+// and the V2 order dispatch — shown only when the server says the order goes
+// to V2 (ManagedModeData.engineV2); every V1 path is unchanged.
 check("the generator workspace differs only by the handoff receiver (and the Inteligentny prompt wiring, and the Public Tools V1 session)",
-  sha(ws.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "42e5e976582c1d0056638953c7322d2da0fec5f7292e33bd9a5b011df201ba1d");
+  sha(ws.replace(RECEIVER_IMPORT, "").replace(RECEIVER, "")) === "8f53d691d5e0b012917cedad0680d0d1d3c1bcdb09921dbbb7fef035c9ed248a");
 check("…which feeds the screen's own upload and starts nothing", /useHomeHandoff\(\(file\) => \{ void upload\(\[file\], "refs"\); \}\)/.test(RECEIVER)
   && !/generate\(|fetch\(/.test(RECEIVER));
 check("/home has no generation path: no AI route, no provider, no prompt",

@@ -119,8 +119,18 @@ export function customPhotoBudget(
 
 /* ── the draft ─────────────────────────────────────────────────────────── */
 
+/** GrovShot V2 (lifestyle): the customer's dimensions, as typed. */
+export type V2Dims = { width: string; depth: string; height: string; unit: "cm" | "mm" | "m" | "in" };
+
+/** The Allegro description is taken whole (the server's own cap). */
+export const V2_DESCRIPTION_MAX = 20_000;
+
 export type GrovshotSettings = {
   sessionType: "advertising" | "lifestyle";
+  /** GrovShot V2: "Opis produktu z Allegro" — kept with the draft. */
+  description?: string;
+  /** GrovShot V2: "Wymiary produktu" — optional. */
+  dims?: V2Dims | null;
   choices: Record<string, string>;
   modelId: string;
   ratio: string;
@@ -150,6 +160,15 @@ export type StudioDraft = {
 
 const str = (v: unknown, max = 200): string | undefined => (typeof v === "string" ? v.slice(0, max) : undefined);
 const int = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : undefined);
+
+function readDims(raw: unknown): V2Dims | null | undefined {
+  if (raw === null) return null;
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const unit = o.unit === "mm" || o.unit === "m" || o.unit === "in" ? o.unit : "cm";
+  const v = (x: unknown) => (typeof x === "string" ? x.replace(/[^0-9.,]/g, "").slice(0, 8) : "");
+  return { width: v(o.width), depth: v(o.depth), height: v(o.height), unit };
+}
 
 function readRows(raw: unknown): PlanRow[] | undefined {
   if (!Array.isArray(raw)) return undefined;
@@ -190,6 +209,8 @@ export function readStudioDraft(
         .filter(([, v]) => typeof v === "string").map(([k, v]) => [k, v as string]))
       : defaults.grovshot.choices,
     plan: rows ?? defaults.grovshot.plan,
+    description: str(src.description, V2_DESCRIPTION_MAX) ?? defaults.grovshot.description,
+    dims: readDims(src.dims) ?? defaults.grovshot.dims,
   });
   const stworzFrom = (src: Record<string, unknown>): StworzSettings => ({
     ...defaults.stworz,

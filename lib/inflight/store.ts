@@ -26,7 +26,7 @@ import type {
  * repeats exactly that and never reads the panel's current settings.
  */
 
-export type RetryEndpoint = "/api/generate" | "/api/retouch" | "/api/fashion" | "/api/concepts/generate" | "/api/thumbnail";
+export type RetryEndpoint = "/api/generate" | "/api/retouch" | "/api/fashion" | "/api/concepts/generate" | "/api/thumbnail" | "/api/grovshot/runs";
 
 export type RetrySnapshot = {
   endpoint: RetryEndpoint;
@@ -50,6 +50,8 @@ export type InflightTile = {
   status: "queued" | "running";
   stage: InflightStage | null;
   step: { index: number; count: number } | null;
+  /** GrovShot V2: shots finished of shots planned (server fact). */
+  shots?: { done: number; total: number } | null;
   startedAt: string;
   expected: number;
   ratio: string | null;
@@ -142,7 +144,7 @@ function restore() {
 function fromEntry(e: InflightEntry, prev: InflightTile | undefined): InflightTile {
   return {
     id: e.id, kind: e.kind, tool: e.tool, operation: e.operation, status: e.status,
-    stage: e.stage, step: e.step, startedAt: e.startedAt, expected: e.expected, ratio: e.ratio ?? prev?.ratio ?? null,
+    stage: e.stage, step: e.step, shots: e.shots ?? null, startedAt: e.startedAt, expected: e.expected, ratio: e.ratio ?? prev?.ratio ?? null,
     batch: e.batch, estimateMs: e.estimateMs, cancellable: e.cancellable,
     preview: prev?.preview ?? null, snapshot: prev?.snapshot ?? null, resolved: null,
     addedAt: prev?.addedAt ?? Date.now(), resolvedAt: null,
@@ -362,6 +364,15 @@ export async function submitTracked(input: {
     // result is in the gallery after that.
     void awaitEngineRun(json.runId);
     return { ok: true, id: json.runId, kind: "run", credits: json.credits ?? 0, workflow: true };
+  }
+  if (json.ok && json.runId && input.snapshot.endpoint === "/api/grovshot/runs") {
+    // GrovShot V2: one order, analysed and planned before anything is
+    // charged — each shot is charged when it is delivered.
+    adoptAccepted({
+      id: json.runId, kind: "run", tool: input.tool, operation: input.operation, expected: input.expected, ratio: input.ratio,
+      preview: input.preview, snapshot: input.snapshot,
+    });
+    return { ok: true, id: json.runId, kind: "run", credits: 0 };
   }
   if (json.ok && json.runId && input.snapshot.endpoint === "/api/thumbnail") {
     adoptAccepted({

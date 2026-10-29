@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { toast } from "@/lib/notify";
 import { generationTitle, toolName } from "@/lib/notifications/catalog";
 import { cancelTile, dismissTile, retryTile, useInflight, type InflightTile as Tile } from "@/lib/inflight/store";
+import { GROVSHOT_V2_STOP_CODES } from "@/lib/grovshot-v2/stages";
 import { estimateParts, formatElapsed, isSlow } from "@/lib/inflight/types";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +60,7 @@ export function InflightTileView({ tile, aspect, onSettled, className, style }: 
   const stage = tile.status === "queued"
     ? t("inflight.queued")
     : tile.stage
-      ? `${t(`inflight.stage.${tile.stage}`)}${tile.step ? ` · ${t("inflight.step", { n: tile.step.index, m: tile.step.count })}` : ""}`
+      ? `${t(`inflight.stage.${tile.stage}`)}${tile.step ? ` · ${t("inflight.step", { n: tile.step.index, m: tile.step.count })}` : ""}${tile.shots ? ` · ${t("inflight.shotsDone", { k: tile.shots.done, n: tile.shots.total })}` : ""}`
       : t("inflight.stage.generate");
   const thumb = tile.resolved?.items[0]?.thumbUrl ?? null;
 
@@ -91,9 +92,13 @@ export function InflightTileView({ tile, aspect, onSettled, className, style }: 
     if (!ok) toast.error(t("inflight.cancelFailed"));
   }
 
+  // A GrovShot V2 order that stopped for the customer's input (before any
+  // charge): its own message, and nothing to retry from here.
+  const v2Stop = tile.operation === "grovshot_v2" && GROVSHOT_V2_STOP_CODES.has(tile.resolved?.error ?? "") ? tile.resolved!.error! : null;
   const failedBody = (() => {
     const r = tile.resolved;
     if (!r) return "";
+    if (v2Stop) return t(`gsv2.stop.${v2Stop}`);
     if (r.outcome === "cancelled") return t("inflight.cancelled");
     if (r.refund === "refunded" && r.refundedCredits) return t("notif.v2.failedRefunded", { n: r.refundedCredits });
     if (r.refund === "refunded") return t("inflight.refunded");
@@ -160,7 +165,7 @@ export function InflightTileView({ tile, aspect, onSettled, className, style }: 
                 {tile.resolved?.outcome === "cancelled" ? t("inflight.cancelledTitle") : generationTitle("failed", tile.tool, t)}
               </span>
               <span data-inflight-refund={tile.resolved?.refund} className="line-clamp-3 max-w-[16rem] text-[10.5px] leading-snug text-white/70">{failedBody}</span>
-              {tile.snapshot && tile.resolved?.outcome !== "cancelled" && (
+              {tile.snapshot && tile.resolved?.outcome !== "cancelled" && !v2Stop && (
                 <span className="mt-1 flex flex-wrap items-center justify-center gap-1">
                   <button type="button" onClick={() => setConfirming(true)} disabled={busy} data-inflight-retry
                     className="inline-flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-[11px] font-semibold text-[#111] transition-colors hover:bg-white">

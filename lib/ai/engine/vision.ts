@@ -64,6 +64,12 @@ export type VisionRequest = {
   user: string;
   /** Gemini-flavoured schema (OpenAPI 3 subset), converted per backend. */
   schema: Record<string, unknown>;
+  /** Per-request timeout (default 120 s). A caller with a deadline of its
+   *  own — GrovShot V2 inside one invocation — passes what still fits. */
+  timeoutMs?: number;
+  /** Requests per model id for transient failures (default 3: the first
+   *  try plus two retries). 1 = no same-model retry. */
+  maxAttemptsPerModel?: number;
 };
 
 /** What actually happened, for internal logging — never shown to customers. */
@@ -151,7 +157,8 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
           provider: backend.provider, model, ok: false, durationMs: Date.now() - started,
           error: safe || "analysis_error", ...usage,
         });
-        if (TRANSIENT.has(safe) && attempt < RETRY_DELAYS_MS.length) {
+        const retries = Math.min(RETRY_DELAYS_MS.length, Math.max(0, (req.maxAttemptsPerModel ?? RETRY_DELAYS_MS.length + 1) - 1));
+        if (TRANSIENT.has(safe) && attempt < retries) {
           await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
           continue;
         }
@@ -167,6 +174,11 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
     throw new ProviderError("analysis_unavailable", true);
   }
   throw lastError;
+}
+
+/** The request's own timeout: the caller's, within 5 s … 120 s. */
+function requestTimeout(req: VisionRequest): number {
+  return req.timeoutMs === undefined ? 120_000 : Math.max(5_000, Math.min(120_000, Math.round(req.timeoutMs)));
 }
 
 function meter(backend: VisionBackend, attempt: VisionAttempt): void {
@@ -235,7 +247,7 @@ async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: 
         maxOutputTokens: 16384,
       },
     }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(requestTimeout(req)),
   }).catch((e) => {
     throw new ProviderError(e?.name === "TimeoutError" ? "analysis_timeout" : "analysis_unreachable", true);
   });
@@ -259,6 +271,18 @@ async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: 
 }
 
 /**
+ * The system message OpenAI receives: the caller's system text, then the
+ * output contract (the JSON schema). Exported so a caller that records what
+ * it sent (GrovShot V2's stage trace) records exactly this text.
+ */
+export function openAiSystemText(req: Pick<VisionRequest, "system" | "schema">): string {
+  return `${req.system}
+
+Reply with a single JSON object and nothing else. It must match this schema exactly (types are given in the OpenAPI style: OBJECT/ARRAY/STRING/INTEGER/BOOLEAN, and every "required" field must be present):
+${JSON.stringify(req.schema)}`;
+}
+
+/**
  * OpenAI vision fallback: chat completions with inline data-URL images and a
  * JSON-object response. The schema travels in the system message because it is
  * expressed in Gemini's dialect; every consumer of this layer already
@@ -273,10 +297,7 @@ async function callOpenAI<T>(cred: VisionCredential, req: VisionRequest, model: 
     })),
     { type: "text", text: req.user },
   ];
-  const system = `${req.system}
-
-Reply with a single JSON object and nothing else. It must match this schema exactly (types are given in the OpenAPI style: OBJECT/ARRAY/STRING/INTEGER/BOOLEAN, and every "required" field must be present):
-${JSON.stringify(req.schema)}`;
+  const system = openAiSystemText(req);
 
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
@@ -293,7 +314,7 @@ ${JSON.stringify(req.schema)}`;
       // deliberation — default effort has taken 100s+ on a single scenes call.
       ...(model.startsWith("gpt-5") ? { reasoning_effort: "low" } : {}),
     }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(requestTimeout(req)),
   }).catch((e) => {
     throw new ProviderError(e?.name === "TimeoutError" ? "analysis_timeout" : "analysis_unreachable", true);
   });

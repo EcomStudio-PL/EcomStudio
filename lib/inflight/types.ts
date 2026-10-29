@@ -11,8 +11,14 @@ import type { GalleryItem } from "@/lib/server/gallery";
 
 export type InflightKind = "job" | "run";
 
-/** The REAL step a run is on, never a timer's guess. */
-export type InflightStage = "generate" | "retouch" | "compose" | "finish";
+/** The REAL step a run is on, never a timer's guess. GrovShot V2 orders
+ *  report the six stages of their pipeline (Analizowanie produktu …
+ *  Przygotowywanie wyników). */
+export type InflightStage =
+  | "generate" | "retouch" | "compose" | "finish"
+  | "analyze" | "plan" | "scenes" | "images" | "qc" | "results";
+
+export const GROVSHOT_V2_STAGES: readonly InflightStage[] = ["analyze", "plan", "scenes", "images", "qc", "results"];
 
 export type InflightEntry = {
   /** The job id, or the Miniaturka run id. */
@@ -26,6 +32,9 @@ export type InflightEntry = {
   stage: InflightStage | null;
   /** "etap 2/3" — only for a multi-step run that reports its step. */
   step: { index: number; count: number } | null;
+  /** GrovShot V2: shots finished (delivered or not) of the shots planned — a
+   *  server fact, not a percentage. */
+  shots?: { done: number; total: number } | null;
   /** When the SERVER started it — the timer counts from here, not from a click. */
   startedAt: string;
   /** Images this tile will become. */

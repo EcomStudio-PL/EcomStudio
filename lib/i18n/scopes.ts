@@ -78,6 +78,7 @@ const app = [
   "generator",
   "genv3",
   "greet",
+  "gsv2",
   "history",
   "home2",
   "inflight",

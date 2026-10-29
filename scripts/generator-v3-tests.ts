@@ -190,8 +190,10 @@ section("F. The wiring");
     && !/aspect_ratio|image_size|response_format/.test(retouchBody));
   check("F6 the old mode switch (two pages) is gone", (() => { try { read("components/generator/mode-switch.tsx"); return false; } catch { return true; } })());
   const frame = read("components/tool-frame/frame.tsx");
+  // Three acceptances since GrovShot V2: Stwórz zdjęcie, GrovShot V1 and the
+  // V2 order (its V1 fallback goes through the V1 call) — each one guarded.
   check("F8 a phone moves to Wyniki on acceptance only if nothing was touched since the click",
-    /if \(since !== undefined && lastInput\.current > since\) return;/.test(frame) && (read("components/genv3/workspace.tsx").match(/frame\.accepted\(clickedAt\)/g) ?? []).length === 2);
+    /if \(since !== undefined && lastInput\.current > since\) return;/.test(frame) && (read("components/genv3/workspace.tsx").match(/frame\.accepted\(clickedAt\)/g) ?? []).length === 3);
   const css = read("app/globals.css");
   check("F7 the phone's app dock steps aside for a tool's own bar", /\.app-shell:has\(\[data-tool-dock\]\) > nav\.fixed/.test(css));
 }

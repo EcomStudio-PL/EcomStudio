@@ -206,7 +206,7 @@ export const MODEL_PRICED: readonly AiToolKey[] = [
   "fashion_change_face",
 ];
 
-export const TOOL_TABS = ["basics", "engine", "workflow", "models", "knowledge", "guide"] as const;
+export const TOOL_TABS = ["basics", "engine", "workflow", "models", "knowledge", "engine_v2", "guide"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 
 /** Links from before the tabs were folded keep landing somewhere sensible:
@@ -229,6 +229,9 @@ export function toolTabs(row: { key: AiToolKey; engineMode: EngineMode; serviceS
   if (modelDriven || row.serviceSlug) tabs.push("models");
   // A stateless tool (Retusz) takes no knowledge/examples — no tab for them.
   if (row.engineMode !== "off" && !STATELESS_TOOL_KEYS.has(row.key)) tabs.push("knowledge");
+  // SILNIK V2 — GrovShot's Lifestyle Engine V2 (its stages, config, tests and
+  // diagnostics), beside V1's engine, which stays as it is.
+  if (row.key === "prompts") tabs.push("engine_v2");
   // SAMOUCZEK, always last: the tool's tutorial and starter gallery. Decided
   // by the tool having a guide (lib/tool-guides.ts), not by AI — presentation
   // only, so it never brings an engine or model control with it.

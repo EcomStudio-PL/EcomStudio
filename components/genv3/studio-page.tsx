@@ -18,6 +18,8 @@ import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
 import type { PublicTool } from "@/lib/public-tools";
 import type { StudioTab } from "@/lib/generator/studio";
 import type { Client } from "@/lib/services/workspace";
+import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
+import { GROVSHOT_V2_MODEL_IDENTIFIER } from "@/lib/grovshot-v2/stages";
 
 /** Must match the editor's own cap (components/genv3/workspace.tsx): a
  *  handed-over prompt that the field would accept must not arrive clipped. */
@@ -47,6 +49,15 @@ async function managedData(supabase: Client) {
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
   return { engineAvailable, models, sessionPreviews };
+}
+
+/** GrovShot Lifestyle Engine V2 for THIS member: the flag (Admin → System),
+ *  not a trial workspace — and the model it runs on, when the panel offers it.
+ *  The start route decides again for every order; this only shapes the panel. */
+async function engineV2For(supabase: Client, userId: string, workspaceId: string, models: GenModel[]): Promise<{ modelId: string } | null> {
+  if (!(await grovshotV2Enabled(supabase, userId, workspaceId))) return null;
+  const { data } = await supabase.from("ai_models").select("id").eq("model_identifier", GROVSHOT_V2_MODEL_IDENTIFIER).eq("active", true).limit(1).maybeSingle();
+  return data?.id && models.some((m) => m.id === data.id) ? { modelId: data.id } : null;
 }
 
 /** Stwórz zdjęcie: the engines a customer may pick, in the panel's shape. */
@@ -124,6 +135,8 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
     readSmartPromptOffer(supabase),
   ]);
 
+  const engineV2 = await engineV2For(supabase, user.id, workspace.id, managed.models);
+
   // Prompt handoff: ?prompt=<generated_prompt uuid> prefills the customer's
   // own saved prompt; any other value is raw prompt text (inspiration gallery
   // "use this"). Engine concepts carry no readable prompt and never open here.
@@ -144,7 +157,7 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
     <ToolScope tool={tool} audience={audience}>
       <div className="workspace workspace-page gen-shell pt-1">
         <GeneratorWorkspace
-          managed={{ ...managed, variant, initialStyle }}
+          managed={{ ...managed, variant, initialStyle, engineV2 }}
           custom={{ models: custom, smartPrompt, initialPrompt }}
           // A handed-over prompt opens the mode it belongs to.
           initialTab={initialPrompt ? "stworz" : initialTab}

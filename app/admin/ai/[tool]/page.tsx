@@ -52,6 +52,7 @@ import { ToolGuideSection } from "@/components/admin/tool-guide-section";
 import { isGuideTool } from "@/lib/tool-guides";
 import { readSmartPromptAdmin } from "@/lib/server/smart-prompt-admin";
 import { SmartPromptAdminCard } from "@/components/admin/smart-prompt-panel";
+import { GrovshotV2Tab } from "@/components/admin/grovshot-v2-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -67,10 +68,10 @@ const WINDOWS = [7, 30, 90] as const;
 
 export default async function ToolWorkspace({ params, searchParams }: {
   params: Promise<{ tool: string }>;
-  searchParams: Promise<{ tab?: string; diag?: string }>;
+  searchParams: Promise<{ tab?: string; diag?: string; stage?: string }>;
 }) {
   const { tool } = await params;
-  const { tab: tabParam, diag } = await searchParams;
+  const { tab: tabParam, diag, stage } = await searchParams;
   if (!isAiToolKey(tool)) notFound();
 
   const supabase = await createClient();
@@ -146,6 +147,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
       {tab === "workflow" && <WorkflowTab supabase={supabase} t={t} row={row} locale={locale} />}
       {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} diag={diag} />}
       {tab === "knowledge" && <KnowledgeTab supabase={supabase} t={t} row={row} locale={locale} />}
+      {tab === "engine_v2" && row.key === "prompts" && <GrovshotV2Tab supabase={supabase} t={t} locale={locale} stage={stage} />}
       {tab === "guide" && isGuideTool(row.key) && <ToolGuideSection tool={row.key} supabase={supabase} />}
     </div>
   );

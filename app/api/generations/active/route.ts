@@ -4,6 +4,7 @@ import { accountBlockedResponse } from "@/lib/server/account-block";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { parseTrack, readInflight } from "@/lib/server/inflight";
 import { driveThumbnailAfterResponse } from "@/lib/server/thumbnail/drive";
+import { driveGrovshotAfterResponse } from "@/lib/server/grovshot-v2/drive";
 
 export const runtime = "nodejs";
 // A Miniaturka run nobody is driving is resumed after the answer (below).
@@ -40,8 +41,17 @@ export async function GET(request: Request) {
   const startedAt = Date.now();
   try {
     const { undrivenRuns, ...snapshot } = await readInflight(supabase, user.id, workspace.id, track);
+    const { undrivenV2, ...body } = snapshot;
     for (const runId of undrivenRuns.slice(0, 3)) driveThumbnailAfterResponse(supabase, user.id, workspace.id, runId, startedAt);
-    return NextResponse.json(snapshot, { headers: { "Cache-Control": "no-store" } });
+    // GrovShot V2: at most ONE order per poll (each one can hold the image
+    // lane for a whole invocation), with this request's fresh session token
+    // so the order can continue on its own after the page is closed.
+    if (undrivenV2.length > 0) {
+      const { data: { session } } = await supabase.auth.getSession();
+      driveGrovshotAfterResponse(supabase, user.id, workspace.id, undrivenV2[0], startedAt,
+        session?.access_token ? { origin: new URL(request.url).origin, token: session.access_token } : null);
+    }
+    return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });
   }

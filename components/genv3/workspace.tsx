@@ -35,6 +35,7 @@ import { useFormatUses, useReorderHint } from "@/components/tool-guide/use-reord
 import { limitText } from "@/components/inflight/inflight-tile";
 import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
 import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
+import { V2Fields, V2Notes, dimsForOrder, useV2Order } from "@/components/genv3/grovshot-v2";
 import {
   SHOTS_DEFAULT, SHOTS_MAX, SHOTS_MIN, STUDIO_MAX_REFS, customPhotoBudget, dropPhoto, parseTab, patchRow,
   planToBriefs, readStudioDraft, remapPhotos,
@@ -56,6 +57,9 @@ export type ManagedModeData = {
   initialStyle?: string;
   initialRatio?: string;
   initialShots?: number;
+  /** GrovShot Lifestyle Engine V2 is on for this member (flag, not a trial):
+   *  a lifestyle order runs on it, on this model (Nano Banana Pro). */
+  engineV2?: { modelId: string } | null;
 };
 
 export type CustomModeData = {
@@ -189,8 +193,19 @@ export function GeneratorWorkspace({
   const formatUses = useFormatUses(toolKey);
   useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
+  // ── GrovShot V2: a lifestyle order on the V2 engine, its model fixed ───
+  const v2Models = useMemo(() => {
+    const id = managedData?.engineV2?.modelId;
+    return id ? managedModels.filter((m) => m.id === id) : [];
+  }, [managedData, managedModels]);
+  const v2 = !!managedData?.engineV2 && grov.sessionType === "lifestyle" && v2Models.length > 0;
+  const [dimsOpen, setDimsOpen] = useState(false);
+  const v2order = useV2Order();
+  // The engine asked for dimensions: the field opens by itself.
+  useEffect(() => { if (v2order.order?.error === "needs_dimensions") setDimsOpen(true); }, [v2order.order?.error]);
+
   // ── the active mode's effective values (snapped to its model) ─────────
-  const models = managed ? managedModels : customModels;
+  const models = managed ? (v2 ? v2Models : managedModels) : customModels;
   const cfg = managed ? grov : stw;
   const model = useMemo(() => models.find((m) => m.id === cfg.modelId) ?? models[0], [models, cfg.modelId]);
   const effRatio = model ? snapRatio(model.ratios, cfg.ratio) : cfg.ratio;
@@ -471,6 +486,51 @@ export function GeneratorWorkspace({
     }
   }
 
+  // ── GROVSHOT V2: one order — analysed and planned before anything is
+  // charged; each shot is charged when it is delivered ──────────────────
+  async function generateV2(acknowledge: boolean) {
+    if (submitting.current) return;
+    submitting.current = true;
+    const clickedAt = performance.now();
+    session.ran();
+    setStageLabel(t("inflight.sending"));
+    let fallback = false;
+    try {
+      const out = await submitTracked({
+        snapshot: frozen({
+          endpoint: "/api/grovshot/runs", credits: total,
+          body: {
+            photos: refs.map((r) => r.path).slice(0, MAX_REFS),
+            shots: effCount, aspectRatio: effRatio, resolution: effResolution, sessionType: "lifestyle",
+            description: (grov.description ?? "").trim(),
+            dimensions: dimsForOrder(grov.dims ?? null),
+            shotBriefs: planToBriefs(grov.plan, effCount, refs),
+            acknowledge, quotedTotal: total,
+          },
+        }),
+        tool: "prompts", operation: "grovshot_v2", expected: effCount, ratio: effRatio, preview: refs[0]?.url ?? null,
+      });
+      if (out.ok) {
+        v2order.track(out.id);
+        gate.flash();
+        frame.accepted(clickedAt);
+      } else if (out.error === "engine_v1") {
+        // The server routes this customer to V1 (flag off, trial…): V1 runs as before.
+        fallback = true;
+      } else if (out.error === "concurrency_limit") {
+        toast.error(limitText(t, locale, out.limit ?? gate.limit?.max ?? 1));
+      } else {
+        toast.error(errText(out.error));
+      }
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setStageLabel("");
+      submitting.current = false;
+    }
+    if (fallback) await generateManaged();
+  }
+
   /** Category workflow decisions ride as one internal style directive. */
   function composeVariantStyle(): string {
     const directives = (variant?.controls ?? [])
@@ -553,8 +613,8 @@ export function GeneratorWorkspace({
     cost: total, balance, session,
   });
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
-  const breakdown = [t(managed ? "bar.shots" : "bar.images", { n: n(effCount), p: n(perShot) })];
-  const generate = () => void session.gate(managed ? generateManaged : generateCustom);
+  const breakdown = [t(managed ? "bar.shots" : "bar.images", { n: n(effCount), p: n(perShot) }), ...(v2 ? [t("gsv2.payDelivered")] : [])];
+  const generate = () => void session.gate(managed ? (v2 ? () => generateV2(false) : generateManaged) : generateCustom);
 
   // ── controls shared by the two modes ──────────────────────────────────
   const delta = useDeltaMeta();
@@ -688,6 +748,7 @@ export function GeneratorWorkspace({
       {restoredBanner}
       <ToolDraftBanner session={session} />
       {photos}
+      {v2 && <V2Notes order={v2order.order} busy={sending} onContinue={() => void session.gate(() => generateV2(true))} />}
       <PanelSection title={t("genv3.scenario")} data="scenario">
         <ScenarioCards value={grov.sessionType} onChange={(v) => setGrov((g) => ({ ...g, sessionType: v }))} previews={managedData?.sessionPreviews} />
         {variant && variant.controls.length > 0 && (
@@ -697,6 +758,11 @@ export function GeneratorWorkspace({
           </div>
         )}
       </PanelSection>
+      {v2 && (
+        <V2Fields description={grov.description ?? ""} onDescription={(v) => setGrov((g) => ({ ...g, description: v }))}
+          dims={grov.dims ?? null} onDims={(d) => setGrov((g) => ({ ...g, dims: d }))}
+          dimsOpen={dimsOpen || !!grov.dims} onDimsOpen={setDimsOpen} />
+      )}
       {formatControl}
       <PanelSection title={t("genv3.countShots")} data="count">
         <Stepper label={t("genv3.countShots")} value={effCount} min={SHOTS_MIN} max={SHOTS_MAX} onChange={(v) => setCfg({ count: v })} data="shots" />
@@ -710,7 +776,7 @@ export function GeneratorWorkspace({
           const d = grovDefaults();
           return { ...g, modelId: d.modelId, resolution: d.resolution, quality: d.quality };
         })}>
-        {modelControl(t("genv3.grovshotModelNote"))}
+        {modelControl(t(v2 ? "gsv2.modelNote" : "genv3.grovshotModelNote"))}
         {resolutionControl}
         {qualityControl}
       </MoreSettings>

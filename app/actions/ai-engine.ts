@@ -21,6 +21,8 @@ import {
 import { parseStepValue, renderValue } from "@/lib/ai/workflow-values";
 import type { Resolution } from "@/lib/ai/types";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { isGrovshotV2Key } from "@/lib/grovshot-v2/stages";
+import { grovshotTemplateProblems } from "@/lib/grovshot-v2/gate";
 import { resolveEngine } from "@/lib/server/ai-engine";
 import { loadWorkflow } from "@/lib/server/engine/workflow-store";
 import { startWorkflowRun } from "@/lib/server/engine/workflow";
@@ -89,10 +91,18 @@ export async function compilePreviewAction(input: {
   const empty = { chars: 0, unknown: [], missing: [], malformed: [], used: [] };
   try {
     await requireAdmin();
-    if (!isAiToolKey(input.toolKey)) return { ok: false, error: "unknown_tool", ...empty };
+    const v2 = isGrovshotV2Key(input.toolKey) ? input.toolKey : null;
+    if (!isAiToolKey(input.toolKey) && !v2) return { ok: false, error: "unknown_tool", ...empty };
     // Characters as the editor counts them (code points), so an emoji is not
     // split in half at the limit.
     const body = Array.from(String(input.body ?? "")).slice(0, PROMPT_MAX_CHARS).join("");
+    // A GrovShot V2 stage: its own publish gate first (layout, required and
+    // untrusted-in-system variables; the config is JSON, parsed instead).
+    if (v2) {
+      const problems = grovshotTemplateProblems(v2, body);
+      if (problems.length > 0) return { ok: false, error: "variable_unknown", chars: body.length, unknown: problems, missing: [], malformed: malformedPlaceholders(body), used: [] };
+      if (v2 === "grovshot_v2_config") return { ok: true, text: body, chars: body.length, unknown: [], missing: [], malformed: [], used: [] };
+    }
     const wf = input.workflow;
     const defs = wf && Array.isArray(wf.steps) && Number.isInteger(wf.index)
       ? stepVariables(input.toolKey, wf.steps.map(normaliseStep), wf.index)

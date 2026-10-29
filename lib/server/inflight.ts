@@ -4,7 +4,7 @@ import { listGalleryItems } from "@/lib/server/gallery";
 import { readThumbnailRun } from "@/lib/server/thumbnail/status";
 import { THUMBNAIL_OPERATION } from "@/lib/thumbnail/config";
 import {
-  JOB_STALE_MS, jobEstimateKey, runEstimateKey, thumbnailStep,
+  GROVSHOT_V2_STAGES, JOB_STALE_MS, jobEstimateKey, runEstimateKey, thumbnailStep,
   type InflightEntry, type InflightKind, type InflightRefund, type InflightResolved, type InflightSnapshot, type InflightStage,
 } from "@/lib/inflight/types";
 
@@ -29,6 +29,15 @@ type RunRow = {
   id: string; status: string; stage: string | null; retouch: boolean; photos: number;
   driving: boolean; cancelling: boolean; created_at: string;
 };
+
+/** A GrovShot V2 order (grovshot_runs_active, 0162). */
+type V2RunRow = {
+  id: string; status: string; stage: string | null; ordered: number | null; planned: number | null;
+  delivered: number; settled: number; ratio: string | null; driving: boolean; created_at: string;
+};
+
+/** What the tile names a V2 order and its gallery. */
+export const GROVSHOT_V2_OPERATION = "grovshot_v2";
 
 const JOB_COLUMNS = "id, status, created_at, started_at, quantity, aspect_ratio, error_class, error_message, settings";
 
@@ -103,10 +112,10 @@ export function parseTrack(raw: string | null): TrackRef[] {
 
 export async function readInflight(
   supabase: Client, userId: string, workspaceId: string, track: TrackRef[],
-): Promise<InflightSnapshot & { undrivenRuns: string[] }> {
+): Promise<InflightSnapshot & { undrivenRuns: string[]; undrivenV2: string[] }> {
   const now = Date.now();
   const since = new Date(now - JOB_STALE_MS).toISOString();
-  const [jobsRes, runsRes, limitRes, walletRes, med] = await Promise.all([
+  const [jobsRes, runsRes, v2Res, limitRes, walletRes, med] = await Promise.all([
     supabase.from("generation_jobs").select(JOB_COLUMNS)
       .eq("workspace_id", workspaceId).eq("user_id", userId)
       .in("status", ["queued", "processing"])
@@ -115,6 +124,7 @@ export async function readInflight(
       .order("created_at", { ascending: true })
       .limit(40),
     supabase.rpc("thumbnail_runs_active", { p_workspace_id: workspaceId }),
+    supabase.rpc("grovshot_runs_active", { p_workspace_id: workspaceId }),
     supabase.rpc("generation_limit_state", { p_workspace_id: workspaceId }),
     supabase.from("credit_wallets").select("balance").eq("workspace_id", workspaceId).maybeSingle(),
     medians(supabase),
@@ -155,6 +165,24 @@ export async function readInflight(
     });
   }
 
+  const v2Runs = Array.isArray(v2Res.data) ? v2Res.data as unknown as V2RunRow[] : [];
+  const undrivenV2 = v2Runs.filter((r) => !r.driving).map((r) => r.id);
+  for (const run of v2Runs) {
+    const stage = GROVSHOT_V2_STAGES.includes(run.stage as InflightStage) ? run.stage as InflightStage : null;
+    const total = Math.max(1, run.planned ?? run.ordered ?? 1);
+    active.push({
+      id: run.id, kind: "run", tool: "prompts", operation: GROVSHOT_V2_OPERATION,
+      status: run.status === "queued" ? "queued" : "running",
+      stage, step: null,
+      shots: stage === "images" || stage === "qc" || stage === "results" ? { done: Math.min(run.settled, total), total } : null,
+      startedAt: run.created_at, expected: Math.max(1, run.ordered ?? 1), ratio: run.ratio,
+      batch: null, request: null, estimateMs: null,
+      // An order is analysed before anything is charged; it is not cancelled
+      // from a tile (the panel's own stop is the V1/V2 shared rule: none).
+      cancellable: false,
+    });
+  }
+
   const activeIds = new Set(active.map((a) => a.id));
   const wanted = track.filter((t) => !activeIds.has(t.id));
   const resolved = (await Promise.all(wanted.map((t) =>
@@ -172,6 +200,7 @@ export async function readInflight(
     balance: typeof walletRes.data?.balance === "number" ? walletRes.data.balance : null,
     serverNow: new Date(now).toISOString(),
     undrivenRuns,
+    undrivenV2,
   };
 }
 
@@ -216,7 +245,55 @@ async function resolveJob(supabase: Client, workspaceId: string, id: string, now
   };
 }
 
+type V2Status = {
+  status: string; error: string | null; ordered: number | null;
+  shots: { shot: number; state: string; reason: string | null; refunded: boolean; job_id: string | null }[];
+};
+
+/** A finished GrovShot V2 order: its delivered shots, and the money truth —
+ *  a shot that was not delivered was never charged, unless its delivery
+ *  failed after the charge (then refunded). */
+async function resolveV2(supabase: Client, workspaceId: string, id: string): Promise<InflightResolved | null | "not_v2"> {
+  const { data, error } = await supabase.rpc("grovshot_run_status", { p_run_id: id });
+  if (error) return null;
+  if (!data) return "not_v2";
+  const run = data as unknown as V2Status;
+  if (run.status === "queued" || run.status === "running") return null;
+  const shots = Array.isArray(run.shots) ? run.shots : [];
+  const jobIds = shots.map((s) => s.job_id).filter((j): j is string => typeof j === "string" && j.length > 0);
+  const page = jobIds.length > 0 ? await listGalleryItems(supabase, workspaceId, { jobIds, limit: 12 }) : { items: [] };
+  const expected = Math.max(1, run.ordered ?? shots.length);
+  const delivered = jobIds.length;
+  const money = await refundOfOrder(supabase, workspaceId, id);
+  return {
+    id, kind: "run", tool: "prompts", operation: GROVSHOT_V2_OPERATION,
+    outcome: delivered === 0 ? "failed" : delivered >= expected ? "done" : "partial",
+    items: page.items, delivered, expected,
+    error: delivered === 0 ? (run.error ?? shots.find((s) => s.reason)?.reason ?? "common_error") : null,
+    refund: money.refund, refundedCredits: money.credits,
+  };
+}
+
+/** The order's money truth from the LEDGER (refundOf's rule, every charge
+ *  of the order): a shot that was not delivered was never charged, unless
+ *  its delivery failed after the charge — then refunded, with its receipt. */
+async function refundOfOrder(supabase: Client, workspaceId: string, runId: string): Promise<{ refund: InflightRefund; credits: number | null }> {
+  const { data, error } = await supabase.from("usage_events")
+    .select("status, credits_charged, refund_tx_id")
+    .eq("workspace_id", workspaceId).eq("metadata->>run_id", runId).eq("metadata->>operation", GROVSHOT_V2_OPERATION)
+    .limit(60);
+  if (error) return { refund: "unknown", credits: null };
+  const rows = data ?? [];
+  if (rows.some((e) => e.status === "pending")) return { refund: "pending", credits: null };
+  const back = rows.filter((e) => e.status === "refunded" && e.refund_tx_id && e.credits_charged > 0);
+  if (back.length > 0) return { refund: "refunded", credits: back.reduce((s, e) => s + e.credits_charged, 0) };
+  if (rows.some((e) => e.status === "refunded" || (e.status === "failed" && e.credits_charged > 0))) return { refund: "unknown", credits: null };
+  return { refund: "not_charged", credits: null };
+}
+
 async function resolveRun(supabase: Client, workspaceId: string, id: string): Promise<InflightResolved | null> {
+  const v2 = await resolveV2(supabase, workspaceId, id);
+  if (v2 !== "not_v2") return v2;
   const run = await readThumbnailRun(supabase, id, { sign: false });
   if (!run || run === "unavailable") return null;
   if (run.status === "queued" || run.status === "running") return null;
