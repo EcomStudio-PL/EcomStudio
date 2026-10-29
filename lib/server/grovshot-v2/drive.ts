@@ -8,7 +8,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import { fetchWithSkewRetry } from "@/lib/supabase/skew-retry";
 import { dispatchToken } from "@/lib/server/server-token";
 import { secretMatches } from "@/lib/server/cron-auth";
-import { HARD_END_MS, INVOCATION_BUDGET_MS, advanceGrovshotRun } from "@/lib/server/grovshot-v2/run";
+import { HARD_END_MS, INVOCATION_BUDGET_MS, advanceGrovshotRun, type AdvanceResult } from "@/lib/server/grovshot-v2/run";
 
 /**
  * GROVBASE SHOT V2 — WHO DRIVES AN ORDER. Nobody has to keep a page open.
@@ -19,10 +19,12 @@ import { HARD_END_MS, INVOCATION_BUDGET_MS, advanceGrovshotRun } from "@/lib/ser
  * request to this deployment's own drive route, carrying the customer's
  * session token (the ledger acts only in the customer's session) and a
  * server-only signature over the run id, so nothing but this server can
- * start a hop. The chain ends when the order is finished, when another
- * driver holds it, or when the session token is about to expire — after
- * which any page the customer opens resumes it (GET /api/generations/active),
- * exactly as before.
+ * start a hop. The invocation that hands over has just released the run
+ * (a short lease the database will not let go below 10 s); the hop waits
+ * that lease out and claims, a few times, instead of giving up on the first
+ * refusal. The chain ends when the order is finished, when another driver
+ * keeps it, or when the session token is about to expire — after which any
+ * page the customer opens resumes it (GET /api/generations/active).
  *
  * The run's lease is the one guarantee: one driver at a time; a paid unit is
  * never executed twice; a unit whose invocation died is recovered from what
@@ -77,15 +79,36 @@ async function hop(runId: string, chain: NonNullable<Chain>): Promise<void> {
   }
 }
 
+/** How long a hop waits for the lease the previous invocation released
+ *  (10 s after a yield, 60 s after "busy"), and how often it asks. */
+export const HOP_CLAIM_WAIT_MS = 12_000;
+export const HOP_CLAIM_TRIES = 6;
+
+/** Advance the run; when the lease is still held (`locked`) and `awaitLease`
+ *  is set, wait it out and claim again a few times. Exported for tests. */
+export async function advanceWhenFree(
+  advance: () => Promise<AdvanceResult>, opts: { awaitLease: boolean; wait: (ms: number) => Promise<void> },
+): Promise<AdvanceResult> {
+  let r = await advance();
+  for (let i = 1; opts.awaitLease && r === "locked" && i < HOP_CLAIM_TRIES; i++) {
+    await opts.wait(HOP_CLAIM_WAIT_MS);
+    r = await advance();
+  }
+  return r;
+}
+
 export function driveGrovshotAfterResponse(
   supabase: Client, userId: string, workspaceId: string, runId: string, requestStartedAt: number, chain: Chain,
+  opts: { awaitLease?: boolean } = {},
 ): void {
   after(async () => {
     try {
-      const r = await advanceGrovshotRun(supabase, userId, workspaceId, runId, {
+      const r = await advanceWhenFree(() => advanceGrovshotRun(supabase, userId, workspaceId, runId, {
         deadlineAt: requestStartedAt + INVOCATION_BUDGET_MS, hardEndAt: requestStartedAt + HARD_END_MS,
-      });
-      if (r === "yield" && chain) await hop(runId, chain);
+      }), { awaitLease: opts.awaitLease === true, wait: (ms) => new Promise((res) => setTimeout(res, ms)) });
+      // Work remains (its time is up, or a unit was momentarily busy): the
+      // next invocation takes over without waiting for a page.
+      if ((r === "yield" || r === "busy") && chain) await hop(runId, chain);
     } catch {
       console.error("[grovshot-v2] drive aborted", runId.slice(0, 8));
     }

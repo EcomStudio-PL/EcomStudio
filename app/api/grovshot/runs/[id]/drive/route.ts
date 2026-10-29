@@ -33,6 +33,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!block || block.blocked) return NextResponse.json({ ok: false, error: "account_blocked" }, { status: 403 });
   const workspace = await getCurrentWorkspaceFresh(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
-  driveGrovshotAfterResponse(supabase, user.id, workspace.id, id, startedAt, { origin: new URL(request.url).origin, token });
+  // A hop: the previous invocation has just released the run — wait its
+  // short lease out rather than give up on the first refusal.
+  driveGrovshotAfterResponse(supabase, user.id, workspace.id, id, startedAt, { origin: new URL(request.url).origin, token }, { awaitLease: true });
   return NextResponse.json({ ok: true }, { status: 202 });
 }

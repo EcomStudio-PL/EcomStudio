@@ -103,7 +103,9 @@ const GS = {
   product_card: gs("product_card", "ai", "block", 16000, "{\"name\":\"…\",\"construction\":[\"…\"]}"),
   photo_catalog: gs("photo_catalog", "ai", "block", 3000, "[{\"photo\":1,\"role\":\"product\",\"state\":\"…\",\"whole\":true}]"),
   shot_spec: gs("shot_spec", "ai", "block", 6000, "{\"frame_type\":\"hero\",\"product_state\":\"…\"}"),
-  plan_feedback: gs("plan_feedback", "system", "block", 3000, "[{\"code\":\"frame_repeat\",\"frame\":\"hero\",\"count\":3}]"),
+  // Its violations quote ids slugged from the card (the model's reading of
+  // the customer's description): untrusted, USER section only.
+  plan_feedback: gs("plan_feedback", "ai", "block", 3000, "[{\"code\":\"frame_repeat\",\"frame\":\"hero\",\"count\":3}]"),
   people_targets: gs("people_targets", "system", "block", 400, "{\"person\":[1,1],\"hands\":[1,1]}"),
   style_recipes: gs("style_recipes", "system", "block", 8000, "[{\"id\":\"…\",\"name\":\"…\",\"categories\":[\"…\"]}]"),
   style_recipe: gs("style_recipe", "system", "block", 6000, "{\"id\":\"…\",\"genre\":\"…\",\"light\":\"…\"}"),

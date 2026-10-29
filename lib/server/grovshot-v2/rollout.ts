@@ -29,20 +29,35 @@ export type V2Economics = {
   customerAllowed: boolean;
 };
 
-/** Is every stage model priced from a published token list? */
-function textModelsPriced(state: EngineState, config: EngineConfig | null): boolean {
-  const priced = (provider: string, model: string | null) =>
-    model !== null && state.tokenPrices.some((p) => p.providerSlug === provider && p.model === model);
+/** Tokens one text/vision stage call is assumed to use for this projection
+ *  (several photos in, a JSON answer out) — stated, conservative. */
+export const TEXT_CALL_TOKENS = { input: 8_000, output: 2_000 } as const;
+
+/**
+ * What one text/vision stage call costs at the PUBLISHED token prices of
+ * every stage model (the dearest of them), never below the config's own
+ * estimate — so an estimate set to 0 cannot open the customer gate. Null
+ * when any stage model has no published price.
+ */
+export function textCallCost(state: EngineState, config: EngineConfig | null): number | null {
   const first = state.textModels[0];
-  if (!first) return false;
-  const stageModels = (["validate", "card", "plan", "qc"] as const).map((k) => config?.models[k] ?? { provider: first.provider, model: first.model });
-  return stageModels.every((m) => priced(m.provider, m.model ?? null));
+  if (!first || !config) return null;
+  let dearest = 0;
+  for (const k of ["validate", "card", "plan", "qc"] as const) {
+    const m = config.models[k] ?? { provider: first.provider, model: first.model };
+    const price = m.model ? state.tokenPrices.find((p) => p.providerSlug === m.provider && p.model === m.model) : undefined;
+    if (!price) return null;
+    const cost = (TEXT_CALL_TOKENS.input * price.inputPerMTok + TEXT_CALL_TOKENS.output * price.outputPerMTok) / 1_000_000;
+    dearest = Math.max(dearest, Math.ceil(cost));
+  }
+  return Math.max(dearest, config.budget.vision_call_usd_micros);
 }
 
 export function economicsFor(state: EngineState, billing: BillingConfig): V2Economics | null {
   if (!state.config || !state.model) return null;
   const config = state.config;
-  const textPriced = textModelsPriced(state, config);
+  const textCall = textCallCost(state, config);
+  const textPriced = textCall !== null;
   const tables: EconTable[] = state.model.resolutions.map((resolution) => {
     const unitCredits = state.model!.pricing[resolution] ?? 0;
     const imageUsdMicros = imageUnitPrice(state, resolution);
@@ -51,7 +66,7 @@ export function economicsFor(state: EngineState, billing: BillingConfig): V2Econ
         shots,
         ...projectOrder({
           shots, unitCredits, imageUsdMicros,
-          textCallUsdMicros: textPriced ? config.budget.vision_call_usd_micros : null,
+          textCallUsdMicros: textCall,
           billing, config,
         }, scenario),
       })));

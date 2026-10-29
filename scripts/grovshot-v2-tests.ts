@@ -39,6 +39,9 @@ import { SPEC_CONFIG, specDraft } from "@/lib/server/grovshot-v2/seed";
 import { startGrovshotRun } from "@/lib/server/grovshot-v2/start";
 import { advanceGrovshotRun, P, type GrovshotDeps } from "@/lib/server/grovshot-v2/run";
 import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
+import { advanceWhenFree, HOP_CLAIM_TRIES, HOP_CLAIM_WAIT_MS } from "@/lib/server/grovshot-v2/drive";
+import { textCallCost } from "@/lib/server/grovshot-v2/rollout";
+import { readEngineState } from "@/lib/server/grovshot-v2/settings";
 import type { StageCall, StageResult } from "@/lib/server/grovshot-v2/stage-call";
 import type { ImageCallInput, ImageCallResult } from "@/lib/server/engine/image-call";
 import { db, freshDb, id, iso, type Row } from "./stubs/thumb-db";
@@ -93,6 +96,10 @@ section("A. THE CONTRACT — seed, gate, prompt engine rules");
   check("a split template: SYSTEM, the marker line, USER", Boolean(split) && card.includes(USER_MARKER));
   const leaked = `${split.system}\n{{allegro_description}}\n${USER_MARKER}\n${split.user}`;
   check("customer text placed in the SYSTEM section is refused", grovshotTemplateProblems("grovshot_v2_card", leaked).some((p) => p.includes("allegro_description")), grovshotTemplateProblems("grovshot_v2_card", leaked));
+  const plan = splitStageTemplate(specDraft("grovshot_v2_plan"))!;
+  const fb = `${plan.system}\n{{plan_feedback?}}\n${USER_MARKER}\n${plan.user}`;
+  check("plan_feedback (ids slugged from the card) is untrusted: refused in the SYSTEM section",
+    grovshotTemplateProblems("grovshot_v2_plan", fb).some((p) => p.includes("plan_feedback")), grovshotTemplateProblems("grovshot_v2_plan", fb));
   const validate = specDraft("grovshot_v2_validate");
   check("Etap 0 never receives the description (not even offered to its template)",
     !(TOOL_VARIABLES.grovshot_v2_validate ?? []).some((d) => d.key === "allegro_description") && !validate.includes("allegro_description"));
@@ -818,6 +825,68 @@ async function partE() {
     await drive(w, r.runId);
     check("E39 a photo replaced after the order started: refused (reference_changed), nothing charged",
       runOf(r.runId).error === "reference_changed" && charges().length === 0 && w.imageCalls.length === 0, runOf(r.runId).error);
+  }
+
+  // ── review fixes ──
+  {
+    // A 2-candidate shot (hands) whose round dies: it counts its worst case
+    // (2 × (1 + re-issue) = 4, capped at 3) — no retry beyond the cap.
+    const oneHands = (p: Product) => ({ shots: [rawPlan(p, 3).shots[1]] });
+    const w = await world({ product: PRODUCTS[1], plan: oneHands, image: (i) => (i === 0 ? "crash" : "ok") });
+    const r = await startOrder(w, { shots: 1, quotedTotal: 7 });
+    if (!r.ok) { check("E40 start", false, r); return; }
+    await drive(w, r.runId);
+    const rounds = stepsOf(r.runId, P.round);
+    check("E40 a lost 2-candidate round counts its worst case: no retry past the 3-request cap, nothing charged",
+      rounds.length === 1 && rounds[0].error_code === "round_lost" && w.imageCalls.length <= CONFIG.limits.max_paid_images_per_shot
+      && charges().length === 0 && runOf(r.runId).status === "failed", { rounds: rounds.length, calls: w.imageCalls.length, status: runOf(r.runId).status });
+  }
+  {
+    const w = await world({ product: PRODUCTS[1] });
+    const r = await startOrder(w);
+    if (!r.ok) { check("E41 start", false, r); return; }
+    tableRows("profiles")[0].blocked = true;
+    await drive(w, r.runId);
+    check("E41 an account blocked before the analysis: closed with no paid analysis, no image, no charge",
+      runOf(r.runId).error === "account_blocked" && w.stageCalls.length === 0 && w.imageCalls.length === 0 && charges().length === 0,
+      { error: runOf(r.runId).error, stage: w.stageCalls.length });
+  }
+  {
+    const w = await world({ product: PRODUCTS[1], qc: (shot) => (shot === 0 ? { product_visible: true, findings: [{ category: "distorted_anatomy", confidence: 0.95, kind: "random" }] } : null) as RawQc }, { balance: 7 });
+    const r = await startOrder(w, { shots: 2, quotedTotal: 14 });
+    if (!r.ok) { check("E42 start", false, r); return; }
+    await drive(w, r.runId);
+    const heroRounds = stepsOf(r.runId, P.round).filter((s) => s.item_index < 5);
+    check("E42 once the credits ran out, no retry round is generated for an order that cannot pay for it",
+      db().wallet.balance >= 0 && charges().filter((e) => e.status === "succeeded").length <= 1 && heroRounds.length <= 2,
+      { balance: db().wallet.balance, heroRounds: heroRounds.length });
+  }
+  {
+    const seen: string[] = [];
+    const seq = ["locked", "locked", "yield"] as const;
+    let k = 0;
+    const waits: number[] = [];
+    const out = await advanceWhenFree(async () => { const v = seq[Math.min(k++, seq.length - 1)]; seen.push(v); return v; },
+      { awaitLease: true, wait: async (ms) => { waits.push(ms); } });
+    check("E43 a hop waits out the lease the previous invocation released and then claims (no stalled chain)",
+      out === "yield" && seen.length === 3 && waits.length === 2 && waits.every((x) => x === HOP_CLAIM_WAIT_MS), { out, seen, waits });
+    let calls = 0;
+    const never = await advanceWhenFree(async () => { calls++; return "locked"; }, { awaitLease: true, wait: async () => undefined });
+    check("E44 …but gives up after a few tries when another driver keeps the run", never === "locked" && calls === HOP_CLAIM_TRIES);
+    let once = 0;
+    await advanceWhenFree(async () => { once++; return "locked"; }, { awaitLease: false, wait: async () => undefined });
+    check("E45 a page's own drive does not wait (the run is someone else's right now)", once === 1);
+  }
+  {
+    await world({ product: PRODUCTS[1] });
+    const zeroEstimate = { ...CONFIG, budget: { ...CONFIG.budget, vision_call_usd_micros: 0 } };
+    gsv2Env().tokenPrices = [{ providerSlug: "google", model: "gemini-2.5-flash", inputPerMTok: 300_000, outputPerMTok: 2_500_000 }];
+    const state = await readEngineState(SUPA);
+    const priced = textCallCost(state, zeroEstimate);
+    gsv2Env().tokenPrices = [];
+    const unpriced = textCallCost(await readEngineState(SUPA), CONFIG);
+    check("E46 the customer gate prices text calls from the published token list (an estimate of 0 cannot open it)",
+      priced !== null && priced > 0 && unpriced === null, { priced, unpriced });
   }
 }
 
