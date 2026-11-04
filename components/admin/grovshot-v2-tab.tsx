@@ -60,7 +60,7 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
             {rc.ready ? t("aicc.gsv2.rcReady") : t("aicc.gsv2.rcNotReady", { n: toDo, of: gating })}
           </Badge>
           {/* One click for the admin's whole launch sequence (drafts → gate → publish → tests). */}
-          <GsV2Autopilot defaultLimitUsd={6} />
+          <GsV2Autopilot defaultLimitUsd={7} />
           <ul className="grid gap-1.5 sm:grid-cols-2" data-gsv2-checks>
             {rc.checks.map((c) => (
               <li key={c.key} className="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-raised px-3 py-2 text-[12.5px]" data-gsv2-check={c.key} data-status={c.status}>
