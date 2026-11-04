@@ -7922,7 +7922,22 @@
     "gsv2.err.knowledge_unpublished": "Keine veröffentlichte Wissensversion — unter Wissen veröffentlichen.",
     "gsv2.err.knowledge_unreadable": "Das Wissen konnte nicht gelesen werden (Server).",
     "providers.textModels": "GrovShot-V2-Stufenmodelle →",
-    "providers.textOnlyNote": "Ein Text-und-Bildverständnis-Anbieter (Claude): liest Fotos und schreibt Text für die GrovShot-V2-Stufen, erzeugt keine Bilder — daher hier kein Bildtest. Das Modell jeder Stufe wird unter GrovShot → Engine V2 gewählt und dort mit einer minimalen Anfrage getestet."
+    "providers.textOnlyNote": "Ein Text-und-Bildverständnis-Anbieter (Claude): liest Fotos und schreibt Text für die GrovShot-V2-Stufen, erzeugt keine Bilder — daher hier kein Bildtest. Das Modell jeder Stufe wird unter GrovShot → Engine V2 gewählt und dort mit einer minimalen Anfrage getestet.",
+    "gsv2.auto.title": "Autokonfiguration (ein Klick)",
+    "gsv2.auto.sub": "Der Server führt nacheinander aus, mit deiner Admin-Sitzung und protokolliert: Entwürfe aus der Spezifikation für Stufen ohne veröffentlichte Version (veröffentlichte bleiben unberührt) → dieselbe Prüfung wie beim Veröffentlichen → Veröffentlichung (Konfiguration zuletzt) → Tests im Limit: A Prompt-Test (veröffentlichte Versionen), B dasselbe mit Opus 5.5 für Karte und Plan (Entwurf zum Vergleich, nie veröffentlicht), C ein voller Test mit 1 Aufnahme und Bildern. Fotos: dein neuestes im Panel hochgeladenes Set. Preise, Margen-Sperre, Flag und Wissen bleiben unverändert.",
+    "gsv2.auto.tests": "Tests nach der Veröffentlichung",
+    "gsv2.auto.testsFull": "Prompt-Tests A + B und voller Test mit 1 Aufnahme (C)",
+    "gsv2.auto.testsPrompts": "Nur Prompt-Tests A + B (ohne Bilder)",
+    "gsv2.auto.testsNone": "Keine Tests (nur Entwürfe und Veröffentlichung)",
+    "gsv2.auto.limit": "API-Ausgabenlimit für die Tests (USD)",
+    "gsv2.auto.confirm": "Ich verstehe, dass die Tests kostenpflichtige API-Aufrufe ausführen (Claude, in Test C auch Nano Banana Pro). Der Server berechnet vor dem Start den ungünstigsten Fall jedes Tests und startet keine Tests über dem Limit von {usd}.",
+    "gsv2.auto.reason": "GrovShot V2 Autokonfiguration: Entwürfe aus der Spezifikation, Veröffentlichungsprüfung, Veröffentlichung und Admin-Tests (im Auftrag des Inhabers).",
+    "gsv2.auto.run": "Autokonfiguration starten",
+    "gsv2.auto.done": "Autokonfiguration erledigt — die Tests laufen im Hintergrund.",
+    "gsv2.auto.runLine": "Test {label} · {mode} · {shots} Aufnahmen · ungünstigster Fall {usd}",
+    "gsv2.err.gate_failed": "Ein Entwurf hat die Veröffentlichungsprüfung nicht bestanden — nichts wurde veröffentlicht.",
+    "gsv2.err.publish_failed": "Veröffentlichung fehlgeschlagen — prüfe den Versionsverlauf.",
+    "gsv2.err.no_photos": "Kein Fotoset für den Test — lade Produktfotos unter „Engine-Test“ hoch."
   },
   "batch": {
     "viewLabel": "Ansicht",

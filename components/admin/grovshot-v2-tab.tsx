@@ -10,7 +10,7 @@ import { readGrovshotAdmin, readStageVersions } from "@/lib/server/grovshot-v2/a
 import { readReadiness } from "@/lib/server/grovshot-v2/readiness";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { formatDate } from "@/lib/utils";
-import { GsV2AnthropicToggle, GsV2RoleModels, GsV2RunCard, GsV2SeedDrafts, GsV2TestPanel } from "@/components/admin/grovshot-v2-client";
+import { GsV2AnthropicToggle, GsV2Autopilot, GsV2RoleModels, GsV2RunCard, GsV2SeedDrafts, GsV2TestPanel } from "@/components/admin/grovshot-v2-client";
 
 /**
  * SILNIK V2 — GrovShot's Lifestyle Engine V2 in the GrovShot tool page:
@@ -59,6 +59,8 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
           <Badge tone={rc.ready ? "success" : "warning"} dot>
             {rc.ready ? t("aicc.gsv2.rcReady") : t("aicc.gsv2.rcNotReady", { n: toDo, of: gating })}
           </Badge>
+          {/* One click for the admin's whole launch sequence (drafts → gate → publish → tests). */}
+          <GsV2Autopilot defaultLimitUsd={6} />
           <ul className="grid gap-1.5 sm:grid-cols-2" data-gsv2-checks>
             {rc.checks.map((c) => (
               <li key={c.key} className="flex min-w-0 items-start justify-between gap-2 rounded-lg bg-raised px-3 py-2 text-[12.5px]" data-gsv2-check={c.key} data-status={c.status}>

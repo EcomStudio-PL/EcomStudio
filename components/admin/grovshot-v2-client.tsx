@@ -172,6 +172,79 @@ export function GsV2AnthropicToggle({ providerId, active }: { providerId: string
   );
 }
 
+/* ── autokonfiguracja ────────────────────────────────────────────────────*/
+
+type AutoStep = { key: string; status: string; detail?: string };
+type AutoRun = { label: string; mode: string; shots: number; worstUsdMicros: number; runId: string | null; error?: string };
+type AutoReply = { ok: boolean; error?: string; steps?: AutoStep[]; runs?: AutoRun[]; photos?: string[] };
+
+/** One click: the spec drafts → the publish gate → publication (config last)
+ *  → the admin tests within the confirmed limit (admin-only route). */
+export function GsV2Autopilot({ defaultLimitUsd }: { defaultLimitUsd: number }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [tests, setTests] = useState<"none" | "prompts" | "prompts_full">("prompts_full");
+  const [limit, setLimit] = useState(String(defaultLimitUsd));
+  const [confirmed, setConfirmed] = useState(false);
+  const [reply, setReply] = useState<AutoReply | null>(null);
+  const paid = tests !== "none";
+  return (
+    <div className="space-y-3 rounded-xl border border-accent/30 bg-accent/5 px-3.5 py-3" data-gsv2-autopilot>
+      <div>
+        <p className="text-[13px] font-semibold">{t("aicc.gsv2.auto.title")}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted">{t("aicc.gsv2.auto.sub")}</p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="min-w-0">
+          <Label htmlFor="gsv2-auto-tests">{t("aicc.gsv2.auto.tests")}</Label>
+          <Select id="gsv2-auto-tests" value={tests} onChange={(e) => { setTests(e.target.value as typeof tests); setConfirmed(false); }}>
+            <option value="prompts_full">{t("aicc.gsv2.auto.testsFull")}</option>
+            <option value="prompts">{t("aicc.gsv2.auto.testsPrompts")}</option>
+            <option value="none">{t("aicc.gsv2.auto.testsNone")}</option>
+          </Select>
+        </div>
+        {paid && (
+          <div className="min-w-0">
+            <Label htmlFor="gsv2-auto-limit">{t("aicc.gsv2.auto.limit")}</Label>
+            <Input id="gsv2-auto-limit" inputMode="decimal" value={limit} onChange={(e) => { setLimit(e.target.value); setConfirmed(false); }} />
+          </div>
+        )}
+      </div>
+      {paid && (
+        <label className="flex items-start gap-2 text-xs leading-relaxed">
+          <input type="checkbox" className="mt-0.5" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} data-gsv2-auto-confirm />
+          <span>{t("aicc.gsv2.auto.confirm", { usd: `$${Number(limit.replace(",", ".")) || 0}` })}</span>
+        </label>
+      )}
+      <Button size="sm" disabled={pending || (paid && !confirmed)} data-gsv2-auto-run
+        onClick={() => start(async () => {
+          try {
+            const res = await fetch("/api/admin/grovshot-v2/autopilot", {
+              method: "POST", headers: { "content-type": "application/json" },
+              body: JSON.stringify({ reason: t("aicc.gsv2.auto.reason"), tests, limitUsd: Number(limit.replace(",", ".")) }),
+            });
+            const out = (await res.json()) as AutoReply;
+            setReply(out);
+            if (out.ok) { toast.success(t("aicc.gsv2.auto.done")); router.refresh(); } else toast.error(errText(t, out.error));
+          } catch { toast.error(t("common.error")); }
+        })}>
+        {pending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <FlaskConical size={14} aria-hidden />}
+        {t("aicc.gsv2.auto.run")}
+      </Button>
+      {reply && (
+        <ul className="space-y-0.5 font-mono text-[11px] text-muted" data-gsv2-auto-report>
+          {(reply.steps ?? []).map((s) => <li key={s.key}>{s.status} · {s.key}{s.detail ? ` · ${s.detail}` : ""}</li>)}
+          {(reply.runs ?? []).map((r) => (
+            <li key={r.label}>{t("aicc.gsv2.auto.runLine", { label: r.label, mode: t(`aicc.gsv2.mode.${r.mode}`), shots: r.shots, usd: usdOf(r.worstUsdMicros) })}{r.runId ? ` · ${r.runId.slice(0, 8)}` : ` · ${r.error ?? "—"}`}</li>
+          ))}
+          {!reply.ok && <li>{errText(t, reply.error)}</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function GsV2SeedDrafts({ hasDrafts }: { hasDrafts: boolean }) {
   const { t } = useI18n();
   const router = useRouter();

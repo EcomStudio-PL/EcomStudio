@@ -7922,7 +7922,22 @@
     "gsv2.err.knowledge_unpublished": "Brak opublikowanej wersji wiedzy — opublikuj ją w Wiedzy.",
     "gsv2.err.knowledge_unreadable": "Nie udało się odczytać wiedzy (serwer).",
     "providers.textModels": "Modele etapów GrovShot V2 →",
-    "providers.textOnlyNote": "Dostawca tekstowo-wizyjny (Claude): czyta zdjęcia i pisze tekst dla etapów GrovShot V2, nie generuje obrazów — dlatego nie ma tu testu generacji obrazu. Model każdego etapu wybierasz w GrovShot → Silnik V2, a tam też testujesz go jednym minimalnym zapytaniem."
+    "providers.textOnlyNote": "Dostawca tekstowo-wizyjny (Claude): czyta zdjęcia i pisze tekst dla etapów GrovShot V2, nie generuje obrazów — dlatego nie ma tu testu generacji obrazu. Model każdego etapu wybierasz w GrovShot → Silnik V2, a tam też testujesz go jednym minimalnym zapytaniem.",
+    "gsv2.auto.title": "Autokonfiguracja (jedno kliknięcie)",
+    "gsv2.auto.sub": "Serwer wykonuje kolejno, Twoją sesją administratora i z audytem: szkice ze specyfikacji dla etapów bez opublikowanej wersji (opublikowanych nie rusza) → ta sama bramka co przy publikacji → publikacja (konfiguracja na końcu) → testy w limicie: A test promptów (opublikowane wersje), B to samo z Opus 5.5 w karcie i planie (szkic do porównania, nie jest publikowany), C pełny test 1 ujęcia z obrazami. Zdjęcia: Twój najnowszy zestaw wgrany w panelu. Ceny, bramka marży, flaga i wiedza pozostają bez zmian.",
+    "gsv2.auto.tests": "Testy po publikacji",
+    "gsv2.auto.testsFull": "Test promptów A + B i pełny test 1 ujęcia (C)",
+    "gsv2.auto.testsPrompts": "Tylko testy promptów A + B (bez obrazów)",
+    "gsv2.auto.testsNone": "Bez testów (tylko szkice i publikacja)",
+    "gsv2.auto.limit": "Limit wydatków API na testy (USD)",
+    "gsv2.auto.confirm": "Rozumiem, że testy wykonają płatne wywołania API (Claude, a w teście C także Nano Banana Pro). Serwer liczy najgorszy przypadek każdego testu przed startem i nie uruchomi testów ponad limit {usd}.",
+    "gsv2.auto.reason": "Autokonfiguracja GrovShot V2: szkice ze specyfikacji, bramka publikacji, publikacja i testy administratora (na zlecenie właściciela).",
+    "gsv2.auto.run": "Uruchom autokonfigurację",
+    "gsv2.auto.done": "Autokonfiguracja wykonana — testy działają w tle.",
+    "gsv2.auto.runLine": "Test {label} · {mode} · {shots} ujęcia · najgorszy przypadek {usd}",
+    "gsv2.err.gate_failed": "Szkic nie przeszedł bramki publikacji — nic nie zostało opublikowane.",
+    "gsv2.err.publish_failed": "Publikacja nie powiodła się — sprawdź historię wersji.",
+    "gsv2.err.no_photos": "Brak zestawu zdjęć do testu — wgraj zdjęcia produktu w „Test silnika”."
   },
   "batch": {
     "viewLabel": "Widok",

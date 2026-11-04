@@ -7922,7 +7922,22 @@
     "gsv2.err.knowledge_unpublished": "No published knowledge version — publish one in Knowledge.",
     "gsv2.err.knowledge_unreadable": "The knowledge could not be read (server).",
     "providers.textModels": "GrovShot V2 stage models →",
-    "providers.textOnlyNote": "A text-and-vision provider (Claude): it reads photos and writes text for GrovShot V2's stages and generates no image — hence no image test here. Each stage's model is chosen in GrovShot → Engine V2, where it is also tested with one minimal request."
+    "providers.textOnlyNote": "A text-and-vision provider (Claude): it reads photos and writes text for GrovShot V2's stages and generates no image — hence no image test here. Each stage's model is chosen in GrovShot → Engine V2, where it is also tested with one minimal request.",
+    "gsv2.auto.title": "Auto-setup (one click)",
+    "gsv2.auto.sub": "The server runs, in order, with your admin session and audited: spec drafts for stages without a published version (published ones are never touched) → the same gate as a publish → publication (config last) → tests within the limit: A prompt test (published versions), B the same with Opus 5.5 on the card and the plan (a draft for comparison, never published), C a full 1-shot test with images. Photos: your newest set uploaded in the panel. Prices, the margin gate, the flag and the knowledge stay unchanged.",
+    "gsv2.auto.tests": "Tests after publishing",
+    "gsv2.auto.testsFull": "Prompt tests A + B and a full 1-shot test (C)",
+    "gsv2.auto.testsPrompts": "Prompt tests A + B only (no images)",
+    "gsv2.auto.testsNone": "No tests (drafts and publication only)",
+    "gsv2.auto.limit": "API spending limit for the tests (USD)",
+    "gsv2.auto.confirm": "I understand the tests make paid API calls (Claude, and in test C also Nano Banana Pro). The server computes each test's worst case before starting and will not start tests beyond the {usd} limit.",
+    "gsv2.auto.reason": "GrovShot V2 auto-setup: spec drafts, publish gate, publication and admin tests (requested by the owner).",
+    "gsv2.auto.run": "Run auto-setup",
+    "gsv2.auto.done": "Auto-setup done — the tests run in the background.",
+    "gsv2.auto.runLine": "Test {label} · {mode} · {shots} shots · worst case {usd}",
+    "gsv2.err.gate_failed": "A draft did not pass the publish gate — nothing was published.",
+    "gsv2.err.publish_failed": "Publishing failed — check the version history.",
+    "gsv2.err.no_photos": "No photo set for the test — upload product photos in „Engine test”."
   },
   "batch": {
     "viewLabel": "View",

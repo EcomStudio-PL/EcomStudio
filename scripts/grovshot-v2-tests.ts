@@ -43,6 +43,7 @@ import {
   HOP_CLAIM_TRIES, HOP_CLAIM_WAIT_MS, STALL_WAITS_MS, advanceWhenFree, chainSignature, chainSignatureOk, handOver, parseStalls,
 } from "@/lib/server/grovshot-v2/drive";
 import { roleCallCosts } from "@/lib/server/grovshot-v2/rollout";
+import { AUTOPILOT_SUMMARY, VARIANT_B_MODELS, runAutopilot, testWorstCase } from "@/lib/server/grovshot-v2/autopilot";
 import { roleBackends } from "@/lib/server/grovshot-v2/backends";
 import { srvDue } from "@/lib/server/grovshot-v2/srv";
 import { callVisionJson, type VisionAttempt } from "@/lib/ai/engine/vision";
@@ -95,9 +96,12 @@ section("A. THE CONTRACT — seed, gate, prompt engine rules");
       STAGE_ROLES.every((r) => CONFIG.models[r].provider === "anthropic" && !CONFIG.models[r].fallback)
       && !parseEngineConfig(JSON.stringify(withOpenAi)).ok && !parseEngineConfig(JSON.stringify(withGeminiFallback)).ok);
   }
-  check("economical Claude models where they suffice, stronger where they decide quality",
-    CONFIG.models.validate.model === "claude-sonnet-5-5" && CONFIG.models.qc.model === "claude-sonnet-5-5"
-    && ["card", "plan", "prompt"].every((r) => CONFIG.models[r as "card"].model === "claude-opus-5-5"));
+  check("Claude Sonnet 5.5 on every role (cost-effective; Opus 5.5 only after a test shows it is clearly better), high effort where quality is decided",
+    STAGE_ROLES.every((r) => CONFIG.models[r].provider === "anthropic" && CONFIG.models[r].model === "claude-sonnet-5-5" && !CONFIG.models[r].fallback)
+    && CONFIG.models.card.effort === "high" && CONFIG.models.plan.effort === "high"
+    && ["validate", "prompt", "qc"].every((r) => CONFIG.models[r as "qc"].effort === "medium"));
+  check("the auto-setup's comparison variant B puts Opus 5.5 on the card and the plan only",
+    VARIANT_B_MODELS.card?.model === "claude-opus-5-5" && VARIANT_B_MODELS.plan?.model === "claude-opus-5-5" && Object.keys(VARIANT_B_MODELS).length === 2);
   check("the base variant is never presented as tested", recipeById(CONFIG, "base").tested === false);
   check("shared rules, banned clichés, six footers and the negative base are there",
     CONFIG.shared_rules.length >= 5 && CONFIG.banned_cliches.length > 0 && Object.keys(CONFIG.footers).length === 6 && CONFIG.negative_base.length > 40);
@@ -148,8 +152,13 @@ section("A. THE CONTRACT — seed, gate, prompt engine rules");
     e.isDirectory() ? (e.name === "node_modules" || e.name.startsWith(".") ? [] : files(join(dir, e.name))) : [join(dir, e.name)]);
   const importers = ["lib", "app", "components"].flatMap((d) => files(d))
     .filter((f) => /\.(ts|tsx)$/.test(f) && /grovshot-v2\/seed["']/.test(readFileSync(f, "utf8")));
-  check("no runtime module imports the seed (only the admin drafts action)",
-    JSON.stringify(importers) === JSON.stringify(["app/actions/grovshot-v2-admin.ts"]), importers);
+  check("no runtime module imports the seed (only the admin drafts action and the admin auto-setup)",
+    JSON.stringify([...importers].sort()) === JSON.stringify(["app/actions/grovshot-v2-admin.ts", "lib/server/grovshot-v2/autopilot.ts"]), importers);
+  const autopilotUsers = ["app", "lib", "components"].flatMap((d) => files(d))
+    .filter((f) => /\.tsx?$/.test(f) && /from "@\/lib\/server\/grovshot-v2\/autopilot"/.test(readFileSync(f, "utf8"))).sort();
+  check("the auto-setup is reached only through its admin-only route",
+    JSON.stringify(autopilotUsers) === JSON.stringify(["app/api/admin/grovshot-v2/autopilot/route.ts"])
+    && /profile\?\.role !== "admin"/.test(readFileSync("app/api/admin/grovshot-v2/autopilot/route.ts", "utf8")), autopilotUsers);
   check("the seed is server-only", readFileSync("lib/server/grovshot-v2/seed.ts", "utf8").startsWith('import "server-only";'));
   const clientFiles = ["components", "app"].flatMap((d) => files(d)).filter((f) => /\.tsx?$/.test(f) && /^["']use client["']/.test(readFileSync(f, "utf8")));
   check("no client module reaches a V2 server module (prompts, keys, costs stay on the server)",
@@ -835,6 +844,25 @@ const client = {
       return { data: [], error: null };
     }
     if (name === "trial_watermark_decide") return { data: { mode: "off", reason: "disabled", config: { enabled: false } }, error: null };
+    // The versioned prompt store (0071): a new version (draft or published) and publishing a draft.
+    if (name === "ai_save_tool_prompt") {
+      const rows = tableRows("ai_tool_prompts");
+      const version = 1 + Math.max(0, ...rows.filter((r) => r.tool_key === args.p_tool_key).map((r) => Number(r.version)));
+      if (args.p_publish) rows.filter((r) => r.tool_key === args.p_tool_key && r.status === "published").forEach((r) => { r.status = "superseded"; });
+      const row: Row = { id: id("prm"), tool_key: args.p_tool_key, version, status: args.p_publish ? "published" : "draft", summary: args.p_summary,
+        reason: args.p_reason, body_encrypted: args.p_body_encrypted, body_iv: args.p_iv, body_tag: args.p_tag };
+      rows.push(row);
+      return { data: { ok: true, id: row.id, version }, error: null };
+    }
+    if (name === "ai_publish_tool_prompt") {
+      const rows = tableRows("ai_tool_prompts");
+      const row = rows.find((r) => r.id === args.p_id);
+      if (!row) return { data: { ok: false, error: "not_found" }, error: null };
+      rows.filter((r) => r.tool_key === row.tool_key && r.status === "published").forEach((r) => { r.status = "superseded"; });
+      row.status = "published";
+      rpcLog.push(`published:${String(row.tool_key)}`);
+      return { data: { ok: true, tool_key: row.tool_key }, error: null };
+    }
     return { data: true, error: null };
   },
   storage: {
@@ -1582,6 +1610,77 @@ async function partE() {
     const run = read("lib/server/grovshot-v2/run.ts");
     check("E72 no store write of the run goes around the order's server functions (every ledger, job and library write is srv_*)",
       !/supabase\.from\(|startUsage\(|completeUsage\(|failUsage\(/.test(run) && !/\.from\(/.test(read("lib/server/grovshot-v2/library.ts").replace(/storage\.from\(BUCKET\)/g, "")));
+  }
+  // ── „Autokonfiguracja”: the admin's launch sequence in one call ──
+  {
+    await world({ product: PRODUCTS[1] });
+    const prompts = () => tableRows("ai_tool_prompts");
+    const chain = { origin: "https://example.test" };
+    const runsBefore = db().runs.size;
+    const open = (r: Row) => Buffer.from(String(r.body_encrypted), "base64").toString("utf8");
+    rpcLog.length = 0;
+    const a = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    const live = prompts().filter((r) => r.status === "published");
+    const order = rpcLog.filter((x) => x.startsWith("published:"));
+    const cfg = parseEngineConfig(open(live.find((r) => r.tool_key === "grovshot_v2_config")!));
+    check("EA1 nothing published yet: the six spec texts become drafts, pass the gate and are published — the config last",
+      a.ok && live.length === 6 && GROVSHOT_V2_KEYS.every((k) => live.some((r) => r.tool_key === k && open(r) === specDraft(k) && r.summary === AUTOPILOT_SUMMARY))
+      && order.length === 6 && order[5] === "published:grovshot_v2_config" && db().runs.size === runsBefore, { a, order });
+    check("EA1b …the published config runs Claude Sonnet 5.5 on every role; the auto-setup is audited",
+      cfg.ok && STAGE_ROLES.every((r) => cfg.config.models[r].model === "claude-sonnet-5-5")
+      && tableRows("audit_logs").some((x) => x.action === "grovshot_v2.autopilot"));
+    const count = prompts().length;
+    const again = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    check("EA2 run again: every published stage is kept, nothing new is written",
+      again.ok && prompts().length === count && again.steps.filter((x) => x.key.startsWith("draft:")).every((x) => x.status === "kept"), again.steps);
+
+    // An admin's own published text is never replaced; a stage without one still is filled.
+    db().tables.ai_tool_prompts = [];
+    const sealedOwn = Buffer.from("ADMIN CARD", "utf8").toString("base64");
+    prompts().push({ id: "own-card", tool_key: "grovshot_v2_card", version: 7, status: "published", summary: "admin", body_encrypted: sealedOwn,
+      body_iv: "test-iv", body_tag: createHash("sha256").update(sealedOwn).digest("hex").slice(0, 32) });
+    const b = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    check("EA3 a stage an admin already published is kept as it is; the others are drafted and published",
+      b.ok && prompts().find((r) => r.id === "own-card")?.status === "published" && prompts().filter((r) => r.tool_key === "grovshot_v2_card").length === 1
+      && prompts().filter((r) => r.status === "published").length === 6, b.steps);
+
+    db().tables.ai_tool_prompts = [];
+    gsv2Env().ringUp = false;
+    const c = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    gsv2Env().ringUp = true;
+    check("EA4 without the Vault key nothing is drafted or published", !c.ok && c.error === "prompt_key_unavailable" && prompts().length === 0, c);
+    const d0 = await runAutopilot(SUPA, USER, { reason: " ", limitUsd: 1, tests: "none" }, chain);
+    const d1 = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 0, tests: "prompts" }, chain);
+    check("EA5 a reason is required, and paid tests need a limit", d0.error === "reason_required" && d1.error === "invalid_input" && prompts().length === 0);
+
+    // Tests: each one's worst case is computed first; beyond the confirmed limit nothing starts.
+    const GEMINI_TOKENS = { providerSlug: "google", model: "gemini-3-pro-image", inputPerMTok: 2_000_000, outputPerMTok: 12_000_000 };
+    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, GEMINI_TOKENS];
+    const state = await readEngineState(SUPA);
+    const wp = testWorstCase(state, CONFIG, 3, "prompts", "2K", 5);
+    const wf = testWorstCase(state, CONFIG, 1, "full", "2K", 5);
+    const wpOpus = testWorstCase(state, { ...CONFIG, models: { ...CONFIG.models, ...VARIANT_B_MODELS } }, 3, "prompts", "2K", 5);
+    const unpriced = testWorstCase({ ...state, tokenPrices: [] }, CONFIG, 1, "prompts", "2K", 5);
+    check("EA6 the worst case of a test: priced from the list, higher for Opus and for a full test with images, unknown when a price is missing",
+      wp !== null && wf !== null && wpOpus !== null && wpOpus > wp && wf > 0 && unpriced === null, { wp, wf, wpOpus });
+    const w2 = await world({ product: PRODUCTS[1] });
+    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, GEMINI_TOKENS];
+    tableRows("workspace_members").push({ user_id: USER, workspace_id: WS, role: "owner", created_at: iso(db().now), workspaces: { id: WS, name: "Test", owner_id: USER } });
+    const tight = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 0.000001, tests: "prompts_full", photos: [1, 2, 3].map((n) => `${WS}/p/${n}.png`) }, chain);
+    check("EA7 tests beyond the confirmed limit are not started (no order, no paid call)",
+      tight.ok && tight.runs.length >= 2 && tight.runs.every((r) => r.runId === null && r.error === "over_limit") && w2.stageCalls.length === 0, tight);
+    const before = db().runs.size;
+    const fit = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 20, tests: "prompts_full", photos: [1, 2, 3].map((n) => `${WS}/p/${n}.png`) }, chain);
+    const started = fit.runs.filter((r) => r.runId);
+    const runB = started.find((r) => r.label === "B");
+    const sealedB = runB ? ((db().runs.get(runB.runId!)?.input as Row).stages as Row).grovshot_v2_config as Row : null;
+    const cfgB = sealedB ? parseEngineConfig(Buffer.from(String((sealedB.sealed as Row).ciphertext), "base64").toString("utf8")) : null;
+    check("EA8 within the limit: three separate admin tests start — A and B prompt tests (3 shots), C a full 1-shot test — and B runs Opus 5.5 on the card and the plan",
+      fit.ok && started.length === 3 && db().runs.size === before + 3
+      && started.filter((r) => r.mode === "prompts").every((r) => r.shots === 3) && started.find((r) => r.label === "C")?.mode === "full"
+      && Boolean(cfgB?.ok) && cfgB!.ok && cfgB!.config.models.plan.model === "claude-opus-5-5" && cfgB!.config.models.card.model === "claude-opus-5-5"
+      && cfgB!.config.models.prompt.model === "claude-sonnet-5-5"
+      && prompts().some((r) => r.tool_key === "grovshot_v2_config" && r.status === "draft"), fit);
   }
 }
 

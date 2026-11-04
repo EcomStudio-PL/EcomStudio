@@ -221,6 +221,8 @@ export async function startGrovshotRun(
   const key = `gsv2:${workspaceId}:${bucket}:${sha256(JSON.stringify({
     shas, descriptionSha, dims: dims.text, shots, ratio, resolution, userRows, acknowledge, test, mode: opts.test?.mode ?? null,
     knowledge: knowledge?.sha256 ?? null,
+    // A test on other versions (e.g. a config variant) is another test, not a double click.
+    ...(test ? { stages: GROVSHOT_V2_KEYS.map((k) => stages[k].sha256) } : {}),
   })).slice(0, 40)}`;
 
   const { data, error } = await supabase.rpc("grovshot_run_create", {
