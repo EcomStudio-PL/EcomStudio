@@ -88,6 +88,13 @@ section("A. THE CONTRACT — seed, gate, prompt engine rules");
   check("the Christmas recipe is the 03.11 one WITH its correction (real light sources, glitter only in the globe, no golden filter)",
     /prawdziwych źródeł/.test(xmas.light) && /tylko w kuli produktu/.test(xmas.effects) && xmas.forbidden.some((f) => /złoty filtr/.test(f)));
   check("the full list of banned AI clichés of the spec (12)", CONFIG.banned_cliches.length === 12 && CONFIG.banned_cliches.some((c) => /eukaliptus/.test(c)));
+  {
+    const withOpenAi = { ...CONFIG, models: { ...CONFIG.models, qc: { provider: "openai", model: "gpt-5" } } };
+    const withGeminiFallback = { ...CONFIG, models: { ...CONFIG.models, plan: { ...CONFIG.models.plan, fallback: { provider: "google", model: "gemini-2.5-pro" } } } };
+    check("the split is enforced: every text/vision role is Claude (Anthropic) — a config naming OpenAI (or Google) for a role or a fallback does not parse",
+      STAGE_ROLES.every((r) => CONFIG.models[r].provider === "anthropic" && !CONFIG.models[r].fallback)
+      && !parseEngineConfig(JSON.stringify(withOpenAi)).ok && !parseEngineConfig(JSON.stringify(withGeminiFallback)).ok);
+  }
   check("economical Claude models where they suffice, stronger where they decide quality",
     CONFIG.models.validate.model === "claude-sonnet-5-5" && CONFIG.models.qc.model === "claude-sonnet-5-5"
     && ["card", "plan", "prompt"].every((r) => CONFIG.models[r as "card"].model === "claude-opus-5-5"));

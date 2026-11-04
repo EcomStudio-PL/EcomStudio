@@ -107,8 +107,12 @@ export type PeopleRow = {
 /** The text/vision roles of the engine, each with its own model. */
 export const STAGE_ROLES = ["validate", "card", "plan", "prompt", "qc"] as const;
 export type StageRole = (typeof STAGE_ROLES)[number];
-/** Providers a text/vision role can run on (image models are separate). */
-export const STAGE_PROVIDERS = ["anthropic", "openai", "google"] as const;
+/** The provider every text/vision role runs on: Claude (Anthropic) analyses,
+ *  plans, writes the prompts and checks quality; the image itself is Nano
+ *  Banana Pro (Google, GROVSHOT_V2_MODEL_IDENTIFIER) — a separate model, not a
+ *  role. No other provider (OpenAI included) is accepted for a role or its
+ *  fallback: a config naming one does not parse and cannot be published. */
+export const STAGE_PROVIDERS = ["anthropic"] as const;
 export type StageProvider = (typeof STAGE_PROVIDERS)[number];
 export type StageModelRef = { provider: StageProvider; model: string; effort?: AnthropicEffort };
 /** The Claude models an admin picks from (official API ids; any other id

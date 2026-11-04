@@ -27,7 +27,7 @@ export type RoleStatus = {
   usable: boolean;
 };
 
-const PROVIDER_SLUGS: Record<StageProvider, VisionProvider> = { anthropic: "anthropic", openai: "openai", google: "google" };
+const PROVIDER_SLUGS: Record<StageProvider, VisionProvider> = { anthropic: "anthropic" };
 
 /** One provider's runtime credential, or why there is none. */
 export async function credentialOf(
