@@ -7,7 +7,9 @@ import { GROVSHOT_V2_FLAG, GROVSHOT_V2_KEYS, type GrovshotStageKey } from "@/lib
 import { readEngineState, type EngineState } from "@/lib/server/grovshot-v2/settings";
 import { economicsFor, type V2Economics } from "@/lib/server/grovshot-v2/rollout";
 import { P as P_ADMIN } from "@/lib/grovshot-v2/steps";
-import { orderBudget, type StageModel, type StageRole } from "@/lib/grovshot-v2/config";
+import { orderBudget, parseEngineConfig, type EngineConfig, type StageModel, type StageRole } from "@/lib/grovshot-v2/config";
+import { openPrompt } from "@/lib/server/ai-engine";
+import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 
 /**
  * GROVBASE SHOT V2 — what the admin tab shows (admin session only; the page
@@ -59,6 +61,10 @@ export type V2RunView = {
   costByStage: V2StageCost[];
   /** Test runs only: Claude's card and plan, as answered (capped). */
   preview: { card: string | null; plan: string | null } | null;
+  /** The knowledge version the order sealed (null: none / before 2.3). */
+  knowledge: { version: number; preview: boolean; rules: number } | null;
+  /** Test runs only: the rules each stage call read (titles), and what its limit left out. */
+  knowledgeUse: { stage: string; rules: { id: string; title: string; scope: string; correction: boolean }[]; dropped: number; chars: number }[];
 };
 
 export type GrovshotAdmin = {
@@ -89,6 +95,9 @@ export async function readGrovshotAdmin(supabase: Client): Promise<GrovshotAdmin
     published: histories[i].find((v) => v.status === "published")?.version ?? null,
     drafts: histories[i].filter((v) => v.status === "draft").length,
   }));
+  // Nothing published yet: the cost projection runs on the newest draft
+  // config (marked so) — the customer gate never does.
+  const draft = state.config ? null : await newestDraftConfig(supabase).catch(() => null);
   return {
     state: {
       ready: state.ready, blockers: state.blockers, roles: state.roles,
@@ -104,9 +113,22 @@ export async function readGrovshotAdmin(supabase: Client): Promise<GrovshotAdmin
       exists: Boolean(flagRow), enabled: flagRow?.enabled === true, roles: flagRow?.roles ?? [], plans: flagRow?.plans ?? [],
       rollout: flagRow?.rollout_percent ?? null,
     },
-    economics: economicsFor(state, billingFrom(billingRow?.value)),
+    economics: economicsFor(state, billingFrom(billingRow?.value), draft ? { draft } : {}),
     runs,
   };
+}
+
+/** The newest draft of the engine config, opened with the admin keyring (null
+ *  when there is none, it does not open, or it does not parse). */
+async function newestDraftConfig(supabase: Client): Promise<{ config: EngineConfig; version: number } | null> {
+  const { data } = await supabase.from("ai_tool_prompts").select("version, status, body_encrypted, body_iv, body_tag")
+    .eq("tool_key", "grovshot_v2_config").eq("status", "draft").order("version", { ascending: false }).limit(1);
+  const row = data?.[0];
+  if (!row) return null;
+  const opened = openPrompt(await adminPromptKeyring(supabase), row);
+  if (!opened) return null;
+  const parsed = parseEngineConfig(opened.text);
+  return parsed.ok ? { config: parsed.config, version: row.version } : null;
 }
 
 /** One stage key's versions, for its editor (no body). */
@@ -163,6 +185,22 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
   const testPaths = list.filter((r) => r.run_kind === "grovshot_test").flatMap((r) =>
     (byRun.get(r.id) ?? []).filter((s) => s.position === P_ADMIN.settle && s.status === "succeeded")
       .map((s) => str(obj(s.output).path)).filter((p): p is string => Boolean(p)));
+  // The rules the test runs' stages read, by id → title (admin session).
+  type KMeta = { rules?: unknown; dropped?: unknown; chars?: unknown };
+  const kMetaOf = (s: StepRow): KMeta | null => {
+    const o = obj(s.output);
+    const k = s.position === P_ADMIN.round ? o.knowledge_qc : o.knowledge;
+    return k && typeof k === "object" ? k as KMeta : null;
+  };
+  const kIds = [...new Set(list.filter((r) => r.run_kind === "grovshot_test").flatMap((r) => (byRun.get(r.id) ?? [])
+    .flatMap((s) => arr(kMetaOf(s)?.rules).map((x) => str(x)).filter((x): x is string => Boolean(x)))))];
+  const { data: kRows } = kIds.length
+    ? await supabase.from("knowledge_rules").select("id, title, scope_kind, scope_values, is_correction").in("id", kIds.slice(0, 1000))
+    : { data: [] as { id: string; title: string; scope_kind: string; scope_values: string[]; is_correction: boolean }[] };
+  const kTitle = new Map((kRows ?? []).map((k) => [k.id, {
+    title: k.title, scope: k.scope_kind === "global" ? "global" : `${k.scope_kind}:${(k.scope_values ?? []).slice(0, 2).join(",")}`, correction: k.is_correction,
+  }]));
+
   const { data: signed } = testPaths.length
     ? await supabase.storage.from("generation-assets").createSignedUrls(testPaths, 900)
     : { data: [] as { path: string | null; signedUrl: string }[] };
@@ -265,6 +303,20 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
         card: capped(obj(st.find((s) => s.position === P_ADMIN.card && s.item_index === -1)?.output).raw),
         plan: capped(obj((st.filter((s) => s.position === P_ADMIN.plan && s.status === "succeeded").pop())?.output).raw),
       } : null,
+      knowledge: (() => {
+        const k = obj(input.knowledge);
+        return typeof k.version === "number" ? { version: k.version, preview: k.preview === true, rules: num(k.rules) ?? 0 } : null;
+      })(),
+      knowledgeUse: isTest ? st.flatMap((s) => {
+        const m = kMetaOf(s);
+        if (!m) return [];
+        const stage = s.position === P_ADMIN.validate ? "validate" : s.position === P_ADMIN.card ? "card" : s.position === P_ADMIN.plan ? "plan"
+          : s.position === P_ADMIN.write ? `prompt #${Math.floor(s.item_index / 5) + 1}` : s.position === P_ADMIN.round ? `qc #${Math.floor(s.item_index / 5) + 1}` : null;
+        if (!stage) return [];
+        const rules = arr(m.rules).map((x) => str(x)).filter((x): x is string => Boolean(x))
+          .map((id) => ({ id, ...(kTitle.get(id) ?? { title: id.slice(0, 8), scope: "?", correction: false }) }));
+        return [{ stage, rules, dropped: num(m.dropped) ?? 0, chars: num(m.chars) ?? 0 }];
+      }) : [],
     };
   });
 }

@@ -23,6 +23,7 @@
  * that it is data and never an instruction. Compilation is one pass, so a
  * value that contains `{{…}}` can never expand into another variable.
  */
+import { KNOWLEDGE_LIMITS } from "@/lib/grovshot-v2/knowledge";
 
 export type VariableSource = "customer" | "product" | "system" | "ai" | "knowledge" | "workflow";
 
@@ -164,6 +165,17 @@ const GS = {
   p_scenery: gs("p_scenery", "ai", "block", 1800, "(SCENOGRAFIA — napisana przez autora promptu)"),
 } satisfies Record<string, VariableDef>;
 
+/* The approved expert rules a stage reads (lib/grovshot-v2/knowledge.ts —
+ * selected per stage, recipe, product category and kind of shot from the
+ * knowledge version the order sealed). Knowledge is DATA: a USER-section
+ * value only, never system authority, never the image prompt itself. The
+ * limits are KNOWLEDGE_LIMITS. */
+const knowledgeRules = (max: number) => gs("knowledge_rules", "knowledge", "block", max, "### global · planning\n- (zatwierdzona zasada z bazy wiedzy)");
+const KR = {
+  validate: knowledgeRules(KNOWLEDGE_LIMITS.validate), card: knowledgeRules(KNOWLEDGE_LIMITS.card), plan: knowledgeRules(KNOWLEDGE_LIMITS.plan),
+  prompt: knowledgeRules(KNOWLEDGE_LIMITS.prompt), qc: knowledgeRules(KNOWLEDGE_LIMITS.qc),
+};
+
 const IMAGE_EDIT_COMMON: VariableDef[] = [
   V.tool_name, V.aspect_ratio, V.resolution, V.image_count, V.fidelity_rules,
   V.product_analysis, V.knowledge_hints, V.knowledge_scene,
@@ -207,11 +219,11 @@ export const TOOL_VARIABLES: Record<string, VariableDef[]> = {
   // refuses any {{…}}).
   ecommerce_thumbnail: [],
   // GrovShot Lifestyle Engine V2 — one registry per stage (lib/grovshot-v2).
-  grovshot_v2_validate: [GS.photo_count, V.session_type],
-  grovshot_v2_card: [GS.photo_count, GS.validation_summary, GS.allegro_description, GS.customer_dimensions, GS.style_recipes, V.session_type],
+  grovshot_v2_validate: [GS.photo_count, V.session_type, KR.validate],
+  grovshot_v2_card: [GS.photo_count, GS.validation_summary, GS.allegro_description, GS.customer_dimensions, GS.style_recipes, V.session_type, KR.card],
   grovshot_v2_plan: [
     GS.shot_count, GS.product_card, GS.photo_catalog, GS.style_recipe, GS.shared_rules, GS.banned_cliches,
-    GS.frame_types, GS.people_targets, GS.user_shot_plan, GS.plan_feedback, V.aspect_ratio, V.session_type,
+    GS.frame_types, GS.people_targets, GS.user_shot_plan, GS.plan_feedback, V.aspect_ratio, V.session_type, KR.plan,
   ],
   grovshot_v2_shot: [
     GS.style_genre, GS.style_light, GS.style_scenery, GS.style_effects, GS.style_product_rules, GS.style_forbidden,
@@ -223,8 +235,9 @@ export const TOOL_VARIABLES: Record<string, VariableDef[]> = {
     GS.shot_correction, GS.quality_footer, GS.shot_negative, V.aspect_ratio, V.resolution, V.fidelity_rules,
     GS.product_card, GS.shot_spec, GS.plan_overview, GS.previous_blocks,
     GS.p_direction, GS.p_product, GS.p_scale, GS.p_state, GS.p_moment, GS.p_frame, GS.p_person, GS.p_scenery,
+    KR.prompt,
   ],
-  grovshot_v2_qc: [GS.reference_map, GS.product_card, GS.shot_spec, GS.is_hero, GS.qc_rules],
+  grovshot_v2_qc: [GS.reference_map, GS.product_card, GS.shot_spec, GS.is_hero, GS.qc_rules, KR.qc],
   // The engine config is a JSON body: no placeholder of any kind.
   grovshot_v2_config: [],
 };
@@ -248,11 +261,13 @@ export const GROVSHOT_V2_WRITER_OUTPUTS: ReadonlySet<string> = new Set([
  *  job (the shot prompt names the photos in send order and always ends with
  *  the footer and the negative prompt — spec, Etap 3). */
 export const GROVSHOT_V2_REQUIRED: Record<string, string[]> = {
-  grovshot_v2_validate: ["photo_count"],
-  grovshot_v2_card: ["photo_count", "allegro_description", "validation_summary"],
-  grovshot_v2_plan: ["shot_count", "product_card", "photo_catalog"],
-  grovshot_v2_shot: ["reference_map", "product_card", "shot_spec", ...GROVSHOT_V2_SHOT_BLOCKS],
-  grovshot_v2_qc: ["reference_map", "qc_rules"],
+  // Every stage places the expert rules it is given (an empty selection is
+  // the template's own fallback text, e.g. {{knowledge_rules|(brak)}}).
+  grovshot_v2_validate: ["photo_count", "knowledge_rules"],
+  grovshot_v2_card: ["photo_count", "allegro_description", "validation_summary", "knowledge_rules"],
+  grovshot_v2_plan: ["shot_count", "product_card", "photo_catalog", "knowledge_rules"],
+  grovshot_v2_shot: ["reference_map", "product_card", "shot_spec", "knowledge_rules", ...GROVSHOT_V2_SHOT_BLOCKS],
+  grovshot_v2_qc: ["reference_map", "qc_rules", "knowledge_rules"],
 };
 
 /** Variables available inside a workflow step at `position` (1-based). */

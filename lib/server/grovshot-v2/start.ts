@@ -13,6 +13,8 @@ import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
 import { readOrderPhotos, sha256 } from "@/lib/server/grovshot-v2/media";
 import { roleBackends } from "@/lib/server/grovshot-v2/backends";
 import { imageUnitPrice, readEngineState, type StageBody } from "@/lib/server/grovshot-v2/settings";
+import { readKnowledgeSnapshot } from "@/lib/server/grovshot-v2/knowledge";
+import type { KnowledgeSnapshot } from "@/lib/grovshot-v2/knowledge";
 
 /**
  * GROVBASE SHOT V2 — STARTING AN ORDER. Nothing is charged here: a shot is
@@ -26,15 +28,24 @@ import { imageUnitPrice, readEngineState, type StageBody } from "@/lib/server/gr
  *   · the balance cannot cover the order (with the member's other open
  *     orders) or a cap is reached → the SQL's own codes.
  * The start-time version of every stage is SEALED into the run: a resumed
- * invocation runs on exactly those texts, whatever is published later.
+ * invocation runs on exactly those texts, whatever is published later. So is
+ * the knowledge version (the approved expert rules the stages read): an order
+ * keeps the rules it started with to its end. A customer's order needs a
+ * PUBLISHED knowledge version (`knowledge_unpublished`); an admin's test may
+ * run on the active version, on the approved rules before they are published
+ * (preview), or on none (to compare).
  */
 
-/** 2.2: Claude per role, the Etap 3 prompt writer, the server worker. */
-export const ENGINE_VERSION = "grovshot-v2.2";
+/** 2.3: the expert knowledge base (sealed per order, selected per stage),
+ *  the light/anti-stock plan checks, three more recipes. */
+export const ENGINE_VERSION = "grovshot-v2.3";
 export const DESCRIPTION_MAX = 20_000;
 const UNITS = ["cm", "mm", "m", "in"] as const;
 
 export type SealedStage = { version: number; sha256: string; sealed: Sealed };
+/** The knowledge an order runs on (its rules sealed like the stage texts). */
+export type SealedKnowledge = { version_id: string | null; version: number; preview: boolean; rules: number; examples: number; sha256: string; sealed: Sealed };
+export type KnowledgeMode = "active" | "preview" | "none";
 
 export type StoredInput = {
   v: 1;
@@ -62,6 +73,8 @@ export type StoredInput = {
   unit_price_usd_micros: number;
   budget_cap_usd_micros: number;
   stages: Record<GrovshotStageKey, SealedStage>;
+  /** Absent on orders started before 2.3; null = an admin test without knowledge. */
+  knowledge?: SealedKnowledge | null;
   engine_version: string;
 };
 
@@ -100,7 +113,7 @@ export function parseDimensions(raw: unknown):
 
 export async function startGrovshotRun(
   supabase: Client, userId: string, workspaceId: string, body: StartBody,
-  opts: { test?: { bodies: Record<GrovshotStageKey, StageBody>; mode: "prompts" | "full" } } = {},
+  opts: { test?: { bodies: Record<GrovshotStageKey, StageBody>; mode: "prompts" | "full"; knowledge?: KnowledgeMode } } = {},
 ): Promise<StartResult> {
   const test = Boolean(opts.test);
   const photos = Array.isArray(body.photos) ? body.photos : [];
@@ -153,6 +166,16 @@ export async function startGrovshotRun(
   if (!read.ok) return { ok: false, error: read.error };
   const shas = read.photos.map((p) => p.sha256);
 
+  // The expert rules this order will read, fixed now.
+  const knowledgeMode: KnowledgeMode = opts.test?.knowledge ?? "active";
+  let snapshot: KnowledgeSnapshot | null = null;
+  if (knowledgeMode !== "none") {
+    const read = await readKnowledgeSnapshot(supabase, { preview: knowledgeMode === "preview" });
+    if (read === "unreadable") return { ok: false, error: "knowledge_unreadable" };
+    snapshot = read;
+  }
+  if (!test && (!snapshot || snapshot.rules.length === 0)) return { ok: false, error: "knowledge_unpublished", blockers: ["knowledge_unpublished"] };
+
   const ring = await promptKeyring(supabase);
   if (!ring.canSeal) return { ok: false, error: "prompt_key_unavailable" };
   const stages = Object.fromEntries(GROVSHOT_V2_KEYS.map((k) => {
@@ -160,8 +183,15 @@ export async function startGrovshotRun(
     return [k, { version: b.version, sha256: b.sha256, sealed: ring.seal(b.text) }];
   })) as Record<GrovshotStageKey, SealedStage>;
 
+  const knowledgeText = snapshot ? JSON.stringify(snapshot) : null;
+  const knowledge: SealedKnowledge | null = snapshot && knowledgeText ? {
+    version_id: snapshot.version_id, version: snapshot.version, preview: snapshot.preview, rules: snapshot.rules.length,
+    examples: snapshot.examples.length, sha256: sha256(knowledgeText), sealed: ring.seal(knowledgeText),
+  } : null;
+
   const descriptionSha = sha256(description);
-  const photoKey = sha256(JSON.stringify({ v: 1, shas, validate: stages.grovshot_v2_validate.sha256, config: stages.grovshot_v2_config.sha256 }));
+  // The analysis cache keys on the knowledge too: a card read with other rules is another card.
+  const photoKey = sha256(JSON.stringify({ v: 1, shas, validate: stages.grovshot_v2_validate.sha256, config: stages.grovshot_v2_config.sha256, knowledge: knowledge?.sha256 ?? null }));
   const cardKey = sha256(JSON.stringify({
     v: 1, photoKey, card: stages.grovshot_v2_card.sha256, description: descriptionSha, dims: dims.text,
   }));
@@ -182,6 +212,7 @@ export async function startGrovshotRun(
     unit_price_usd_micros: unitPrice,
     budget_cap_usd_micros: orderBudget(config, shots),
     stages,
+    knowledge,
     engine_version: ENGINE_VERSION,
   };
   // One order per CONTENT within five minutes: a double click, a second tab
@@ -189,6 +220,7 @@ export async function startGrovshotRun(
   const bucket = Math.floor(Date.now() / 300_000);
   const key = `gsv2:${workspaceId}:${bucket}:${sha256(JSON.stringify({
     shas, descriptionSha, dims: dims.text, shots, ratio, resolution, userRows, acknowledge, test, mode: opts.test?.mode ?? null,
+    knowledge: knowledge?.sha256 ?? null,
   })).slice(0, 40)}`;
 
   const { data, error } = await supabase.rpc("grovshot_run_create", {

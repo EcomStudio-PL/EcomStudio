@@ -47,10 +47,13 @@ export type QcLevel = (typeof QC_LEVELS)[number];
 export const ERROR_KINDS = ["random", "systematic"] as const;
 export type ErrorKind = (typeof ERROR_KINDS)[number];
 
-/** The seven tested recipes of the spec + one untested base variant. */
+/** The seven recipes of the spec's table (27.10), the three it added after
+ *  later tests (kinowy przemysłowy 29.10, ogród i plener 29.10, świąteczna
+ *  aura 03.11 — with its 03.11 correction) + one untested base variant. */
 export const RECIPE_IDS = [
   "seasonal_ad", "appliance_food", "premium_interiors", "home_care",
-  "outdoor_action", "pet_lifestyle", "beauty_editorial", "base",
+  "outdoor_action", "pet_lifestyle", "beauty_editorial",
+  "industrial_cinematic", "garden_outdoor", "christmas_aura", "base",
 ] as const;
 export type RecipeId = (typeof RECIPE_IDS)[number];
 export const TESTED_RECIPE_IDS: readonly RecipeId[] = RECIPE_IDS.filter((r) => r !== "base");

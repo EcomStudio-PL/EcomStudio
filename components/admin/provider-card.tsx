@@ -35,6 +35,11 @@ export type ProviderView = {
   } | null;
 };
 
+/** Text/vision providers: they read photos and write text (GrovShot V2's
+ *  stages) and generate no image — an image test and an image-model count
+ *  mean nothing for them. Their models are chosen per stage in the V2 config. */
+const TEXT_PROVIDERS: ReadonlySet<string> = new Set(["anthropic"]);
+
 const STATE_TONE: Record<ProviderState, "success" | "danger" | "neutral" | "warning"> = {
   connected: "success", error: "danger", untested: "warning", not_configured: "neutral",
 };
@@ -51,6 +56,7 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
   const [baseUrl, setBaseUrl] = useState(p.credential?.baseUrl ?? "");
   const [saving, setSaving] = useState(false);
   const c = p.credential;
+  const textOnly = TEXT_PROVIDERS.has(p.slug);
   const baseUrlOk = validateProviderBaseUrl(baseUrl).ok;
   // Only the key's own length and the URL gate the button. A test running in
   // the background (useTransition's `pending`) no longer freezes the form.
@@ -177,15 +183,19 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
             </span>
           ) : "—"}
         </Row>
-        <Row label={t("admin.imageTest")}>
-          {c?.lastImageTestStatus ? (
-            <Badge className="max-w-full !whitespace-normal" tone={c.lastImageTestStatus === "image_ok" ? "success" : "danger"}>
-              {c.lastImageTestStatus === "image_ok" ? t("admin.imageTestOk") : t("admin.imageTestFailed")}
-            </Badge>
-          ) : <Badge className="max-w-full !whitespace-normal" tone="neutral">{t("admin.imageTestNever")}</Badge>}
-        </Row>
+        {!textOnly && (
+          <Row label={t("admin.imageTest")}>
+            {c?.lastImageTestStatus ? (
+              <Badge className="max-w-full !whitespace-normal" tone={c.lastImageTestStatus === "image_ok" ? "success" : "danger"}>
+                {c.lastImageTestStatus === "image_ok" ? t("admin.imageTestOk") : t("admin.imageTestFailed")}
+              </Badge>
+            ) : <Badge className="max-w-full !whitespace-normal" tone="neutral">{t("admin.imageTestNever")}</Badge>}
+          </Row>
+        )}
         <Row label={t("admin.nav.models")}>
-          <span className="text-xs">{p.modelsActive} / {p.modelsTotal} {t("admin.active").toLowerCase()}</span>
+          {textOnly
+            ? <a href="/admin/ai/prompts?tab=engine_v2" className="text-xs font-semibold text-accent hover:underline" data-provider-text-models>{t("aicc.providers.textModels")}</a>
+            : <span className="text-xs">{p.modelsActive} / {p.modelsTotal} {t("admin.active").toLowerCase()}</span>}
         </Row>
       </dl>
 
@@ -200,7 +210,8 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
           </p>
         </div>
       )}
-      {c?.lastImageTestError && c.lastImageTestStatus !== "image_ok" && (
+      {textOnly && <p className="mt-3 text-xs leading-relaxed text-muted" data-provider-text-only>{t("aicc.providers.textOnlyNote")}</p>}
+      {!textOnly && c?.lastImageTestError && c.lastImageTestStatus !== "image_ok" && (
         <p className="mt-2 truncate text-xs text-danger" title={c.lastImageTestError}>{c.lastImageTestError}</p>
       )}
 
@@ -212,14 +223,14 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
           onClick={() => run(testProviderConnectionAction(p.id), testToast)}>
           {t("admin.testConnection")}
         </Button>
-        <Button size="sm" variant="secondary" disabled={pending || !c}
+        {!textOnly && <Button size="sm" variant="secondary" disabled={pending || !c}
           onClick={() => run(testProviderImageAction(p.id), (res) => {
             if (res.ok) toast.success(t("admin.imageTestOk"));
             else toast.error([t("admin.imageTestFailed"), res.status && res.status !== "image_failed" ? t(`admin.test.${res.status}`) : null, res.detail].filter(Boolean).join(" · "));
             router.refresh();
           })}>
           {t("admin.imageTest")}
-        </Button>
+        </Button>}
         {c && (
           <Button size="sm" variant="ghost" disabled={pending} onClick={() => setDeleteOpen(true)}>
             {t("common.delete")}

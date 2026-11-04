@@ -43,6 +43,9 @@ export type ProductCard = {
   season: { seasonal: boolean; season: string };
   risks: string[];
   reference_additions: string[];
+  /** What is NOT known (and was not assumed): facts are in `facts` with their
+   *  source, estimates are marked, the rest is said to be missing here. */
+  unknowns: string[];
   handheld: boolean;
   for_animals: boolean;
   assembly: boolean;
@@ -223,6 +226,7 @@ export function normaliseCard(
       season: { seasonal: season.seasonal === true, season: season.seasonal === true ? s(season.season, 60) : "" },
       risks: list(raw.risks, 12, 160),
       reference_additions: list(raw.reference_additions, 8, 160),
+      unknowns: list(raw.unknowns, 10, 200),
       handheld: raw.handheld === true,
       for_animals: raw.for_animals === true,
       assembly: raw.assembly === true,

@@ -10,7 +10,7 @@ import { readGrovshotAdmin, readStageVersions } from "@/lib/server/grovshot-v2/a
 import { readReadiness } from "@/lib/server/grovshot-v2/readiness";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { formatDate } from "@/lib/utils";
-import { GsV2RoleModels, GsV2RunCard, GsV2SeedDrafts, GsV2TestPanel } from "@/components/admin/grovshot-v2-client";
+import { GsV2AnthropicToggle, GsV2RoleModels, GsV2RunCard, GsV2SeedDrafts, GsV2TestPanel } from "@/components/admin/grovshot-v2-client";
 
 /**
  * SILNIK V2 — GrovShot's Lifestyle Engine V2 in the GrovShot tool page:
@@ -43,6 +43,9 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
   const rc = await readReadiness(supabase, admin);
   const states = Object.fromEntries(state.roles.map((r) => [r.role, r.primary.state]));
   const toDo = rc.checks.filter((c) => !c.good).length;
+  const gating = rc.checks.filter((c) => !c.info).length;
+  const knowledgeCheck = rc.checks.find((c) => c.key === "knowledge");
+  const knowledgeActive = knowledgeCheck?.status === "published" ? Number(/^v(\d+)/.exec(knowledgeCheck.detail ?? "")?.[1]) || null : null;
   const allVersions = await Promise.all(GROVSHOT_V2_KEYS.map((k) => (k === selected ? Promise.resolve(versions) : readStageVersions(supabase, k))));
   const pickable = Object.fromEntries(GROVSHOT_V2_KEYS.map((k, i) => [k,
     allVersions[i].filter((v) => v.status === "draft" || v.status === "published").map((v) => ({ id: v.id, version: v.version, status: v.status }))]));
@@ -54,7 +57,7 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
         <CardHeader title={`0. ${t("aicc.gsv2.rc")}`} sub={t("aicc.gsv2.rcSub")} />
         <div className="space-y-4 pt-4">
           <Badge tone={rc.ready ? "success" : "warning"} dot>
-            {rc.ready ? t("aicc.gsv2.rcReady") : t("aicc.gsv2.rcNotReady", { n: toDo, of: rc.checks.length })}
+            {rc.ready ? t("aicc.gsv2.rcReady") : t("aicc.gsv2.rcNotReady", { n: toDo, of: gating })}
           </Badge>
           <ul className="grid gap-1.5 sm:grid-cols-2" data-gsv2-checks>
             {rc.checks.map((c) => (
@@ -62,16 +65,34 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
                 <span className="min-w-0">
                   <span className="font-semibold">{t(`aicc.gsv2.check.${c.key}`)}</span>
                   {c.detail && <code className="block break-words font-mono text-[11px] text-muted">{c.detail}</code>}
+                  {c.reason && <span className="mt-0.5 block text-[11.5px] leading-snug text-muted" data-gsv2-why={c.reason}>{t(`aicc.gsv2.why.${c.reason}`, c.params)}</span>}
+                  {c.href && !c.good && <Link href={c.href} className="mt-0.5 inline-block text-[11.5px] font-semibold text-accent hover:underline">{t(`aicc.gsv2.fix.${c.key}`)}</Link>}
+                  {c.href && c.info && <Link href={c.href} className="mt-0.5 inline-block text-[11.5px] font-semibold text-accent hover:underline">{t("aicc.gsv2.flagEdit")}</Link>}
                 </span>
-                <Badge tone={c.good ? "success" : c.status === "error" || c.status === "blocked" ? "danger" : "warning"}>{t(`aicc.gsv2.cs.${c.status}`)}</Badge>
+                <Badge tone={c.info ? (c.status === "off" ? "neutral" : "accent") : c.good ? "success" : c.status === "error" || c.status === "blocked" ? "danger" : "warning"}>{t(`aicc.gsv2.cs.${c.status}`)}</Badge>
               </li>
             ))}
           </ul>
           <div className="grid gap-3 sm:grid-cols-2">
             <Fact label={t("aicc.gsv2.anthropic")}>
-              <Badge tone={rc.anthropic.state === "ok" ? "success" : "warning"} dot>{t(`aicc.gsv2.anthropicState.${rc.anthropic.state}`)}</Badge>
+              <div className="flex flex-wrap gap-1" data-gsv2-anthropic={`${rc.anthropic.connected ? "connected" : "not_connected"}:${rc.anthropic.active ? "active" : "inactive"}`}>
+                <Badge tone={rc.anthropic.connected ? "success" : rc.anthropic.hasKey ? "danger" : "warning"} dot>
+                  {rc.anthropic.connected ? t("aicc.gsv2.anthropicConnected") : rc.anthropic.hasKey ? t("aicc.gsv2.anthropicTestFailed") : t("aicc.gsv2.anthropicState.no_key")}
+                </Badge>
+                <Badge tone={rc.anthropic.active ? "success" : "warning"} dot>{rc.anthropic.active ? t("aicc.gsv2.anthropicActive") : t("aicc.gsv2.anthropicInactive")}</Badge>
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                {t("aicc.gsv2.anthropicLastTest", {
+                  status: rc.anthropic.lastTest.status ? t(`admin.test.${rc.anthropic.lastTest.status}`) : "—",
+                  at: rc.anthropic.lastTest.at ? formatDate(rc.anthropic.lastTest.at, locale) : "—",
+                  ms: rc.anthropic.lastTest.latencyMs ?? "—",
+                })}
+              </p>
               <p className="mt-1.5 text-xs leading-relaxed text-muted">{t("aicc.gsv2.anthropicHelp")}</p>
-              <Link href="/admin/ai/modele" className="mt-1 inline-block text-xs font-semibold text-accent hover:underline">{t("aicc.gsv2.anthropicOpen")}</Link>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <GsV2AnthropicToggle providerId={rc.anthropic.providerId} active={rc.anthropic.active} />
+                <Link href="/admin/ai/modele" className="text-xs font-semibold text-accent hover:underline">{t("aicc.gsv2.anthropicOpen")}</Link>
+              </div>
               <p className="mt-1.5 break-words text-xs text-muted" data-gsv2-anthropic-error>
                 {t("aicc.gsv2.lastError")}: {rc.anthropic.lastError
                   ? `${rc.anthropic.lastError.code}${rc.anthropic.lastError.model ? ` · ${rc.anthropic.lastError.model}` : ""} · ${formatDate(rc.anthropic.lastError.at, locale)}`
@@ -94,9 +115,16 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
                     })
                   : t("aicc.gsv2.noTest")}
               </p>
+              <p className="mt-2 text-xs font-semibold text-muted">{t("aicc.gsv2.testsKinds")}</p>
+              <ul className="mt-1 space-y-0.5 text-xs text-muted" data-gsv2-test-kinds>
+                <li>{t("aicc.gsv2.testKind.connection", { status: rc.anthropic.lastTest.status ? t(`admin.test.${rc.anthropic.lastTest.status}`) : "—" })}</li>
+                <li>{t("aicc.gsv2.testKind.model")}</li>
+                <li>{t("aicc.gsv2.testKind.prompts", { status: t(`aicc.gsv2.cs.${rc.checks.find((c) => c.key === "prompt_test")?.status ?? "unverified"}`) })}</li>
+                <li>{t("aicc.gsv2.testKind.full", { status: t(`aicc.gsv2.cs.${rc.checks.find((c) => c.key === "production_test")?.status ?? "unverified"}`) })}</li>
+              </ul>
               <p className="mt-2 text-xs font-semibold text-muted">{t("aicc.gsv2.seq")}</p>
               <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs text-muted" data-gsv2-sequence>
-                {[1, 2, 3, 4, 5, 6].map((n) => <li key={n}>{t(`aicc.gsv2.seq.${n}`)}</li>)}
+                {[1, 2, 3, 4, 5, 6, 7].map((n) => <li key={n}>{t(`aicc.gsv2.seq.${n}`)}</li>)}
               </ol>
             </Fact>
           </div>
@@ -175,7 +203,7 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
         </div>
       </Card>
 
-      <Card className="p-4 sm:p-5" data-gsv2-economics>
+      <Card className="p-4 sm:p-5" data-gsv2-economics id="gsv2-economics">
         <CardHeader title={`3. ${t("aicc.gsv2.econ")}`} sub={t("aicc.gsv2.econSub", {
           complex: Math.round(TYPICAL_ASSUMPTIONS.complexShare * 100), retry: Math.round(TYPICAL_ASSUMPTIONS.retryShare * 100),
           delivered: Math.round(TYPICAL_ASSUMPTIONS.deliveredShare * 100),
@@ -184,6 +212,11 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
           <p className="pt-4 text-[13px] text-muted">{t("aicc.gsv2.econUnavailable")}</p>
         ) : (
           <div className="space-y-4 pt-4">
+            {economics.preview && (
+              <p className="rounded-lg bg-[rgb(var(--warning)/0.12)] px-3 py-2 text-xs text-warning" data-gsv2-econ-preview>
+                {t("aicc.gsv2.econPreview", { v: economics.previewVersion ?? "?" })}
+              </p>
+            )}
             <p className="text-xs text-muted">
               {t("aicc.gsv2.econBilling", {
                 pln: economics.billing.plnPerCredit.toFixed(2), fx: economics.billing.usdToPln.toFixed(2), floor: economics.billing.minMarginPercent,
@@ -195,6 +228,11 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
               <div key={tb.resolution} className="min-w-0" data-gsv2-econ={tb.resolution}>
                 <p className="mb-1.5 text-[13px] font-semibold">
                   {tb.resolution} · {tb.unitCredits} kr. / {t("aicc.gsv2.perImage")} · {t("aicc.gsv2.providerImage")} {usd(tb.imageUsdMicros)}
+                </p>
+                <p className="mb-1.5 text-xs text-muted" data-gsv2-break-even={tb.breakEvenCredits ?? "none"}>
+                  {tb.breakEvenCredits !== null
+                    ? t("aicc.gsv2.breakEven", { n: tb.breakEvenCredits, floor: economics.billing.minMarginPercent, now: tb.unitCredits })
+                    : t("aicc.gsv2.breakEvenNone")}
                 </p>
                 {tb.rows.length === 0 ? <p className="text-xs text-muted">{t("aicc.gsv2.econNoPrice")}</p> : (
                   <div className="thin-scroll overflow-x-auto">
@@ -233,11 +271,11 @@ export async function GrovshotV2Tab({ supabase, t, locale, stage }: {
         )}
       </Card>
 
-      <Card className="p-4 sm:p-5" data-gsv2-test>
+      <Card className="p-4 sm:p-5" data-gsv2-test id="gsv2-test">
         <CardHeader title={`4. ${t("aicc.gsv2.test")}`} sub={t("aicc.gsv2.testSub")} />
         <div className="pt-4">
           <GsV2TestPanel versions={pickable} ratios={state.model?.ratios ?? []} resolutions={state.model?.resolutions ?? []}
-            workspaceId={workspace?.id ?? null} budgets={state.testBudgets} />
+            workspaceId={workspace?.id ?? null} budgets={state.testBudgets} knowledgeActive={knowledgeActive} />
         </div>
       </Card>
 

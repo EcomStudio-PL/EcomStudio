@@ -1,4 +1,5 @@
 import "server-only";
+import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import type { ReferenceImage } from "@/lib/ai/types";
 import { ProviderError } from "@/lib/ai/types";
@@ -43,6 +44,9 @@ export type StageCall = {
   backends: VisionBackend[];
   tokenPrices: readonly TokenPrice[];
   now: () => number;
+  /** Recorded with the step (which knowledge version and rules this call
+   *  read) — never sent anywhere; the rules themselves are a value. */
+  knowledge?: Json;
 };
 
 export type StageTrace = {

@@ -10,7 +10,12 @@
  *     · people / hands / animals within the table („Ludzie i zwierzęta”),
  *     · a seasonal motif only on a seasonal product,
  *     · the customer's plan rows honoured,
- *     · every shot's state has a photo (no part nobody has seen).
+ *     · every shot's state has a photo (no part nobody has seen),
+ *     · light: at most 2 golden-hour shots, no light in more than half of a
+ *       set of 3+ („Zróżnicowanie światła w zestawie”),
+ *     · the anti-stock check: a scene with two "no" answers is rewritten
+ *       (whether someone feels something is asked only where someone is in
+ *       the frame — a seller's detail shot has nobody to feel anything).
  *   DETERMINISTIC fixes (always applied, recorded):
  *     · references re-selected from the card (same state only, the whole
  *       product next to a close-up, the customer's chosen photo first),
@@ -25,7 +30,7 @@ import {
   type EngineConfig, type FidelityMode, type FooterKind, type FrameType, type PeopleMode, type RecipeId, type ShotPurpose,
 } from "@/lib/grovshot-v2/config";
 import type { ProductCard } from "@/lib/grovshot-v2/card";
-import { RISK_LEVELS, type RiskLevel } from "@/lib/grovshot-v2/stages";
+import { LIGHT_KINDS, RISK_LEVELS, type LightKind, type RiskLevel } from "@/lib/grovshot-v2/stages";
 
 export type UserRow = { text?: string; keepFraming?: boolean; refIndex?: number };
 
@@ -59,6 +64,11 @@ export type Shot = {
   candidates: 1 | 2;
   footer: FooterKind;
   whole: boolean;
+  light: LightKind;
+  light_note: string;
+  /** The creative direction (spec: „Kierunki kreatywne”) the planner chose. */
+  direction: string;
+  anti_stock: { moment: boolean; emotion: boolean; light_direction: boolean; effect: boolean; frame: boolean };
 };
 
 export type PlanViolation =
@@ -72,7 +82,10 @@ export type PlanViolation =
   | { code: "state_uncovered"; shot: number }
   | { code: "whole_missing"; shot: number }
   | { code: "argument_duplicate"; argument: string; count: number }
-  | { code: "non_action_outside_hero"; shot: number; argument: string };
+  | { code: "non_action_outside_hero"; shot: number; argument: string }
+  | { code: "golden_repeat"; count: number }
+  | { code: "light_monotone"; light: LightKind; count: number }
+  | { code: "anti_stock"; shot: number; failed: string[] };
 
 export type PlanCheck = {
   shots: Shot[];
@@ -276,6 +289,14 @@ export function checkPlan(
       candidates: 1,
       footer: "interior_hero",
       whole: WHOLE_PRODUCT_FRAMES.has(frame_type),
+      light: pick(r.light, LIGHT_KINDS, "daylight"),
+      light_note: s(r.light_note, 300),
+      direction: s(r.direction, 120),
+      anti_stock: (() => {
+        const a = isObj(r.anti_stock) ? r.anti_stock : {};
+        // An answer that is missing is a "no": the check was not done.
+        return { moment: a.moment === true, emotion: a.emotion === true, light_direction: a.light_direction === true, effect: a.effect === true, frame: a.frame === true };
+      })(),
     };
     shot.candidates = candidatesFor(shot, config);
     shot.footer = footerFor(shot, card.recipe_id);
@@ -319,6 +340,23 @@ export function checkPlan(
   (ctx.userRows ?? []).forEach((row, i) => {
     if ((row.text?.trim() || row.refIndex) && !shots.some((sh) => sh.user_row === i + 1)) violations.push({ code: "user_row_missing", row: i + 1 });
   });
+
+  // Light across the set.
+  const golden = shots.filter((sh) => sh.light === "golden_hour").length;
+  if (golden > 2) violations.push({ code: "golden_repeat", count: golden });
+  if (shots.length >= 3) {
+    const perLight = new Map<LightKind, number>();
+    for (const sh of shots) perLight.set(sh.light, (perLight.get(sh.light) ?? 0) + 1);
+    for (const [light, n] of perLight) if (n * 2 > shots.length && !(light === "golden_hour" && golden > 2)) violations.push({ code: "light_monotone", light, count: n });
+  }
+  // The anti-stock check, per scene.
+  for (const sh of shots) {
+    const a = sh.anti_stock;
+    const asked: [string, boolean][] = [["moment", a.moment], ["light_direction", a.light_direction], ["effect", a.effect], ["frame", a.frame]];
+    if (sh.people !== "none") asked.push(["emotion", a.emotion]);
+    const failed = asked.filter(([, ok]) => !ok).map(([k]) => k);
+    if (failed.length >= 2) violations.push({ code: "anti_stock", shot: sh.index + 1, failed });
+  }
 
   // The auction order — only when the customer did not number the shots.
   const ordered = (ctx.userRows ?? []).some((r) => r.text?.trim() || r.refIndex)

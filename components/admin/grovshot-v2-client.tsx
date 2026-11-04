@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/utils";
 import { saveRoleModelsAction, seedSpecDraftsAction, testStageModelAction } from "@/app/actions/grovshot-v2-admin";
+import { toggleProviderAction } from "@/app/actions/admin";
 import type { V2RunView } from "@/lib/server/grovshot-v2/admin";
 import { GROVSHOT_V2_KEYS } from "@/lib/grovshot-v2/stages";
 import { CLAUDE_STAGE_MODELS, STAGE_PROVIDERS, STAGE_ROLES, type StageModel, type StageRole } from "@/lib/grovshot-v2/config";
@@ -154,6 +155,23 @@ export function GsV2RoleModels({ models, states }: {
   );
 }
 
+/** Switch Anthropic on/off here too (the provider panel's own action). */
+export function GsV2AnthropicToggle({ providerId, active }: { providerId: string | null; active: boolean }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  if (!providerId) return null;
+  return (
+    <Button size="sm" variant={active ? "ghost" : "primary"} disabled={pending} data-gsv2-anthropic-toggle={active ? "on" : "off"}
+      onClick={() => start(async () => {
+        const res = await toggleProviderAction(providerId, !active);
+        if (res.ok) { toast.success(active ? t("aicc.gsv2.anthropicOff") : t("aicc.gsv2.anthropicOn")); router.refresh(); } else toast.error(t("common.error"));
+      })}>
+      {active ? t("aicc.gsv2.anthropicDeactivate") : t("aicc.gsv2.anthropicActivate")}
+    </Button>
+  );
+}
+
 export function GsV2SeedDrafts({ hasDrafts }: { hasDrafts: boolean }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -182,10 +200,12 @@ export function GsV2SeedDrafts({ hasDrafts }: { hasDrafts: boolean }) {
 
 type Pickable = Record<string, { id: string; version: number; status: string }[]>;
 
-export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId, budgets }: {
+export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId, budgets, knowledgeActive }: {
   versions: Pickable; ratios: string[]; resolutions: string[]; workspaceId: string | null;
   /** The per-order API budget of a 1-, 2- and 3-shot test (USD micros). */
   budgets: number[] | null;
+  /** The published knowledge version (null: none — a test can preview the approved rules). */
+  knowledgeActive: number | null;
 }) {
   const { t, locale } = useI18n();
   const [pending, start] = useTransition();
@@ -198,6 +218,7 @@ export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId, budg
   const [description, setDescription] = useState("");
   const [shots, setShots] = useState(1);
   const [mode, setMode] = useState<"prompts" | "full">("prompts");
+  const [knowledge, setKnowledge] = useState<"active" | "preview" | "none">(knowledgeActive ? "active" : "preview");
   const [confirmed, setConfirmed] = useState(false);
   const [ratio, setRatio] = useState(ratios.includes("4:5") ? "4:5" : ratios[0] ?? "");
   const [resolution, setResolution] = useState(resolutions.includes("2K") ? "2K" : resolutions[0] ?? "");
@@ -244,7 +265,7 @@ export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId, budg
     start(async () => {
       const res = await testApi({ body: {
         versions: chosen, photos: photos.map((p) => p.path), shots, aspectRatio: ratio, resolution, description,
-        mode, confirmed: mode === "full" && confirmed,
+        mode, confirmed: mode === "full" && confirmed, knowledge,
       } });
       if (res.ok && res.runId) { setRun(null); setRunId(res.runId); return; }
       toast.error(`${errText(t, res.error)}${res.blockers?.length ? ` (${res.blockers.join(", ")})` : ""}`);
@@ -277,6 +298,15 @@ export function GsV2TestPanel({ versions, ratios, resolutions, workspaceId, budg
           <option value="full">{t("aicc.gsv2.mode.full")}</option>
         </Select>
         <p className="text-xs text-muted">{mode === "full" ? t("aicc.gsv2.testModeFullHelp") : t("aicc.gsv2.testModePromptsHelp")}</p>
+      </div>
+      <div className="space-y-1.5" data-gsv2-test-knowledge={knowledge}>
+        <Label htmlFor="gsv2-knowledge">{t("aicc.gsv2.testKnowledge")}</Label>
+        <Select id="gsv2-knowledge" value={knowledge} onChange={(e) => setKnowledge(e.target.value as "active" | "preview" | "none")}>
+          <option value="active" disabled={!knowledgeActive}>{knowledgeActive ? t("aicc.gsv2.knowledgeActive", { n: knowledgeActive }) : t("aicc.gsv2.knowledgeNoActive")}</option>
+          <option value="preview">{t("aicc.gsv2.knowledgePreview")}</option>
+          <option value="none">{t("aicc.gsv2.knowledgeNone")}</option>
+        </Select>
+        <p className="text-xs text-muted">{t(`aicc.gsv2.knowledgeHelp.${knowledge}`)}</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
@@ -360,7 +390,12 @@ export function GsV2RunCard({ run, locale, open }: { run: V2RunView; locale: str
         <p className="break-words text-muted">
           {run.engineVersion ?? "—"} · {GROVSHOT_V2_KEYS.map((k) => `${k.replace("grovshot_v2_", "")} v${run.versions[k] ?? "?"}`).join(" · ")}
         </p>
-        {run.mode && <Badge tone="info">{t(`aicc.gsv2.mode.${run.mode}`)}</Badge>}
+        <p className="flex flex-wrap gap-1">
+          {run.mode && <Badge tone="info">{t(`aicc.gsv2.mode.${run.mode}`)}</Badge>}
+          <Badge tone={run.knowledge ? "accent" : "neutral"} data-gsv2-run-knowledge={run.knowledge?.version ?? "none"}>
+            {run.knowledge ? (run.knowledge.preview ? t("aicc.gsv2.runKnowledgePreview", { n: run.knowledge.rules }) : t("aicc.gsv2.runKnowledge", { v: run.knowledge.version, n: run.knowledge.rules })) : t("aicc.gsv2.runKnowledgeNone")}
+          </Badge>
+        </p>
         {run.notes.length > 0 && <p className="flex flex-wrap gap-1">{run.notes.map((n, i) => <Badge key={`${n}-${i}`} tone="neutral">{n}</Badge>)}</p>}
         {run.costByStage.some((c) => c.calls > 0 || c.usdMicros > 0 || c.unknown > 0) && (
           <div data-gsv2-costs>
@@ -375,6 +410,24 @@ export function GsV2RunCard({ run, locale, open }: { run: V2RunView; locale: str
               ))}
             </ul>
           </div>
+        )}
+        {run.knowledgeUse.length > 0 && (
+          <details data-gsv2-knowledge-use>
+            <summary className="cursor-pointer font-semibold">{t("aicc.gsv2.knowledgeUse")}</summary>
+            <ul className="mt-1 space-y-1.5">
+              {run.knowledgeUse.map((k, i) => (
+                <li key={`${k.stage}-${i}`}>
+                  <span className="font-semibold text-ink">{k.stage}</span>
+                  <span className="text-muted"> · {t("aicc.gsv2.knowledgeUseRow", { n: k.rules.length, chars: k.chars })}{k.dropped ? ` · ${t("aicc.gsv2.knowledgeDropped", { n: k.dropped })}` : ""}</span>
+                  {k.rules.length > 0 && (
+                    <ul className="mt-0.5 list-disc pl-4 text-muted">
+                      {k.rules.map((r) => <li key={r.id} className="break-words">{r.correction ? "⟲ " : ""}{r.title} <span className="text-faint">({r.scope})</span></li>)}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         {run.preview && (run.preview.card || run.preview.plan) && (
           <details data-gsv2-preview>

@@ -3996,8 +3996,12 @@ export type Database = {
       }
       knowledge_examples: {
         Row: {
+          confidence: number | null
           correction: string | null
+          correction_scope: Json | null
           created_at: string
+          created_by: string | null
+          description: string | null
           embedding: string | null
           enabled: boolean
           generated_path: string | null
@@ -4005,28 +4009,31 @@ export type Database = {
           hint_iv: string | null
           hint_tag: string | null
           id: string
+          negative_count: number
+          positive_count: number
+          product_category: string | null
           prompt_used: string | null
           reference_path: string | null
           result_rating: number | null
-          set_id: string
-          tags: string[]
-          what_failed: string | null
-          what_worked: string | null
           review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
           scene: string | null
-          product_category: string | null
-          confidence: number | null
+          set_id: string
           source_kind: string
           source_ref: string | null
+          tags: string[]
           usage_count: number
-          positive_count: number
-          negative_count: number
-          reviewed_by: string | null
-          reviewed_at: string | null
+          what_failed: string | null
+          what_worked: string | null
         }
         Insert: {
+          confidence?: number | null
           correction?: string | null
+          correction_scope?: Json | null
           created_at?: string
+          created_by?: string | null
+          description?: string | null
           embedding?: string | null
           enabled?: boolean
           generated_path?: string | null
@@ -4034,28 +4041,31 @@ export type Database = {
           hint_iv?: string | null
           hint_tag?: string | null
           id?: string
+          negative_count?: number
+          positive_count?: number
+          product_category?: string | null
           prompt_used?: string | null
           reference_path?: string | null
           result_rating?: number | null
-          set_id: string
-          tags?: string[]
-          what_failed?: string | null
-          what_worked?: string | null
           review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           scene?: string | null
-          product_category?: string | null
-          confidence?: number | null
+          set_id: string
           source_kind?: string
           source_ref?: string | null
+          tags?: string[]
           usage_count?: number
-          positive_count?: number
-          negative_count?: number
-          reviewed_by?: string | null
-          reviewed_at?: string | null
+          what_failed?: string | null
+          what_worked?: string | null
         }
         Update: {
+          confidence?: number | null
           correction?: string | null
+          correction_scope?: Json | null
           created_at?: string
+          created_by?: string | null
+          description?: string | null
           embedding?: string | null
           enabled?: boolean
           generated_path?: string | null
@@ -4063,24 +4073,23 @@ export type Database = {
           hint_iv?: string | null
           hint_tag?: string | null
           id?: string
+          negative_count?: number
+          positive_count?: number
+          product_category?: string | null
           prompt_used?: string | null
           reference_path?: string | null
           result_rating?: number | null
-          set_id?: string
-          tags?: string[]
-          what_failed?: string | null
-          what_worked?: string | null
           review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           scene?: string | null
-          product_category?: string | null
-          confidence?: number | null
+          set_id?: string
           source_kind?: string
           source_ref?: string | null
+          tags?: string[]
           usage_count?: number
-          positive_count?: number
-          negative_count?: number
-          reviewed_by?: string | null
-          reviewed_at?: string | null
+          what_failed?: string | null
+          what_worked?: string | null
         }
         Relationships: [
           {
@@ -4091,6 +4100,105 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      knowledge_rules: {
+        Row: {
+          body: string
+          body_sha256: string
+          conflicts_with: string[]
+          created_at: string
+          created_by: string | null
+          delivery: string
+          duplicate_of: string | null
+          example_id: string | null
+          id: string
+          is_correction: boolean
+          origin: string
+          page: number | null
+          position: number
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          revision: number
+          rule_key: string
+          scope_kind: string
+          scope_values: string[]
+          section: string | null
+          source_date: string | null
+          source_id: string | null
+          stages: string[]
+          status: string
+          supersedes: string[]
+          title: string
+          tool_key: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          body_sha256: string
+          conflicts_with?: string[]
+          created_at?: string
+          created_by?: string | null
+          delivery?: string
+          duplicate_of?: string | null
+          example_id?: string | null
+          id?: string
+          is_correction?: boolean
+          origin: string
+          page?: number | null
+          position?: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          revision?: number
+          rule_key: string
+          scope_kind?: string
+          scope_values?: string[]
+          section?: string | null
+          source_date?: string | null
+          source_id?: string | null
+          stages?: string[]
+          status?: string
+          supersedes?: string[]
+          title: string
+          tool_key?: string
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          body_sha256?: string
+          conflicts_with?: string[]
+          created_at?: string
+          created_by?: string | null
+          delivery?: string
+          duplicate_of?: string | null
+          example_id?: string | null
+          id?: string
+          is_correction?: boolean
+          origin?: string
+          page?: number | null
+          position?: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          revision?: number
+          rule_key?: string
+          scope_kind?: string
+          scope_values?: string[]
+          section?: string | null
+          source_date?: string | null
+          source_id?: string | null
+          stages?: string[]
+          status?: string
+          supersedes?: string[]
+          title?: string
+          tool_key?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       knowledge_sets: {
         Row: {
@@ -4105,6 +4213,7 @@ export type Database = {
           notes: string | null
           product_category: string | null
           product_description: string | null
+          scope: string | null
           status: string
           updated_at: string
           version: number
@@ -4122,6 +4231,7 @@ export type Database = {
           notes?: string | null
           product_category?: string | null
           product_description?: string | null
+          scope?: string | null
           status?: string
           updated_at?: string
           version?: number
@@ -4139,6 +4249,7 @@ export type Database = {
           notes?: string | null
           product_category?: string | null
           product_description?: string | null
+          scope?: string | null
           status?: string
           updated_at?: string
           version?: number
@@ -4153,6 +4264,126 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      knowledge_sources: {
+        Row: {
+          author: string | null
+          bytes: number | null
+          content: string | null
+          content_chars: number
+          created_at: string
+          created_by: string | null
+          doc_key: string
+          format: string
+          id: string
+          parse_note: string | null
+          role: string
+          rules_found: number
+          set_id: string
+          sha256: string | null
+          source_date: string | null
+          status: string
+          storage_path: string | null
+          title: string
+          tool_key: string
+          version: number
+        }
+        Insert: {
+          author?: string | null
+          bytes?: number | null
+          content?: string | null
+          content_chars?: number
+          created_at?: string
+          created_by?: string | null
+          doc_key: string
+          format: string
+          id?: string
+          parse_note?: string | null
+          role?: string
+          rules_found?: number
+          set_id: string
+          sha256?: string | null
+          source_date?: string | null
+          status?: string
+          storage_path?: string | null
+          title: string
+          tool_key?: string
+          version: number
+        }
+        Update: {
+          author?: string | null
+          bytes?: number | null
+          content?: string | null
+          content_chars?: number
+          created_at?: string
+          created_by?: string | null
+          doc_key?: string
+          format?: string
+          id?: string
+          parse_note?: string | null
+          role?: string
+          rules_found?: number
+          set_id?: string
+          sha256?: string | null
+          source_date?: string | null
+          status?: string
+          storage_path?: string | null
+          title?: string
+          tool_key?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      knowledge_versions: {
+        Row: {
+          activated_at: string | null
+          activated_by: string | null
+          active: boolean
+          changelog: string | null
+          content_sha256: string
+          created_at: string
+          created_by: string | null
+          delivered_count: number
+          example_ids: string[]
+          id: string
+          rule_count: number
+          rule_ids: string[]
+          tool_key: string
+          version: number
+        }
+        Insert: {
+          activated_at?: string | null
+          activated_by?: string | null
+          active?: boolean
+          changelog?: string | null
+          content_sha256: string
+          created_at?: string
+          created_by?: string | null
+          delivered_count: number
+          example_ids?: string[]
+          id?: string
+          rule_count: number
+          rule_ids: string[]
+          tool_key?: string
+          version: number
+        }
+        Update: {
+          activated_at?: string | null
+          activated_by?: string | null
+          active?: boolean
+          changelog?: string | null
+          content_sha256?: string
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          example_ids?: string[]
+          id?: string
+          rule_count?: number
+          rule_ids?: string[]
+          tool_key?: string
+          version?: number
+        }
+        Relationships: []
       }
       legal_document_sources: {
         Row: {
@@ -7336,6 +7567,22 @@ export type Database = {
       feature_interest_counts: {
         Args: never
         Returns: { feature_key: string; interested: number }[]
+      }
+      grovshot_knowledge_activate: {
+        Args: { p_version_id: string }
+        Returns: Json
+      }
+      grovshot_knowledge_publish: {
+        Args: { p_changelog: string }
+        Returns: Json
+      }
+      grovshot_knowledge_review: {
+        Args: { p_ids: string[]; p_note: string; p_status: string }
+        Returns: number
+      }
+      grovshot_knowledge_snapshot: {
+        Args: { p_preview: boolean; p_token: string }
+        Returns: Json
       }
       stripe_settle_payment: {
         Args: {

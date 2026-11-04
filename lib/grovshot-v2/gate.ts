@@ -13,7 +13,9 @@
  *   · the shot template has the writer's SYSTEM and USER sections and then
  *     `### PROMPT ###`: the writer's blocks appear only in PROMPT (they are its
  *     output), the PROMPT section places the ten blocks in the spec's order,
- *     and the USER section gives the writer the card, the shot and the photos.
+ *     and the USER section gives the writer the card, the shot, the photos
+ *     and the expert rules ({{knowledge_rules}} — never in PROMPT: the image
+ *     model gets the blocks written with the knowledge, not the knowledge).
  */
 import {
   GROVSHOT_V2_REQUIRED, GROVSHOT_V2_SHOT_BLOCKS, GROVSHOT_V2_WRITER_OUTPUTS, TOOL_VARIABLES, parsePlaceholders,
@@ -59,6 +61,10 @@ export function grovshotTemplateProblems(key: GrovshotStageKey, body: string): s
     // The ten blocks in the spec's order, all in the PROMPT section: each
     // block's anchor variable first appears after the previous block's.
     const promptNames = parsePlaceholders(split.prompt).map((p) => p.name);
+    // Expert rules are the WRITER's material: the image model never receives
+    // the knowledge base itself — only the blocks written with it.
+    if (promptNames.includes("knowledge_rules")) problems.push("knowledge_in_image_prompt");
+    if (!userNames.includes("knowledge_rules")) problems.push("user_section_required:knowledge_rules");
     const at = GROVSHOT_V2_SHOT_BLOCKS.map((n) => promptNames.indexOf(n));
     if (at.some((i) => i < 0)) for (const [k, n] of GROVSHOT_V2_SHOT_BLOCKS.entries()) { if (at[k] < 0) problems.push(`prompt_section_required:${n}`); }
     else if (at.some((i, k) => k > 0 && i < at[k - 1])) problems.push("block_order");

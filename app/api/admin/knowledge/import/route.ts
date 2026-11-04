@@ -5,6 +5,7 @@ import { buildHintCiphertext, embedTexts } from "@/lib/server/knowledge";
 import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 import { extractCandidates, readPdf, type PdfCandidate } from "@/lib/server/knowledge-pdf";
 import type { Client } from "@/lib/services/workspace";
+import { importGrovshotSource } from "@/lib/server/grovshot-v2/knowledge";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -52,6 +53,24 @@ export async function POST(request: Request) {
   catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "missing_file" }, { status: 400 });
+
+  // „Dodaj wiedzę do GrovShot” (GrovShot V2's knowledge base): an MD, TXT or
+  // PDF document becomes a source of a set and rule PROPOSALS for review —
+  // never approved or published here.
+  if (String(form.get("target") ?? "") === "grovshot_v2") {
+    const role = String(form.get("role") ?? "primary") === "confirmation" ? "confirmation" : "primary";
+    const setField = String(form.get("set_id") ?? "").trim();
+    const result = await importGrovshotSource(supabase, user.id, {
+      setId: /^[0-9a-f-]{36}$/i.test(setField) ? setField : null,
+      newSetName: String(form.get("set_name") ?? "").trim().slice(0, 160) || null,
+      fileName: file.name, bytes: Buffer.from(await file.arrayBuffer()),
+      title: String(form.get("title") ?? "").trim().slice(0, 200) || null,
+      role, sourceDate: String(form.get("source_date") ?? "").trim() || null,
+      author: String(form.get("author") ?? "").trim().slice(0, 120) || null,
+    }).catch(() => ({ ok: false as const, error: "import_failed" }));
+    const status = result.ok ? 200 : result.error === "already_imported" ? 409 : result.error === "file_too_large" ? 413 : result.error === "unsupported_format" ? 415 : 400;
+    return NextResponse.json(result, { status });
+  }
   const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
   if (isPdf ? file.size > MAX_PDF_BYTES : file.size > MAX_ZIP_BYTES) {
     return NextResponse.json({ ok: false, error: isPdf ? "pdf_too_large" : "zip_too_large" }, { status: 413 });

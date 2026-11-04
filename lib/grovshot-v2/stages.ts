@@ -151,6 +151,7 @@ export const CARD_SCHEMA = obj({
   season: obj({ seasonal: bool, season: str }),
   risks: strs,
   reference_additions: strs,
+  unknowns: strs,
   handheld: bool,
   for_animals: bool,
   assembly: bool,
@@ -166,6 +167,14 @@ export const CARD_SCHEMA = obj({
 
 export const RISK_LEVELS = ["low", "medium", "high"] as const;
 export type RiskLevel = (typeof RISK_LEVELS)[number];
+
+/** The light of a shot, as a closed set — so the set's distribution can be
+ *  checked in code (spec: „maksymalnie 2 ujęcia w złotej godzinie… ta sama
+ *  tonacja w ponad połowie zdjęć = wygląd stockowy”). */
+export const LIGHT_KINDS = [
+  "golden_hour", "daylight", "cool_morning", "overcast", "blue_hour", "cinematic_dusk", "night_lamp", "directional_interior",
+] as const;
+export type LightKind = (typeof LIGHT_KINDS)[number];
 
 export const PLAN_SCHEMA = obj({
   shots: {
@@ -195,6 +204,11 @@ export const PLAN_SCHEMA = obj({
       risks: strs,
       seasonal_motif: bool,
       user_row: int,
+      light: en(LIGHT_KINDS),
+      light_note: str,
+      direction: str,
+      // The anti-stock check (spec: „Kontrola anty-stock przed każdym promptem”).
+      anti_stock: obj({ moment: bool, emotion: bool, light_direction: bool, effect: bool, frame: bool }),
     }),
   },
 });

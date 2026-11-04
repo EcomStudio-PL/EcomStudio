@@ -31,6 +31,9 @@ export type TestInput = {
   /** A full test makes paid image calls: the admin confirmed it, having seen
    *  its maximum budget. Refused without. */
   confirmed?: boolean;
+  /** Which expert rules: the published version (default), the approved rules
+   *  before publishing ("preview"), or none (to compare). */
+  knowledge?: "active" | "preview" | "none";
 };
 
 /** A test order is small: 1–3 shots. */
@@ -43,6 +46,8 @@ export async function startAdminTest(supabase: Client, adminId: string, input: T
   if (input?.mode !== "prompts" && input?.mode !== "full") return { ok: false, error: "invalid_input" };
   if (!Number.isInteger(input.shots) || input.shots < 1 || input.shots > TEST_MAX_SHOTS) return { ok: false, error: "invalid_input" };
   if (input.mode === "full" && input.confirmed !== true) return { ok: false, error: "confirmation_required" };
+  const knowledge = input.knowledge ?? "active";
+  if (!["active", "preview", "none"].includes(knowledge)) return { ok: false, error: "invalid_input" };
   const workspace = await getCurrentWorkspace(supabase, adminId);
   if (!workspace) return { ok: false, error: "no_workspace" };
   const ids = GROVSHOT_V2_KEYS.map((k) => input.versions?.[k]);
@@ -68,11 +73,11 @@ export async function startAdminTest(supabase: Client, adminId: string, input: T
   const result = await startGrovshotRun(supabase, adminId, workspace.id, {
     photos: input.photos, shots: input.shots, aspectRatio: input.aspectRatio, resolution: input.resolution,
     sessionType: "lifestyle", description: String(input.description ?? "").slice(0, 20_000), dimensions: input.dimensions ?? null,
-  }, { test: { bodies, mode: input.mode } });
+  }, { test: { bodies, mode: input.mode, knowledge } });
   if (!result.ok) return { ok: false, error: result.error, blockers: result.blockers };
   await logAudit(supabase, {
     actorId: adminId, action: "grovshot_v2.tested", entityType: "ai_engine_run", entityId: result.runId,
-    after: { versions: Object.fromEntries(GROVSHOT_V2_KEYS.map((k) => [k, bodies[k].version])), shots: input.shots, mode: input.mode },
+    after: { versions: Object.fromEntries(GROVSHOT_V2_KEYS.map((k) => [k, bodies[k].version])), shots: input.shots, mode: input.mode, knowledge },
   });
   driveGrovshotAfterResponse(adminId, workspace.id, result.runId, Date.now(), chain);
   return { ok: true, runId: result.runId };

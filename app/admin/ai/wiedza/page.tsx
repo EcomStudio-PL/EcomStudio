@@ -4,6 +4,8 @@ import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { AiTabs } from "@/components/admin/ai-tabs";
 import { EngineAdmin, type EngineRuleView, type EngineVersionView, type KnowledgeSetView } from "@/components/admin/engine";
+import { GrovshotKnowledge } from "@/components/admin/grovshot-knowledge";
+import { readKnowledgeAdmin } from "@/lib/server/grovshot-v2/knowledge";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,12 @@ export const dynamic = "force-dynamic";
  * imported once here and then ATTACHED to as many tools as need it, from each
  * tool's Wiedza tab. The assignment lives with the tool; the material lives
  * here, so the same archive is never uploaded twice.
+ *
+ * GROVSHOT V2 — first on the page: the expert knowledge base the engine's
+ * stages read (sources → rules → reviewed → published versions → orders),
+ * „Dodaj wiedzę do GrovShot”, versions with rollback and test cases
+ * (components/admin/grovshot-knowledge.tsx). A published version reaches only
+ * NEW orders; nothing here retrains a model.
  *
  * Imported material is DATA. Nothing on this page can publish a system prompt:
  * it can only inform a candidate version that an operator reads and publishes
@@ -28,10 +36,11 @@ export const dynamic = "force-dynamic";
  */
 export default async function AdminEnginePage() {
   const supabase = await createClient();
-  const { dict } = await getDictionary();
+  const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
-  const [{ data: sets }, { data: exampleRows }, { data: rules }, { data: versions }] = await Promise.all([
+  const [knowledge, { data: sets }, { data: exampleRows }, { data: rules }, { data: versions }] = await Promise.all([
+    readKnowledgeAdmin(supabase),
     supabase.from("knowledge_sets")
       .select("id, name, product_category, product_description, model, status, error, notes, file_count, version, created_at, updated_at")
       .order("created_at", { ascending: false }).limit(200),
@@ -79,7 +88,10 @@ export default async function AdminEnginePage() {
       <PageHeader overline={t("admin.navGroups.ai")}
         title={t("admin.engine.title")} sub={t("admin.engine.sub")} />
       <AiTabs />
-      <EngineAdmin sets={setViews} rules={ruleViews} versions={versionViews} />
+      <div className="space-y-6">
+        <GrovshotKnowledge data={knowledge} locale={locale} />
+        <EngineAdmin sets={setViews} rules={ruleViews} versions={versionViews} />
+      </div>
     </div>
   );
 }

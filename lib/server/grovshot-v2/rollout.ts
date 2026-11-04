@@ -21,6 +21,10 @@ import { imageUnitPrice, readEngineState, type EngineState } from "@/lib/server/
 export type EconTable = {
   resolution: string; unitCredits: number; imageUsdMicros: number | null;
   rows: (EconRow & { shots: number })[];
+  /** The lowest credits per image at which the TYPICAL order of every size
+   *  meets the floor (same assumptions) — information for the owner's price
+   *  decision; never applied. Null: no price / above the search range. */
+  breakEvenCredits: number | null;
 };
 
 export type V2Economics = {
@@ -34,20 +38,26 @@ export type V2Economics = {
   tables: EconTable[];
   /** Typical orders meet the floor at every size, text priced from a list. */
   customerAllowed: boolean;
+  /** A projection on the newest DRAFT config (nothing published yet): shown
+   *  to the admin, never used by the gate (customerAllowed is then false). */
+  preview: boolean;
+  previewVersion: number | null;
 };
 
 /**
  * Tokens one call of each text/vision role is assumed to use for this
  * projection — stated, conservative (thinking counts as output): the photo
  * check and the card read every photo; the plan and the prompt writer are
- * text; QC reads the shot's references and one candidate.
+ * text; QC reads the shot's references and one candidate. Each includes the
+ * expert rules the stage reads ({{knowledge_rules}}, up to KNOWLEDGE_LIMITS
+ * characters ≈ 3 characters per token for Polish text).
  */
 export const ROLE_CALL_TOKENS: Record<StageRole, { input: number; output: number }> = {
-  validate: { input: 8_000, output: 2_000 },
-  card: { input: 10_000, output: 4_000 },
-  plan: { input: 6_000, output: 5_000 },
-  prompt: { input: 5_000, output: 2_500 },
-  qc: { input: 7_000, output: 1_500 },
+  validate: { input: 9_500, output: 2_000 },
+  card: { input: 12_000, output: 4_000 },
+  plan: { input: 11_500, output: 6_000 },
+  prompt: { input: 9_000, output: 2_500 },
+  qc: { input: 9_000, output: 1_500 },
 };
 
 /**
@@ -83,30 +93,43 @@ export function imageTokenCost(state: EngineState, config: EngineConfig | null):
   return Math.max(Math.ceil(cost), config.budget.image_token_allowance_usd_micros);
 }
 
-export function economicsFor(state: EngineState, billing: BillingConfig): V2Economics | null {
-  if (!state.config || !state.model) return null;
-  const config = state.config;
+export function economicsFor(
+  state: EngineState, billing: BillingConfig, opts: { draft?: { config: EngineConfig; version: number } } = {},
+): V2Economics | null {
+  const preview = !state.config && Boolean(opts.draft);
+  const config = state.config ?? opts.draft?.config ?? null;
+  if (!config || !state.model) return null;
   const roleCalls = roleCallCosts(state, config);
   const textPriced = Object.values(roleCalls).every((v) => v !== null);
   const imageTokens = imageTokenCost(state, config);
   const tables: EconTable[] = state.model.resolutions.map((resolution) => {
     const unitCredits = state.model!.pricing[resolution] ?? 0;
     const imageUsdMicros = imageUnitPrice(state, resolution);
-    const rows = imageUsdMicros === null || unitCredits <= 0 ? [] : ECON_SHOT_COUNTS.flatMap((shots) =>
+    const project = (credits: number) => ECON_SHOT_COUNTS.flatMap((shots) =>
       ECON_SCENARIOS.map((scenario) => ({
         shots,
         ...projectOrder({
-          shots, unitCredits, imageUsdMicros,
+          shots, unitCredits: credits, imageUsdMicros: imageUsdMicros!,
           imageTokenUsdMicros: imageTokens,
           roleCalls,
           billing, config,
         }, scenario),
       })));
-    return { resolution, unitCredits, imageUsdMicros, rows };
+    const rows = imageUsdMicros === null || unitCredits <= 0 ? [] : project(unitCredits);
+    let breakEvenCredits: number | null = null;
+    if (imageUsdMicros !== null) {
+      for (let c = 1; c <= 300; c++) {
+        if (project(c).filter((r) => r.scenario === "typical").every((r) => r.meetsFloor)) { breakEvenCredits = c; break; }
+      }
+    }
+    return { resolution, unitCredits, imageUsdMicros, rows, breakEvenCredits };
   });
   // Every size the customer can order must pass — not only the cheapest.
-  const allowed = tables.length > 0 && tables.every((t) => t.rows.length > 0 && customerRolloutAllowed(t.rows));
-  return { billing, textPriced, roleCalls, imageTokensPriced: imageTokens !== null, tables, customerAllowed: allowed };
+  const allowed = !preview && tables.length > 0 && tables.every((t) => t.rows.length > 0 && customerRolloutAllowed(t.rows));
+  return {
+    billing, textPriced, roleCalls, imageTokensPriced: imageTokens !== null, tables, customerAllowed: allowed,
+    preview, previewVersion: preview ? opts.draft!.version : null,
+  };
 }
 
 /** For the flag check: may a NON-admin be routed to V2 at today's prices? */

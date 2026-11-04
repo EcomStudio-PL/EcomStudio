@@ -123,7 +123,7 @@ export function checkWrite(raw: RawWrite | null | undefined, ctx: { refs: number
 
 /** {{plan_overview}} — the set's other shots, so each prompt stays distinct. */
 export function planOverview(shots: readonly Shot[]): string {
-  return JSON.stringify(shots.map((x) => ({ shot: x.index + 1, title: x.title, frame_type: x.frame_type, place: x.place, argument: x.argument })));
+  return JSON.stringify(shots.map((x) => ({ shot: x.index + 1, title: x.title, frame_type: x.frame_type, place: x.place, argument: x.argument, light: x.light })));
 }
 
 export function shotValues(input: ShotPromptInput): CompileValues {
@@ -195,7 +195,8 @@ export function shotSpec(shot: Shot, card: ProductCard): string {
   return JSON.stringify({
     frame_type: shot.frame_type, whole_product: shot.whole, product_state: stateLabel(card, shot.product_state) || shot.product_state,
     people: shot.people, person: shot.person, grip: shot.grip, moment: shot.moment, visible_units: shot.visible_units,
-    argument: shot.argument, scenery: shot.scenery,
+    argument: shot.argument, scenery: shot.scenery, light: shot.light, light_note: shot.light_note, direction: shot.direction,
+    camera: shot.camera, motion: shot.motion,
   });
 }
 

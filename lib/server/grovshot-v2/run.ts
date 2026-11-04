@@ -35,6 +35,7 @@ import { callStage, checkLimits, type StageCall, type StageResult } from "@/lib/
 import { forImageModel, forVision, pixelsOf, readOrderPhotos, sha256, dimensionsOf, type OrderPhoto } from "@/lib/server/grovshot-v2/media";
 import { readEngineState } from "@/lib/server/grovshot-v2/settings";
 import type { StoredInput } from "@/lib/server/grovshot-v2/start";
+import { KNOWLEDGE_LIMITS, parseSnapshot, selectKnowledge, type KnowledgeSnapshot, type SelectContext } from "@/lib/grovshot-v2/knowledge";
 import {
   derivatives, eventByKey, eventStatus, freshBalance, jobAsset, jobFailed, markJobCompleted,
   removeFolder, removeLibraryRows, storeNew, walletId,
@@ -153,7 +154,22 @@ type Ctx = {
   backends: Record<StageRole, VisionBackend[]> | null;
   unitPrices: Awaited<ReturnType<typeof readEngineState>>["unitPrices"];
   tokenPrices: Awaited<ReturnType<typeof readEngineState>>["tokenPrices"];
+  /** The knowledge version the order sealed at its start (null: none). */
+  knowledge: KnowledgeSnapshot | null;
 };
+
+/** The expert rules of one stage call and what to record about them (the
+ *  version, the ids sent, what the stage limit left out). */
+function knowledgeFor(ctx: Pick<Ctx, "knowledge">, sel: SelectContext): { text: string; meta: Json } {
+  const k = ctx.knowledge;
+  if (!k) return { text: "", meta: { version: null } };
+  const s = selectKnowledge(k, sel, KNOWLEDGE_LIMITS[sel.stage]);
+  return {
+    text: s.text,
+    meta: { version: k.version, preview: k.preview, rules: s.used, dropped: s.dropped, chars: s.chars, examples: s.examples } as unknown as Json,
+  };
+}
+const productText = (card: Pick<ProductCard, "name" | "variant" | "category">) => [card.name, card.variant, card.category].filter(Boolean).join(" · ");
 
 /* ══ helpers ══════════════════════════════════════════════════════════════*/
 
@@ -322,6 +338,18 @@ export async function advanceGrovshotRun(
     bodies[k] = opened.text;
     versions[k] = st.version;
   }
+  // The knowledge it started with — opened the same way; unreadable now is a
+  // reason to wait, never to run without it.
+  let knowledge: KnowledgeSnapshot | null = null;
+  if (input.knowledge) {
+    const k = input.knowledge;
+    const opened = ring.open({ ciphertext: k.sealed.ciphertext, iv: k.sealed.iv, authTag: k.sealed.authTag });
+    if (!opened || sha256(opened.text) !== k.sha256) return stall();
+    let raw: unknown = null;
+    try { raw = JSON.parse(opened.text); } catch { raw = null; }
+    knowledge = parseSnapshot(raw);
+    if (!knowledge) { await closeEarly(base, "failed", "knowledge_invalid"); return "finished"; }
+  }
   const parsed = parseEngineConfig(bodies.grovshot_v2_config);
   if (!parsed.ok) { await closeEarly(base, "failed", "config_invalid"); return "finished"; }
   const steps = await readSteps(supabase, runId);
@@ -332,7 +360,7 @@ export async function advanceGrovshotRun(
     ...base, input, config: parsed.config, bodies, versions, ring, test: run.run_kind === "grovshot_test",
     steps, progress: { ...((run.progress && typeof run.progress === "object" && !Array.isArray(run.progress)) ? run.progress as Record<string, Json> : {}) },
     writer: Promise.resolve(), reserved: 0, inFlight: new Set(), shotSeq: 0, progressed: false, stopNew: null, qcFailStreak: Number((run.progress as Record<string, unknown> | null)?.qc_fail_streak) || 0,
-    photos: new Map(), backends: null, unitPrices: state.unitPrices, tokenPrices: state.tokenPrices,
+    photos: new Map(), backends: null, unitPrices: state.unitPrices, tokenPrices: state.tokenPrices, knowledge,
   };
   const invocations = Number((run as { invocations?: unknown }).invocations) || 0;
   if (invocations >= WIND_DOWN_INVOCATIONS || deps.now() - Date.parse(run.created_at) > MAX_ORDER_AGE_MS) {
@@ -428,6 +456,7 @@ async function writeStep(ctx: Ctx, card: ProductCard, shot: Shot, round: number,
   if (b.attempts >= TEXT_RESUME_LIMIT) return fail("resume_limit", { basis: "unknown" });
   const split = splitShotTemplate(ctx.bodies.grovshot_v2_shot);
   if (!split) return fail("template_layout");
+  const kn = knowledgeFor(ctx, { stage: "prompt", recipeId: card.recipe_id, productText: productText(card), frameType: shot.frame_type, people: shot.people });
   const values = {
     ...shotValues({
       shot, card, recipe: recipeById(ctx.config, card.recipe_id), config: ctx.config,
@@ -435,6 +464,7 @@ async function writeStep(ctx: Ctx, card: ProductCard, shot: Shot, round: number,
     }),
     product_card: cardForPrompt(card), shot_spec: shotSpec(shot, card), plan_overview: planOverview(ctx.plannedShots ?? [shot]),
     previous_blocks: previous ? JSON.stringify(previous) : "",
+    knowledge_rules: kn.text,
   };
   const t0 = ctx.deps.now();
   const res = await ctx.deps.callStage<RawWrite>(ctx.supabase, {
@@ -453,7 +483,7 @@ async function writeStep(ctx: Ctx, card: ProductCard, shot: Shot, round: number,
     cost: res.cost, durationMs: ctx.deps.now() - t0,
     output: {
       blocks: checked.blocks, round, amended: Boolean(correction), trace: res.trace as unknown as Json, unknown_calls: res.unknownCalls,
-      prompt_sha256: compiled.ok ? sha256(compiled.text) : null,
+      prompt_sha256: compiled.ok ? sha256(compiled.text) : null, knowledge: kn.meta,
       ...(ctx.test && compiled.ok ? { prompt_text: compiled.text } : {}),
     } as unknown as Json,
   });
@@ -584,7 +614,7 @@ async function stageStep<T>(ctx: Ctx, pos: number, item: number, name: string,
     await close(ctx, "failed", "analysis_unavailable");
     return "finished";
   }
-  const out = { raw: res.data as unknown as Json, ...meta };
+  const out = { raw: res.data as unknown as Json, ...meta, ...(call.knowledge !== undefined ? { knowledge: call.knowledge } : {}) };
   await finish(ctx, pos, item, {
     status: "succeeded", attempts: b.attempts + 1, providerSlug: res.trace.provider, model: res.trace.model,
     cost: res.cost, output: out as Json, durationMs: ctx.deps.now() - t0,
@@ -604,9 +634,10 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
   const v0 = await stageStep<RawValidation>(ctx, P.validate, -1, "validate", cache.validate, STAGE_TIMEOUT_MS.validate, async () => {
     const ph = await photos(ctx, all);
     if (typeof ph === "string") return ph;
+    const kn = knowledgeFor(ctx, { stage: "validate" });
     return {
       key: "grovshot_v2_validate", body: ctx.bodies.grovshot_v2_validate,
-      values: { photo_count: String(photoCount), session_type: "lifestyle" },
+      values: { photo_count: String(photoCount), session_type: "lifestyle", knowledge_rules: kn.text }, knowledge: kn.meta,
       images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: VALIDATE_SCHEMA,
       timeoutMs: STAGE_TIMEOUT_MS.validate, deadlineAt: ctx.deadlineAt, backends: await backends(ctx, "validate"),
       tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
@@ -624,13 +655,16 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
   const c1 = await stageStep<unknown>(ctx, P.card, -1, "card", cache.card, STAGE_TIMEOUT_MS.card, async () => {
     const ph = await photos(ctx, all);
     if (typeof ph === "string") return ph;
+    // No card yet: a category or product-type rule is matched on Etap 0's own summary of the product.
+    const kn = knowledgeFor(ctx, { stage: "card", productText: typeof v0.raw?.product_summary === "string" ? v0.raw.product_summary : null });
     return {
       key: "grovshot_v2_card", body: ctx.bodies.grovshot_v2_card,
       values: {
         photo_count: String(photoCount), validation_summary: validationForPrompt(validation),
         allegro_description: input.description, customer_dimensions: input.dimensions ?? "",
-        style_recipes: recipeCatalog(config), session_type: "lifestyle",
+        style_recipes: recipeCatalog(config), session_type: "lifestyle", knowledge_rules: kn.text,
       },
+      knowledge: kn.meta,
       // Every photo, in upload order — the numbering IS the order; the photos
       // Etap 0 set aside are marked so in the summary.
       images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: CARD_SCHEMA,
@@ -655,16 +689,17 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
   // ── Etap 2 ──
   await setProgress(ctx, { stage: "plan" });
   const recipe = recipeById(config, card.recipe_id);
+  const planKnowledge = knowledgeFor(ctx, { stage: "plan", recipeId: card.recipe_id, productText: productText(card) });
   const planValues = (feedback: string) => ({
     shot_count: String(input.shots), product_card: cardForPrompt(card), photo_catalog: photoCatalog(card),
     style_recipe: recipeForPlan(recipe), shared_rules: config.shared_rules.join("\n"),
     banned_cliches: config.banned_cliches.join(", "), frame_types: FRAME_TYPES.join(", "),
     people_targets: renderPeopleTargets(peopleTargets(config, input.shots, card)),
     user_shot_plan: renderUserPlan(input.user_rows ?? undefined), plan_feedback: feedback,
-    aspect_ratio: input.aspect_ratio, session_type: "lifestyle",
+    aspect_ratio: input.aspect_ratio, session_type: "lifestyle", knowledge_rules: planKnowledge.text,
   });
   const planCall = (feedback: string) => async (): Promise<StageCall> => ({
-    key: "grovshot_v2_plan", body: ctx.bodies.grovshot_v2_plan, values: planValues(feedback), images: [],
+    key: "grovshot_v2_plan", body: ctx.bodies.grovshot_v2_plan, values: planValues(feedback), images: [], knowledge: planKnowledge.meta,
     schema: PLAN_SCHEMA, timeoutMs: STAGE_TIMEOUT_MS.plan, deadlineAt: ctx.deadlineAt, backends: await backends(ctx, "plan"),
     tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
   });
@@ -1085,9 +1120,11 @@ async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
   const colorRef = card.color_sample && r.refs.some((p) => p.number === card.color_sample!.photo)
     ? await pixelsOf(r.refs.find((p) => p.number === card.color_sample!.photo)!.bytes) : null;
   const pastel = card.colors.some((c) => c.pastel);
+  const qcKnowledge = knowledgeFor(ctx, { stage: "qc", recipeId: card.recipe_id, productText: productText(card), frameType: shot.frame_type, people: shot.people });
   const qcValues = {
     reference_map: referenceMap(card, shot.references, ctx.config.labels), product_card: cardForPrompt(card),
     shot_spec: shotSpec(shot, card), is_hero: shot.whole ? "tak" : "nie", qc_rules: qcRules(ctx.config),
+    knowledge_rules: qcKnowledge.text,
   };
   const schema = qcSchema(ctx.config.qc.categories.map((c) => c.id));
   let qcCost = 0;
@@ -1163,6 +1200,7 @@ async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
       color: decisions[i].color,
     })) as Json,
     qc: qcTraces,
+    knowledge_qc: qcKnowledge.meta,
     retry: retry.retry ? { mode: retry.mode, correction: retry.correction } : null,
     prompt: {
       sha256: sha256(r.prompt), amended: Boolean(r.correction), correction: r.correction, version: ctx.versions.grovshot_v2_shot,
