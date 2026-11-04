@@ -53,12 +53,15 @@ export type V2Economics = {
  * characters ≈ 3 characters per token for Polish text).
  */
 export const ROLE_CALL_TOKENS: Record<StageRole, { input: number; output: number }> = {
-  // Measured on PROD (04.11, three photo checks of a 7-photo order): 13 654
-  // input tokens, 1 000–1 099 output — rounded up.
+  // Measured on PROD (04.11, real orders of a 7-photo product, rounded up):
+  // photo check 13 654 in / ≤1 099 out; card 16 942–16 958 in / 2 875–3 011
+  // out (schema as text); plan 13 707–13 740 in / 3 924–5 151 out; prompt
+  // writer 10 853–10 904 in / 1 747–1 761 out. QC: the spec's estimate (the
+  // measured calls were too few to state).
   validate: { input: 14_000, output: 1_500 },
-  card: { input: 12_000, output: 4_000 },
-  plan: { input: 11_500, output: 6_000 },
-  prompt: { input: 9_000, output: 2_500 },
+  card: { input: 17_500, output: 3_500 },
+  plan: { input: 14_000, output: 5_500 },
+  prompt: { input: 11_000, output: 2_000 },
   qc: { input: 9_000, output: 1_500 },
 };
 
