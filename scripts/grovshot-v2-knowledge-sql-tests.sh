@@ -114,13 +114,22 @@ insert into public.knowledge_examples (set_id, reference_path, review_status, so
 select id, 'sets/S/pdf/001-before.jpg', 'pending', 'pdf', 'pdf page 2', 0.2 from public.knowledge_sets;
 SQL
 
-for f in "$F1" "$F1" $SEED $SEED; do PGOPTIONS="-c client_min_messages=warning" "${PSQL[@]}" -f "$f" >/dev/null; done
+# The first load goes in with CRLF line ends (what a paste into the SQL
+# editor produced for 0163); the second, as committed.
+CRLF_DIR=$(mktemp -d)
+for f in "$F1" $SEED; do sed 's/$/\r/' "$f" > "$CRLF_DIR/$(basename "$f")"; done
+for f in "$CRLF_DIR/$(basename "$F1")" "$F1"; do PGOPTIONS="-c client_min_messages=warning" "${PSQL[@]}" -f "$f" >/dev/null; done
+for f in $SEED; do PGOPTIONS="-c client_min_messages=warning" "${PSQL[@]}" -f "$CRLF_DIR/$(basename "$f")" >/dev/null; done
+for f in $SEED; do PGOPTIONS="-c client_min_messages=warning" "${PSQL[@]}" -f "$f" >/dev/null; done
+rm -rf "$CRLF_DIR"
 echo "gsv2-knowledge-sql: 0164 + 0165 (parts $(echo $SEED | wc -w)) loaded twice each"
 
 echo "the seed"
 check "the set is GrovShot V2's" "$(q "select scope from knowledge_sets")" "grovshot_v2"
 check "MD = primary, PDF = confirmation (one each, after two runs)" "$(q "select string_agg(format||':'||role, ',' order by format) from knowledge_sources")" "md:primary,pdf:confirmation"
 check "MD: the full document, its sha256" "$(q "select (content_chars > 37000)::text || ':' || sha256 from knowledge_sources where format = 'md'")" "true:42347b65326e6f6fab76fd8c91cc77861759d4ed3ed7f2127646286db2527cd8"
+check "MD pasted with CRLF is stored byte for byte as the reviewed file (its sha256)" "$(q "select encode(extensions.digest(content, 'sha256'), 'hex') from knowledge_sources where format = 'md'")" "42347b65326e6f6fab76fd8c91cc77861759d4ed3ed7f2127646286db2527cd8"
+check "no rule text keeps a carriage return; each body_sha256 is the hash of its text" "$(q "select count(*) filter (where body like '%'||chr(13)||'%') || ':' || count(*) filter (where body_sha256 <> encode(extensions.digest(body, 'sha256'), 'hex')) from knowledge_rules")" "0:0"
 check "MD: Polish letters and the 03.11 correction kept" "$(q "select (content like '%Korekta przepisu świątecznego (03.11)%' and content like '%licencjonowanymi%')::text from knowledge_sources where format = 'md'")" "true"
 check "PDF: sha256 only because the stored size matches" "$(q "select sha256 is not null from knowledge_sources where format = 'pdf'")" "t"
 check "201 MD rules + the PDF diagram, all pending (two runs, no duplicates)" "$(q "select count(*) || ':' || count(*) filter (where status = 'pending') from knowledge_rules")" "202:202"
