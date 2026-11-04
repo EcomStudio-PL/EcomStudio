@@ -891,7 +891,13 @@
       "sub": "Silnik analizy i scen — niezależny od modeli obrazów. Fallback działa tylko, gdy go włączysz.",
       "primary": "Planner główny",
       "fallback": "Planner zapasowy",
-      "off": "Wyłączony"
+      "off": "Wyłączony",
+      "gsTitle": "Planner GrovShot (Claude)",
+      "gsSub": "Tylko dla GrovShot: analiza zdjęć i plan scen jednym modelem Claude, bez zapasowego dostawcy. „Wspólny” = planner powyżej. Inne narzędzia zawsze używają planera powyżej.",
+      "gsProvider": "Dostawca",
+      "gsShared": "Wspólny (planner powyżej)",
+      "gsModel": "Model",
+      "gsEffort": "Wysiłek"
     },
     "badgeCustom": "Własna etykieta…",
     "badgeTone": "Kolor badge",
@@ -2927,7 +2933,10 @@
       "photo_too_large": "Jedno ze zdjęć jest za duże (maks. 15 MB).",
       "reference_changed": "Zdjęcie zmieniło się w trakcie — uruchom sesję ponownie.",
       "prompt_key_unavailable": "Silnik jest chwilowo niedostępny. Spróbuj później.",
-      "feature_unavailable": "To narzędzie jest chwilowo niedostępne."
+      "feature_unavailable": "To narzędzie jest chwilowo niedostępne.",
+      "analysis_refused": "Model AI odmówił analizy tych zdjęć — spróbuj innych zdjęć produktu. Kredyty nie zostały pobrane.",
+      "analysis_truncated": "Odpowiedź modelu AI była niepełna — spróbuj ponownie. Kredyty nie zostały pobrane.",
+      "analysis_bad_image": "Jedno ze zdjęć ma nieobsługiwany format — użyj JPG, PNG lub WEBP."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",

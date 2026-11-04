@@ -212,6 +212,37 @@ async function plannerProviderOrder(supabase: Client): Promise<VisionProvider[]>
   return fallback ? [primary, fallback] : [primary];
 }
 
+/** Claude models GrovShot's own planner may name (the same list V2's stages use). */
+const GROVSHOT_PLANNER_MODELS = new Set(["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"]);
+const GROVSHOT_PLANNER_EFFORTS = new Set(["low", "medium", "high"]);
+
+/**
+ * GROVSHOT V1'S OWN PLANNER — app_settings("generation").grovshot_planner =
+ * { provider: "anthropic", model, effort }. When set, the GrovShot session and
+ * its single-card rewrite ask EXACTLY that Claude model and nothing else (no
+ * fallback to the shared chain, so no hidden GPT call): a missing key or an
+ * inactive provider is an honest `analysis_unavailable` before any session
+ * row, charge or paid call. Unset, GrovShot uses the shared planner chain as
+ * before. The other text tools (workflow, tool runs, GrovNews) always keep
+ * the shared chain — this setting is GrovShot's only.
+ */
+export async function grovshotPlannerBackends(supabase: Client, analysisModel: string): Promise<VisionBackend[]> {
+  const { data } = await supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle();
+  const own = ((data?.value ?? {}) as { grovshot_planner?: { provider?: unknown; model?: unknown; effort?: unknown } }).grovshot_planner;
+  if (!own || own.provider !== "anthropic") return getVisionBackends(supabase, analysisModel);
+  const model = typeof own.model === "string" && GROVSHOT_PLANNER_MODELS.has(own.model) ? own.model : null;
+  if (!model) return [];
+  const { data: provider } = await supabase.from("ai_providers").select("id, slug").eq("slug", "anthropic").eq("active", true).maybeSingle();
+  if (!provider) return [];
+  const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
+  const cred = credRows?.[0];
+  if (!cred) return [];
+  const apiKey = await readProviderKey(supabase, provider.id, cred);
+  if (!apiKey) return [];
+  const effort = typeof own.effort === "string" && GROVSHOT_PLANNER_EFFORTS.has(own.effort) ? (own.effort as "low" | "medium" | "high") : undefined;
+  return [{ provider: "anthropic", cred: { apiKey, baseUrl: cred.base_url }, model, ...(effort ? { effort } : {}) }];
+}
+
 async function getVisionBackends(
   supabase: Client, primaryModel: string, known?: readonly { id: string; slug: string }[],
 ): Promise<VisionBackend[]> {
@@ -353,7 +384,7 @@ export async function runPromptSession(
   const productLabel = (input.productName?.trim() || input.description?.trim().split(/[.\n]/)[0] || "").slice(0, 80).trim();
 
   const analysisModel = await getAnalysisModel(supabase);
-  let backends = await getVisionBackends(supabase, analysisModel);
+  let backends = await grovshotPlannerBackends(supabase, analysisModel);
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
   // Every card's prompt is sealed with the Vault prompt key. Checked HERE,
   // before any session row, charge or paid planner call: a key that cannot be
@@ -820,7 +851,7 @@ export async function regeneratePrompt(
     actorKind: "customer", consumer: "prompt_engine", userId: session.user_id ?? null,
     workspaceId, toolKey: "prompts", runRef: session.id,
   });
-  const backends = meter.wrap(await getVisionBackends(supabase, analysisModel));
+  const backends = meter.wrap(await grovshotPlannerBackends(supabase, analysisModel));
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
   // The new card is sealed with the Vault prompt key — checked before the
   // paid planner call, for the same reason as a whole session.

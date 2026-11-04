@@ -891,7 +891,13 @@
       "sub": "Analyse- und Szenen-Engine — unabhängig von Bildmodellen. Fallback läuft nur, wenn du ihn aktivierst.",
       "primary": "Primärer Planner",
       "fallback": "Fallback-Planner",
-      "off": "Deaktiviert"
+      "off": "Deaktiviert",
+      "gsTitle": "GrovShot-Planer (Claude)",
+      "gsSub": "Nur für GrovShot: Fotoanalyse und Szenenplan durch ein Claude-Modell, ohne Ersatzanbieter. „Gemeinsam“ = der Planer oben. Andere Tools nutzen immer den Planer oben.",
+      "gsProvider": "Anbieter",
+      "gsShared": "Gemeinsam (Planer oben)",
+      "gsModel": "Modell",
+      "gsEffort": "Aufwand"
     },
     "badgeCustom": "Eigenes Label…",
     "badgeTone": "Badge-Farbe",
@@ -2927,7 +2933,10 @@
       "photo_too_large": "Eines der Fotos ist zu groß (max. 15 MB).",
       "reference_changed": "Ein Foto hat sich zwischenzeitlich geändert — starte die Session erneut.",
       "prompt_key_unavailable": "Die Engine ist vorübergehend nicht verfügbar. Versuche es später.",
-      "feature_unavailable": "Dieses Tool ist vorübergehend nicht verfügbar."
+      "feature_unavailable": "Dieses Tool ist vorübergehend nicht verfügbar.",
+      "analysis_refused": "Das KI-Modell hat die Analyse dieser Fotos abgelehnt — versuche andere Produktfotos. Es wurden keine Credits abgebucht.",
+      "analysis_truncated": "Die Antwort des KI-Modells war unvollständig — versuche es erneut. Es wurden keine Credits abgebucht.",
+      "analysis_bad_image": "Eines der Fotos hat ein nicht unterstütztes Format — verwende JPG, PNG oder WEBP."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",

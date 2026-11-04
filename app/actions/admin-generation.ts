@@ -66,3 +66,34 @@ export async function savePlannerConfigAction(primary: string, fallback: string)
     return { ok: false, error: "generic" };
   }
 }
+
+/** GrovShot V1's own planner (Claude) — "" = the shared planner chain above.
+ *  Only GrovShot reads it; the other text tools keep the shared chain. */
+export async function saveGrovshotPlannerAction(provider: string, model: string, effort: string): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthenticated" };
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (profile?.role !== "admin") return { ok: false, error: "not_admin" };
+  try {
+    const models = new Set(["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"]);
+    const efforts = new Set(["low", "medium", "high"]);
+    if (provider !== "" && (provider !== "anthropic" || !models.has(model) || !efforts.has(effort))) return { ok: false, error: "invalid" };
+    const { data: row } = await supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle();
+    const before = ((row?.value ?? {}) as Record<string, unknown>).grovshot_planner ?? null;
+    const planner = provider === "" ? null : { provider, model, effort };
+    const value = { ...((row?.value as Record<string, unknown>) ?? {}), grovshot_planner: planner };
+    const { error } = await supabase.from("app_settings").update({ value: value as never }).eq("key", "generation");
+    if (error) return { ok: false, error: "generic" };
+    await supabase.rpc("log_activity", {
+      p_workspace_id: null as unknown as string,
+      p_action: "admin.grovshot_planner_saved",
+      p_entity_type: "app_settings",
+      p_metadata: { before, after: planner } as never,
+    });
+    revalidatePath("/admin/ai/modele");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}

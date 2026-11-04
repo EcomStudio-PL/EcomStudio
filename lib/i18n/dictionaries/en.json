@@ -891,7 +891,13 @@
       "sub": "The analysis & scene engine — independent of image models. Fallback runs only when you enable it.",
       "primary": "Primary planner",
       "fallback": "Fallback planner",
-      "off": "Disabled"
+      "off": "Disabled",
+      "gsTitle": "GrovShot planner (Claude)",
+      "gsSub": "GrovShot only: photo analysis and the scene plan by one Claude model, no backup provider. „Shared” = the planner above. Other tools always use the planner above.",
+      "gsProvider": "Provider",
+      "gsShared": "Shared (planner above)",
+      "gsModel": "Model",
+      "gsEffort": "Effort"
     },
     "badgeCustom": "Custom label…",
     "badgeTone": "Badge tone",
@@ -2927,7 +2933,10 @@
       "photo_too_large": "One of the photos is too large (max. 15 MB).",
       "reference_changed": "A photo changed in the meantime — start the session again.",
       "prompt_key_unavailable": "The engine is temporarily unavailable. Try again later.",
-      "feature_unavailable": "This tool is temporarily unavailable."
+      "feature_unavailable": "This tool is temporarily unavailable.",
+      "analysis_refused": "The AI model declined to analyse these photos — try other product photos. No credits were taken.",
+      "analysis_truncated": "The AI model's answer was incomplete — try again. No credits were taken.",
+      "analysis_bad_image": "One of the photos has an unsupported format — use JPG, PNG or WEBP."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",

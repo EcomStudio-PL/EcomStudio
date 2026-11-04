@@ -379,6 +379,31 @@ export function anthropicJsonSchema(schema: unknown): Record<string, unknown> {
   return out;
 }
 
+/** Claude reads an image at most ~1568 px on its long edge (larger ones are
+ *  resized by the API) and refuses one over 5 MB. A stored original above
+ *  either — GrovShot V1 sends the seller's files as they are — is sent as a
+ *  1568 px JPEG instead: what Claude would see anyway, never a refused
+ *  request. Anything already within both goes byte for byte. */
+const CLAUDE_EDGE = 1568;
+const CLAUDE_BYTES = 3_500_000;
+async function fitForClaude(r: ReferenceImage): Promise<ReferenceImage> {
+  const bytes = Math.floor((r.base64.length * 3) / 4);
+  try {
+    const { default: sharp } = await import("sharp");
+    const buf = Buffer.from(r.base64, "base64");
+    const meta = await sharp(buf, { failOn: "none" }).metadata();
+    const edge = Math.max(meta.width ?? 0, meta.height ?? 0);
+    if (bytes <= CLAUDE_BYTES && edge > 0 && edge <= CLAUDE_EDGE) return r;
+    const out = await sharp(buf, { failOn: "none" }).rotate()
+      .resize({ width: CLAUDE_EDGE, height: CLAUDE_EDGE, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" }).jpeg({ quality: 85 }).toBuffer();
+    return { base64: out.toString("base64"), mime: "image/jpeg" };
+  } catch {
+    // Undecodable here: the API decides (a refusal is reported as such).
+    return r;
+  }
+}
+
 /** Media types Claude accepts for an image block. */
 const ANTHROPIC_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
@@ -442,7 +467,7 @@ async function anthropicMessage<T>(backend: VisionBackend, req: VisionRequest, m
     timeout: requestTimeout(req),
     ...(backend.fetch ? { fetch: backend.fetch } : {}),
   });
-  const images = req.images.map((r): Anthropic.ImageBlockParam => {
+  const images = (await Promise.all(req.images.map(fitForClaude))).map((r): Anthropic.ImageBlockParam => {
     if (!ANTHROPIC_IMAGE_TYPES.has(r.mime)) throw new ProviderError("analysis_bad_image", false);
     return { type: "image", source: { type: "base64", media_type: r.mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: r.base64 } };
   });

@@ -268,6 +268,7 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
 
   const genCfg = (generation?.value ?? {}) as {
     provider_priority?: string[]; planner_provider?: string; planner_fallback?: string;
+    grovshot_planner?: { provider?: string; model?: string; effort?: string } | null;
   };
   const priorityOptions: PriorityModelOption[] = (models ?? [])
     .filter((m) => m.active && m.supports_reference_images)
@@ -324,7 +325,9 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
   return (
     <div>
       <GenerationPriority options={priorityOptions} current={genCfg.provider_priority ?? []}
-        planner={{ primary: genCfg.planner_provider ?? "openai", fallback: genCfg.planner_fallback ?? "" }} />
+        planner={{ primary: genCfg.planner_provider ?? "openai", fallback: genCfg.planner_fallback ?? "" }}
+        grovshotPlanner={genCfg.grovshot_planner?.provider === "anthropic"
+          ? { provider: "anthropic", model: genCfg.grovshot_planner.model ?? "claude-sonnet-5-5", effort: genCfg.grovshot_planner.effort ?? "medium" } : null} />
       <div className="space-y-3">
         {views.map((m) => (
           <div key={m.id}>
