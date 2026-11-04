@@ -43,7 +43,8 @@ import {
   HOP_CLAIM_TRIES, HOP_CLAIM_WAIT_MS, STALL_WAITS_MS, advanceWhenFree, chainSignature, chainSignatureOk, handOver, parseStalls,
 } from "@/lib/server/grovshot-v2/drive";
 import { roleCallCosts } from "@/lib/server/grovshot-v2/rollout";
-import { AUTOPILOT_SUMMARY, VARIANT_B_MODELS, runAutopilot, testWorstCase } from "@/lib/server/grovshot-v2/autopilot";
+import { AUTOPILOT_SUMMARY, MODELS_SUMMARY, runAutopilot, testWorstCase } from "@/lib/server/grovshot-v2/autopilot";
+import { testVerdict } from "@/lib/server/grovshot-v2/readiness";
 import { roleBackends } from "@/lib/server/grovshot-v2/backends";
 import { srvDue } from "@/lib/server/grovshot-v2/srv";
 import { callVisionJson, type VisionAttempt } from "@/lib/ai/engine/vision";
@@ -96,12 +97,11 @@ section("A. THE CONTRACT — seed, gate, prompt engine rules");
       STAGE_ROLES.every((r) => CONFIG.models[r].provider === "anthropic" && !CONFIG.models[r].fallback)
       && !parseEngineConfig(JSON.stringify(withOpenAi)).ok && !parseEngineConfig(JSON.stringify(withGeminiFallback)).ok);
   }
-  check("Claude Sonnet 5.5 on every role (cost-effective; Opus 5.5 only after a test shows it is clearly better), high effort where quality is decided",
-    STAGE_ROLES.every((r) => CONFIG.models[r].provider === "anthropic" && CONFIG.models[r].model === "claude-sonnet-5-5" && !CONFIG.models[r].fallback)
-    && CONFIG.models.card.effort === "high" && CONFIG.models.plan.effort === "high"
-    && ["validate", "prompt", "qc"].every((r) => CONFIG.models[r as "qc"].effort === "medium"));
-  check("the auto-setup's comparison variant B puts Opus 5.5 on the card and the plan only",
-    VARIANT_B_MODELS.card?.model === "claude-opus-5-5" && VARIANT_B_MODELS.plan?.model === "claude-opus-5-5" && Object.keys(VARIANT_B_MODELS).length === 2);
+  check("cost-effective Claude roles: Sonnet 5.5 for the product card and the prompt writer, Haiku 5.5 for the photo check, the plan and QC — no Opus, no fallback",
+    STAGE_ROLES.every((r) => CONFIG.models[r].provider === "anthropic" && !CONFIG.models[r].fallback && !/opus|fable/.test(CONFIG.models[r].model))
+    && CONFIG.models.card.model === "claude-sonnet-5-5" && CONFIG.models.prompt.model === "claude-sonnet-5-5"
+    && ["validate", "plan", "qc"].every((r) => CONFIG.models[r as "qc"].model === "claude-haiku-5-5")
+    && CONFIG.models.validate.effort === "low" && ["card", "plan", "prompt", "qc"].every((r) => CONFIG.models[r as "qc"].effort === "medium"));
   check("the base variant is never presented as tested", recipeById(CONFIG, "base").tested === false);
   check("shared rules, banned clichés, six footers and the negative base are there",
     CONFIG.shared_rules.length >= 5 && CONFIG.banned_cliches.length > 0 && Object.keys(CONFIG.footers).length === 6 && CONFIG.negative_base.length > 40);
@@ -412,6 +412,7 @@ const ROLE_PRICES_20K = Object.fromEntries(STAGE_ROLES.map((r) => [r, 20_000])) 
 /** The seed's role model (Claude) and its list price in the tests' token list. */
 const CLAUDE_PRICE = { providerSlug: "anthropic", model: "claude-opus-5-5", inputPerMTok: 4_000_000, outputPerMTok: 20_000_000, cachedInputPerMTok: 200_000 };
 const CLAUDE_SONNET_PRICE = { providerSlug: "anthropic", model: "claude-sonnet-5-5", inputPerMTok: 2_000_000, outputPerMTok: 10_000_000, cachedInputPerMTok: 200_000 };
+const CLAUDE_HAIKU_PRICE = { providerSlug: "anthropic", model: "claude-haiku-5-5", inputPerMTok: 100_000, outputPerMTok: 500_000, cachedInputPerMTok: null };
 {
   const rows = ECON_SHOT_COUNTS.flatMap((shots) => ECON_SCENARIOS.map((sc) => ({ shots, ...projectOrder({
     shots, unitCredits: 7, imageUsdMicros: 134_000, imageTokenUsdMicros: null, roleCalls: NO_ROLE_PRICES, billing, config: CONFIG }, sc) })));
@@ -1011,7 +1012,7 @@ async function partE() {
     check("E1 flag on for everyone, a customer at today's prices: V1 (the margin gate), nothing created", !r.ok && r.error === "engine_v1" && db().runs.size === 0, r);
     const wb = await world({ product: PRODUCTS[1] }, { role: "user", roles: null });
     gsv2Env().pricing = { "2K": 40, "4K": 60 };
-    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE];
+    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, CLAUDE_HAIKU_PRICE];
     const rc = await startOrder(wb, { quotedTotal: 120 });
     check("E1c …but not while the image model's tokens have no published price (the allowance is only an estimate)",
       !rc.ok && rc.error === "engine_v1", rc);
@@ -1021,7 +1022,7 @@ async function partE() {
     {
       const wk = await world({ product: PRODUCTS[1] }, { role: "user", roles: null });
       gsv2Env().pricing = { "2K": 40, "4K": 60 };
-      gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, { providerSlug: "google", model: "gemini-3-pro-image", inputPerMTok: 2_000_000, outputPerMTok: 12_000_000 }];
+      gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, CLAUDE_HAIKU_PRICE, { providerSlug: "google", model: "gemini-3-pro-image", inputPerMTok: 2_000_000, outputPerMTok: 12_000_000 }];
       KNOWLEDGE.current = null;
       const rk = await startOrder(wk, { quotedTotal: 120 });
       KNOWLEDGE.current = SNAPSHOT_ALL;
@@ -1314,9 +1315,9 @@ async function partE() {
   }
   {
     await world({ product: PRODUCTS[1] });
-    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE];
+    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, CLAUDE_HAIKU_PRICE];
     const priced = roleCallCosts(await readEngineState(SUPA), CONFIG);
-    gsv2Env().tokenPrices = [{ ...CLAUDE_PRICE, model: "claude-haiku-5-5" }];
+    gsv2Env().tokenPrices = [{ ...CLAUDE_PRICE, model: "claude-fable-5-1" }];
     const other = roleCallCosts(await readEngineState(SUPA), CONFIG);
     gsv2Env().tokenPrices = [];
     check("E46 each role is priced from the published list for ITS model (Claude), per role — unknown is never 0",
@@ -1469,6 +1470,28 @@ async function partE() {
       codes["401"] === "analysis_unavailable:1" && codes["429"] === "analysis_rate_limited:1" && codes["529"] === "analysis_overloaded:1"
       && codes["500"] === "analysis_error:1" && codes.refusal === "analysis_refused:1" && codes.max_tokens === "analysis_truncated:1", codes);
     check("E57b the key never appears in what the engine keeps (attempt codes and usage only)", !JSON.stringify(attempts).includes("sk-ant"));
+    // A schema the API cannot take as a format (documented 400 „Schema is too complex for compilation”):
+    // the same request once more with the schema as text — an unbilled refusal, then one answer.
+    const sentBefore = sent.length;
+    let calls = 0;
+    next = () => (++calls === 1
+      ? reply(400, { type: "error", error: { type: "invalid_request_error", message: "Schema is too complex for compilation." } })
+      : reply(200, message({ content: [{ type: "text", text: "```json\n{\"ok\": true}\n```" }] })));
+    attempts.length = 0;
+    const fb = await ask();
+    const second = sent[sentBefore + 1];
+    const oc2 = second?.body.output_config as Record<string, unknown> | undefined;
+    check("E57c a refused schema format: one more request with the schema in the system text (no format), parsed and reported as text with the API's reason",
+      fb.data.ok === true && sent.length - sentBefore === 2 && !(oc2 && "format" in oc2) && String(second.body.system).startsWith("SYSTEM TEXT")
+      && String(second.body.system).includes("\"ok\"") && fb.outcome.format === "text"
+      && attempts.length === 1 && attempts[0].ok && attempts[0].format === "text" && /too complex/.test(attempts[0].note ?? ""), { attempts, oc2 });
+    calls = 0;
+    next = () => reply(400, { type: "error", error: { type: "invalid_request_error", message: "messages.0.content.0.image.source: image exceeds 5 MB maximum: sk-ant-api03-SECRETSECRET" } });
+    const sb2 = sent.length;
+    let code2 = "";
+    try { await ask(); } catch (e) { code2 = (e as { safeMessage?: string }).safeMessage ?? "?"; }
+    check("E57d a request refused for another reason is refused again and reported as before (2 unbilled requests), a key-shaped text masked",
+      code2 === "analysis_error" && sent.length - sb2 === 2 && !JSON.stringify(attempts).includes("SECRETSECRET"), { code2, n: sent.length - sb2 });
   }
 
   // ── Etap 3: one prompt per shot, the right prompt to each image call ──
@@ -1626,8 +1649,8 @@ async function partE() {
     check("EA1 nothing published yet: the six spec texts become drafts, pass the gate and are published — the config last",
       a.ok && live.length === 6 && GROVSHOT_V2_KEYS.every((k) => live.some((r) => r.tool_key === k && open(r) === specDraft(k) && r.summary === AUTOPILOT_SUMMARY))
       && order.length === 6 && order[5] === "published:grovshot_v2_config" && db().runs.size === runsBefore, { a, order });
-    check("EA1b …the published config runs Claude Sonnet 5.5 on every role; the auto-setup is audited",
-      cfg.ok && STAGE_ROLES.every((r) => cfg.config.models[r].model === "claude-sonnet-5-5")
+    check("EA1b …the published config runs the recommended Claude models (no Opus); the auto-setup is audited",
+      cfg.ok && STAGE_ROLES.every((r) => cfg.config.models[r].model === CONFIG.models[r].model && !/opus/.test(cfg.config.models[r].model))
       && tableRows("audit_logs").some((x) => x.action === "grovshot_v2.autopilot"));
     const count = prompts().length;
     const again = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
@@ -1655,16 +1678,16 @@ async function partE() {
 
     // Tests: each one's worst case is computed first; beyond the confirmed limit nothing starts.
     const GEMINI_TOKENS = { providerSlug: "google", model: "gemini-3-pro-image", inputPerMTok: 2_000_000, outputPerMTok: 12_000_000 };
-    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, GEMINI_TOKENS];
+    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, CLAUDE_HAIKU_PRICE, GEMINI_TOKENS];
     const state = await readEngineState(SUPA);
     const wp = testWorstCase(state, CONFIG, 3, "prompts", "2K", 5);
     const wf = testWorstCase(state, CONFIG, 1, "full", "2K", 5);
-    const wpOpus = testWorstCase(state, { ...CONFIG, models: { ...CONFIG.models, ...VARIANT_B_MODELS } }, 3, "prompts", "2K", 5);
+    const wpOpus = testWorstCase(state, { ...CONFIG, models: { ...CONFIG.models, card: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" }, plan: { provider: "anthropic", model: "claude-opus-5-5", effort: "high" } } }, 3, "prompts", "2K", 5);
     const unpriced = testWorstCase({ ...state, tokenPrices: [] }, CONFIG, 1, "prompts", "2K", 5);
     check("EA6 the worst case of a test: priced from the list, higher for Opus and for a full test with images, unknown when a price is missing",
       wp !== null && wf !== null && wpOpus !== null && wpOpus > wp && wf > 0 && unpriced === null, { wp, wf, wpOpus });
     const w2 = await world({ product: PRODUCTS[1] });
-    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, GEMINI_TOKENS];
+    gsv2Env().tokenPrices = [CLAUDE_PRICE, CLAUDE_SONNET_PRICE, CLAUDE_HAIKU_PRICE, GEMINI_TOKENS];
     tableRows("workspace_members").push({ user_id: USER, workspace_id: WS, role: "owner", created_at: iso(db().now), workspaces: { id: WS, name: "Test", owner_id: USER } });
     const tight = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 0.000001, tests: "prompts_full", photos: [1, 2, 3].map((n) => `${WS}/p/${n}.png`) }, chain);
     check("EA7 tests beyond the confirmed limit are not started (no order, no paid call)",
@@ -1672,15 +1695,70 @@ async function partE() {
     const before = db().runs.size;
     const fit = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 20, tests: "prompts_full", photos: [1, 2, 3].map((n) => `${WS}/p/${n}.png`) }, chain);
     const started = fit.runs.filter((r) => r.runId);
-    const runB = started.find((r) => r.label === "B");
-    const sealedB = runB ? ((db().runs.get(runB.runId!)?.input as Row).stages as Row).grovshot_v2_config as Row : null;
-    const cfgB = sealedB ? parseEngineConfig(Buffer.from(String((sealedB.sealed as Row).ciphertext), "base64").toString("utf8")) : null;
-    check("EA8 within the limit: three separate admin tests start — A and B prompt tests (3 shots), C a full 1-shot test — and B runs Opus 5.5 on the card and the plan",
-      fit.ok && started.length === 3 && db().runs.size === before + 3
-      && started.filter((r) => r.mode === "prompts").every((r) => r.shots === 3) && started.find((r) => r.label === "C")?.mode === "full"
-      && Boolean(cfgB?.ok) && cfgB!.ok && cfgB!.config.models.plan.model === "claude-opus-5-5" && cfgB!.config.models.card.model === "claude-opus-5-5"
-      && cfgB!.config.models.prompt.model === "claude-sonnet-5-5"
-      && prompts().some((r) => r.tool_key === "grovshot_v2_config" && r.status === "draft"), fit);
+    check("EA8 within the limit: two separate admin tests start — A a prompt test (3 shots), C a full 1-shot test — and no comparison draft is left behind",
+      fit.ok && started.length === 2 && db().runs.size === before + 2
+      && started.find((r) => r.label === "A")?.mode === "prompts" && started.find((r) => r.label === "A")?.shots === 3
+      && started.find((r) => r.label === "C")?.mode === "full" && started.find((r) => r.label === "C")?.shots === 1
+      && !prompts().some((r) => r.status === "draft"), fit);
+
+    // A published config with other models (e.g. Opus): a NEW version with only `models` replaced,
+    // after each model answered a minimal request; the rest of the config as the admin published it.
+    db().tables.ai_tool_prompts = [];
+    await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    const cfgRow = prompts().find((r) => r.tool_key === "grovshot_v2_config" && r.status === "published")!;
+    const edited = JSON.parse(open(cfgRow)) as Record<string, unknown> & { models: Record<string, unknown>; limits: Record<string, unknown> };
+    edited.models = { ...edited.models, card: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" }, plan: { provider: "anthropic", model: "claude-opus-5-5", effort: "high" } };
+    edited.limits = { ...edited.limits, runs_per_hour: 7 };
+    const sealedEdit = Buffer.from(JSON.stringify(edited), "utf8").toString("base64");
+    cfgRow.status = "superseded";
+    prompts().push({ id: "admin-cfg", tool_key: "grovshot_v2_config", version: 9, status: "published", summary: "admin", body_encrypted: sealedEdit,
+      body_iv: "test-iv", body_tag: createHash("sha256").update(sealedEdit).digest("hex").slice(0, 32) });
+    const pings: string[] = [];
+    gsv2Env().modelPing = (m: string) => { pings.push(m); return true; };
+    const sync = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    const nowCfg = prompts().find((r) => r.tool_key === "grovshot_v2_config" && r.status === "published")!;
+    const synced = parseEngineConfig(open(nowCfg));
+    check("EA9 a published config with Opus gets a new version with the recommended models only (its own limits kept), each model pinged first, the old one superseded and restorable",
+      sync.ok && nowCfg.id !== "admin-cfg" && nowCfg.summary === MODELS_SUMMARY && synced.ok
+      && STAGE_ROLES.every((r) => synced.config.models[r].model === CONFIG.models[r].model) && synced.config.limits.runs_per_hour === 7
+      && prompts().find((r) => r.id === "admin-cfg")?.status === "superseded"
+      && JSON.stringify([...new Set(pings)].sort()) === JSON.stringify(["claude-haiku-5-5", "claude-sonnet-5-5"])
+      && tableRows("audit_logs").some((x) => x.action === "grovshot_v2.models_published"), { steps: sync.steps, pings });
+    // A model the API does not answer: nothing is published.
+    const cfgNow = prompts().find((r) => r.tool_key === "grovshot_v2_config" && r.status === "published")!;
+    cfgNow.body_encrypted = sealedEdit; cfgNow.body_tag = createHash("sha256").update(sealedEdit).digest("hex").slice(0, 32);
+    const countBefore = prompts().length;
+    gsv2Env().modelPing = (m: string) => m !== "claude-haiku-5-5";
+    const refused = await runAutopilot(SUPA, USER, { reason: "test", limitUsd: 1, tests: "none" }, chain);
+    gsv2Env().modelPing = undefined;
+    // The readiness lines of the tests, on runs shaped like PROD's A/B/C of 04.11 (card refused → failed).
+    const liveSha = Object.fromEntries(GROVSHOT_V2_KEYS.map((k) => [k, `sha-${k}`])) as Record<GrovshotStageKey, string>;
+    const shot = (writes: string[], state: string) => ({ n: 1, state, reason: null, charges: 0, released: 0, rounds: [], writes: writes.map((st) => ({ round: 0, status: st, amended: false, executor: null, error: null, costUsdMicros: null, promptSha: null, blocks: null, prompt: null })) });
+    const run = (id: string, mode: "prompts" | "full", status: string, over: Record<string, unknown> = {}) => ({
+      id, mode, status, error: status === "failed" ? "analysis_unavailable" : null, stageShas: liveSha,
+      stages: status === "failed" ? [{ name: "validate", status: "succeeded", ms: 1, executor: null, cached: false, error: null, costUsdMicros: 38_000 },
+        { name: "card", status: "failed", ms: 1, executor: null, cached: false, error: "analysis_error", costUsdMicros: null }] : [],
+      shots: [], ...over,
+    }) as unknown as Parameters<typeof testVerdict>[0][number];
+    const prodLike = [run("7aa308d5", "prompts", "failed"), run("60ddd990", "prompts", "failed"), run("b49522cc", "full", "failed")];
+    const vp = testVerdict(prodLike, liveSha, "prompt_test");
+    const vf = testVerdict(prodLike, liveSha, "production_test");
+    check("EV1 PROD's failed A/B/C: both test lines are errors that name the stage and its code (never green because the auto-setup said 3/3 started)",
+      vp.status === "error" && vp.reason === "prompt_test_failed" && vp.params?.stage === "card" && vp.params?.error === "analysis_error"
+      && vf.status === "error" && vf.reason === "production_test_failed", { vp, vf });
+    const okPrompts = run("aaaa0001", "prompts", "ok", { shots: [shot(["succeeded"], "open")] });
+    const stale = { ...okPrompts, stageShas: { ...liveSha, grovshot_v2_config: "sha-old-config" } };
+    check("EV2 a passed prompt test counts only on the texts published now; on older ones it is stale",
+      testVerdict([okPrompts], liveSha, "prompt_test").status === "pass" && testVerdict([stale], liveSha, "prompt_test").reason === "prompt_test_stale");
+    const fullNone = run("aaaa0002", "full", "ok", { shots: [shot(["succeeded"], "not_delivered")] });
+    const fullOk = run("aaaa0003", "full", "partial", { shots: [shot(["succeeded"], "delivered")] });
+    check("EV3 a full test passes only with an image delivered after QC (finished without one = error; running = not yet)",
+      testVerdict([fullNone], liveSha, "production_test").reason === "production_test_nothing"
+      && testVerdict([run("aaaa0004", "full", "running")], liveSha, "production_test").reason === "production_test_running"
+      && testVerdict([fullOk, fullNone], liveSha, "production_test").status === "pass");
+    check("EA10 a model that does not answer its minimal request: the new config is NOT published (the live one stays)",
+      !refused.ok && refused.error === "model_test_failed" && prompts().find((r) => r.id === cfgNow.id)?.status === "published"
+      && prompts().filter((r) => r.status === "published" && r.tool_key === "grovshot_v2_config").length === 1 && prompts().length === countBefore + 1, refused);
   }
 }
 

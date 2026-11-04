@@ -55,7 +55,7 @@ export type StageTrace = {
   system_sha256: string;
   user_sha256: string;
   images: number;
-  attempts: { provider: string; model: string; ok: boolean; ms: number; error?: string; in?: number; out?: number; cached?: number }[];
+  attempts: { provider: string; model: string; ok: boolean; ms: number; error?: string; in?: number; out?: number; cached?: number; format?: "text"; note?: string }[];
   duration_ms: number;
 };
 
@@ -104,14 +104,14 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
   const started = call.now();
   let data: T | null = null;
   let error: string | null = null;
-  let served: { provider: string; model: string } | null = null;
+  let served: { provider: string; model: string; format?: "schema" | "text" } | null = null;
   try {
     const r = await callVisionJson<T>(backends, {
       images: call.images, system: sys.text, user: usr.text, schema: call.schema,
       timeoutMs, maxAttemptsPerModel: 1,
     });
     data = r.data;
-    served = { provider: r.outcome.provider, model: r.outcome.model };
+    served = { provider: r.outcome.provider, model: r.outcome.model, ...(r.outcome.format ? { format: r.outcome.format } : {}) };
   } catch (e) {
     error = e instanceof ProviderError ? e.safeMessage : "analysis_error";
   }
@@ -130,8 +130,9 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
   })));
 
   // What was sent, as digests: the exact system text the provider read (for
-  // OpenAI with its schema suffix), the user text, the image count.
-  const systemSent = served?.provider === "openai" ? openAiSystemText({ system: sys.text, schema: call.schema }) : sys.text;
+  // OpenAI — and Claude when it refused the schema as a format — with the
+  // schema suffix), the user text, the image count.
+  const systemSent = served?.provider === "openai" || served?.format === "text" ? openAiSystemText({ system: sys.text, schema: call.schema }) : sys.text;
   const trace: StageTrace = {
     provider: served?.provider ?? null,
     model: served?.model ?? null,
@@ -144,6 +145,8 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
       ...(a.inputTokens != null ? { in: a.inputTokens } : {}),
       ...(a.outputTokens != null ? { out: a.outputTokens } : {}),
       ...(a.cachedInputTokens != null ? { cached: a.cachedInputTokens } : {}),
+      ...(a.format === "text" ? { format: "text" as const } : {}),
+      ...(a.note ? { note: a.note } : {}),
     })),
     duration_ms: call.now() - started,
   };

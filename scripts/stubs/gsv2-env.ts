@@ -12,6 +12,8 @@ export type Gsv2Env = {
   roleState: "ok" | "inactive" | "no_key";
   tokenPrices: { providerSlug: string; model: string; inputPerMTok: number; outputPerMTok: number; cachedInputPerMTok?: number | null }[];
   ringUp: boolean;
+  /** „Testuj model” double: whether a model answers its minimal request (default: yes). */
+  modelPing?: (model: string) => boolean;
 };
 
 const g = globalThis as unknown as { __GSV2_ENV?: Gsv2Env };

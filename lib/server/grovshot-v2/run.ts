@@ -609,7 +609,8 @@ async function stageStep<T>(ctx: Ctx, pos: number, item: number, name: string,
   });
   const meta = { trace: (res.trace ?? null) as unknown as Json, unknown_calls: res.unknownCalls };
   if (!res.ok) {
-    await finish(ctx, pos, item, { status: "failed", attempts: b.attempts + 1, cost: res.cost, errorCode: res.error.slice(0, 80), durationMs: ctx.deps.now() - t0 });
+    // The trace too (admin diagnostics: which model, why it was refused).
+    await finish(ctx, pos, item, { status: "failed", attempts: b.attempts + 1, cost: res.cost, errorCode: res.error.slice(0, 80), output: meta as Json, durationMs: ctx.deps.now() - t0 });
     if (soft) return null;
     await close(ctx, "failed", "analysis_unavailable");
     return "finished";

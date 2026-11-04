@@ -2,8 +2,9 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
 import { STAGE_ROLES } from "@/lib/grovshot-v2/config";
+import { GROVSHOT_V2_KEYS, type GrovshotStageKey } from "@/lib/grovshot-v2/stages";
 import { credentialOf, type ProviderState } from "@/lib/server/grovshot-v2/backends";
-import type { GrovshotAdmin } from "@/lib/server/grovshot-v2/admin";
+import type { GrovshotAdmin, V2RunView } from "@/lib/server/grovshot-v2/admin";
 
 /**
  * GROVBASE SHOT V2 — THE READINESS CENTRE (/admin/ai → GrovShot → Silnik V2).
@@ -135,11 +136,10 @@ export async function readReadiness(supabase: Client, admin: GrovshotAdmin): Pro
   }
 
   const tests = runs.filter((r) => r.kind === "grovshot_test");
-  const promptPass = tests.find((r) => r.mode === "prompts" && (r.status === "ok" || r.status === "partial"));
-  add("prompt_test", promptPass ? "pass" : "unverified", promptPass ? promptPass.id.slice(0, 8) : null, promptPass ? null : "prompt_test_missing", promptPass ? null : HREF.test);
-  const passed = tests.find((r) => r.mode === "full" && (r.status === "ok" || r.status === "partial")
-    && r.shots.some((s) => s.state === "delivered"));
-  add("production_test", passed ? "pass" : "unverified", passed ? passed.id.slice(0, 8) : null, passed ? null : "production_test_missing", passed ? null : HREF.test);
+  for (const key of ["prompt_test", "production_test"] as const) {
+    const v = testVerdict(tests, state.liveShas, key);
+    add(key, v.status, v.detail, v.reason, v.reason ? HREF.test : null, v.params);
+  }
 
   // Information: who the flag routes to V2 (it stays off for customers).
   add("flag", flag.enabled ? "on" : "off", flag.enabled ? `${flag.roles.join(", ") || "*"} · ${flag.rollout ?? 100}%` : null,
@@ -163,4 +163,36 @@ export async function readReadiness(supabase: Client, admin: GrovshotAdmin): Pro
     anthropic: { ...facts, lastError, usage },
     lastTest: last ? { id: last.id, mode: last.mode, status: last.status, at: last.createdAt, delivered: last.shots.filter((s) => s.state === "delivered").length } : null,
   };
+}
+
+type TestRun = Pick<V2RunView, "id" | "status" | "error" | "mode" | "stageShas" | "stages" | "shots">;
+
+/**
+ * A test counts only when it ran on exactly what is published NOW (every
+ * stage text by its digest) and really finished: the prompt test with a
+ * prompt written, the production test with an image delivered (after QC).
+ * Otherwise the line says what the newest such test did and why — a failed
+ * stage with its code, nothing delivered, still running, or other versions.
+ * `tests` newest first.
+ */
+export function testVerdict(tests: readonly TestRun[], liveShas: Partial<Record<GrovshotStageKey, string>>, key: "prompt_test" | "production_test"): {
+  status: CheckStatus; detail: string | null; reason: string | null; params?: Record<string, string>;
+} {
+  const mode = key === "prompt_test" ? "prompts" : "full";
+  const done = (r: TestRun) => key === "prompt_test"
+    ? r.shots.some((s) => s.writes.some((w) => w.status === "succeeded"))
+    : r.shots.some((s) => s.state === "delivered");
+  const finished = (r: TestRun) => r.status === "ok" || r.status === "partial";
+  const onLive = (r: TestRun) => GROVSHOT_V2_KEYS.every((k) => Boolean(liveShas[k]) && r.stageShas[k] === liveShas[k]);
+  const own = tests.filter((r) => r.mode === mode);
+  const pass = own.find((r) => finished(r) && done(r) && onLive(r));
+  if (pass) return { status: "pass", detail: pass.id.slice(0, 8), reason: null };
+  const last = own[0];
+  if (!last) return { status: "unverified", detail: null, reason: `${key}_missing` };
+  const failedStage = last.stages.find((st) => st.status === "failed");
+  const params = { id: last.id.slice(0, 8), stage: failedStage?.name ?? "—", error: failedStage?.error ?? last.error ?? "—" };
+  if (last.status === "queued" || last.status === "running") return { status: "unverified", detail: `${params.id} · ${last.status}`, reason: `${key}_running`, params };
+  if (!finished(last)) return { status: "error", detail: `${params.id} · ${params.stage}: ${params.error}`, reason: `${key}_failed`, params };
+  if (!done(last)) return { status: "error", detail: `${params.id} · 0`, reason: `${key}_nothing`, params };
+  return { status: "unverified", detail: `${params.id} · stale`, reason: `${key}_stale`, params };
 }

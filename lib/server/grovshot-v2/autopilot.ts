@@ -31,24 +31,26 @@ import type { Chain } from "@/lib/server/grovshot-v2/drive";
  *      JSON, every role's model usable) — one failure and nothing is
  *      published;
  *   3. the drafts are published (ai_publish_tool_prompt), the config last;
+ *      a published config whose stage MODELS differ from the recommended
+ *      ones gets a new version with only its `models` replaced (the rest of
+ *      the admin's config kept), after each model answered one minimal
+ *      real request — the previous version stays restorable;
  *   4. optionally, admin tests within the limit the admin confirmed: a
- *      prompt test on the published versions (A), the same on a config
- *      DRAFT with the stronger model for the card and the plan (B — never
- *      published, only compared), and a one-shot full test with images (C).
- *      Each test's worst case is computed before anything starts (every
- *      Claude call at its max output, every paid image the config allows);
- *      the tests whose sum exceeds the limit are not started.
+ *      prompt test on the published versions (A) and a one-shot full test
+ *      with images (C). Each test's worst case is computed before anything
+ *      starts (every Claude call at its max output, every paid image the
+ *      config allows); the tests whose sum exceeds the limit are not
+ *      started. No draft is left behind that could be published by mistake.
  *
  * Prices, the margin gate, the flag and the knowledge base are not touched.
  */
 
 export const AUTOPILOT_SUMMARY = "Autokonfiguracja GrovShot V2 (specyfikacja)";
-const VARIANT_B_SUMMARY = "Autokonfiguracja · wariant testowy B (Opus 5.5: karta + plan) — tylko do porównania";
-/** Variant B: the stronger model where the spec says quality is decided. */
-export const VARIANT_B_MODELS: Partial<Record<StageRole, StageModel>> = {
-  card: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" },
-  plan: { provider: "anthropic", model: "claude-opus-5-5", effort: "high" },
-};
+export const MODELS_SUMMARY = "Autokonfiguracja: zalecane modele etapów (Haiku 5.5 / Sonnet 5.5)";
+
+const sameModel = (a: StageModel | undefined, b: StageModel | undefined) =>
+  Boolean(a && b) && a!.provider === b!.provider && a!.model === b!.model && (a!.effort ?? null) === (b!.effort ?? null)
+  && JSON.stringify(a!.fallback ?? null) === JSON.stringify(b!.fallback ?? null);
 /** The stage call's own max_tokens (lib/ai/engine/vision.ts). */
 const MAX_OUTPUT_TOKENS = 16_000;
 const MAX_LIMIT_USD = 20;
@@ -64,7 +66,7 @@ export type AutopilotInput = {
 };
 
 export type AutopilotStep = { key: string; status: "done" | "kept" | "skipped" | "failed"; detail?: string };
-export type AutopilotRun = { label: "A" | "B" | "C"; mode: "prompts" | "full"; shots: number; worstUsdMicros: number; runId: string | null; error?: string };
+export type AutopilotRun = { label: "A" | "C"; mode: "prompts" | "full"; shots: number; worstUsdMicros: number; runId: string | null; error?: string };
 export type AutopilotReport = { ok: boolean; error?: string; steps: AutopilotStep[]; runs: AutopilotRun[]; photos: string[]; limitUsdMicros: number };
 
 type Row = { id: string; tool_key: string; version: number; status: string; summary: string | null; body_encrypted: string; body_iv: string; body_tag: string };
@@ -143,6 +145,7 @@ export async function runAutopilot(supabase: Client, adminId: string, input: Aut
     .select("id, tool_key, version, status, summary, body_encrypted, body_iv, body_tag")
     .in("tool_key", [...GROVSHOT_V2_KEYS]).in("status", ["draft", "published"]).order("version", { ascending: false });
   const rows = (rowsRaw ?? []) as Row[];
+  const before = Object.fromEntries(rows.filter((r) => r.status === "published").map((r) => [r.tool_key, { id: r.id, version: r.version }]));
 
   // 1 · drafts from the specification, only where nothing is published.
   const toPublish: { key: GrovshotStageKey; id: string; text: string }[] = [];
@@ -175,6 +178,30 @@ export async function runAutopilot(supabase: Client, adminId: string, input: Aut
     steps.push({ key: `draft:${key}`, status: "done", detail: `v${saved.version}` });
   }
 
+  // 1b · the recommended stage models on a config that is already published:
+  // a new version with only `models` replaced (everything else as published).
+  const recommended = parseEngineConfig(specDraft("grovshot_v2_config"));
+  const live = published.grovshot_v2_config;
+  if (live && recommended.ok) {
+    const parsedLive = parseEngineConfig(live.text);
+    if (!parsedLive.ok) {
+      steps.push({ key: "models:grovshot_v2_config", status: "failed", detail: "published_config_invalid" });
+      return fail("config_invalid");
+    }
+    if (STAGE_ROLES.some((r) => !sameModel(parsedLive.config.models[r], recommended.config.models[r]))) {
+      const text = JSON.stringify({ ...(JSON.parse(live.text) as Record<string, unknown>), models: recommended.config.models }, null, 2);
+      const sealed = sealPrompt(ring, text);
+      const { data, error } = await supabase.rpc("ai_save_tool_prompt", {
+        p_tool_key: "grovshot_v2_config", p_body_encrypted: sealed.ciphertext, p_iv: sealed.iv, p_tag: sealed.authTag,
+        p_summary: MODELS_SUMMARY, p_reason: reason, p_source: "manual", p_publish: false,
+      });
+      const saved = (error ? null : data) as { ok?: boolean; id?: string; version?: number } | null;
+      if (!saved?.ok || !saved.id) return fail("draft_failed:grovshot_v2_config");
+      toPublish.push({ key: "grovshot_v2_config", id: saved.id, text });
+      steps.push({ key: "models:grovshot_v2_config", status: "done", detail: `v${live.version} → v${saved.version}` });
+    }
+  }
+
   // 2 · the publish gate for every draft — all pass, or nothing is published.
   for (const d of toPublish) {
     const problems = [...grovshotTemplateProblems(d.key, d.text), ...malformedPlaceholders(d.text).map((p) => `placeholder:${p}`)];
@@ -184,11 +211,28 @@ export async function runAutopilot(supabase: Client, adminId: string, input: Aut
     }
   }
   const configText = toPublish.find((d) => d.key === "grovshot_v2_config")?.text ?? published.grovshot_v2_config?.text ?? "";
+  const changingModels = toPublish.some((d) => d.key === "grovshot_v2_config");
   const parsed = parseEngineConfig(configText);
   if (!parsed.ok) { steps.push({ key: "gate:models", status: "failed", detail: parsed.errors.slice(0, 5).join(", ") }); return fail("config_invalid"); }
   const backends = await roleBackends(supabase, parsed.config.models).catch(() => null);
   const unusable = (backends?.status ?? []).filter((r) => !r.usable).map((r) => `${r.role}:${r.primary.state}`);
   if (!backends || unusable.length > 0) { steps.push({ key: "gate:models", status: "failed", detail: unusable.join(", ") || "unreadable" }); return fail("analysis_unavailable"); }
+  // Every distinct model of a config about to be published answers ONE
+  // minimal real request first (a few tokens, recorded as the admin's own
+  // call) — an id the API does not serve never goes live.
+  if (changingModels) {
+    const { testStageModel } = await import("@/lib/server/grovshot-v2/model-test");
+    const seen = new Set<string>();
+    for (const role of STAGE_ROLES) {
+      const m = parsed.config.models[role];
+      const key = `${m.provider}:${m.model}:${m.effort ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ping = await testStageModel(supabase, adminId, role, { provider: m.provider, model: m.model, ...(m.effort ? { effort: m.effort } : {}) });
+      steps.push({ key: `ping:${m.model}${m.effort ? `·${m.effort}` : ""}`, status: ping.ok ? "done" : "failed", detail: ping.ok ? `${ping.latencyMs} ms` : ping.error });
+      if (!ping.ok) return fail("model_test_failed");
+    }
+  }
   steps.push({ key: "gate:models", status: "done", detail: STAGE_ROLES.map((r) => `${r}=${parsed.config.models[r].model}${parsed.config.models[r].effort ? `·${parsed.config.models[r].effort}` : ""}`).join(" ") });
 
   // 3 · publish, the config last (the order every stage reads its roles from).
@@ -202,6 +246,12 @@ export async function runAutopilot(supabase: Client, adminId: string, input: Aut
     });
     published[d.key] = { id: d.id, text: d.text, version: 0 };
     steps.push({ key: `publish:${d.key}`, status: "done" });
+    if (d.key === "grovshot_v2_config" && live) {
+      await logAudit(supabase, {
+        actorId: adminId, action: "grovshot_v2.models_published", entityType: "ai_tool_prompt", entityId: d.id,
+        before: { version: live.version, id: live.id }, after: { reason, models: parsed.config.models },
+      });
+    }
   }
 
   // The expert knowledge the orders will seal (published, not changed here).
@@ -223,27 +273,9 @@ export async function runAutopilot(supabase: Client, adminId: string, input: Aut
     const resolution = state.model?.resolutions.includes("2K") ? "2K" : state.model?.resolutions[0] ?? "";
     const base = Object.fromEntries(GROVSHOT_V2_KEYS.map((k) => [k, published[k]!.id])) as Record<GrovshotStageKey, string>;
 
-    // Variant B: the published config with the stronger card and plan — a draft, never published.
-    const textB = JSON.stringify({ ...JSON.parse(configText) as Record<string, unknown>, models: { ...parsed.config.models, ...VARIANT_B_MODELS } }, null, 2);
-    const parsedB = parseEngineConfig(textB);
-    let configB: string | null = null;
-    if (parsedB.ok) {
-      const existing = rows.filter((r) => r.tool_key === "grovshot_v2_config" && r.status === "draft").find((r) => openPrompt(ring, r)?.text === textB);
-      if (existing) configB = existing.id;
-      else {
-        const sealed = sealPrompt(ring, textB);
-        const { data } = await supabase.rpc("ai_save_tool_prompt", {
-          p_tool_key: "grovshot_v2_config", p_body_encrypted: sealed.ciphertext, p_iv: sealed.iv, p_tag: sealed.authTag,
-          p_summary: VARIANT_B_SUMMARY, p_reason: reason, p_source: "manual", p_publish: false,
-        });
-        configB = ((data ?? null) as { id?: string } | null)?.id ?? null;
-      }
-    }
-
     const shots = Math.min(3, TEST_MAX_SHOTS);
     const plans: { label: AutopilotRun["label"]; mode: AutopilotRun["mode"]; shots: number; config: EngineConfig; versions: Record<string, string> }[] = [
       { label: "A", mode: "prompts", shots, config: parsed.config, versions: base },
-      ...(configB && parsedB.ok ? [{ label: "B" as const, mode: "prompts" as const, shots, config: parsedB.config, versions: { ...base, grovshot_v2_config: configB } }] : []),
       ...(tests === "prompts_full" ? [{ label: "C" as const, mode: "full" as const, shots: 1, config: parsed.config, versions: base }] : []),
     ];
     let committed = 0;
@@ -263,6 +295,8 @@ export async function runAutopilot(supabase: Client, adminId: string, input: Aut
 
   await logAudit(supabase, {
     actorId: adminId, action: "grovshot_v2.autopilot", entityType: "ai_tool", entityId: "grovshot_v2",
+    // What was live before this call: every stage's published version (restorable from its history).
+    before: { published: before },
     after: { reason, limit_usd_micros: limitUsdMicros, tests, steps, runs, photos: photos.length },
   });
   return { ok: true, steps, runs, photos, limitUsdMicros };

@@ -250,21 +250,21 @@ export const SPEC_CONFIG: EngineConfig = {
   },
   limits: { max_refs_per_shot: 3, shot_concurrency: 2, runs_per_hour: 20, uncharged_runs_per_day: 30, max_paid_images_per_shot: 3, replans: 1 },
   // Claude for every text/vision role (the spec's „mózg” of the engine);
-  // Nano Banana Pro stays the image model. Claude Sonnet 5.5 everywhere
-  // (vision, structured outputs; $2/$10 per MTok — half of Opus 5.5), with
-  // the effort where the stage decides the quality: the card („najważniejszy
-  // plik”) and the plan („etap, który najbardziej decyduje o jakości”) at
-  // high, the photo check, the per-shot prompt writer and QC (asked per
-  // candidate) at medium. Opus 5.5 goes where a test shows it is clearly
-  // better (the autopilot's variant B compares it on the card and the plan).
-  // Every role is editable in the admin tab (a draft, published by the
-  // admin); a fallback exists only where an admin adds one.
+  // Nano Banana Pro stays the only image model. Claude Sonnet 5.5 ($2/$10
+  // per MTok) where the owner named the quality as decisive — the product
+  // card (Etap 1: what the product IS, every later stage reads it) and the
+  // per-shot prompt writer (Etap 3: the photographic prompt Nano Banana Pro
+  // receives). Claude Haiku 5.5 ($0.10/$0.50, vision + structured outputs)
+  // for the photo check, the plan (its hard rules are re-checked in code,
+  // with one re-plan) and QC (with the code's own colour check). No Opus, no
+  // fallback unless an admin adds one; every role stays editable (a new
+  // config version, published by the admin, the previous one restorable).
   models: {
-    validate: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
-    card: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "high" },
-    plan: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "high" },
+    validate: { provider: "anthropic", model: "claude-haiku-5-5", effort: "low" },
+    card: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
+    plan: { provider: "anthropic", model: "claude-haiku-5-5", effort: "medium" },
     prompt: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
-    qc: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
+    qc: { provider: "anthropic", model: "claude-haiku-5-5", effort: "medium" },
   },
   labels: {
     photo_roles: { product: "produkt", effect: "efekt użycia", packaging: "opakowanie", detail: "detal" },

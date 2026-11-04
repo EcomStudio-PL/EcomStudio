@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
+import { ProviderError, sanitizeUpstreamMessage, type ReferenceImage } from "@/lib/ai/types";
 import type { AnthropicEffort } from "@/lib/ai/anthropic-options";
 
 /**
@@ -42,6 +42,13 @@ export type VisionAttempt = {
   /** Of inputTokens, how many the provider served from its prompt cache
    *  (billed at a lower rate by some providers). Reported, never estimated. */
   cachedInputTokens?: number;
+  /** Anthropic: how the output contract travelled — "schema" (structured
+   *  outputs) or "text" (the schema in the system text, after the API
+   *  refused to take it as a format). */
+  format?: "schema" | "text";
+  /** Admin diagnostics: why the structured format was refused (the API's
+   *  error type and its first words — never a key, never the body). */
+  note?: string;
 };
 
 /** One configured backend the chain may use. */
@@ -64,7 +71,7 @@ export type VisionBackend = {
   fetch?: typeof fetch;
 };
 
-type Usage = { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number };
+type Usage = { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; format?: "schema" | "text"; note?: string };
 
 export type VisionRequest = {
   images: ReferenceImage[];
@@ -88,6 +95,8 @@ export type VisionOutcome = {
   /** Set when an earlier backend was skipped, with why. */
   fallbackFrom?: VisionProvider;
   fallbackReason?: string;
+  /** Anthropic: the contract went as text (see VisionAttempt.format). */
+  format?: "schema" | "text";
 };
 
 /** Transient states worth one more attempt on the SAME model. */
@@ -120,12 +129,13 @@ export async function callVisionJson<T>(
   for (const backend of backends) {
     const started = Date.now();
     try {
-      const { data, model } = await runBackend<T>(backend, req);
+      const { data, model, format } = await runBackend<T>(backend, req);
       return {
         data,
         outcome: {
           provider: backend.provider, model, latencyMs: Date.now() - started,
           fallbackFrom: skippedFrom, fallbackReason: skippedReason,
+          ...(format ? { format } : {}),
         },
       };
     } catch (e) {
@@ -142,7 +152,7 @@ export async function callVisionJson<T>(
 }
 
 /** Try a backend across its own model ids, retrying transient hiccups. */
-async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promise<{ data: T; model: string }> {
+async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promise<{ data: T; model: string; format?: "schema" | "text" }> {
   // Anthropic: exactly the model an admin chose — never a guessed id.
   const ids = backend.provider === "anthropic"
     ? dedupe([backend.model ?? ""])
@@ -163,7 +173,7 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
             ? await callGemini<T>(backend.cred, req, model, usage)
             : await callOpenAI<T>(backend.cred, req, model, usage);
         meter(backend, { provider: backend.provider, model, ok: true, durationMs: Date.now() - started, ...usage });
-        return { data, model };
+        return { data, model, ...(usage.format ? { format: usage.format } : {}) };
       } catch (e) {
         lastError = e;
         const safe = e instanceof ProviderError ? e.safeMessage : "";
@@ -386,7 +396,11 @@ export function classifyAnthropicError(e: unknown): ProviderError {
     if (status === 429) return new ProviderError("analysis_rate_limited", true, type);
     if (status === 529 || status === 503 || type === "overloaded_error") return new ProviderError("analysis_overloaded", true, type);
     if (status >= 500) return new ProviderError("analysis_error", true, type);
-    return new ProviderError("analysis_error", false, type ?? `http_${status}`);
+    // A refused request: its reason, masked, for the admin's diagnostics only
+    // (the code above is what decides; the text never steers anything).
+    const body = (e.error ?? {}) as { error?: { message?: unknown } };
+    const said = typeof body.error?.message === "string" ? body.error.message : undefined;
+    return new ProviderError("analysis_error", false, type ?? `http_${status}`, { status, type, message: sanitizeUpstreamMessage(said, 160) });
   }
   return new ProviderError("analysis_error", false);
 }
@@ -401,6 +415,26 @@ export function classifyAnthropicError(e: unknown): ProviderError {
  * are what the response's usage reported, cache reads included.
  */
 async function callAnthropic<T>(backend: VisionBackend, req: VisionRequest, model: string, usage: Usage): Promise<T> {
+  try {
+    usage.format = "schema";
+    return await anthropicMessage<T>(backend, req, model, usage, "schema");
+  } catch (e) {
+    // The API refused the request as sent (400 invalid_request_error) — for a
+    // large stage schema that is the documented „Schema is too complex for
+    // compilation”. A refused request is not billed, so the SAME request goes
+    // once more with the schema as text in the system message (the stage
+    // still validates and normalises what comes back); anything the API
+    // rejects for another reason is rejected again and reported as before.
+    if (!(e instanceof ProviderError) || e.safeMessage !== "analysis_error" || e.providerCode !== "invalid_request_error") throw e;
+    usage.format = "text";
+    usage.note = `format_refused:${e.upstream?.message ?? e.providerCode}`.slice(0, 200);
+    return anthropicMessage<T>(backend, req, model, usage, "text");
+  }
+}
+
+/** One Messages API request: the contract as a structured-output format, or
+ *  (after the API refused that) as text in the system message. */
+async function anthropicMessage<T>(backend: VisionBackend, req: VisionRequest, model: string, usage: Usage, contract: "schema" | "text"): Promise<T> {
   const client = new Anthropic({
     apiKey: backend.cred.apiKey,
     baseURL: backend.cred.baseUrl?.replace(/\/$/, "") || undefined,
@@ -417,10 +451,10 @@ async function callAnthropic<T>(backend: VisionBackend, req: VisionRequest, mode
     message = await client.messages.create({
       model,
       max_tokens: 16_000,
-      system: req.system,
+      system: contract === "schema" ? req.system : openAiSystemText(req),
       messages: [{ role: "user", content: [...images, { type: "text", text: req.user }] }],
       output_config: {
-        format: { type: "json_schema", schema: anthropicJsonSchema(req.schema) },
+        ...(contract === "schema" ? { format: { type: "json_schema" as const, schema: anthropicJsonSchema(req.schema) } } : {}),
         ...(backend.effort ? { effort: backend.effort } : {}),
       },
     });
@@ -438,6 +472,7 @@ async function callAnthropic<T>(backend: VisionBackend, req: VisionRequest, mode
   // Cut off: the JSON is incomplete, and the same request would be cut again.
   if (message.stop_reason === "max_tokens") throw new ProviderError("analysis_truncated", false, "max_tokens");
   const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  if (contract === "text") return parseJson<T>(text);
   if (!text.trim()) throw new ProviderError("analysis_empty", true);
   try {
     return JSON.parse(text) as T;

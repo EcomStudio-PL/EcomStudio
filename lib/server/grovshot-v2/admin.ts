@@ -51,6 +51,8 @@ export type V2RunView = {
   id: string; kind: string; status: string; error: string | null; createdAt: string; durationMs: number | null;
   credits: number; costUsdMicros: number | null; costUnknown: number; ordered: number; planned: number | null;
   recipe: string | null; engineVersion: string | null; versions: Partial<Record<GrovshotStageKey, number>>;
+  /** The digest of every stage text the order sealed (to tell whether it ran on what is published now). */
+  stageShas: Partial<Record<GrovshotStageKey, string>>;
   notes: string[]; stages: { name: string; status: string; ms: number | null; executor: string | null; cached: boolean; error: string | null; costUsdMicros: number | null }[];
   shots: V2ShotView[];
   /** Test runs only: the delivered test images (signed for the admin). */
@@ -75,6 +77,8 @@ export type GrovshotAdmin = {
     models: Partial<Record<StageRole, StageModel>> | null;
     /** The per-order API budget of a 1-, 2- and 3-shot test (USD micros). */
     testBudgets: number[] | null;
+    /** The digest of every PUBLISHED stage text (a test counts only on these). */
+    liveShas: Partial<Record<GrovshotStageKey, string>>;
   };
   stages: V2StageRow[];
   flag: FlagView;
@@ -107,6 +111,7 @@ export async function readGrovshotAdmin(supabase: Client): Promise<GrovshotAdmin
       configOk: state.config !== null,
       models: state.config?.models ?? null,
       testBudgets: state.config ? [1, 2, 3].map((n) => orderBudget(state.config!, n)) : null,
+      liveShas: Object.fromEntries(GROVSHOT_V2_KEYS.flatMap((k) => (state.bodies[k] ? [[k, state.bodies[k]!.sha256]] : []))),
     },
     stages,
     flag: {
@@ -215,6 +220,10 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
       const v = obj(stagesIn[k]).version;
       return typeof v === "number" ? [[k, v]] : [];
     })) as Partial<Record<GrovshotStageKey, number>>;
+    const stageShas = Object.fromEntries(GROVSHOT_V2_KEYS.flatMap((k) => {
+      const v = obj(stagesIn[k]).sha256;
+      return typeof v === "string" ? [[k, v]] : [];
+    })) as Partial<Record<GrovshotStageKey, string>>;
     const planned = typeof progress.planned === "number" ? progress.planned : null;
     const isTest = r.run_kind === "grovshot_test";
     // Every provider request of the text/vision stages, and the cost per stage.
@@ -284,7 +293,7 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
       id: r.id, kind: r.run_kind, status: r.status, error: r.error || null, createdAt: r.created_at, durationMs: r.duration_ms,
       credits: r.credits ?? 0, costUsdMicros: r.api_cost_usd_micros === null ? null : Number(r.api_cost_usd_micros),
       costUnknown: r.cost_unknown ?? 0, ordered: r.expected_outputs ?? 0, planned,
-      recipe: str(progress.recipe), engineVersion: r.engine_version, versions,
+      recipe: str(progress.recipe), engineVersion: r.engine_version, versions, stageShas,
       notes: arr(progress.notes).map((x) => str(obj(x).code)).filter((x): x is string => Boolean(x)),
       stages: st.filter((s) => STAGE_NAMES[`${s.position}:${s.item_index}`]).map((s) => ({
         name: STAGE_NAMES[`${s.position}:${s.item_index}`], status: s.status, ms: s.duration_ms,
