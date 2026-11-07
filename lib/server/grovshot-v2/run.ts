@@ -4,6 +4,7 @@ import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
 import { promptKeyring, type PromptKeyring } from "@/lib/server/prompt-vault";
+import { advanceLifestyle, isLifestyleInput } from "@/lib/server/grovshot-v2/lifestyle";
 import { recordProviderCalls, type Consumer } from "@/lib/server/ai-usage";
 import { callImageModel, type ImageCallInput, type ImageCallResult } from "@/lib/server/engine/image-call";
 import { beginStep, claimRun, finishStep, patchRun, type RunRow, type StepRunRow, type StepResult } from "@/lib/server/engine/workflow-store";
@@ -84,7 +85,7 @@ const WRITE_CONCURRENCY = 3;
 /** A round is begun only with this much of the invocation left. */
 export const ROUND_START_MS = 160_000;
 /** Kept after the candidates for QC and delivery. */
-const DELIVER_RESERVE_MS = 25_000;
+export const DELIVER_RESERVE_MS = 25_000;
 /** Image call ceiling inside a round. */
 const IMAGE_CALL_MS = 75_000;
 /** A text stage interrupted this many times stops the order (nothing charged). */
@@ -98,6 +99,15 @@ export type GrovshotDeps = {
   callImage: (supabase: Client, input: ImageCallInput) => Promise<ImageCallResult>;
   callStage: <T>(supabase: Client, call: StageCall, rec: Parameters<typeof callStage>[2]) => Promise<StageResult<T>>;
   now: () => number;
+  /** A pause (the lifestyle engine's retry gaps and queue waits). */
+  sleep?: (ms: number) => Promise<void>;
+  /** The global provider slots (lifestyle engine); default: the database's. */
+  slots?: SlotStore;
+};
+/** Calls in flight across every instance, by kind (0166). */
+export type SlotStore = {
+  acquire: (kind: "text" | "image", limit: number, holder: string, ttlSeconds: number) => Promise<number | null>;
+  release: (kind: "text" | "image", holder: string) => Promise<void>;
 };
 const DEFAULT_DEPS: GrovshotDeps = { callImage: callImageModel, callStage, now: () => Date.now() };
 
@@ -108,13 +118,13 @@ export type AdvanceResult = "finished" | "yield" | "busy" | "stalled" | "locked"
 
 /** The lease a stalled invocation leaves: an unwell database or provider is
  *  not asked again every few seconds (a page poll included). */
-const STALL_LEASE_S = 30;
+export const STALL_LEASE_S = 30;
 /** A DEFINITIVE END, before the store's own cap (30 invocations, 0129):
  *  from here an order begins nothing new — no round, no prompt write — and
  *  settles what is open (pending charges recovered or refunded), then closes
  *  like any other order. Never left "running" for ever. */
-const WIND_DOWN_INVOCATIONS = 26;
-const MAX_ORDER_AGE_MS = 3 * 60 * 60 * 1000;
+export const WIND_DOWN_INVOCATIONS = 26;
+export const MAX_ORDER_AGE_MS = 3 * 60 * 60 * 1000;
 
 type Ctx = {
   supabase: Client;
@@ -158,6 +168,21 @@ type Ctx = {
   knowledge: KnowledgeSnapshot | null;
 };
 
+/** What both pipelines' orders carry that the shared helpers read (the step
+ *  store, delivery, the ledger, closing). */
+export type CoreInput = {
+  photos: string[]; photo_shas: string[] | null; shots: number; aspect_ratio: string; resolution: string;
+  quote: { unit: number; total: number }; model: { id: string; identifier: string; provider: string };
+};
+/** The part of an order's context the shared helpers need — the V2 driver's
+ *  Ctx and the lifestyle driver's context are both one. */
+export type CoreCtx = {
+  supabase: Client; userId: string; workspaceId: string; runId: string; owner: string;
+  deadlineAt: number; hardEndAt: number; deps: GrovshotDeps; run: RunRow; test: boolean;
+  steps: StepRunRow[]; progress: Record<string, Json>; writer: Promise<unknown>;
+  progressed: boolean; stopNew: string | null; photos: Map<number, OrderPhoto>; input: CoreInput;
+};
+
 /** The expert rules of one stage call and what to record about them (the
  *  version, the ids sent, what the stage limit left out). */
 function knowledgeFor(ctx: Pick<Ctx, "knowledge">, sel: SelectContext): { text: string; meta: Json } {
@@ -173,28 +198,28 @@ const productText = (card: Pick<ProductCard, "name" | "variant" | "category">) =
 
 /* ══ helpers ══════════════════════════════════════════════════════════════*/
 
-const left = (ctx: Ctx) => ctx.deadlineAt - ctx.deps.now();
-const leaseSeconds = (ctx: Ctx) => Math.max(10, Math.ceil((ctx.hardEndAt + 15_000 - ctx.deps.now()) / 1000));
-const stepOf = (ctx: Ctx, pos: number, item: number) => ctx.steps.find((s) => s.position === pos && s.item_index === item);
-const rowsOf = (ctx: Ctx, pos: number, shot: number) => ctx.steps
+export const left = (ctx: Pick<CoreCtx, "deadlineAt" | "deps">) => ctx.deadlineAt - ctx.deps.now();
+const leaseSeconds = (ctx: CoreCtx) => Math.max(10, Math.ceil((ctx.hardEndAt + 15_000 - ctx.deps.now()) / 1000));
+export const stepOf = (ctx: Pick<CoreCtx, "steps">, pos: number, item: number) => ctx.steps.find((s) => s.position === pos && s.item_index === item);
+export const rowsOf = (ctx: Pick<CoreCtx, "steps">, pos: number, shot: number) => ctx.steps
   .filter((s) => s.position === pos && s.item_index >= shot * 5 && s.item_index < shot * 5 + 5)
   .sort((a, b) => a.item_index - b.item_index);
-function outputOf(s: Pick<StepRunRow, "output"> | undefined | null): Record<string, unknown> {
+export function outputOf(s: Pick<StepRunRow, "output"> | undefined | null): Record<string, unknown> {
   const o = s?.output;
   return o && typeof o === "object" && !Array.isArray(o) ? o as Record<string, unknown> : {};
 }
-const consumer = (ctx: Ctx): Consumer => (ctx.test ? "workflow_test" : "generation");
+export const consumer = (ctx: Pick<CoreCtx, "test">): Consumer => (ctx.test ? "workflow_test" : "generation");
 /** This order, as the invocation holding its lease (the server functions' door). */
-const srv = (ctx: Pick<Ctx, "supabase" | "runId" | "owner">): Srv => ({ supabase: ctx.supabase, runId: ctx.runId, owner: ctx.owner });
+export const srv = (ctx: Pick<CoreCtx, "supabase" | "runId" | "owner">): Srv => ({ supabase: ctx.supabase, runId: ctx.runId, owner: ctx.owner });
 
-async function begin(ctx: Ctx, pos: number, item: number, name: string, op: "ai_text" | "image_generation" | "tool") {
+export async function begin(ctx: CoreCtx, pos: number, item: number, name: string, op: "ai_text" | "image_generation" | "tool") {
   const b = await beginStep(ctx.supabase, ctx.runId, ctx.owner, pos, item, name, op, leaseSeconds(ctx));
   if (b.state === "run") ctx.progressed = true;
   return b;
 }
 
 /** Finish a step and keep the local snapshot in step with it. */
-async function finish(ctx: Ctx, pos: number, item: number, res: StepResult): Promise<boolean> {
+export async function finish(ctx: CoreCtx, pos: number, item: number, res: StepResult): Promise<boolean> {
   // A provider's error text never breaks the step row's code format.
   const r: StepResult = res.status === "failed"
     ? { ...res, errorCode: (res.errorCode ?? "error").toLowerCase().replace(/[^a-z0-9_:.\-]/g, "_").slice(0, 80) || "error" }
@@ -204,7 +229,8 @@ async function finish(ctx: Ctx, pos: number, item: number, res: StepResult): Pro
     position: pos, item_index: item, status: r.status, attempts: r.attempts, provider_slug: r.providerSlug ?? null,
     model: r.model ?? null, input_tokens: r.inputTokens ?? null, output_tokens: r.outputTokens ?? null, units: r.units ?? null,
     unit_kind: r.unitKind ?? null, cost_usd_micros: r.cost.basis === "unknown" ? null : r.cost.usdMicros, cost_basis: r.cost.basis,
-    error_code: r.status === "failed" ? (r.errorCode ?? "error") : null, output: r.status === "succeeded" ? (r.output ?? null) : null,
+    // As stored (0129 keeps a failed step's output too — its trace, its retry time).
+    error_code: r.status === "failed" ? (r.errorCode ?? "error") : null, output: r.output ?? null,
     duration_ms: r.durationMs, step_name: null, operation: "tool",
   };
   ctx.steps = [...ctx.steps.filter((s) => !(s.position === pos && s.item_index === item)), row];
@@ -214,14 +240,14 @@ async function finish(ctx: Ctx, pos: number, item: number, res: StepResult): Pro
 /** ONE progress writer per invocation: the state is changed synchronously,
  *  the latest full object is written in order — concurrent shots can never
  *  overwrite each other's change. */
-function setProgress(ctx: Ctx, patch: Record<string, Json>): Promise<unknown> {
+export function setProgress(ctx: CoreCtx, patch: Record<string, Json>): Promise<unknown> {
   Object.assign(ctx.progress, patch);
   const snapshot = { ...ctx.progress };
   ctx.writer = ctx.writer.then(() => patchRun(ctx.supabase, ctx.runId, ctx.owner, { progress: snapshot })).catch(() => false);
   return ctx.writer;
 }
 
-function addNotes(ctx: Ctx, notes: { code: string; photo?: number; row?: number; ask?: boolean }[]) {
+export function addNotes(ctx: CoreCtx, notes: { code: string; photo?: number; row?: number; ask?: boolean }[]) {
   const cur = Array.isArray(ctx.progress.notes) ? ctx.progress.notes as Json[] : [];
   const seen = new Set(cur.map((n) => JSON.stringify(n)));
   const next = [...cur];
@@ -275,13 +301,13 @@ function spentSoFar(ctx: Ctx): number {
   return total;
 }
 
-async function readRunRow(supabase: Client, runId: string): Promise<RunRow | null | "unknown"> {
+export async function readRunRow(supabase: Client, runId: string): Promise<RunRow | null | "unknown"> {
   const { data, error } = await supabase.rpc("ai_engine_run_read", { p_token: dispatchToken() ?? "", p_run_id: runId });
   if (error || !Array.isArray(data)) return "unknown";
   return (data[0] as unknown as RunRow | undefined) ?? null;
 }
 
-async function readSteps(supabase: Client, runId: string): Promise<StepRunRow[] | null> {
+export async function readSteps(supabase: Client, runId: string): Promise<StepRunRow[] | null> {
   const { data, error } = await supabase.rpc("ai_engine_step_runs_read", { p_token: dispatchToken() ?? "", p_run_id: runId });
   if (error || !Array.isArray(data)) return null;
   return data as unknown as StepRunRow[];
@@ -320,6 +346,10 @@ export async function advanceGrovshotRun(
   const run = await readRunRow(supabase, runId);
   if (run === "unknown" || !run) return stall();
   const base = { supabase, userId, workspaceId, runId, owner, deadlineAt: opts.deadlineAt, hardEndAt, deps, run };
+  // GrovBase Shot's lifestyle pipeline ("jak działa automatyzacja"): its own
+  // steps on the same store, ledger and delivery — chosen by what the order
+  // pinned at its start, never by today's settings.
+  if (isLifestyleInput(run.input)) return advanceLifestyle(base);
   const input = parseInput(run.input);
   if (!input) { await closeEarly(base, "failed", "common_error"); return "finished"; }
 
@@ -386,7 +416,7 @@ export async function advanceGrovshotRun(
   return outcome === "busy" ? "busy" : "yield";
 }
 
-type Drive = "finished" | "yield" | "busy" | "lost";
+export type Drive = "finished" | "yield" | "busy" | "lost";
 
 async function drive(ctx: Ctx): Promise<Drive> {
   // Gates a customer order re-checks on every invocation, before anything new
@@ -542,7 +572,7 @@ async function backends(ctx: Ctx, role: StageRole): Promise<VisionBackend[]> {
   return ctx.backends?.[role] ?? [];
 }
 
-async function photos(ctx: Ctx, numbers: readonly number[]): Promise<OrderPhoto[] | "changed" | "unreadable"> {
+export async function photos(ctx: CoreCtx, numbers: readonly number[]): Promise<OrderPhoto[] | "changed" | "unreadable"> {
   const missing = numbers.filter((n) => !ctx.photos.has(n));
   if (missing.length > 0) {
     // The order's own photos, armed for this read (0163) — nothing else.
@@ -727,7 +757,7 @@ async function analyse(ctx: Ctx): Promise<Analysis | Drive> {
 
 /* ══ B · the customer-visible mirror ══════════════════════════════════════*/
 
-type Mirror = { sessionId: string | null; concepts: Record<number, string> };
+export type Mirror = { sessionId: string | null; concepts: Record<number, string> };
 
 /** The image prompt: the template's PROMPT section compiled with the
  *  writer's blocks — exactly what Nano Banana Pro receives. */
@@ -799,7 +829,7 @@ async function ensureMirror(ctx: Ctx, card: ProductCard, shots: Shot[], written:
 
 /* ══ C · shots ════════════════════════════════════════════════════════════*/
 
-const settled = (ctx: Ctx, n: number) => {
+export const settled = (ctx: Pick<CoreCtx, "steps">, n: number) => {
   const s = stepOf(ctx, P.settle, n);
   return s?.status === "succeeded" || s?.status === "failed";
 };
@@ -833,9 +863,9 @@ async function shotsPhase(ctx: Ctx, card: ProductCard, shots: Shot[], mirror: Mi
   return results.includes("yield") ? "yield" : "busy";
 }
 
-type ShotOutcome = "settled" | "yield" | "busy" | "lost";
+export type ShotOutcome = "settled" | "yield" | "busy" | "lost";
 
-async function settle(ctx: Ctx, n: number, ok: boolean, reason: string, output: Record<string, Json> = {}): Promise<ShotOutcome> {
+export async function settle(ctx: CoreCtx, n: number, ok: boolean, reason: string, output: Record<string, Json> = {}): Promise<ShotOutcome> {
   const b = await begin(ctx, P.settle, n, "settle", "tool");
   if (b.state === "not_owner") return "lost";
   if (b.state === "done" || b.state === "failed" || b.state === "skipped") return "settled";
@@ -1050,7 +1080,8 @@ type Candidate = {
 /** Re-issues a round may still make (the shot's cap), their budget, and
  *  what they reserved (released with the round's own reservation). */
 type CallBudget = { left: number; est: number; reserved: number };
-type Accepted = { bytes: Buffer; mime: string; width: number | null; height: number | null; sha256: string; decision: QcDecision; costMicros: number };
+/** An image to deliver: V2's carries its QC decision; the lifestyle engine's none (quality "skipped"). */
+export type Accepted = { bytes: Buffer; mime: string; width: number | null; height: number | null; sha256: string; decision?: QcDecision; costMicros: number };
 
 /** `limitAt`: when the round's image calls must be over (its QC and the
  *  delivery still fit after it); each call has at most IMAGE_CALL_MS. */
@@ -1232,11 +1263,11 @@ async function executeRound(ctx: Ctx, card: ProductCard, shot: Shot, r: {
 
 /* ══ D · delivery (the only place a shot is charged) ══════════════════════*/
 
-type DeliverOutcome = "delivered" | "released" | "busy" | "lost";
+export type DeliverOutcome = "delivered" | "released" | "busy" | "lost";
 
 /** One charge per delivery attempt of a shot (slot 0..4): a released
  *  attempt never blocks the next one on the same idempotency key. */
-const chargeKey = (ctx: Ctx, n: number, slot: number) => `gsv2:${ctx.runId}:s${n}:d${slot}`;
+const chargeKey = (ctx: Pick<CoreCtx, "runId">, n: number, slot: number) => `gsv2:${ctx.runId}:s${n}:d${slot}`;
 
 /** startUsage refusals that are final for this order (nothing charged). */
 const CHARGE_FINAL = new Set(["insufficient_credits", "service_unavailable", "maintenance"]);
@@ -1246,7 +1277,7 @@ function matchScore(d: QcDecision): number {
   return Math.round((1 - worst) * 10000) / 100;
 }
 
-async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, round: number, slot: number, charged: () => void): Promise<DeliverOutcome> {
+export async function deliver(ctx: CoreCtx, shot: Pick<Shot, "index" | "references">, mirror: Mirror, acc: Accepted, round: number, slot: number, charged: () => void): Promise<DeliverOutcome> {
   const n = shot.index;
   const item = itemOf(n, slot);
   const ext = acc.mime === "image/jpeg" ? "jpg" : acc.mime === "image/webp" ? "webp" : "png";
@@ -1254,7 +1285,7 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
     // An admin test: no ledger, no library — the image lands in the test folder.
     const path = await storeNew(srv(ctx), `${ctx.workspaceId}/gsv2-test/${ctx.runId}`, ext, acc.bytes, acc.mime);
     if (!path) return (await settle(ctx, n, false, "storage_failed")) === "lost" ? "lost" : "released";
-    const s = await settle(ctx, n, true, "", { path, test: true, verdict: acc.decision.verdict });
+    const s = await settle(ctx, n, true, "", { path, test: true, verdict: acc.decision?.verdict ?? "unchecked" });
     return s === "lost" ? "lost" : s === "busy" ? "busy" : "delivered";
   }
 
@@ -1333,7 +1364,8 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
   if (!path) return release("storage_failed");
   const added = await srvLibraryAdd(srv(ctx), {
     jobId: job.id, path, width: acc.width, height: acc.height,
-    quality: acc.decision.verdict === "warning" ? "warning" : "passed", score: matchScore(acc.decision), shot: n + 1,
+    quality: !acc.decision ? "skipped" : acc.decision.verdict === "warning" ? "warning" : "passed",
+    score: acc.decision ? matchScore(acc.decision) : null, shot: n + 1,
   });
   if (!added) return release("library_failed");
   const gen = { id: added.generationId };
@@ -1363,18 +1395,18 @@ async function deliver(ctx: Ctx, shot: Shot, mirror: Mirror, acc: Accepted, roun
     { tool: "prompts", engine: "grovshot_v2", run_id: ctx.runId, shot: n + 1, round, credits: ctx.input.quote.unit });
   await finish(ctx, P.deliver, item, { status: "succeeded", attempts: d.attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
     output: { job_id: job.id, generation_id: gen.id, path }, durationMs: ctx.deps.now() - t0 });
-  const s = await settle(ctx, n, true, "", { job_id: job.id, generation_id: gen.id, verdict: acc.decision.verdict, round });
+  const s = await settle(ctx, n, true, "", { job_id: job.id, generation_id: gen.id, verdict: acc.decision?.verdict ?? "unchecked", round });
   if (s !== "lost") await patchCredits(ctx);
   return s === "lost" ? "lost" : s === "busy" ? "busy" : "delivered";
 }
 
 /** Provider cost of every round of a shot (what this image really cost). */
-function shotCost(ctx: Ctx, n: number): number {
+function shotCost(ctx: CoreCtx, n: number): number {
   return rowsOf(ctx, P.round, n).reduce((sum, r) => sum + (Number(outputOf(r).cost_usd_micros) || (r.cost_basis !== "unknown" ? r.cost_usd_micros ?? 0 : 0)), 0);
 }
 
 /** The run row's credits follow each delivered shot (not only the close). */
-async function patchCredits(ctx: Ctx) {
+async function patchCredits(ctx: CoreCtx) {
   if (ctx.test) return;
   await ctx.writer;
   const delivered = ctx.steps.filter((s) => s.position === P.settle && s.status === "succeeded").length;
@@ -1387,7 +1419,7 @@ async function patchCredits(ctx: Ctx) {
  * file) → closed as delivered; otherwise everything of that job is removed
  * and the charge refunded — never a second request for the same round.
  */
-async function recoverDelivery(ctx: Ctx, n: number, charge: StepRunRow): Promise<DeliverOutcome> {
+export async function recoverDelivery(ctx: CoreCtx, n: number, charge: StepRunRow): Promise<DeliverOutcome> {
   const item = charge.item_index;
   const slot = item - n * 5;
   const out = outputOf(charge);
@@ -1452,14 +1484,14 @@ async function recoverDelivery(ctx: Ctx, n: number, charge: StepRunRow): Promise
 
 /* ══ closing ══════════════════════════════════════════════════════════════*/
 
-async function closeEarly(base: { supabase: Client; runId: string; owner: string; run: RunRow }, status: "failed" | "blocked", error: string) {
+export async function closeEarly(base: { supabase: Client; runId: string; owner: string; run: RunRow }, status: "failed" | "blocked", error: string) {
   await patchRun(base.supabase, base.runId, base.owner, {
     status, error, credits: 0, progress: { stage: "failed" },
     duration_ms: Math.max(0, Date.now() - Date.parse(base.run.created_at)),
   });
 }
 
-async function close(ctx: Ctx, status: "failed" | "blocked" | "ok" | "partial", error: string | null, extra: Record<string, Json> = {}) {
+export async function close(ctx: CoreCtx, status: "failed" | "blocked" | "ok" | "partial", error: string | null, extra: Record<string, Json> = {}) {
   await setProgress(ctx, { stage: status === "ok" || status === "partial" ? "done" : status === "blocked" ? "attention" : "failed" });
   await ctx.writer;
   await patchRun(ctx.supabase, ctx.runId, ctx.owner, {
@@ -1469,7 +1501,7 @@ async function close(ctx: Ctx, status: "failed" | "blocked" | "ok" | "partial", 
   });
 }
 
-async function closeRun(ctx: Ctx, shots: Shot[]): Promise<Drive> {
+export async function closeRun(ctx: CoreCtx, shots: Pick<Shot, "index">[]): Promise<Drive> {
   const delivered = shots.map((s) => stepOf(ctx, P.settle, s.index)).filter((s) => s?.status === "succeeded");
   const credits = ctx.test ? 0 : delivered.length * ctx.input.quote.unit;
   const known = ctx.steps.reduce((sum, s) => sum + (s.cost_basis !== "unknown" && s.cost_usd_micros !== null ? s.cost_usd_micros : 0), 0);

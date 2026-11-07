@@ -178,6 +178,9 @@ async function main() {
       // GrovShot V2 expert knowledge (admin only): a short-lived link to an
       // uploaded source document (MD/PDF/TXT) for review, never an image grid.
       "lib/server/grovshot-v2/knowledge.ts",
+      // GrovBase Shot admin (Baza wiedzy / Testy): an admin's own test photos
+      // and test images in one run's diagnostics, never a customer gallery.
+      "lib/server/grovshot-shot/admin.ts",
       // Hands over originals on purpose.
       "app/api/library/zip/route.ts",
       // Writes derivatives; signs what it just made.

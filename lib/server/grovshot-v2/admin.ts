@@ -177,6 +177,8 @@ export async function readRecentRuns(supabase: Client, opts: { kind?: "grovshot"
     .order("created_at", { ascending: false })
     .limit(opts.limit ?? 15);
   if (opts.ids) q = q.in("id", opts.ids);
+  // The lifestyle engine's orders have their own view (GrovBase Shot → Testy).
+  else q = q.or("input->>pipeline.is.null,input->>pipeline.neq.lifestyle");
   const { data: runs } = await q;
   const list = runs ?? [];
   if (list.length === 0) return [];

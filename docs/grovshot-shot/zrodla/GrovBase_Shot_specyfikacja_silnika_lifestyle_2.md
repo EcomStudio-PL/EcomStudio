@@ -1,0 +1,358 @@
+# GrovBase Shot – specyfikacja silnika lifestyle
+
+Oct 27, 2026 · @Kuba
+
+## Cel i założenia
+
+Silnik GrovBase Shot zamienia zdjęcia produktu i opis z Allegro w gotowy zestaw 1–10 zdjęć lifestyle na poziomie profesjonalnego grafika, bez udziału klienta poza panelem. Zasady w tym dokumencie pochodzą z testów na 8 produktach (27.10.2026), w których Claude odgrywał silnik, a generacje szły w Nano Banana Pro.
+
+**Co podaje klient w panelu:** zdjęcia produktu (do 10), opis z Allegro (nowe pole, wklejany w całości), scenariusz (lifestyle lub reklamowa), format, liczba ujęć, rozdzielczość.
+
+**Czego oczekuje:** zdjęć, które od razu idą na aukcję i podnoszą postrzeganą jakość produktu. Punktem odniesienia jest poziom reklam dużych marek (np. kampanie lifestyle Philipsa), nie zdjęcia katalogowe.
+
+**Ograniczenia modelu, na których opiera się projekt:**
+
+- Model nie zna wymiarów produktu, dopóki nie dostanie odniesienia w prompcie.
+- Myli liczbę powtarzalnych elementów (półki, sztuki w zestawie).
+- Składa produkt z fragmentów, gdy referencje pokazują tylko części, i dobudowuje brakujące elementy.
+- Edycja gotowego zdjęcia psuje kolory (czerwonawa poświata), więc **każdy błąd oznacza pełną generację od zera**. Ciężar leży na zapobieganiu, nie na poprawianiu.
+- Nie istnieje „perfekcyjna” generacja; jest system, który odrzuca słabe wyniki, zanim zobaczy je klient.
+
+**Zakres:** dokument opisuje sesję lifestyle. Sesja reklamowa (na razie bez napisów na grafikach) korzysta z tych samych etapów, ale nie była jeszcze testowana.
+
+## Architektura
+
+Silnik to sześć etapów, z których każdy ma jasno określone wyjście; dzięki temu każdy da się testować i poprawiać osobno.
+
+&#91;embedded content: etapy silnika GrovBase Shot · 6 etapów, 2 pętle\]
+
+Przepis stylu wybrany w karcie produktu zasila plan ujęć i prompty. Każde ujęcie ma maksymalnie jedną ponowną generację; jeśli i ona nie przejdzie, klient dostaje mniej zdjęć i zwrot kredytów. Etapy 0–2 i 4 to modele tekstowo-wizyjne (GPT lub Gemini), generacja to Nano Banana Pro.
+
+## Etap 0 i 1: sprawdzenie wejścia i karta produktu
+
+Karta produktu to najważniejszy plik całego silnika: wszystkie późniejsze etapy czytają z niej, a nie ze zdjęć i opisu bezpośrednio.
+
+### Etap 0: sprawdzenie wejścia (model wizyjny)
+
+1. Ostrość, ten sam produkt na wszystkich zdjęciach, produkt nieucięty. Problem = komunikat dla klienta **przed** pobraniem kredytów.
+2. **Spójność zdjęć:** zdjęcia, które pokazują inny wariant (inna faktura, kolor spoza oferty, stockowe zdjęcie), są pomijane jako referencje. Klient widzi, które zdjęcie pominięto i dlaczego.
+3. **Elementy do wycięcia:** telefony, strzałki i wymiary, numerki, przekręcone napisy na przedmiotach obok. Takie zdjęcie służy tylko do odczytu danych albo jest kadrowane do samego produktu.
+4. **Dodatki z referencji:** np. wklejone kocięta na zdjęciu drapaka. Prompt musi zakazać ich kopiowania.
+5. **Wymiary:** brak w opisie = pole „wymiary” dla klienta albo założenie ze zdjęć oznaczone jako założenie. Niejasne wymiary (np. 120×110×30 bez opisu) = pytanie do klienta.
+6. **Zgodność opisu ze zdjęciami:** np. opis mówi „Gray”, a obudowa jest lawendowa. Silnik opisuje kolor tak, jak go widać.
+
+### Etap 1: pola karty produktu
+
+| Pole | Zawartość | Przykład z testów |
+| --- | --- | --- |
+| produkt | czym jest, wariant | zestaw 8 foremek ze stemplem |
+| wymiary | z opisu albo założenie | 120 × 110 × 30 cm |
+| skala w odniesieniu | porównania z przedmiotami znanymi modelowi | „długość jajka”, „na wysokości klamki” |
+| wygląd i budowa | kolor, materiał, elementy w kolejności, liczba elementów | 2 kolumny × 6 poziomów |
+| napisy i logo | co jest na produkcie, co musi zostać | „TOKIN”, „BEAUTY LIMITED®” |
+| stany produktu | zamknięty, otwarty, rozmontowany, z inną końcówką + które zdjęcie pokazuje który | szafka zamknięta / otwarta / sam stelaż |
+| dostępne kąty | z jakich stron są zdjęcia | przód i 3/4 z lewej, brak prawego boku |
+| role zdjęć | produkt, efekt użycia, opakowanie, detal | foremki + ciasteczka |
+| argumenty sprzedażowe | z opisu, po jednym na ujęcie | pojemność, mycie w zmywarce |
+| zastosowania i miejsca użycia | lista z opisu | kuchnia, łazienka, okna, samochód |
+| grupa docelowa | kto kupuje, kto używa, wiek | rodziny 30–55 lat |
+| ograniczenia uczciwości | wiek dziecka, waga zwierzęcia, brak wodoodporności, moc światła | koty do 4 kg, dzieci od 3 lat |
+| sezon | sezonowy czy całoroczny | foremki = zima |
+| ryzyka | co model typowo psuje przy tym produkcie | rośnie, traci półki, zmienia kolor |
+| przepis stylu | jeden z przepisów z sekcji „Przepisy stylu” | wnętrza premium |
+
+## Etap 2: reguły planu ujęć
+
+Plan ujęć to etap, który najbardziej decyduje o jakości: silnik przejmuje tu rolę reżysera, nie tylko autora promptów. Każde ujęcie w planie ma: argument, scenę, typ kadru, tryb (wierny / swobodny), obecność ludzi, liczbę kandydatów i listę referencji.
+
+### Treść: co pokazuje każde zdjęcie
+
+1. **Jedno zdjęcie = jeden argument sprzedażowy z opisu.** Nie „adne sytuacje”, tylko cechy: wszechstronność, obsługa, pojemność, mycie, wspólne chwile.
+2. **Opis wymienia zastosowania lub miejsca użycia → każde ujęcie to inne zastosowanie**, w innym pomieszczeniu.
+3. **Każde wyraźnie inne zdjęcie od sprzedawcy to kandydat na osobne ujęcie** (np. kosz z frytkami, zmywarka), bo pokazuje, co sprzedawca uważa za ważne.
+4. **Efekt działania widoczny dzięki kontrastowi:** kurz na ciemnym blacie, kolorowy sok zamiast przezroczystej wody, smugi na czarnej płycie. Zabrudzenie realistyczne, nie przesadzone.
+5. **Każde ujęcie z akcją ma element ruchu:** krople, piana, kurz, para nad jedzeniem.
+6. **Argumenty bez akcji** (liczba sztuk, organizacja) tylko w hero, nie jako osobne ujęcia.
+7. **Produkty składane pokazujemy w trakcie montażu**, częściowo złożone. Rozwiązuje to liczenie elementów i skalę.
+8. **Uczciwość:** efekt działania pokazujemy wyraźnie, także jako przed i po, gdy jest realny przy typowym użyciu (np. buty przed i po praniu w worku); bez efektów na skórze i ciele, których produkt nie gwarantuje, bez wody przy produktach niewodoodpornych, bez akcesoriów spoza zestawu (np. kabel), wiek dziecka i wielkość zwierzęcia zgodne z opisem, moc światła bez przesady.
+9. **Pomijamy zastosowania z cudzym logo w kadrze**, np. kokpit samochodu.
+
+### Kadr i różnorodność zestawu
+
+1. **Zestaw miesza typy kadrów:** szeroki w otoczeniu, średni, ciasny, produkt w dłoni, bez ludzi (hero lub z góry). Ten sam typ kadru najwyżej dwa razy.
+2. **Zestaw miesza miejsca**, a inspiracje to pula scenerii do rozłożenia na ujęcia, nie jeden wzór.
+3. **Cały zestaw ma jeden przepis stylu**, także ujęcia bez ludzi.
+4. **Cały produkt najwyżej w 2 ujęciach**, reszta to zbliżenia z akcją.
+5. **Hero: produkt dominuje i stoi w centrum**, nic go nie zasłania, przed nim wolna przestrzeń.
+6. **Pierwszy plan tylko w zbliżeniach i przy krawędzi kadru**, nigdy na produkcie.
+7. **Kolejność na aukcji:** najpierw produkt i jak działa, potem emocje.
+
+### Wierność produktu
+
+1. **Każda widoczna część produktu musi mieć pokrycie w którejś referencji.** Kąt może być nowy, ale bez części, których nikt nie widział (np. bok foremki z tłoczkiem).
+2. **Zbliżenie = wycinek znanego widoku z referencji**, z tego samego kąta. Zbliżenie z referencji zostaje zbliżeniem.
+3. **Nie mieszamy dwóch stanów produktu w jednym kadrze** i nie wysyłamy referencji z innym stanem (pokrowiec + goły stelaż = hybryda).
+4. **Przy produktach z wymiennymi częściami zawsze zdjęcie całości**, nie same fragmenty.
+5. **Wiele sztuk w scenie z ludźmi: maksymalnie 2–3 widoczne.** Pełny komplet tylko w hero.
+6. **Każdy egzemplarz produktu w kadrze widziany pod kątem zgodnym z kamerą.** Przy niskiej kamerze nie kładziemy produktu „twarzą do góry”, bo wychodzi efekt naklejki.
+7. **Położenie człowieka lub zwierzęcia na produkcie zgodne z jego budową** (kot przy myszkach = najwyższe piętro).
+
+- **Nie wykluczamy referencji z powodu drobnego tekstu** (naklejki, napisy na boku). W większości ujęć produkt jest na tyle daleko, że tekst i tak byłby nieczytelny także na prawdziwym zdjęciu; prompt mówi „napis wierny albo nieczytelny”. Każde zdjęcie pokazujące inny widok produktu zwiększa wierność.
+- **Cecha ważna dla kupującego dostaje własne ujęcie, nawet jeśli wymaga akcesorium spoza zestawu** (np. zasilanie bateryjne: komora z bateriami bez napisów). Rozstrzyga to, czy kupujący musi to wiedzieć, a nie to, czy akcesorium jest w zestawie.
+- **Gdy sprzedawca ma zdjęcie konkretnego chwytu lub detalu, ujęcie kopiuje pozę 1:1 i zmienia tylko tło, światło i jeden element.** Budowanie złożonej czynności od zera (dwie dłonie wkładające baterie) wymagało w testach wielu generacji i zawodziło.
+
+* **Kadr z fragmentem produktu o kilku sekcjach:** prompt nazywa każdą widoczną sekcję i jej zawartość oraz mówi wprost, czego w niej nie ma („drążki wyłącznie w prawej kolumnie”). Inaczej model przenosi elementy między sekcjami.
+* **Liczba paneli i segmentów opisana przez cechy, które da się policzyć:** „3 panele, 3 uszka na górze, 2 zamki między nimi”, plus proporcja do sąsiedniego przedmiotu (np. drzwi). W szerokich ujęciach 3/4 model dokłada segmenty i rozciąga produkt.
+* **Rekwizyty nie trafiają na produkt w miejscach, których nie ma na referencji.** Miś w kieszeni bocznej sprawił, że model dorobił kieszeń na froncie.
+* **Montaż z życiem:** dwie osoby albo osoba z interakcją (kawa na kartonie, instrukcja, śmiech), zamieszkane wnętrze. Pusty biały pokój i pojedyncza postać wyglądają jak stock AI.
+
+### Ludzie i zwierzęta
+
+| Liczba zdjęć | Cała postać | Dłonie | Bez ludzi |
+| --- | --- | --- | --- |
+| 1–2 | 0 | 0–1 | reszta |
+| 3–5 | 1 | 1 | reszta |
+| 6–10 | 2–3 | 1–2 | reszta, w tym detale |
+
+- Przy produktach używanych w dłoni (ściereczki, urządzenia) dłonie mogą być w większości ujęć.
+- Różnorodność wieku, płci i liczby osób **w obrębie grupy docelowej**.
+- Postać to kupujący, nie usługodawca (bez fartuchów i uniformów sprzątaczki).
+- Przy produktach dla zwierząt zwierzę jest bohaterem, kamera na wysokości jego oczu.
+- Ujęcia z ludźmi lub zwierzętami: 2 kandydatów.
+
+### Pora roku
+
+Motyw sezonowy tylko przy produkcie sezonowym z natury (foremki do pierników = zima, kosiarka = lato, czapka LED = zima bez świąt). Produkty całoroczne bez śniegu, choinek i jesiennych liści, bo zdjęcia wiszą na aukcji miesiącami.
+
+## Przepisy stylu
+
+Reklamowy wygląd nie powstaje z jednego przepisu: każda kategoria potrzebuje własnego, a przepis opisuje **zasady**, nie gotową scenografię. Silnik wybiera przepis z karty produktu i dokleja go do każdego ujęcia zestawu. Scenografię za każdym razem dobiera konkretnie i różnorodnie.
+
+| Przepis | Kategorie | Hasło gatunku | Światło | Scenografia i zasady | Sprawdzony na |
+| --- | --- | --- | --- | --- | --- |
+| Reklama sezonowa | produkty sezonowe | np. „grudniowa reklama cukiernicza premium” | ciepłe, kinowe, źródło w kadrze (piekarnik, lampki), złote bokeh | warstwowa: rozmyte rekwizyty na pierwszym planie, rekwizyty związane z zastosowaniem i porą roku; efekty (mąka w świetle) tylko w zbliżeniach | foremki |
+| AGD i jedzenie | AGD kuchenne | „reklama premium AGD, food styling” | kierunkowe z boku + kontra, refleksy na stali, tło ciemniejsze | produkt najjaśniejszy w kadrze; jedzenie złociste, z fakturą; nastrój dopasowany do argumentu (zmywarka jasno, spotkanie wieczorem) | frytkownica |
+| Wnętrza premium | meble, wyposażenie, organizacja | „premium real estate visualization” | dzienne od okna lub drzwi, cień rośliny, ciepła lampa | pełny kadr z 5–6 mocnych elementów (drzwi/okno, sztuka, oświetlenie, mebel towarzyszący, roślina, drobiazgi); szlachetne materiały; ograniczona paleta; zawartość zróżnicowana | szafka |
+| Home care | sprzątanie, czystość | „reklama premium środków czystości” | jasne, ale kinowe: słońce z boku lub zza obiektu, kontra, połysk | ujęcia z akcją i ruchem, efekt czyszczenia przez kontrast, kamera nisko przy powierzchni; słońce nigdy w kadrze | mikrofibra |
+| Outdoor i akcja | zabawki RC, sprzęt outdoorowy, odzież zimowa | „kampania marki outdoorowej” | złote, niskie słońce z kontrą albo niebieska godzina | kamera przy ziemi, kurz, piasek, śnieg, para oddechu w świetle; nawierzchnie z opisu | auto RC, czapka LED |
+| Lifestyle zwierząt | akcesoria dla zwierząt | „kampania lifestyle premium marki dla zwierząt” | **miękkie**, rozproszone, ciepłe przez firany, zapalone lampy | zwierzę bohaterem, kamera na wysokości jego oczu, wnętrze przytulne i urządzone; w zbliżeniach tło opisane jako bokeh, nie lista przedmiotów | drapak |
+| Edytorski lifestyle beauty | urządzenia beauty, pielęgnacja | „edytorska kampania lifestyle premium marki beauty” | złote, nisko stojące słońce przez firany i żaluzje, kontra na włosach | wnętrza z charakterem (kamienica, loft, kolorowe meble), wyraziste modelki, skóra zdrowa i rozświetlona bez akcentowania porów | szczoteczka soniczna |
+
+### Zasady wspólne dla wszystkich przepisów
+
+- **Wnętrza europejskie**, bez amerykańskich sprzętów (lodówki z dystrybutorem, gniazdka US). Aspiracyjne, ale osiągalne; klasa wnętrza dopasowana do ceny produktu.
+- **Bez flar i słońca w kadrze.**
+- **Lista zakazanych klisz AI:** cień liści na ścianie w każdym ujęciu, monstera, beżowa lniana sofa, płatki róż, storczyki, świece, sterylna łazienka w pastelach, pralnia z jasnym dębem i białymi płytkami w jodełkę, gałązka eukaliptusa w szklanym wazonie, złożone lniane ręczniki, szklana butelka bez etykiety, ogólnie "ładne, puste, jasne wnętrze z katalogu" bez momentu i nastroju. Lista rośnie z testami.
+- **Ciepłe światło przesuwa pastelowe kolory produktu** → przy pastelowych produktach osobne zdanie chroniące kolor.
+- **Inspiracje (Pinterest, kampanie marek)** służą do spisania zasad słowami. Nie wysyłamy ich jako referencji do generacji (prawa autorskie, kopiowanie kompozycji).
+
+* **Rekwizyty bez marek i napisów.** Model przenosi logo produktu na rekwizyty (szczotka z logo BaByliss obok prostownicy), co sugeruje, że są w zestawie.
+* **Lustra tylko w ujęciu od strony lustra.** W szerokich kadrach model nie generuje poprawnych odbić osób, więc lustro skierowane na postać pomijamy albo ustawiamy bokiem do kamery.
+* **Złożone techniki użycia** (kręcenie loka prostownicą) model upraszcza. Lepiej pokazać prosty, czytelny moment i gotowy efekt obok.
+
+### Kierunki kreatywne (z ok. 40 referencji kampanii marek, 28.10.2026)
+
+Główna zasada: zdjęcie pokazuje **moment z życia, w którym produkt daje korzyść, sfotografowany jak kadr z filmu**, a nie produkt w ładnym pokoju. Prompt zaczyna się od czasownika i emocji, nie od listy przedmiotów.
+
+| Kierunek | Kiedy | Światło i kolor | Kadr i znaki rozpoznawcze |
+| --- | --- | --- | --- |
+| Kinowy półmrok premium | AGD, droga elektronika, hero | ciemne wnętrze, twarde niskie słońce, smugi i cienie żaluzji na ścianie | produkt lub osoba w plamie światła, reszta w cieniu |
+| Ciepły lifestyle pod światło | dom, kuchnia, rodzina, beauty | złote słońce zza okna, kontra na włosach, rozmyty pierwszy plan | ludzie w trakcie czynności, kolorowe ubrania kontrastujące z tłem |
+| Energetyczna akcja | narzędzia, sport, zabawki | jasne, kontrastowe, słońce zza obiektu | szeroki kąt z bardzo nisko, produkt duży na pierwszym planie, lecące wióry, kurz, krople |
+| Nocny nastrój | gaming, sen, oświetlenie, oczyszczacze | jedyne źródło: ekran, lampka, neon; chłód z ciepłym akcentem | ciemne, nasycone, intymne |
+| Wizualizacja działania | każda niewidoczna funkcja | jak sceny wyżej | subtelny efekt graficzny bez napisów: fale dźwięku, przepływ powietrza lub wody, ślad trasy, przekrój przez materiał |
+| Przed i po w jednym kadrze | czyszczenie, pielęgnacja, naprawa | jak sceny wyżej | czysty pas w brudzie, jeden element brudny obok czystego, kadr podzielony na dwie połowy, dwie osoby w tej samej sytuacji: jedna z produktem bez kłopotu, druga bez produktu z problemem (z humorem, bez ośmieszania) |
+| Produkt w dłoni | małe urządzenia, akcesoria | pod światło, głęboki bokeh | dłoń trzyma produkt przodem do kamery |
+| Kreatywny punkt widzenia | małe produkty, opakowania | jak sceny wyżej | kadr z wnętrza torby, szuflady, pralki, przez drzwi; wielokrotna ekspozycja tej samej osoby do pokazania wielu zastosowań |
+| Kolorowy świat dziecka | zabawki, artykuły dziecięce | jasne, nasycone, słońce | szeroki kąt z perspektywy dziecka, mocne kolory, wyraźna radość |
+| Zwierzę i emocja | produkty dla zwierząt | ciepłe, miękkie lub twarde słońce | kamera nisko, emocja zwierzęcia i opiekuna |
+
+**Składniki obowiązkowe w każdym ujęciu z ludźmi:** konkretna czynność w toku, wyraźna emocja (śmiech, skupienie, satysfakcja, zachwyt), światło z kierunkiem i cieniem w kadrze, kolor ubrania dobrany celowo, tło spokojniejsze niż produkt.
+
+**Efekty wizualne podkreślające działanie są pożądane** (para, krople, przepływ, wióry, kurz, fale), ze smakiem i bez napisów. Napisy, plakietki i opisane powiększenia należą do przyszłego narzędzia z grafikami reklamowymi.
+
+**Kontrola anty-stock przed każdym promptem:** czy wiadomo, co się dzieje w tej sekundzie? czy ktoś coś czuje? czy światło ma kierunek i porę dnia? czy widać efekt działania? czy kadr jest ciekawszy niż „produkt na środku blatu”? Jeśli na dwa pytania odpowiedź brzmi nie, scena idzie do przepisania.
+
+**Zróżnicowanie światła w zestawie:** maksymalnie 2 ujęcia w złotej godzinie. Reszta: chłodny poranek, niebieska godzina, kinowy półmrok, rozproszone światło pochmurnego dnia, noc z lampką. Ta sama tonacja w ponad połowie zdjęć = wygląd stockowy.
+
+**Elektronika i sprzęt zdrowotny:** neutralne lub chłodne, czyste światło, kontrast, produkt najjaśniejszym punktem. Ciepło tylko jako akcent (lampka), nigdy jako filtr na całym zdjęciu.
+
+**Korekta (czujnik czadu, 29.10):** „chłodne i czyste” nie znaczy ciemne i szare. Cały zestaw w chłodnym półmroku wygląda ponuro, tanio i nie budzi zaufania. Domyślnie: jasne, naturalne światło dnia i wnętrza pełne życia; noc i półmrok tylko w 1–2 ujęciach i zawsze z ciepłymi źródłami światła (lampy, kominek, ekran) oraz kolorowymi akcentami.
+
+**Produkty pasywne i bezpieczeństwa** (czujniki, zamki, gaśnice): produkt sam niczego nie robi, więc zdjęcie sprzedaje życie, które chroni. Ludzie w centrum, w trakcie czynności, z pozytywną emocją (spokój, radość, bliskość), produkt ostry i czytelny w kadrze. Zagrożenie najwyżej w jednym ujęciu i pokazane przez spokojną reakcję, nie przez strach. Pusta ściana z produktem w roli głównej = stock.
+
+**Wzorzec, który działa (czujnik czadu, akceptowane ujęcia):** „katalog IKEA / kampania marki domowej”: jasne, naturalne światło dnia z kontrolowaną ekspozycją (nic nie jest prześwietlone), pełne i zamieszkałe wnętrze z kolorowymi akcentami, ludzie w trakcie czynności z prawdziwą emocją, produkt jako naturalna część sceny.
+
+**Czego unikać (odrzucone ujęcia):** prześwietlone okna i bramy, flary, puste „showroomowe” wnętrza, nierealne układy (kominek na środku salonu), zwykłe sceny bez akcji i emocji (alarm, sypialnia, montaż pod sufitem).
+
+**Pora roku za oknem:** produkt używany cały rok (kuchenka, przedpokój) → lato lub neutralna pora; zima tylko tam, gdzie naprawdę jest sednem (kominek, inhalacja). Zimowa aura w każdym ujęciu robi zestaw ponurym.
+
+**Korekty dotyczą swojej kategorii (maska lakiernicza, 29.10):** poprawka z jednego produktu (np. „jasno, jak katalog IKEA” przy czujniku czadu) nie może nadpisać przepisu innej kategorii. Najpierw przepis kategorii, potem korekty zapisane dla tej kategorii.
+
+**Przepis „kinowy przemysłowy” (narzędzia, sprzęt ochronny, warsztat):** ciemny warsztat z akcentami lamp, twarde światło kluczowe z boku i mocna kontra z tyłu; pył, mgiełka lakieru, iskry i wióry podświetlone w powietrzu; chłodne tło z ciepłym akcentem; niski, „bohaterski” kąt kamery; postać jako pewny siebie fachowiec w skupieniu, faktury skóry, pot, kurz na ubraniu; płytka głębia ostrości, ziarno filmowe. Jasne, równe światło dnia w zwykłym garażu daje tu efekt taniego stocku.
+
+**Z referencji narzędziowych (Hitachi, Ryobi, piły, siekiery):** produkt dominuje kadr z bardzo niskiego kąta (często 60–80% kadru), człowiek jest częściowy: dłonie, profil, sylwetka w nieostrości; styl reportażowy, światło zastane i praktyczne lampy, prawdziwe zużycie i kurz. **Twarz na wprost, symetrycznie w środku kadru i efekty świecenia dają najbardziej sztuczny wynik** (maska lakiernicza, ujęcie wizualizacji). Efekt działania pokazywać realnie (zakurzony filtr obok czystego, czysty ślad po masce na zakurzonej twarzy), a nie poświatą.
+
+**Obowiązkowe: detale od sprzedawcy (maska lakiernicza, 29.10).** Każde zbliżenie detalu przysłane przez sprzedawcę (mocowanie, wnętrze, uszczelka, paski, filtry osobno) dostaje własne ujęcie: detal skopiowany 1:1 z referencji, a zmienione tylko tło, światło i klimat na styl zestawu. Zestaw = mieszanka ujęć użycia i ujęć detali, mniej więcej po połowie. Ujęcie zestawu pokazuje wszystkie elementy z góry lub z wysokiego kąta, nigdy z poziomu blatu. Ujęcia bez wyraźnego argumentu (np. zdjęta maska i twarz) są pomijane.
+
+**Skala miękkich produktów bez sztywnej formy (worki, torby, kosze z plandeki, 29.10):** model spłaszcza je i zmniejsza do rozmiaru torby na zakupy. Opis „sięga do bioder” nie wystarcza. W każdym ujęciu potrzebne są: proporcja („wyższy niż szeroki, ok. 5:4”), porównanie z przedmiotem o znanej wysokości tuż obok (taczka, siedzisko krzesła ogrodowego 45 cm, kompostownik), porównanie z ciałem osób w kadrze (dorosły: do połowy uda/bioder; dziecko 8 lat: do klatki piersiowej). W detalach z bliska skala ginie, więc obok musi być element odniesienia (dłoń, buty, grabie). Uchwyty zawsze opisane jako „wyłącznie na zewnątrz, dokładnie dwa górne i jeden dolny”. Ogrody europejskie: bez amerykańskich domów z cegły i podjazdów z garażem na dwa auta.
+
+**Przepis „ogród i plener” (z referencji kosiarek, glebogryzarek, myjek, 29.10):** kamera przy samej trawie, rozmyte źdźbła na pierwszym planie, produkt duży i dominujący; ostre, czyste słońce i głęboko niebieskie niebo albo niskie słońce z kontrą; nasycona, ale naturalna zieleń, trawnik w pasy; nowoczesny polski dom (elewacja z drewna, płaski dach, duże przeszklenia), żywopłot z tui, kostka brukowa, drewutnia; ludzie w odzieży roboczej w kolorze beżu i oliwki, w skupieniu, nie pozują; materiał w ruchu (ziemia, liście, trawa, woda) w kontrze; przed i po na jednej powierzchni. Taras wieczorem: girlandy żarówek, poduszki, drewno, styl IKEA.
+
+**Blok stylu nie może opisywać konkretnego miejsca (worek ogrodowy, 30.10):** szczegółowy opis domu we wspólnym bloku daje ten sam dom w każdym ujęciu. Wspólny blok opisuje tylko światło, klimat i jakość; miejsce opisuje się osobno w każdym ujęciu i każde jest inne („nowoczesny dom” wystarcza modelowi do różnorodności). Ogrody i podwórka zawsze pełne i zamieszkane jak we wnętrzach: rabaty, donice, meble ogrodowe, zabawki, rower, wąż ogrodowy, drzewa owocowe. Pusty trawnik z żywopłotem = stock.
+
+**Decyzje (02.11):** zestaw celowo pokazuje produkt w różnych miejscach i sytuacjach (każdy kupujący ma szansę zobaczyć „swój” dom), bez jednej spójnej sesji. Bez automatycznej korekty koloru po generacji: cała jakość ma wynikać z promptu. Sceny pełne i ciepłe zamiast minimalistycznych. Drobne błędy modelu (szczegóły mocowań, odbicia) są akceptowane, o ile nie zmieniają produktu ani nie wprowadzają w błąd.
+
+**Przepis „świąteczna aura” (z referencji grafika, 03.11):** jeden stół czy kominek z kilkoma ozdobami to za mało. Potrzebne warstwy: (1) pierwszy plan z rozmytymi gałązkami jodły, czerwonymi jarzębinami, bombkami, cynamonem i suszoną pomarańczą przy krawędziach kadru; (2) środek z produktem otoczonym gesto dekoracjami; (3) tło pełne złotego bokeh: girlandy z lampkami na każdej linii (półki, okno, kominek), choinka, świece; (4) za oknem gęsto padający śnieg; (5) unoszące się w powietrzu drobiny (śnieg, brokat, mąka) w smugach światła. Paleta: ciepłe złoto, głęboka czerwień, butelkowa zieleń, krem. Hasło gatunku: „bożonarodzeniowa kampania reklamowa, magiczna, bajkowa aura”.
+
+**Korekta przepisu świątecznego (03.11):** pełne warstwy z drobinami w powietrzu, rekwizytami w każdym rogu i złotym filtrem dają kicz. Cel to klatka ze świątecznego spotu firm meblowych i cukierniczych: realistyczny dom, dekoracje w ilości, jaką mają prawdziwi ludzie, światło tylko z prawdziwych źródeł (lampki, świece, ogień, latarnie za oknem), ciepłe światła i chłodniejsze, głębokie cienie, umiarkowane nasycenie, ziarno filmowe. Brokat i drobiny tylko w kuli produktu, śnieg tylko za oknem. Rozmyty pierwszy plan najwyżej w co drugim ujęciu.
+
+**Zbliżenie fragmentu jako referencja w scenie z całym produktem (dziadek do orzechów, 03.11):** dołączenie zbliżenia samej kuli sprawiło, że model wygenerował osobną kulę obok figurki albo skrócił figurkę. W ujęciach z całym produktem dołączamy tylko widoki całości, a prompt mówi wprost, że element jest częścią produktu („kula jest tułowiem figurki, jeden przedmiot”). **Proporcja ujęć nastrojowych:** zdjęcia z silnika trafiają do galerii wewnątrz aukcji, nie na miniaturę listingu (tam jest zdjęcie na białym tle, poza zakresem silnika). Ujęcia nastrojowe i ciemniejsze są więc w porządku; warunek jest jeden: w każdym ujęciu produkt jest rozpoznawalny i nie znika za ludźmi ani w cieniu.
+
+**Spójność kotwic skali:** przed wysłaniem promptu silnik sprawdza rachunkiem, czy kotwice się nie wykluczają (np. figurka 50 cm stojąca na podłodze nie może mieć kuli na wysokości twarzy klęczącego dziecka, ok. 75 cm; model rozwiąże sprzeczność, powiększając produkt). Podest (stołek, komoda) podnosi produkt do potrzebnej wysokości. **Efekty graficzne funkcji** (nutki, fale): mało, małe, w tonacji zdjęcia, bez kolorów tęczy i dodatków typu pięciolinia.
+
+**Sezon użycia:** produkt całoroczny, którego używa się głównie w określonej porze (inhalator, nawilżacz = jesień i zima; wentylator = lato), w ujęciach z ludźmi pokazuje tę porę: śnieg i szron za oknem, ciepłe ubrania. Bez dekoracji świątecznych.
+
+**Kadr z wnętrza pojemnika** tylko wtedy, gdy otwór leży na osi kamery (torba na butelki z góry, bęben pralki). Torebka z zamkiem otwierana od góry = kadr z góry, nie z boku.
+
+**Mgiełka, para, dym:** opisywać prędkość i zachowanie („powolny, miękki obłok jak oddech na mrozie”), nigdy „strumień” ani linie przepływu, bo daje to efekt spryskiwacza. Zawsze wskazać jedyne miejsce, z którego wylatuje.
+
+**Produkty, które świecą – dawka światła (lampy do roślin, 04.11):** wzorzec to akceptowane zdjęcia lampy dwugłowicowej. Intensywność budują trzy rzeczy: (1) listwy świecą jednolitym, nasyconym kolorem na całej długości (półprzezroczysty klosz) z miękką poświatą wokół – opis „przezroczysta tuba z rzędem diod” daje białawe kropki i tani, słaby wygląd; (2) w kadrze tuż za lampą lub pod nią jest powierzchnia, która łapie mocną plamę koloru (ściana, ościeżnica, plecy regału, blat); (3) liście pod lampą zabarwione, ale z widoczną zielenią, a pomieszczenie dalej niż ok. 1 m od lampy w naturalnych, ciepłych kolorach. Błędy: „pada miękko, szybko słabnie” = za słabo; „główne i najsilniejsze światło, zalewa wszystko” = cały kadr, dłonie, pilot i klips w magencie. Negative: „blade lub białawe listwy, przesadnie fioletowy cały pokój, neon klubowy”. Obudowa, ramiona i klips zawsze czarne. W tle nigdy drugi egzemplarz produktu. Detal z napisami (pilot) wyłącznie z kąta referencji. Lekcje z każdego produktu zapisywać od razu, żeby następny produkt z tej kategorii nie zaczynał od zera.
+
+### Procedura przed każdym produktem (obowiązkowa)
+
+Zanim powstanie plan ujęć, silnik przechodzi tę listę i zapisuje odpowiedzi w karcie produktu. Zasady nie są przypominane z pamięci, tylko odhaczane.
+
+1. Kategoria → przepis stylu i jego światło (tabela przepisów).
+2. Sezon produktu i sezon użycia.
+3. Rozkład światła w zestawie: ile ujęć w którym świetle (maks. 2 w złotej godzinie).
+4. Rozkład typów kadru: ten sam typ maks. 2 razy.
+5. Każde ujęcie ma kierunek z tabeli kierunków kreatywnych i przechodzi kontrolę anty-stock.
+6. Referencja wybrana według strony produktu widocznej z kamery; akcesoria połączone opisane jako jeden przedmiot z liczbą sztuk.
+7. Efekt działania i przed/po tam, gdzie produkt rozwiązuje problem.
+8. Uczciwość: zawartość zestawu, wiek, skala, bez obietnic zdrowotnych.
+
+## Etap 3: wzorzec promptu
+
+Prompt składa się z modułów w stałej kolejności: produkt i skala na początku, klimat krótko, stopka na końcu. Wcześniej opis wnętrza zajmował większość promptu i model traktował go jako ważniejszy od produktu.
+
+1. **KIERUNEK (blok klimatu z przepisu stylu).** Zaczyna się hasłem gatunku, np. „edytorska kampania lifestyle premium marki beauty. Prawdziwe zdjęcie, nie render (raw photo)”.
+2. **PRODUKT (blok produktu z karty).** „Identyczny jak na zdjęciu 1”, budowa w kolejności elementów, kolor, napisy („wierny albo nieczytelny, nigdy przekręcony”), czego produkt NIE jest („to nie jest mebel z płyty”), zakaz kopiowania dodatków z referencji.
+3. **SKALA.** Wymiary w cm i calach + porównanie z przedmiotem tuż obok produktu (kubek, butelka 2 l, klamka, dłoń). W szerokich kadrach proporcja do ściany lub mebla. Przy produktach prawie kwadratowych główną kotwicą jest proporcja, nie sama wysokość.
+4. **STAN / CHWYT.** W jakim stanie jest produkt. Przy produkcie w dłoni: która część dotyka skóry lub powierzchni, gdzie jest dłoń, gdzie drugi koniec. **Bez porównań do przedmiotów o innym kształcie** („jak długopis” zbudowało długopis).
+5. **MOMENT.** Konkretna sytuacja z argumentem sprzedażowym i elementem ruchu.
+6. **KADR.** Format, kąt kamery w stopniach, wysokość, odległość, obiektyw, położenie elementów w procentach kadru. Obiektyw 50–100 mm dla produktów; szeroki kąt podbija skalę obiektu na pierwszym planie.
+7. **POSTAĆ.** Wiek, wygląd, ubiór, mimika; „nikt nie patrzy w obiektyw”, chyba że ujęcie lustra.
+8. **SCENOGRAFIA.** W ujęciach szerokich konkretne elementy; w zbliżeniach tylko jako rozmyte plamy koloru i światła.
+9. **STOPKA jakości.** Zawsze, w wariancie do typu ujęcia (poniżej).
+10. **NEGATIVE PROMPT.** Wspólna baza + ryzyka z karty produktu.
+
+### Referencje
+
+- Dołączane tylko zdjęcia wskazane w planie, w ustalonej kolejności; prompt odwołuje się do nich jako „zdjęcie 1”, „zdjęcie 2”.
+- Zwykle 2 referencje: główna (stan produktu w ujęciu) + uzupełniająca (efekt użycia albo całość).
+- Referencje tylko z tym samym stanem produktu co w scenie.
+- Przy zbliżeniu zawsze również zdjęcie całości.
+
+### Stopki jakości
+
+Stopka zawsze jest w prompcie: w testach daje wyraźną poprawę realizmu i światła.
+
+| Typ ujęcia | Stopka |
+| --- | --- |
+| wnętrza i hero we wnętrzu | Ultra realistic, 8k, cinematic light, sharp focus, realistic materials, premium real estate visualization. |
+| akcja i ludzie | Ultra realistic, 8k, cinematic light, realistic materials, shallow depth of field. |
+| makro i detal | Ultra realistic, 8k, cinematic light, realistic materials, sharp focus on texture. |
+| ruch (auto RC) | jak akcja + motion blur on wheels. |
+| zwierzęta | Ultra realistic, 8k, soft natural window light, realistic materials, shallow depth of field. |
+| beauty | Ultra realistic, 8k, cinematic warm golden light, editorial beauty photography, realistic glowing skin, realistic materials, shallow depth of field. |
+
+### Wspólna baza negative promptu
+
+```
+render, CGI, 3D, plastikowa skóra, sztuczny uśmiech, patrzenie w obiektyw, zniekształcone dłonie, dodatkowe palce, inny kolor produktu, inny kształt, przekręcone napisy, inne logo, napisy, metki, etykiety na kosmetykach i butelkach, amerykańskie wnętrze, flara, słońce w kadrze, przesycone kolory, efekt wklejenia, kolaż
+```
+
+Do bazy silnik dopisuje ryzyka z karty, np. „szafa sięgająca do ramion”, „woda, kałuże”, „kocięta z referencji”.
+
+## Etap 4: kontrola jakości i ponowne generacje
+
+Model oceniający (wizyjny) porównuje każdy wynik z referencją i kartą produktu, wybiera lepszego z dwóch kandydatów i odrzuca błędne zdjęcia, zanim zobaczy je klient. Surowość ma trzy poziomy, bo zbyt surowa kontrola podnosi koszt i czas bez korzyści dla klienta.
+
+| Poziom | Co sprawdza | Przykłady z testów |
+| --- | --- | --- |
+| **Odrzuć zawsze** | produkt zmieniony (kształt, budowa, kolor, wzór), zła skala, zniekształcone dłonie i twarze, niemożliwa fizyka, sklonowane osoby, przezroczyste postacie, efekt wklejenia, płyn stojący na tkaninie jak na folii, obce przedmioty podobne do produktu, akcesoria spoza zestawu, cudze logo | szafka 150 cm zamiast 110, urządzenie jak kamyk, dwie identyczne biegaczki, metalowe foremki obok plastikowych, kabel przy module USB |
+| **Odrzuć tylko w hero** | liczba elementów zestawu, brakujące lub zdublowane wzory, liczba półek przy pełnym produkcie | 6 z 8 foremek, 5 poziomów zamiast 6 |
+| **Przepuść (tolerancja)** | odstępstwa sceny od promptu (ubrania, rekwizyty), drobne, nieczytelne napisy przy krawędzi, różnice proporcji wynikające z perspektywy | inne swetry niż w prompcie, rozmazany podpis „RACING” |
+
+Dodatkowo „odrzuć zawsze”: logo produktu na rekwizytach, brak lub błędne odbicie osób w lustrze, akcesoria z zestawu w innym kształcie niż na referencji (np. rękawica z pięcioma palcami zamiast dwóch).
+
+**Uwaga:** model oceniający myli się tak jak człowiek (w testach fałszywie odrzucił ujęcie szafki za „nierówne kolumny”, które wynikały z perspektywy). Fałszywe odrzucenie też kosztuje pełną generację, więc próg odrzucenia musi mieć tolerancję.
+
+### Kontrola koloru
+
+Porównanie próbki koloru produktu na referencji i na wyniku (automatycznie, w kodzie). Szczególnie przy pastelach i w ciepłym świetle.
+
+### Reakcja na błąd
+
+- **Błąd losowy** (ucinana ręka, sklonowana osoba, jedna dłoń zamiast dwóch): ponowna generacja **z tym samym promptem**. W testach drugi raz dawał poprawny wynik.
+- **Błąd systematyczny** (powtarza się przy każdej próbie: liczba półek, flara, przesadzony kurz, zła budowa): zmiana promptu albo planu ujęcia, a przy kolejnych produktach nowa reguła zapobiegawcza.
+- **Bez edycji gotowych zdjęć** (psuje kolory). Zawsze generacja od zera.
+- **Limit:** jedna ponowna generacja na ujęcie. Jeśli i ona nie przejdzie, klient dostaje mniej zdjęć i zwrot kredytów, a nie słabe zdjęcie.
+
+### Informacja zwrotna od klienta
+
+Przycisk „wygeneruj to ujęcie ponownie” i ocena zdjęcia. Dane pokazują, gdzie silnik zawodzi, i zasilają listę reguł.
+
+## Koszty i limity
+
+Przy cenie Nano Banana Pro 0,134 USD za obraz 2K gotowy zestaw 5–6 zdjęć kosztował w testach ok. 0,80–1,10 USD, czyli 6–8 generacji. Analiza produktu, plan ujęć i kontrola jakości to wywołania modeli tekstowo-wizyjnych rzędu centów na zlecenie.
+
+| Element | Reguła |
+| --- | --- |
+| Kandydaci | 2 dla ujęć z ludźmi, zwierzętami i złożonych scen; 1 dla hero, detali i kompozycji z góry |
+| Ponowne generacje | maks. 1 na ujęcie |
+| Szacunek na zestaw 5 zdjęć | ok. 8 generacji + średnio 1 ponowna ≈ 1,20 USD |
+| Brak udanego wyniku | mniej zdjęć + zwrot kredytów |
+
+Marża: obecnie 7 kr. za ujęcie zakłada jedną generację. Cenę kredytów trzeba policzyć na scenariuszu 1,5–2 generacji na dostarczone zdjęcie, nie na idealnym.
+
+## Wyniki testów
+
+Po 8 produktach silnik sam planuje ujęcia i dochodzi do poziomu akceptowanego przez grafika, a kolejne produkty potrzebują coraz mniej rund (auto RC: gotowe za pierwszym razem). Najtrudniejsze okazały się produkty o złożonej budowie i nowe kategorie bez przepisu stylu.
+
+| Produkt | Kategoria | Rundy | Wynik | Główna lekcja |
+| --- | --- | --- | --- | --- |
+| Foremki ze stemplem | sezonowe | 2 | 6/10, potem lepiej | brak kierunku kreatywnego daje zwykły dom; kolaż z referencji z całym zestawem |
+| Frytkownica Tefal | AGD | 2 | gotowy zestaw | jedno zdjęcie = jeden argument; zbliżenie z referencji zostaje zbliżeniem |
+| Szafka tekstylna na buty | wnętrza | 5 | akceptowalne | proporcja zamiast samej wysokości; nie mieszać stanów produktu; montaż w trakcie |
+| Ściereczki z mikrofibry | home care | 2 | gotowy zestaw | zastosowania z opisu; efekt widoczny przez kontrast; ruch |
+| Czapka z lampką LED | outdoor | 1 + 2 ponowne | gotowy zestaw | błędy losowe znikają po ponownej generacji bez zmian |
+| Drapak dla kota | zwierzęta | 3 | bardzo dobre | miękkie światło, zwierzę bohaterem, zbliżenie zawsze z całością |
+| Auto RC | outdoor | 1 | gotowy zestaw | plan i prompty w całości od silnika |
+| Szczoteczka soniczna | beauty | 3 | gotowy zestaw | różnorodność kadrów; chwyt opisany wprost; skóra zdrowa, nie „z porami” |
+
+Pierwsze rundy szafki i szczoteczki były najsłabsze z całej serii. W obu przypadkach model składał produkt z fragmentów, więc reguły o stanach produktu i zdjęciu całości są kluczowe dla produktów o złożonej budowie.
+
+Pierwszy test według tego dokumentu (prostownica BaByliss PRO, 4 zdjęcia, 3 referencje): chrom, chwyt, różnorodność kadrów i spójny styl zadziałały za pierwszym razem. Błędy: logo na szczotce, brak odbić w lustrze w salonie, uproszczone kręcenie loka.
+
+Pierwszy test z kierunkami kreatywnymi (worek do prania butów, 10 ujęć, 7 referencji): wszystkie 10 zaakceptowane za pierwszym razem. Kolejność promptu „moment i emocja → światło → kadr → produkt → scenografia” oraz przed i po w jednym kadrze dają poziom kampanii marek. Do pilnowania: ciepłe światło przesuwa szarą mikrofibrę w beż, a referencja z błędnym kolorem detalu (miętowy zamek na zdjęciu z pralką) przenosi błąd do sceny.
+
+Maska lakiernicza (29.10): po 3 rundach gotowy zestaw. Zadziałało połączenie: przepis „kinowy przemysłowy” dla ujęć detali (ciemny warsztat, kontra, mgiełka), styl reportażowy dla ujęć użycia (niski kąt, profil, kurz i mgiełka w kontrze) oraz detale ze zdjęć sprzedawcy kopiowane 1:1 z nową scenerią. Ujęcia użycia w różnych miejscach (warsztat, sad, budowa, przystań) pokazują szerokość zastosowań.
+
+## Otwarte kwestie i następne kroki
+
+Największe nieznane ryzyko to zdjęcia z telefonu: wszystkie testy szły na profesjonalnych zdjęciach lub renderach producenta.
+
+- [ ] Test na zdjęciach z telefonu od prawdziwego klienta (cienie, bałagan w tle, krzywy kadr)
+- [ ] Test bardzo małego produktu z dziećmi w kadrze (kredki, biżuteria)
+- [ ] Test odzieży na człowieku (krój, nadruk)
+- [ ] Pierwsze testy sesji reklamowej
+- [ ] Przepisy stylu dla kolejnych kategorii (ogród, moda, elektronika)
+- [ ] Prototyp etapów 1–4 jako skrypt na zestawie testowym przed wpięciem w panel (Marcel)
+- [ ] Zestaw testowy 30–50 produktów z oceną grafika do mierzenia odsetka zdjęć, które przechodzą
+- [ ] Pole „opis z Allegro” i ewentualnie „wymiary” w panelu
+- [ ] Automatyczna kontrola koloru produktu w kodzie
+- [ ] Cena kredytów policzona na 1,5–2 generacji na dostarczone zdjęcie
+
+**Decyzja do podjęcia:** zabawki z licencjonowanymi postaciami (bajki, filmy). Generowanie nowych scen z cudzymi postaciami to ryzyko prawne dla GrovBase, nawet jeśli sprzedawca ma prawo sprzedawać sam produkt.

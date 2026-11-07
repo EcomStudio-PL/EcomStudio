@@ -53,6 +53,7 @@ import { isGuideTool } from "@/lib/tool-guides";
 import { readSmartPromptAdmin } from "@/lib/server/smart-prompt-admin";
 import { SmartPromptAdminCard } from "@/components/admin/smart-prompt-panel";
 import { GrovshotV2Tab } from "@/components/admin/grovshot-v2-tab";
+import { GrovshotShotTab } from "@/components/admin/grovshot-shot-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -148,6 +149,8 @@ export default async function ToolWorkspace({ params, searchParams }: {
       {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} diag={diag} />}
       {tab === "knowledge" && <KnowledgeTab supabase={supabase} t={t} row={row} locale={locale} />}
       {tab === "engine_v2" && row.key === "prompts" && <GrovshotV2Tab supabase={supabase} t={t} locale={locale} stage={stage} />}
+      {tab === "shot_kb" && row.key === "prompts" && <GrovshotShotTab supabase={supabase} t={t} view="kb" />}
+      {tab === "shot_tests" && row.key === "prompts" && <GrovshotShotTab supabase={supabase} t={t} view="tests" />}
       {tab === "guide" && isGuideTool(row.key) && <ToolGuideSection tool={row.key} supabase={supabase} />}
     </div>
   );

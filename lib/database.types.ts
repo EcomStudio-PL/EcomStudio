@@ -4023,6 +4023,9 @@ export type Database = {
           source_kind: string
           source_ref: string | null
           tags: string[]
+          title: string | null
+          photo_paths: string[] | null
+          notes: string | null
           usage_count: number
           what_failed: string | null
           what_worked: string | null
@@ -4055,6 +4058,9 @@ export type Database = {
           source_kind?: string
           source_ref?: string | null
           tags?: string[]
+          title?: string | null
+          photo_paths?: string[] | null
+          notes?: string | null
           usage_count?: number
           what_failed?: string | null
           what_worked?: string | null
@@ -4087,6 +4093,9 @@ export type Database = {
           source_kind?: string
           source_ref?: string | null
           tags?: string[]
+          title?: string | null
+          photo_paths?: string[] | null
+          notes?: string | null
           usage_count?: number
           what_failed?: string | null
           what_worked?: string | null
@@ -4350,6 +4359,11 @@ export type Database = {
           rule_ids: string[]
           tool_key: string
           version: number
+          source_id: string | null
+          parsed: Json | null
+          source_sha256: string | null
+          format_version: number | null
+          summary: Json | null
         }
         Insert: {
           activated_at?: string | null
@@ -4382,6 +4396,39 @@ export type Database = {
           rule_ids?: string[]
           tool_key?: string
           version?: number
+        }
+        Relationships: []
+      }
+      knowledge_version_events: {
+        Row: {
+          action: string
+          actor: string | null
+          created_at: string
+          from_version_id: string | null
+          id: string
+          note: string | null
+          tool_key: string
+          version_id: string
+        }
+        Insert: {
+          action: string
+          actor?: string | null
+          created_at?: string
+          from_version_id?: string | null
+          id?: string
+          note?: string | null
+          tool_key: string
+          version_id: string
+        }
+        Update: {
+          action?: string
+          actor?: string | null
+          created_at?: string
+          from_version_id?: string | null
+          id?: string
+          note?: string | null
+          tool_key?: string
+          version_id?: string
         }
         Relationships: []
       }
@@ -7567,6 +7614,34 @@ export type Database = {
       feature_interest_counts: {
         Args: never
         Returns: { feature_key: string; interested: number }[]
+      }
+      grovshot_shot_kb: {
+        Args: { p_token: string; p_version_id: string | null }
+        Returns: Json
+      }
+      grovshot_shot_kb_activate: {
+        Args: { p_version_id: string; p_note: string }
+        Returns: Json
+      }
+      grovshot_shot_kb_import: {
+        Args: { p_file: Json; p_original?: Json | null }
+        Returns: Json
+      }
+      grovshot_shot_queue: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      grovshot_shot_test_create: {
+        Args: { p_req: Json }
+        Returns: Json
+      }
+      grovshot_slot_acquire: {
+        Args: { p_token: string; p_kind: string; p_limit: number; p_holder: string; p_ttl_seconds: number }
+        Returns: number | null
+      }
+      grovshot_slot_release: {
+        Args: { p_token: string; p_kind: string; p_holder: string }
+        Returns: undefined
       }
       grovshot_knowledge_activate: {
         Args: { p_version_id: string }

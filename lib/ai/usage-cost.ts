@@ -47,18 +47,27 @@ export function findTokenPrice(prices: readonly TokenPrice[], providerSlug: stri
 
 /** Tokens × list price. Unknown unless BOTH a price and the provider's own
  *  token counts are present. */
+/** Anthropic prompt-cache write, 5-minute TTL: 1.25× the input rate (published). */
+export const ANTHROPIC_CACHE_WRITE_5M = 1.25;
+
 export function tokenCost(
   prices: readonly TokenPrice[], providerSlug: string, model: string,
   inputTokens: number | undefined | null, outputTokens: number | undefined | null,
   /** Of `inputTokens`, how many the provider served from its cache. */
   cachedInputTokens?: number | null,
+  /** Of `inputTokens`, how many were WRITTEN to the cache (Anthropic: 1.25×
+   *  the input rate for the 5-minute TTL, its published multiplier). */
+  cacheWriteTokens?: number | null,
 ): Cost {
   if (inputTokens == null && outputTokens == null) return UNKNOWN_COST;
   const price = findTokenPrice(prices, providerSlug, model);
   if (!price) return UNKNOWN_COST;
-  const cached = Math.min(Math.max(0, cachedInputTokens ?? 0), Math.max(0, inputTokens ?? 0));
+  const total = Math.max(0, inputTokens ?? 0);
+  const cached = Math.min(Math.max(0, cachedInputTokens ?? 0), total);
+  const written = Math.min(Math.max(0, cacheWriteTokens ?? 0), total - cached);
   const cachedRate = price.cachedInputPerMTok ?? price.inputPerMTok;
-  const micros = (((inputTokens ?? 0) - cached) * price.inputPerMTok + cached * cachedRate
+  const writeRate = providerSlug === "anthropic" ? price.inputPerMTok * ANTHROPIC_CACHE_WRITE_5M : price.inputPerMTok;
+  const micros = ((total - cached - written) * price.inputPerMTok + cached * cachedRate + written * writeRate
     + (outputTokens ?? 0) * price.outputPerMTok) / 1_000_000;
   return { basis: "estimated", usdMicros: Math.round(micros) };
 }

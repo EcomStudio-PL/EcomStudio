@@ -90,7 +90,7 @@ export async function srvJobs(s: Srv, item: number | null): Promise<{ id: string
 }
 
 export async function srvLibraryAdd(s: Srv, a: {
-  jobId: string; path: string; width: number | null; height: number | null; quality: "passed" | "warning"; score: number; shot: number;
+  jobId: string; path: string; width: number | null; height: number | null; quality: "passed" | "warning" | "skipped"; score: number | null; shot: number;
 }): Promise<{ generationId: string; assetId: string } | null> {
   const { data } = await call<{ generation_id: string; asset_id: string }>(s, "grovshot_srv_library_add", {
     p_job_id: a.jobId, p_path: a.path, p_width: a.width, p_height: a.height, p_quality: a.quality, p_score: a.score, p_shot: a.shot,

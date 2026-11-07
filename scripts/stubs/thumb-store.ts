@@ -103,7 +103,8 @@ export async function finishStep(_s: unknown, runId: string, owner: string, posi
   s.cost_basis = res.cost.basis;
   s.cost_usd_micros = res.cost.basis === "unknown" ? null : res.cost.usdMicros;
   s.error_code = res.status === "failed" ? (res.errorCode ?? "error") : null;
-  s.output = res.status === "succeeded" ? JSON.parse(JSON.stringify(res.output ?? null)) : null;
+  // As 0129 stores it: a failed step keeps its output too (its trace, its retry time).
+  s.output = JSON.parse(JSON.stringify(res.output ?? null));
   s.locked_until = null;
   return true;
 }

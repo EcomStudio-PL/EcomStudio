@@ -49,6 +49,15 @@ export type VisionAttempt = {
   /** Admin diagnostics: why the structured format was refused (the API's
    *  error type and its first words — never a key, never the body). */
   note?: string;
+  /** Of inputTokens, how many were WRITTEN to the provider's prompt cache
+   *  (Anthropic bills them above the input rate). Reported, never estimated. */
+  cacheWriteTokens?: number;
+  /** The account's limits as the provider reported them in its response
+   *  headers (Anthropic: anthropic-ratelimit-*-limit) — the real numbers the
+   *  engine's concurrency settings are checked against. */
+  rateLimits?: { requests?: number; inputTokens?: number; outputTokens?: number };
+  /** A refused-for-rate request: the provider's Retry-After. */
+  retryAfterMs?: number;
 };
 
 /** One configured backend the chain may use. */
@@ -71,7 +80,10 @@ export type VisionBackend = {
   fetch?: typeof fetch;
 };
 
-type Usage = { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; format?: "schema" | "text"; note?: string };
+type Usage = {
+  inputTokens?: number; outputTokens?: number; cachedInputTokens?: number; format?: "schema" | "text"; note?: string;
+  cacheWriteTokens?: number; rateLimits?: VisionAttempt["rateLimits"]; retryAfterMs?: number;
+};
 
 export type VisionRequest = {
   images: ReferenceImage[];
@@ -85,6 +97,10 @@ export type VisionRequest = {
   /** Requests per model id for transient failures (default 3: the first
    *  try plus two retries). 1 = no same-model retry. */
   maxAttemptsPerModel?: number;
+  /** Anthropic: mark the system text as a prompt-cache breakpoint (5-minute
+   *  TTL) — for a system text that repeats across calls (GrovBase Shot's
+   *  knowledge base). Other providers ignore it. */
+  cacheSystem?: boolean;
 };
 
 /** What actually happened, for internal logging — never shown to customers. */
@@ -180,6 +196,7 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
         meter(backend, {
           provider: backend.provider, model, ok: false, durationMs: Date.now() - started,
           error: safe || "analysis_error", ...usage,
+          ...(e instanceof ProviderError && e.upstream?.retryAfterMs ? { retryAfterMs: e.upstream.retryAfterMs } : {}),
         });
         const retries = Math.min(RETRY_DELAYS_MS.length, Math.max(0, (req.maxAttemptsPerModel ?? RETRY_DELAYS_MS.length + 1) - 1));
         if (TRANSIENT.has(safe) && attempt < retries) {
@@ -367,15 +384,16 @@ export function anthropicJsonSchema(schema: unknown): Record<string, unknown> {
   const s = (schema && typeof schema === "object" ? schema : {}) as Record<string, unknown>;
   const type = typeof s.type === "string" ? s.type.toLowerCase() : undefined;
   const out: Record<string, unknown> = {};
-  if (type) out.type = type;
+  // A scalar the schema marks nullable ("OpenAPI" style) may also be null.
+  if (type) out.type = s.nullable === true && type !== "object" && type !== "array" ? [type, "null"] : type;
   if (Array.isArray(s.enum)) out.enum = [...s.enum];
-  if (type === "object") {
+  if (out.type === "object") {
     const props = (s.properties && typeof s.properties === "object" ? s.properties : {}) as Record<string, unknown>;
     out.properties = Object.fromEntries(Object.entries(props).map(([k, v]) => [k, anthropicJsonSchema(v)]));
     out.required = Array.isArray(s.required) ? [...s.required] : Object.keys(props);
     out.additionalProperties = false;
   }
-  if (type === "array") out.items = anthropicJsonSchema(s.items);
+  if (out.type === "array") out.items = anthropicJsonSchema(s.items);
   return out;
 }
 
@@ -418,8 +436,11 @@ export function classifyAnthropicError(e: unknown): ProviderError {
     if (status === 401 || status === 403) return new ProviderError("analysis_unavailable", true, type);
     if (status === 402 || type === "billing_error") return new ProviderError("analysis_quota", false, type);
     if (status === 404) return new ProviderError("analysis_model_missing", true, type);
-    if (status === 429) return new ProviderError("analysis_rate_limited", true, type);
-    if (status === 529 || status === 503 || type === "overloaded_error") return new ProviderError("analysis_overloaded", true, type);
+    // Retry-After (seconds) — honoured by a caller that schedules its own retry.
+    const after = Number(e.headers?.get?.("retry-after"));
+    const wait = Number.isFinite(after) && after > 0 ? { status, type, retryAfterMs: Math.min(after * 1000, 600_000) } : undefined;
+    if (status === 429) return new ProviderError("analysis_rate_limited", true, type, wait);
+    if (status === 529 || status === 503 || type === "overloaded_error") return new ProviderError("analysis_overloaded", true, type, wait);
     if (status >= 500) return new ProviderError("analysis_error", true, type);
     // A refused request: its reason, masked, for the admin's diagnostics only
     // (the code above is what decides; the text never steers anything).
@@ -472,17 +493,25 @@ async function anthropicMessage<T>(backend: VisionBackend, req: VisionRequest, m
     return { type: "image", source: { type: "base64", media_type: r.mime as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: r.base64 } };
   });
   let message: Anthropic.Message;
+  const systemText = contract === "schema" ? req.system : openAiSystemText(req);
   try {
-    message = await client.messages.create({
+    const { data, response } = await client.messages.create({
       model,
       max_tokens: 16_000,
-      system: contract === "schema" ? req.system : openAiSystemText(req),
+      system: req.cacheSystem ? [{ type: "text", text: systemText, cache_control: { type: "ephemeral" } }] : systemText,
       messages: [{ role: "user", content: [...images, { type: "text", text: req.user }] }],
       output_config: {
         ...(contract === "schema" ? { format: { type: "json_schema" as const, schema: anthropicJsonSchema(req.schema) } } : {}),
         ...(backend.effort ? { effort: backend.effort } : {}),
       },
-    });
+    }).withResponse();
+    message = data;
+    const limit = (h: string) => { const n = Number(response.headers.get(h)); return Number.isFinite(n) && n > 0 ? n : undefined; };
+    const rl = {
+      requests: limit("anthropic-ratelimit-requests-limit"), inputTokens: limit("anthropic-ratelimit-input-tokens-limit"),
+      outputTokens: limit("anthropic-ratelimit-output-tokens-limit"),
+    };
+    if (rl.requests || rl.inputTokens || rl.outputTokens) usage.rateLimits = rl;
   } catch (e) {
     throw classifyAnthropicError(e);
   }
@@ -492,6 +521,7 @@ async function anthropicMessage<T>(backend: VisionBackend, req: VisionRequest, m
   const fresh = tokenCount(u.input_tokens);
   usage.inputTokens = fresh === undefined && read === undefined && created === undefined ? undefined : (fresh ?? 0) + (read ?? 0) + (created ?? 0);
   usage.cachedInputTokens = read;
+  usage.cacheWriteTokens = created;
   usage.outputTokens = tokenCount(u.output_tokens);
   if (message.stop_reason === "refusal") throw new ProviderError("analysis_refused", false, "refusal");
   // Cut off: the JSON is incomplete, and the same request would be cut again.

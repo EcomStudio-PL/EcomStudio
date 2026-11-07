@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
-import { startGrovshotRun, type StartBody } from "@/lib/server/grovshot-v2/start";
+import type { StartBody } from "@/lib/server/grovshot-v2/start";
+import { startShotOrder } from "@/lib/server/grovshot-v2/start-shot";
 import { driveGrovshotAfterResponse } from "@/lib/server/grovshot-v2/drive";
 
 export const runtime = "nodejs";
@@ -35,7 +36,9 @@ export async function POST(request: Request) {
 
   let body: StartBody = {};
   try { body = (await request.json()) as StartBody; } catch { /* validated below */ }
-  const result = await startGrovshotRun(supabase, user.id, workspace.id, body);
+  // New orders run on the lifestyle engine ("jak działa automatyzacja"); an
+  // order started on the earlier V2 pipeline finishes on it (run.ts).
+  const result = await startShotOrder(supabase, user.id, workspace.id, body);
   // Accepted in the customer's session; driven from here in the server
   // context (no session of theirs is needed for any later step).
   if (result.ok) driveGrovshotAfterResponse(user.id, workspace.id, result.runId, startedAt, { origin: new URL(request.url).origin });
@@ -43,7 +46,8 @@ export async function POST(request: Request) {
     : result.error === "insufficient_credits" ? 402
       : result.error === "concurrency_limit" || result.error === "too_many_runs" || result.error === "rate_limited" || result.error === "analysis_limit" ? 429
         : result.error === "engine_v1" || result.error === "price_changed" ? 409
-          : result.error === "prompt_unconfigured" || result.error === "model_unavailable" || result.error === "analysis_unavailable" || result.error === "config_invalid" ? 503
+          : result.error === "prompt_unconfigured" || result.error === "model_unavailable" || result.error === "analysis_unavailable" || result.error === "config_invalid"
+            || result.error === "knowledge_unpublished" || result.error === "knowledge_unreadable" ? 503
             : 400;
   // Blockers name configuration for an admin; a customer gets the code only.
   const { blockers: _blockers, ...safe } = result as typeof result & { blockers?: string[] };

@@ -30,10 +30,18 @@ import { sha256 } from "@/lib/server/grovshot-v2/media";
  */
 
 export type StageKey = Exclude<GrovshotStageKey, "grovshot_v2_config">;
+/** GrovBase Shot (lifestyle engine) steps: their texts come built (`direct`). */
+export type ShotStageKey = "grovshot_shot_card" | "grovshot_shot_plan" | "grovshot_shot_product" | "grovshot_shot_scenes";
 
 export type StageCall = {
-  key: StageKey;
+  key: StageKey | ShotStageKey;
+  /** A V2 stage's published template (unused with `direct`). */
   body: string;
+  /** GrovBase Shot: the system text (contract + the pinned knowledge) and the
+   *  user text (the order's data), already built — no template involved. */
+  direct?: { system: string; user: string };
+  /** Anthropic: the system text as a prompt-cache breakpoint. */
+  cacheSystem?: boolean;
   values: CompileValues;
   images: ReferenceImage[];
   schema: Record<string, unknown>;
@@ -55,7 +63,10 @@ export type StageTrace = {
   system_sha256: string;
   user_sha256: string;
   images: number;
-  attempts: { provider: string; model: string; ok: boolean; ms: number; error?: string; in?: number; out?: number; cached?: number; format?: "text"; note?: string }[];
+  attempts: {
+    provider: string; model: string; ok: boolean; ms: number; error?: string; in?: number; out?: number; cached?: number; format?: "text"; note?: string;
+    cache_write?: number; rate_limits?: VisionAttempt["rateLimits"]; retry_after_ms?: number;
+  }[];
   duration_ms: number;
 };
 
@@ -65,7 +76,7 @@ export type StageResult<T> =
 
 /** Every referenced value within its variable's limit — or the call fails
  *  (the name of the first one that is not). */
-export function checkLimits(key: GrovshotStageKey, template: string, values: CompileValues): string | null {
+export function checkLimits(key: GrovshotStageKey | ShotStageKey, template: string, values: CompileValues): string | null {
   const defs = new Map((TOOL_VARIABLES[key] ?? []).map((d) => [d.key, d]));
   for (const name of new Set(parsePlaceholders(template).map((p) => p.name))) {
     const def = defs.get(name);
@@ -81,16 +92,25 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
   consumer: Consumer; actorKind: "customer" | "admin"; userId: string; workspaceId: string; runRef: string;
 }): Promise<StageResult<T>> {
   const none: Cost = { basis: "estimated", usdMicros: 0 };
-  const split = splitStageTemplate(call.body);
-  if (!split) return { ok: false, error: "template_layout", trace: null, cost: none, unknownCalls: 0, attempts: [] };
-  const tooLong = checkLimits(call.key, call.body, call.values);
-  if (tooLong) return { ok: false, error: `variable_too_long:${tooLong}`.slice(0, 80), trace: null, cost: none, unknownCalls: 0, attempts: [] };
-  const defs = TOOL_VARIABLES[call.key] ?? [];
-  const sys = compileTemplate(split.system, defs, call.values);
-  const usr = compileTemplate(split.user, defs, call.values);
-  if (!sys.ok || !usr.ok) {
-    const missing = [...(sys.ok ? [] : sys.missing), ...(usr.ok ? [] : usr.missing)];
-    return { ok: false, error: `variable_missing:${missing[0] ?? ""}`.slice(0, 80), trace: null, cost: none, unknownCalls: 0, attempts: [] };
+  let sys: { ok: true; text: string };
+  let usr: { ok: true; text: string };
+  if (call.direct) {
+    sys = { ok: true, text: call.direct.system };
+    usr = { ok: true, text: call.direct.user };
+  } else {
+    const split = splitStageTemplate(call.body);
+    if (!split) return { ok: false, error: "template_layout", trace: null, cost: none, unknownCalls: 0, attempts: [] };
+    const tooLong = checkLimits(call.key, call.body, call.values);
+    if (tooLong) return { ok: false, error: `variable_too_long:${tooLong}`.slice(0, 80), trace: null, cost: none, unknownCalls: 0, attempts: [] };
+    const defs = TOOL_VARIABLES[call.key] ?? [];
+    const s1 = compileTemplate(split.system, defs, call.values);
+    const u1 = compileTemplate(split.user, defs, call.values);
+    if (!s1.ok || !u1.ok) {
+      const missing = [...(s1.ok ? [] : s1.missing), ...(u1.ok ? [] : u1.missing)];
+      return { ok: false, error: `variable_missing:${missing[0] ?? ""}`.slice(0, 80), trace: null, cost: none, unknownCalls: 0, attempts: [] };
+    }
+    sys = { ok: true, text: s1.text };
+    usr = { ok: true, text: u1.text };
   }
 
   const left = call.deadlineAt - call.now();
@@ -108,7 +128,7 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
   try {
     const r = await callVisionJson<T>(backends, {
       images: call.images, system: sys.text, user: usr.text, schema: call.schema,
-      timeoutMs, maxAttemptsPerModel: 1,
+      timeoutMs, maxAttemptsPerModel: 1, ...(call.cacheSystem ? { cacheSystem: true } : {}),
     });
     data = r.data;
     served = { provider: r.outcome.provider, model: r.outcome.model, ...(r.outcome.format ? { format: r.outcome.format } : {}) };
@@ -118,7 +138,7 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
 
   // The cost of every request actually made — tokens × the admin's price
   // list; unknown when either is missing (never a guessed zero).
-  const costs = attempts.map((a) => tokenCost(call.tokenPrices, a.provider, a.model, a.inputTokens, a.outputTokens, a.cachedInputTokens));
+  const costs = attempts.map((a) => tokenCost(call.tokenPrices, a.provider, a.model, a.inputTokens, a.outputTokens, a.cachedInputTokens, a.cacheWriteTokens));
   const known = costs.reduce((s, c) => s + (c.basis === "unknown" ? 0 : c.usdMicros), 0);
   const unknownCalls = costs.filter((c) => c.basis === "unknown").length;
   await recordProviderCalls(supabase, attempts.map((a, i) => ({
@@ -147,6 +167,9 @@ export async function callStage<T>(supabase: Client, call: StageCall, rec: {
       ...(a.cachedInputTokens != null ? { cached: a.cachedInputTokens } : {}),
       ...(a.format === "text" ? { format: "text" as const } : {}),
       ...(a.note ? { note: a.note } : {}),
+      ...(a.cacheWriteTokens ? { cache_write: a.cacheWriteTokens } : {}),
+      ...(a.rateLimits ? { rate_limits: a.rateLimits } : {}),
+      ...(a.retryAfterMs ? { retry_after_ms: a.retryAfterMs } : {}),
     })),
     duration_ms: call.now() - started,
   };
