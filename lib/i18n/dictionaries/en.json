@@ -12978,6 +12978,12 @@
     "q.model": "Model",
     "q.calls": "Calls",
     "q.ordersTitle": "Orders ({n})",
-    "q.unknownCalls": "{n} without a price"
+    "q.unknownCalls": "{n} without a price",
+    "reason.product_changed": "The product is changed",
+    "reason.wrong_scale": "Wrong scale",
+    "reason.hands_faces": "Hands or faces",
+    "reason.light_mood": "Light or mood",
+    "reason.scene_mismatch": "The scene does not fit",
+    "reason.other": "Other"
   }
 }

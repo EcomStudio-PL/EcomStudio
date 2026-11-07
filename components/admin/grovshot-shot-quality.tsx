@@ -78,7 +78,7 @@ export function ShotQualityPanel({ data }: { data: QualityData }) {
           <Select id="gq-recipe" value={recipe} onChange={(e) => setRecipe(e.target.value)}><option value="">{t("gss.q.all")}</option>{recipes.map((k) => <option key={k} value={k}>{k}</option>)}</Select></div>
         <div><Label htmlFor="gq-reason">{t("gss.q.reason")}</Label>
           <Select id="gq-reason" value={reason} onChange={(e) => setReason(e.target.value)}><option value="">{t("gss.q.all")}</option>
-            {["product_changed", "wrong_scale", "hands_faces", "light_mood", "scene_mismatch", "other"].map((r) => <option key={r} value={r}>{t(`gsv2.sets.reason.${r}`)}</option>)}
+            {["product_changed", "wrong_scale", "hands_faces", "light_mood", "scene_mismatch", "other"].map((r) => <option key={r} value={r}>{t(`gss.reason.${r}`)}</option>)}
           </Select></div>
       </div>
 
@@ -93,11 +93,11 @@ export function ShotQualityPanel({ data }: { data: QualityData }) {
 
       <section className="space-y-3" data-gss-quality-reports>
         <h3 className="text-sm font-semibold">{t("gss.q.reportsTitle", { n: reports.length })}</h3>
-        <div className="flex flex-wrap gap-2">{grouped.map(([r, n]) => <Badge key={r} tone="neutral">{t(`gsv2.sets.reason.${r}`)}: {n}</Badge>)}</div>
+        <div className="flex flex-wrap gap-2">{grouped.map(([r, n]) => <Badge key={r} tone="neutral">{t(`gss.reason.${r}`)}: {n}</Badge>)}</div>
         {reports.map((r) => (
           <details key={r.id} className="rounded-xl border border-border p-3">
             <summary className="cursor-pointer">
-              {formatDate(r.createdAt, locale)} · {t(`gsv2.sets.reason.${r.reason}`)} · #{r.shot} · {r.recipe ?? "—"} · {r.kind ?? "—"} · v{r.kbVersion ?? "?"}{r.comment ? ` · „${r.comment}”` : ""}
+              {formatDate(r.createdAt, locale)} · {t(`gss.reason.${r.reason}`)} · #{r.shot} · {r.recipe ?? "—"} · {r.kind ?? "—"} · v{r.kbVersion ?? "?"}{r.comment ? ` · „${r.comment}”` : ""}
             </summary>
             <div className="mt-2 grid gap-3 sm:grid-cols-[200px_1fr]">
               {/* eslint-disable-next-line @next/next/no-img-element */}

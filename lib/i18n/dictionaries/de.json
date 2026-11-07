@@ -12978,6 +12978,12 @@
     "q.model": "Modell",
     "q.calls": "Aufrufe",
     "q.ordersTitle": "Aufträge ({n})",
-    "q.unknownCalls": "{n} ohne Preis"
+    "q.unknownCalls": "{n} ohne Preis",
+    "reason.product_changed": "Produkt verändert",
+    "reason.wrong_scale": "Falscher Maßstab",
+    "reason.hands_faces": "Hände oder Gesichter",
+    "reason.light_mood": "Licht oder Stimmung",
+    "reason.scene_mismatch": "Die Szene passt nicht",
+    "reason.other": "Sonstiges"
   }
 }

@@ -12980,6 +12980,12 @@
     "q.model": "Model",
     "q.calls": "Wywołania",
     "q.ordersTitle": "Zlecenia ({n})",
-    "q.unknownCalls": "{n} bez ceny"
+    "q.unknownCalls": "{n} bez ceny",
+    "reason.product_changed": "Produkt zmieniony",
+    "reason.wrong_scale": "Zła skala",
+    "reason.hands_faces": "Dłonie lub twarze",
+    "reason.light_mood": "Światło lub klimat",
+    "reason.scene_mismatch": "Scena nie pasuje",
+    "reason.other": "Inne"
   }
 }
