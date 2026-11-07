@@ -2121,6 +2121,28 @@ async function partL() {
       usedVersion(sh(null))?.generationId === "g2" && usedVersion(sh("g1"))?.generationId === "g1"
       && zipName(1, "hero", "x/y.png") === "01_hero.png" && zipName(2, "uzycie", "x/y.jpg") === "02_uzycie.jpg" && zipName(10, null, "x/y.webp") === "10_zdjecie.webp");
   }
+  {
+    // PROD 2026-11-07 (nutcracker, 4 shots): answer 1 left one detail shot's KADR empty, the repeat another detail
+    // shot's DETAL — the repeat was taken whole and a shot valid in answer 1 was lost (partial).
+    const blank = (numbers: { numer: number; typ: string; ludzie: string }[], numer: number, field: "kadr" | "detal") => {
+      const s = lsScenes(numbers);
+      ((s.ujecia as Row[]).find((x) => x.numer === numer) as Row)[field] = "";
+      return s;
+    };
+    const w = await lsWorld({ photos: 7, scenes: (i, numbers) => (i === 0 ? blank(numbers, 3, "kadr") : blank(numbers, 5, "detal")) });
+    const r = await lsStart(w, 7, { shots: 5 });
+    if (!r.ok) return;
+    await lsDrive(w, r.runId);
+    const asm = stepsOf(r.runId, P.write).find((s) => s.item_index === 30);
+    const out = (asm?.output ?? {}) as Row;
+    const scenesCalls = w.stageCalls.filter((c) => c.key === "grovshot_shot_scenes");
+    check("L32 a shot valid in either scenes answer is kept (taken from that answer, recorded); the detail shots are named in the request",
+      scenesCalls.length === 2 && (scenesCalls[0].direct?.user ?? "").includes("Ujęcia typu detal w tym planie: 3, 5")
+      && ((out.shots ?? []) as Row[]).length === 5 && Array.isArray(out.missing) && (out.missing as unknown[]).length === 0
+      && (out.scene_source as Row)?.["5"] === 10 && (out.scene_source as Row)?.["3"] === 11
+      && runOf(r.runId).status === "ok" && delivered(r.runId) === 5,
+      { shots: ((out.shots ?? []) as Row[]).length, missing: out.missing, src: out.scene_source, st: runOf(r.runId).status, d: delivered(r.runId) });
+  }
 }
 
 partE().then(partL).then(() => {

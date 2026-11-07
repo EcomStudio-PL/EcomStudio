@@ -588,6 +588,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
   if ("failed" in product) { await close(ctx, "failed", "prompt_invalid"); return "finished"; }
 
   const detailRefs = [...new Set(plan.filter((s) => s.typ === "detal").map((s) => s.referencje[0]))].slice(0, 4);
+  const detailShots = plan.filter((s) => s.typ === "detal").map((s) => s.numer);
   const scenes = await stageRows<{ modules: Map<number, SceneModules>; missing: number[] }>(ctx, {
     pos: POS.write, base: ITEM.scenes, name: "scenes", key: "grovshot_shot_scenes", step: "prompt", timeoutMs: TIMEOUT_MS.scenes,
     build: async (feedback) => {
@@ -599,6 +600,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
           user: [
             "Zadanie: napisz moduły scen dla WSZYSTKICH ujęć planu naraz, tak żeby miejsca, światło i kompozycje się nie powtarzały.",
             "Ujęcie typu detal: wypełnij „detal” (detal skopiowany 1:1 z jego pierwszej referencji, zmienione tylko tło, światło i jeden element) i „kadr” (kąt z referencji); pozostałe pola puste.",
+            detailShots.length ? `Ujęcia typu detal w tym planie: ${detailShots.join(", ")} – w każdym z nich oba pola „detal” i „kadr” muszą być wypełnione.` : "",
             "Pozostałe ujęcia: „stan_chwyt”, „moment”, „kadr”, „postac” (pusta, gdy ludzie = brak), „scenografia”; „detal” pusty. Do zdjęć odwołuj się „zdjęcie 1”, „zdjęcie 2” według listy referencji ujęcia.",
             `Format kadru: ${ctx.input.aspect_ratio}.`,
             detailRefs.length ? `Dołączone zdjęcia detali: ${detailRefs.map(photoId).join(", ")}.` : "",
@@ -621,6 +623,27 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
   if (typeof scenes === "string") return scenes;
   if ("failed" in scenes) { await close(ctx, "failed", "prompt_invalid"); return "finished"; }
 
+  // Each answer is checked shot by shot: a shot the chosen answer left
+  // invalid may be valid in the other answer — take it from there (newest
+  // first) instead of dropping it. Every shot records the answer it came from.
+  const modules = new Map(scenes.value.modules);
+  const sceneSource: Record<string, number> = {};
+  for (const n of modules.keys()) sceneSource[String(n)] = scenes.item;
+  if (scenes.value.missing.length > 0) {
+    const others = ctx.steps
+      .filter((s) => s.position === POS.write && s.item_index >= ITEM.scenes && s.item_index < ITEM.scenes + MAX_ROWS
+        && s.status === "succeeded" && s.item_index !== scenes.item)
+      .sort((a, b) => b.item_index - a.item_index);
+    for (const row of others) {
+      const c = checkSceneModules(outputOf(row).raw, plan);
+      for (const n of scenes.value.missing) {
+        const m = c.modules.get(n);
+        if (m && !modules.has(n)) { modules.set(n, m); sceneSource[String(n)] = row.item_index; }
+      }
+    }
+  }
+  const missing = plan.map((s) => s.numer).filter((n) => !modules.has(n));
+
   // The final prompts, fixed now — exactly what each image call will send.
   const b = await begin(ctx, POS.assemble, ITEM.assemble, "assemble", "tool");
   if (b.state === "done") return promptsFrom(outputOf({ output: b.output }));
@@ -629,7 +652,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
   if (b.state !== "run") { await close(ctx, "failed", "prompt_invalid"); return "finished"; }
   const shots: Record<string, Json>[] = [];
   for (const shot of plan) {
-    const m = scenes.value.modules.get(shot.numer);
+    const m = modules.get(shot.numer);
     if (!m) continue;
     const a = assemblePrompt({ kb: ctx.kb, card, shot, product: product.value, scene: m });
     shots.push({
@@ -638,8 +661,8 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
     });
   }
   const out = {
-    shots, missing: scenes.value.missing, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
-    card_item: null, product_item: product.item, scenes_item: scenes.item,
+    shots, missing, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+    card_item: null, product_item: product.item, scenes_item: scenes.item, scene_source: sceneSource,
   };
   await finish(ctx, POS.assemble, ITEM.assemble, { status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: out as unknown as Json, durationMs: 0 });
   return promptsFrom(out);
