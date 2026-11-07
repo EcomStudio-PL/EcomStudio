@@ -4399,6 +4399,18 @@ export type Database = {
         }
         Relationships: []
       }
+      grovshot_shot_choices: {
+        Row: { run_id: string; shot: number; generation_id: string; workspace_id: string; chosen_by: string | null; chosen_at: string }
+        Insert: { run_id: string; shot: number; generation_id: string; workspace_id: string; chosen_by?: string | null; chosen_at?: string }
+        Update: { run_id?: string; shot?: number; generation_id?: string; workspace_id?: string; chosen_by?: string | null; chosen_at?: string }
+        Relationships: []
+      }
+      grovshot_shot_reports: {
+        Row: { id: string; run_id: string; shot: number; generation_id: string | null; workspace_id: string; user_id: string | null; reason: string; comment: string | null; kb_version: number | null; created_at: string }
+        Insert: { id?: string; run_id: string; shot: number; generation_id?: string | null; workspace_id: string; user_id?: string | null; reason: string; comment?: string | null; kb_version?: number | null; created_at?: string }
+        Update: { id?: string; run_id?: string; shot?: number; generation_id?: string | null; workspace_id?: string; user_id?: string | null; reason?: string; comment?: string | null; kb_version?: number | null; created_at?: string }
+        Relationships: []
+      }
       knowledge_version_events: {
         Row: {
           action: string
@@ -7614,6 +7626,18 @@ export type Database = {
       feature_interest_counts: {
         Args: never
         Returns: { feature_key: string; interested: number }[]
+      }
+      grovshot_sets: {
+        Args: { p_workspace_id: string; p_limit: number }
+        Returns: Json
+      }
+      grovshot_shot_choose: {
+        Args: { p_generation_id: string }
+        Returns: Json
+      }
+      grovshot_shot_report: {
+        Args: { p_generation_id: string; p_reason: string; p_comment: string }
+        Returns: Json
       }
       grovshot_shot_kb: {
         Args: { p_token: string; p_version_id: string | null }

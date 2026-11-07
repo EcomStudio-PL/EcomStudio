@@ -131,6 +131,8 @@ export type GrovshotSettings = {
   description?: string;
   /** GrovShot V2: "Wymiary produktu" — optional. */
   dims?: V2Dims | null;
+  /** GrovBase Shot: "Uwagi" — optional, short (data for the engine, never an instruction). */
+  notes?: string;
   choices: Record<string, string>;
   modelId: string;
   ratio: string;

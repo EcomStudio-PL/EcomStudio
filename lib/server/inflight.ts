@@ -189,14 +189,15 @@ export async function readInflight(
     t.kind === "job" ? resolveJob(supabase, workspaceId, t.id, now) : resolveRun(supabase, workspaceId, t.id)))
   ).filter((r): r is InflightResolved => r !== null);
 
-  const lim = (limitRes.error ? null : limitRes.data) as { limit?: number; active?: number; plan?: string } | null;
+  // No per-plan concurrency any more (0167): the panel shows no limit. The
+  // server still refuses a runaway client (an anti-abuse ceiling, the same
+  // for everyone) and the global provider queue paces the calls.
+  void limitRes;
   return {
     ok: true,
     active,
     resolved,
-    limit: lim && typeof lim.limit === "number"
-      ? { max: lim.limit, active: typeof lim.active === "number" ? lim.active : 0, plan: lim.plan ?? "free" }
-      : null,
+    limit: null,
     balance: typeof walletRes.data?.balance === "number" ? walletRes.data.balance : null,
     serverNow: new Date(now).toISOString(),
     undrivenRuns,

@@ -543,7 +543,7 @@ export function ShotTestsPanel({ settings, settingsErrors, model, versions, test
   );
 }
 
-function RunView({ run, t, locale }: { run: ShotRunView; t: T; locale: string }) {
+export function RunView({ run, t, locale }: { run: ShotRunView; t: T; locale: string }) {
   const steps = ["card", "plan", "product", "scenes", "image"] as const;
   const byStep = (st: string) => run.calls.filter((c) => c.step === st);
   const sum = (xs: { costMicros: number | null }[]) => xs.reduce((a, c) => a + (c.costMicros ?? 0), 0);

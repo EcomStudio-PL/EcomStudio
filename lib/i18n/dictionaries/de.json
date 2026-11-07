@@ -2920,7 +2920,7 @@
       "trial_check_failed": "Dein Tarif konnte gerade nicht geprüft werden. Es wurde nichts berechnet — versuche es gleich noch einmal.",
       "trial_workflow_unavailable": "Dieser Werkzeugmodus ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
       "trial_tool_unavailable": "Dieses Werkzeug ist in einem kostenpflichtigen Tarif verfügbar. Es wurde nichts berechnet.",
-      "concurrency_limit": "Das ist das Limit deines Plans — die nächste Generierung kannst du starten, sobald eine fertig ist.",
+      "concurrency_limit": "Du hast bereits viele Generierungen in Arbeit — die nächste kannst du starten, sobald eine fertig ist.",
       "network": "Verbindung fehlgeschlagen. Falls die Generierung gestartet ist, siehst du sie in der Galerie.",
       "invalid_shot_plan": "Der Aufnahmeplan verweist auf ein Foto, das nicht mehr in der Liste ist. Wähle das Foto erneut.",
       "description_too_long": "Die Beschreibung ist zu lang (max. 20.000 Zeichen).",
@@ -7961,7 +7961,8 @@
     "gsv2.why.production_test_failed": "Der letzte volle Test ({id}) ist in der Stufe „{stage}“ fehlgeschlagen: {error}. Er hat kein Bild geliefert.",
     "gsv2.why.production_test_nothing": "Der letzte volle Test ({id}) endete ohne geliefertes Bild (keines hat die Qualitätskontrolle bestanden).",
     "gsv2.why.production_test_stale": "Der letzte erfolgreiche volle Test ({id}) lief auf anderen Versionen als den jetzt veröffentlichten — führe ihn erneut aus.",
-    "gsv2.why.production_test_running": "Der volle Test ({id}) läuft noch."
+    "gsv2.why.production_test_running": "Der volle Test ({id}) läuft noch.",
+    "tab.shot_quality": "Shot · Qualität"
   },
   "batch": {
     "viewLabel": "Ansicht",
@@ -12571,8 +12572,8 @@
     "repriced": "Die aktuellen Kosten betragen {n} Cr. (bereits bezahlte Retuschen werden wiederverwendet). Bitte erneut bestätigen.",
     "photosGone": "Die Originalfotos sind nicht mehr verfügbar. Füge sie im Tool erneut hinzu.",
     "limit": {
-      "one": "Du hast {n} Generierung in Arbeit. Das ist das Limit deines Plans. Die nächste kannst du starten, sobald sie fertig ist.",
-      "other": "Du hast {n} Generierungen in Arbeit. Das ist das Limit deines Plans. Die nächste kannst du starten, sobald eine fertig ist."
+      "one": "Du hast {n} Generierung in Arbeit. Die nächste kannst du starten, sobald sie fertig ist.",
+      "other": "Du hast {n} Generierungen in Arbeit. Die nächste kannst du starten, sobald eine fertig ist."
     },
     "raiseLimit": "Limit erhöhen",
     "tileAria": "{tool}: in Arbeit, {time}",
@@ -12598,10 +12599,10 @@
     "costAria": "Kosten: {n} Cr. — Details anzeigen",
     "total": "Gesamt: {n} Cr.",
     "limit": {
-      "one": "Du hast {n} Generierung in Arbeit — das Limit deines Plans",
-      "few": "Du hast {n} Generierungen in Arbeit — das Limit deines Plans",
-      "many": "Du hast {n} Generierungen in Arbeit — das Limit deines Plans",
-      "other": "Du hast {n} Generierungen in Arbeit — das Limit deines Plans"
+      "one": "Du hast {n} Generierung in Arbeit",
+      "few": "Du hast {n} Generierungen in Arbeit",
+      "many": "Du hast {n} Generierungen in Arbeit",
+      "other": "Du hast {n} Generierungen in Arbeit"
     },
     "shots": "Aufnahmen: {n} × {p} Cr.",
     "images": "Bilder: {n} × {p} Cr.",
@@ -12634,7 +12635,7 @@
   "gsv2": {
     "descLabel": "Produktbeschreibung aus Allegro",
     "descPh": "Füge die ganze Angebotsbeschreibung ein — Eigenschaften, Einsatzzwecke, Maße…",
-    "descHint": "Füge die Produktbeschreibung ein. Grovshot nutzt ihre Eigenschaften und Einsatzzwecke, um die Fotos zu planen.",
+    "descHint": "Füge Titel, Beschreibung und Spezifikation des Angebots samt Maßen ein. Die Engine nutzt Eigenschaften, Einsatzorte und Maße, um die Fotos zu planen.",
     "dimsLabel": "Produktmaße",
     "dim": {
       "width": "Breite",
@@ -12677,6 +12678,61 @@
       "user_photo_excluded": "Das im Plan für Aufnahme {n} gewählte Foto kann keine Referenz sein — die Aufnahme nutzt ein anderes Foto.",
       "plan_short": "Die Engine hat weniger Aufnahmen geplant als bestellt — für die fehlenden werden keine Credits abgebucht.",
       "wind_down": "Der Auftrag hat zu lange gedauert und wurde beendet — es werden keine neuen Aufnahmen begonnen, und für nicht gelieferte Aufnahmen werden keine Credits abgebucht."
+    },
+    "notesLabel": "Hinweise",
+    "notesPh": "z. B. keine Kinder, Garten statt Küche",
+    "needDescription": "Füge die Angebotsbeschreibung ein (mindestens {n} Zeichen).",
+    "sets": {
+      "title": "Deine Sets",
+      "untitled": "Foto-Set",
+      "count": "{k} von {n} Fotos",
+      "zip": "Set herunterladen (ZIP)",
+      "stage": {
+        "queued": "In der Warteschlange",
+        "analyze": "Produktanalyse",
+        "plan": "Fotoplanung",
+        "scenes": "Szenen werden vorbereitet"
+      },
+      "state": {
+        "working": "Wird generiert…",
+        "queued": "In der Warteschlange"
+      },
+      "failed": "Diese Aufnahme konnte nicht generiert werden",
+      "refunded": "Die Credits sind wieder auf deinem Konto.",
+      "notCharged": "Es wurden keine Credits abgebucht.",
+      "prev": "Vorherige Version",
+      "next": "Nächste Version",
+      "regenFailed": "Die erneute Generierung ist fehlgeschlagen — keine Credits abgebucht.",
+      "download": "Herunterladen",
+      "regen": "Erneut generieren",
+      "report": "Problem melden",
+      "use": "Diese Version verwenden",
+      "chosen": "Das Set verwendet diese Version.",
+      "regenStarted": "Diese Aufnahme wird erneut generiert. Die vorherige Version bleibt.",
+      "regenTitle": "Aufnahme {n} erneut generieren?",
+      "regenBody": "Dieselbe Szene und dieselben Produktfotos, eine neue Generierung. Kosten: {n} Cr — nur abgebucht, wenn wir das Bild liefern. Die aktuelle Version bleibt.",
+      "regenConfirm": "Generieren · {n} Cr",
+      "reportTitle": "Problem mit dem Foto melden",
+      "reason": {
+        "product_changed": "Produkt verändert",
+        "wrong_scale": "Falscher Maßstab",
+        "hands_faces": "Hände oder Gesichter",
+        "light_mood": "Licht oder Stimmung",
+        "scene_mismatch": "Die Szene passt nicht",
+        "other": "Sonstiges"
+      },
+      "reportComment": "Kommentar (optional)",
+      "reportSend": "Meldung senden",
+      "thanks": "Danke – das hilft, die Engine zu verbessern",
+      "err": {
+        "generic": "Das hat nicht geklappt. Versuche es gleich noch einmal.",
+        "insufficient_credits": "Nicht genug Credits für diese Generierung.",
+        "price_changed": "Der Preis hat sich geändert — lade die Seite neu.",
+        "too_many_runs": "Du hast bereits viele Aufträge in Arbeit. Versuche es, wenn einer fertig ist.",
+        "rate_limited": "Zu viele Versuche in kurzer Zeit. Versuche es gleich noch einmal.",
+        "concurrency_limit": "Du hast bereits viele Generierungen in Arbeit. Versuche es, wenn eine fertig ist.",
+        "order_in_progress": "Das Set entsteht noch — erneut generieren kannst du, sobald es fertig ist."
+      }
     }
   },
   "gss": {
@@ -12885,6 +12941,43 @@
     "run.step.plan": "Plan",
     "run.step.product": "PRODUKT + SKALA",
     "run.step.scenes": "Szenenmodule",
-    "run.step.image": "Nano Banana Pro"
+    "run.step.image": "Nano Banana Pro",
+    "q.title": "GrovBase Shot – Qualität",
+    "q.sub": "Neugenerierungen, Kundenmeldungen, Vergleich der Wissensversionen, Kosten und die Historie jedes Auftrags — aus gespeicherten Daten.",
+    "q.window": "Zeitraum",
+    "q.days": "letzte {n} Tage",
+    "q.kb": "Wissensversion",
+    "q.recipe": "Stilrezept",
+    "q.reason": "Meldegrund",
+    "q.all": "alle",
+    "q.sharesTitle": "Neugenerierungen und Meldungen",
+    "q.definition": "Neugenerierungsanteil = Neugenerierungsaufträge einer Aufnahme ÷ von den ursprünglichen Aufträgen gelieferte Aufnahmen (nur Kundenaufträge, keine Tests). Meldeanteil = Meldungen ÷ gelieferte Aufnahmen.",
+    "q.totals": "Aufträge: {o} · gelieferte Aufnahmen: {d} · Neugenerierungen: {r} · Meldungen: {rep}",
+    "q.byRecipe": "Nach Stilrezept",
+    "q.byKind": "Nach Aufnahmetyp (Hero / Nutzung / Detail)",
+    "q.byKb": "Nach Wissensversion (vor und nach der Aktivierung)",
+    "q.key": "Gruppe",
+    "q.orders": "Aufträge",
+    "q.delivered": "Geliefert",
+    "q.regens": "Neu generiert",
+    "q.regenShare": "Neugenerierungsanteil",
+    "q.reports": "Meldungen",
+    "q.reportShare": "Meldeanteil",
+    "q.reportsTitle": "Meldungen ({n})",
+    "q.prompt": "Prompt der Aufnahme",
+    "q.planShot": "Aufnahme im Plan",
+    "q.card": "Produktkarte",
+    "q.versions": "Bildversionen ({n}):",
+    "q.openOrder": "Vollständiger Auftrag",
+    "q.costsTitle": "Wirtschaftlichkeit",
+    "q.costsDefinition": "Nano-Banana-Pro-Aufrufe: {calls} (Wiederholungen: {retries}, technische Fehler: {tech} = {techShare}) · Aufrufe pro geliefertem Foto: {perPhoto}. Unbekannte Kosten (kein Preis) = UNKNOWN, nie 0.",
+    "q.perOrder": "Ø API-Kosten / Auftrag",
+    "q.perPhoto": "Ø API-Kosten / geliefertes Foto",
+    "q.known": "Bekannte Kosten",
+    "q.unknown": "Aufrufe ohne Preis",
+    "q.model": "Modell",
+    "q.calls": "Aufrufe",
+    "q.ordersTitle": "Aufträge ({n})",
+    "q.unknownCalls": "{n} ohne Preis"
   }
 }

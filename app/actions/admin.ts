@@ -447,7 +447,7 @@ export async function savePlanFullAction(input: {
   id?: string; name: string; price_cents: number; annual_price_cents: number;
   monthly_credits: number; bonus_credits: number; description: string | null;
   features: PlanCapabilities; featured: boolean; active: boolean; sort_order: number;
-  limits: { max_products?: number; max_generations_monthly?: number; concurrent_generations?: number };
+  limits: { max_products?: number; max_generations_monthly?: number };
 }): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
@@ -455,12 +455,8 @@ export async function savePlanFullAction(input: {
       return { ok: false, error: "invalid" };
     }
     if (input.annual_price_cents < 0) return { ok: false, error: "invalid" };
-    // Generacje w toku V2: the database reads this as a small whole number
-    // (0161) and ignores anything else — refuse it here instead of storing it.
-    const concurrent = input.limits?.concurrent_generations;
-    if (concurrent !== undefined && (!Number.isInteger(concurrent) || concurrent < 1 || concurrent > 50)) {
-      return { ok: false, error: "invalid" };
-    }
+    // Plans no longer limit generations in progress (0167): the old field is
+    // not written by the editor any more and nothing reads it.
 
     // CAPABILITIES ARE STRUCTURED, SO THE STORED ROW GETS THE LAST WORD.
     // The editor used to send a string[] built from a textarea, which wiped

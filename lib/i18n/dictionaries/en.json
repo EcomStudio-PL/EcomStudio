@@ -2920,7 +2920,7 @@
       "trial_check_failed": "Your plan could not be checked just now. Nothing was charged — please try again in a moment.",
       "trial_workflow_unavailable": "This tool mode is available on a paid plan. Nothing was charged.",
       "trial_tool_unavailable": "This tool is available on a paid plan. Nothing was charged.",
-      "concurrency_limit": "That's your plan's limit — you can start the next generation when one finishes.",
+      "concurrency_limit": "You already have many generations in progress — you can start the next one when one finishes.",
       "network": "Couldn't connect. If the generation started, you'll see it in the gallery.",
       "invalid_shot_plan": "The shot plan points to a photo that is no longer in the list. Pick the photo again.",
       "description_too_long": "The description is too long (max. 20,000 characters).",
@@ -7961,7 +7961,8 @@
     "gsv2.why.production_test_failed": "The last full test ({id}) failed at the „{stage}” stage: {error}. It delivered no image.",
     "gsv2.why.production_test_nothing": "The last full test ({id}) ended without a delivered image (none passed quality control).",
     "gsv2.why.production_test_stale": "The last successful full test ({id}) ran on other versions than the ones published now — run it again.",
-    "gsv2.why.production_test_running": "The full test ({id}) is still running."
+    "gsv2.why.production_test_running": "The full test ({id}) is still running.",
+    "tab.shot_quality": "Shot · Quality"
   },
   "batch": {
     "viewLabel": "View",
@@ -12571,8 +12572,8 @@
     "repriced": "The current cost is {n} cr. (retouches already paid for are reused). Please confirm again.",
     "photosGone": "The original photos are no longer available. Add them again in the tool.",
     "limit": {
-      "one": "You have {n} generation in progress. That's your plan's limit. You can start the next one when it finishes.",
-      "other": "You have {n} generations in progress. That's your plan's limit. You can start the next one when one finishes."
+      "one": "You have {n} generation in progress. You can start the next one when it finishes.",
+      "other": "You have {n} generations in progress. You can start the next one when one finishes."
     },
     "raiseLimit": "Raise the limit",
     "tileAria": "{tool}: in progress, {time}",
@@ -12598,10 +12599,10 @@
     "costAria": "Cost: {n} cr. — show details",
     "total": "Total: {n} cr.",
     "limit": {
-      "one": "You have {n} generation in progress — your plan's limit",
-      "few": "You have {n} generations in progress — your plan's limit",
-      "many": "You have {n} generations in progress — your plan's limit",
-      "other": "You have {n} generations in progress — your plan's limit"
+      "one": "You have {n} generation in progress",
+      "few": "You have {n} generations in progress",
+      "many": "You have {n} generations in progress",
+      "other": "You have {n} generations in progress"
     },
     "shots": "Shots: {n} × {p} cr.",
     "images": "Images: {n} × {p} cr.",
@@ -12634,7 +12635,7 @@
   "gsv2": {
     "descLabel": "Product description from Allegro",
     "descPh": "Paste the whole listing description — features, uses, dimensions…",
-    "descHint": "Paste the product description. Grovshot will use its features and uses to plan the photos.",
+    "descHint": "Paste the listing's title, description and specification, dimensions included. The engine uses the features, uses and dimensions to plan the photos.",
     "dimsLabel": "Product dimensions",
     "dim": {
       "width": "Width",
@@ -12677,6 +12678,61 @@
       "user_photo_excluded": "The photo chosen in the plan for shot {n} cannot be a reference — the shot will use another photo.",
       "plan_short": "The engine planned fewer shots than ordered — no credits will be taken for the missing ones.",
       "wind_down": "The order took too long and was ended — no new shots will be started, and no credits are taken for shots not delivered."
+    },
+    "notesLabel": "Notes",
+    "notesPh": "e.g. no children, a garden instead of a kitchen",
+    "needDescription": "Paste the listing description (at least {n} characters).",
+    "sets": {
+      "title": "Your sets",
+      "untitled": "Photo set",
+      "count": "{k} of {n} photos",
+      "zip": "Download set (ZIP)",
+      "stage": {
+        "queued": "Queued",
+        "analyze": "Analysing the product",
+        "plan": "Planning the photos",
+        "scenes": "Preparing the scenes"
+      },
+      "state": {
+        "working": "Generating…",
+        "queued": "Queued"
+      },
+      "failed": "This shot could not be generated",
+      "refunded": "The credits are back in your account.",
+      "notCharged": "No credits were charged.",
+      "prev": "Previous version",
+      "next": "Next version",
+      "regenFailed": "The regeneration failed — no credits were charged.",
+      "download": "Download",
+      "regen": "Generate again",
+      "report": "Report a problem",
+      "use": "Use this version",
+      "chosen": "The set will use this version.",
+      "regenStarted": "Generating this shot again. The previous version stays.",
+      "regenTitle": "Generate shot {n} again?",
+      "regenBody": "The same scene and the same product photos, a new generation. Cost: {n} cr — charged only when we deliver the image. The current version stays.",
+      "regenConfirm": "Generate · {n} cr",
+      "reportTitle": "Report a problem with the photo",
+      "reason": {
+        "product_changed": "The product is changed",
+        "wrong_scale": "Wrong scale",
+        "hands_faces": "Hands or faces",
+        "light_mood": "Light or mood",
+        "scene_mismatch": "The scene does not fit",
+        "other": "Other"
+      },
+      "reportComment": "Comment (optional)",
+      "reportSend": "Send the report",
+      "thanks": "Thank you – this helps improve the engine",
+      "err": {
+        "generic": "That did not work. Try again in a moment.",
+        "insufficient_credits": "Not enough credits for this generation.",
+        "price_changed": "The price has changed — refresh the page.",
+        "too_many_runs": "You already have many orders in progress. Try when one finishes.",
+        "rate_limited": "Too many attempts in a short time. Try again in a moment.",
+        "concurrency_limit": "You already have many generations in progress. Try when one finishes.",
+        "order_in_progress": "The set is still being made — you can regenerate once it finishes."
+      }
     }
   },
   "gss": {
@@ -12885,6 +12941,43 @@
     "run.step.plan": "Plan",
     "run.step.product": "PRODUCT + SCALE",
     "run.step.scenes": "Scene modules",
-    "run.step.image": "Nano Banana Pro"
+    "run.step.image": "Nano Banana Pro",
+    "q.title": "GrovBase Shot – quality",
+    "q.sub": "Regenerations, customer reports, knowledge-version comparison, costs and every order's history — computed from stored data.",
+    "q.window": "Window",
+    "q.days": "last {n} days",
+    "q.kb": "Knowledge version",
+    "q.recipe": "Style recipe",
+    "q.reason": "Report reason",
+    "q.all": "all",
+    "q.sharesTitle": "Regenerations and reports",
+    "q.definition": "Regeneration share = regeneration orders of a shot ÷ shots delivered by the original orders (customer orders only, no tests). Report share = reports ÷ delivered shots.",
+    "q.totals": "Orders: {o} · delivered shots: {d} · regenerations: {r} · reports: {rep}",
+    "q.byRecipe": "By style recipe",
+    "q.byKind": "By shot type (hero / use / detail)",
+    "q.byKb": "By knowledge version (before and after activation)",
+    "q.key": "Group",
+    "q.orders": "Orders",
+    "q.delivered": "Delivered",
+    "q.regens": "Regenerations",
+    "q.regenShare": "Regeneration share",
+    "q.reports": "Reports",
+    "q.reportShare": "Report share",
+    "q.reportsTitle": "Reports ({n})",
+    "q.prompt": "The shot's prompt",
+    "q.planShot": "The shot in the plan",
+    "q.card": "Product card",
+    "q.versions": "Image versions ({n}):",
+    "q.openOrder": "Full order",
+    "q.costsTitle": "Economics",
+    "q.costsDefinition": "Nano Banana Pro calls: {calls} (retries: {retries}, technical errors: {tech} = {techShare}) · calls per delivered photo: {perPhoto}. An unknown cost (no price) = UNKNOWN, never 0.",
+    "q.perOrder": "Avg API cost / order",
+    "q.perPhoto": "Avg API cost / delivered photo",
+    "q.known": "Known cost",
+    "q.unknown": "Calls without a price",
+    "q.model": "Model",
+    "q.calls": "Calls",
+    "q.ordersTitle": "Orders ({n})",
+    "q.unknownCalls": "{n} without a price"
   }
 }

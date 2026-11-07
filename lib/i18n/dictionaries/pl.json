@@ -2920,7 +2920,7 @@
       "trial_check_failed": "Nie udało się teraz sprawdzić Twojego planu. Nic nie zostało pobrane — spróbuj ponownie za chwilę.",
       "trial_workflow_unavailable": "Ten tryb narzędzia jest dostępny w płatnym planie. Nic nie zostało pobrane.",
       "trial_tool_unavailable": "To narzędzie jest dostępne w płatnym planie. Nic nie zostało pobrane.",
-      "concurrency_limit": "To limit Twojego planu — kolejną generację uruchomisz, gdy któraś się zakończy.",
+      "concurrency_limit": "Masz już dużo generacji w toku — kolejną uruchomisz, gdy któraś się zakończy.",
       "network": "Nie udało się połączyć. Jeśli generacja wystartowała, zobaczysz ją w galerii.",
       "invalid_shot_plan": "Plan ujęć wskazuje zdjęcie, którego nie ma już na liście. Wybierz zdjęcie ponownie.",
       "description_too_long": "Opis jest za długi (maks. 20 000 znaków).",
@@ -7961,7 +7961,8 @@
     "gsv2.why.production_test_failed": "Ostatni pełny test ({id}) nie powiódł się na etapie „{stage}”: {error}. Nie dostarczył zdjęcia.",
     "gsv2.why.production_test_nothing": "Ostatni pełny test ({id}) zakończył się bez dostarczonego zdjęcia (żadne nie przeszło kontroli jakości).",
     "gsv2.why.production_test_stale": "Ostatni udany pełny test ({id}) był na innych wersjach niż opublikowane teraz — uruchom go ponownie.",
-    "gsv2.why.production_test_running": "Pełny test ({id}) jeszcze trwa."
+    "gsv2.why.production_test_running": "Pełny test ({id}) jeszcze trwa.",
+    "tab.shot_quality": "Shot · Jakość"
   },
   "batch": {
     "viewLabel": "Widok",
@@ -12571,10 +12572,10 @@
     "repriced": "Aktualny koszt to {n} kr. (opłacone już retusze zostaną użyte ponownie). Potwierdź jeszcze raz.",
     "photosGone": "Oryginalne zdjęcia nie są już dostępne. Dodaj je ponownie w narzędziu.",
     "limit": {
-      "one": "Masz {n} generację w toku. To limit Twojego planu. Kolejną uruchomisz, gdy ta się zakończy.",
-      "few": "Masz {n} generacje w toku. To limit Twojego planu. Kolejną uruchomisz, gdy któraś się zakończy.",
-      "many": "Masz {n} generacji w toku. To limit Twojego planu. Kolejną uruchomisz, gdy któraś się zakończy.",
-      "other": "Masz {n} generacji w toku. To limit Twojego planu. Kolejną uruchomisz, gdy któraś się zakończy."
+      "one": "Masz {n} generację w toku. Kolejną uruchomisz, gdy ta się zakończy.",
+      "few": "Masz {n} generacje w toku. Kolejną uruchomisz, gdy któraś się zakończy.",
+      "many": "Masz {n} generacji w toku. Kolejną uruchomisz, gdy któraś się zakończy.",
+      "other": "Masz {n} generacji w toku. Kolejną uruchomisz, gdy któraś się zakończy."
     },
     "raiseLimit": "Zwiększ limit",
     "tileAria": "{tool}: w toku, {time}",
@@ -12600,10 +12601,10 @@
     "costAria": "Koszt: {n} kr. — pokaż szczegóły",
     "total": "Razem: {n} kr.",
     "limit": {
-      "one": "Masz {n} generację w toku — limit Twojego planu",
-      "few": "Masz {n} generacje w toku — limit Twojego planu",
-      "many": "Masz {n} generacji w toku — limit Twojego planu",
-      "other": "Masz {n} generacji w toku — limit Twojego planu"
+      "one": "Masz {n} generację w toku",
+      "few": "Masz {n} generacje w toku",
+      "many": "Masz {n} generacji w toku",
+      "other": "Masz {n} generacji w toku"
     },
     "shots": "Ujęcia: {n} × {p} kr.",
     "images": "Zdjęcia: {n} × {p} kr.",
@@ -12636,7 +12637,7 @@
   "gsv2": {
     "descLabel": "Opis produktu z Allegro",
     "descPh": "Wklej cały opis z aukcji — cechy, zastosowania, wymiary…",
-    "descHint": "Wklej opis produktu. Grovshot wykorzysta jego cechy i zastosowania do zaplanowania zdjęć.",
+    "descHint": "Wklej tytuł, opis i specyfikację z aukcji, razem z wymiarami. Silnik wykorzysta cechy, zastosowania i wymiary do zaplanowania zdjęć.",
     "dimsLabel": "Wymiary produktu",
     "dim": {
       "width": "Szerokość",
@@ -12679,6 +12680,61 @@
       "user_photo_excluded": "Zdjęcie wybrane w planie ujęcia {n} nie może być referencją — ujęcie użyje innego zdjęcia.",
       "plan_short": "Silnik zaplanował mniej ujęć, niż zamówiono — za brakujące nie pobierzemy kredytów.",
       "wind_down": "Zamówienie trwało zbyt długo i zostało zakończone — nie zaczniemy nowych ujęć, a za niedostarczone nie pobierzemy kredytów."
+    },
+    "notesLabel": "Uwagi",
+    "notesPh": "np. bez dzieci, ogród zamiast kuchni",
+    "needDescription": "Wklej opis z aukcji (co najmniej {n} znaków).",
+    "sets": {
+      "title": "Twoje zestawy",
+      "untitled": "Zestaw zdjęć",
+      "count": "{k} z {n} zdjęć",
+      "zip": "Pobierz zestaw (ZIP)",
+      "stage": {
+        "queued": "W kolejce",
+        "analyze": "Analiza produktu",
+        "plan": "Planowanie zdjęć",
+        "scenes": "Przygotowanie scen"
+      },
+      "state": {
+        "working": "Generowanie…",
+        "queued": "W kolejce"
+      },
+      "failed": "Nie udało się wygenerować tego ujęcia",
+      "refunded": "Kredyty wróciły na Twoje konto.",
+      "notCharged": "Kredyty nie zostały pobrane.",
+      "prev": "Poprzednia wersja",
+      "next": "Następna wersja",
+      "regenFailed": "Ponowna generacja się nie udała — kredyty nie zostały pobrane.",
+      "download": "Pobierz",
+      "regen": "Wygeneruj ponownie",
+      "report": "Zgłoś problem",
+      "use": "Użyj tej wersji",
+      "chosen": "Zestaw użyje tej wersji.",
+      "regenStarted": "Generujemy to ujęcie ponownie. Poprzednia wersja zostaje.",
+      "regenTitle": "Wygenerować ponownie ujęcie {n}?",
+      "regenBody": "Ten sam opis sceny i te same zdjęcia produktu, nowa generacja. Koszt: {n} kr. — pobierany tylko, gdy dostarczymy zdjęcie. Obecna wersja zostaje.",
+      "regenConfirm": "Wygeneruj · {n} kr.",
+      "reportTitle": "Zgłoś problem ze zdjęciem",
+      "reason": {
+        "product_changed": "Produkt zmieniony",
+        "wrong_scale": "Zła skala",
+        "hands_faces": "Dłonie lub twarze",
+        "light_mood": "Światło lub klimat",
+        "scene_mismatch": "Scena nie pasuje",
+        "other": "Inne"
+      },
+      "reportComment": "Komentarz (opcjonalnie)",
+      "reportSend": "Wyślij zgłoszenie",
+      "thanks": "Dziękujemy – to pomaga ulepszać silnik",
+      "err": {
+        "generic": "Nie udało się. Spróbuj ponownie za chwilę.",
+        "insufficient_credits": "Za mało kredytów na tę generację.",
+        "price_changed": "Cena się zmieniła — odśwież stronę.",
+        "too_many_runs": "Masz już dużo zleceń w toku. Spróbuj, gdy któreś się zakończy.",
+        "rate_limited": "Za dużo prób w krótkim czasie. Spróbuj za chwilę.",
+        "concurrency_limit": "Masz już dużo generacji w toku. Spróbuj, gdy któraś się zakończy.",
+        "order_in_progress": "Zestaw jeszcze powstaje — ponowna generacja będzie możliwa po jego zakończeniu."
+      }
     }
   },
   "gss": {
@@ -12887,6 +12943,43 @@
     "run.step.plan": "Plan",
     "run.step.product": "PRODUKT + SKALA",
     "run.step.scenes": "Moduły scen",
-    "run.step.image": "Nano Banana Pro"
+    "run.step.image": "Nano Banana Pro",
+    "q.title": "GrovBase Shot – jakość",
+    "q.sub": "Ponowne generacje, zgłoszenia klientów, porównanie wersji wiedzy, koszty i pełna historia zleceń — liczone z zapisanych danych.",
+    "q.window": "Okres",
+    "q.days": "ostatnie {n} dni",
+    "q.kb": "Wersja wiedzy",
+    "q.recipe": "Przepis stylu",
+    "q.reason": "Powód zgłoszenia",
+    "q.all": "wszystkie",
+    "q.sharesTitle": "Ponowne generacje i zgłoszenia",
+    "q.definition": "Udział ponownych generacji = zlecenia ponownej generacji ujęcia ÷ ujęcia dostarczone przez zlecenia pierwotne (tylko zlecenia klientów, bez testów). Udział zgłoszeń = zgłoszenia ÷ dostarczone ujęcia.",
+    "q.totals": "Zlecenia: {o} · dostarczone ujęcia: {d} · ponowne generacje: {r} · zgłoszenia: {rep}",
+    "q.byRecipe": "Według przepisu stylu",
+    "q.byKind": "Według typu ujęcia (hero / użycie / detal)",
+    "q.byKb": "Według wersji wiedzy (przed i po aktywacji)",
+    "q.key": "Grupa",
+    "q.orders": "Zlecenia",
+    "q.delivered": "Dostarczone",
+    "q.regens": "Ponowne",
+    "q.regenShare": "Udział ponownych",
+    "q.reports": "Zgłoszenia",
+    "q.reportShare": "Udział zgłoszeń",
+    "q.reportsTitle": "Zgłoszenia ({n})",
+    "q.prompt": "Prompt ujęcia",
+    "q.planShot": "Ujęcie w planie",
+    "q.card": "Karta produktu",
+    "q.versions": "Wersje zdjęcia ({n}):",
+    "q.openOrder": "Pełne zlecenie",
+    "q.costsTitle": "Ekonomia",
+    "q.costsDefinition": "Wywołania Nano Banana Pro: {calls} (ponowienia: {retries}, błędy techniczne: {tech} = {techShare}) · wywołań na dostarczone zdjęcie: {perPhoto}. Koszt nieznany (brak ceny) = UNKNOWN, nigdy 0.",
+    "q.perOrder": "Śr. koszt API / zlecenie",
+    "q.perPhoto": "Śr. koszt API / dostarczone zdjęcie",
+    "q.known": "Znany koszt",
+    "q.unknown": "Wywołania bez ceny",
+    "q.model": "Model",
+    "q.calls": "Wywołania",
+    "q.ordersTitle": "Zlecenia ({n})",
+    "q.unknownCalls": "{n} bez ceny"
   }
 }

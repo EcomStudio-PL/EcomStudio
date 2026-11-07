@@ -96,6 +96,9 @@ export type ShotInput = CoreInput & {
   unit_price_usd_micros: number | null; budget_cap_usd_micros: number | null;
   settings: unknown;
   kb: { version_id: string; version: number; sha256: string };
+  /** A paid regeneration of ONE shot of an earlier order: the same final
+   *  prompt and references, a new generation, the order's own versions. */
+  regen?: { source_run_id: string; shot: number } | null;
 };
 
 export function isLifestyleInput(raw: unknown): boolean {
@@ -220,6 +223,8 @@ async function driveLifestyle(ctx: LCtx, state: Awaited<ReturnType<typeof readEn
 
   const pinned = await pin(ctx, state);
   if (typeof pinned === "string") return pinned;
+
+  if (ctx.input.regen) return regenerate(ctx, ctx.input.regen);
 
   // ── krok 2 · karta ──
   await setProgress(ctx, { stage: "analyze", engine: SHOT_ENGINE_VERSION, kb_version: ctx.kbVersion });
@@ -638,6 +643,50 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
   };
   await finish(ctx, POS.assemble, ITEM.assemble, { status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: out as unknown as Json, durationMs: 0 });
   return promptsFrom(out);
+}
+
+/* ══ a regeneration: one shot again, the same prompt ═════════════════════*/
+
+/** The source order's fixed prompt of `shot` (1-based) and its mirror, copied
+ *  into this run's own steps once — the shot then runs like any other. */
+async function regenerate(ctx: LCtx, r: { source_run_id: string; shot: number }): Promise<Drive> {
+  let prompts: Prompts;
+  const done = stepOf(ctx, POS.assemble, ITEM.assemble);
+  if (done?.status === "succeeded") prompts = promptsFrom(outputOf(done));
+  else {
+    const src = await readSteps(ctx.supabase, r.source_run_id);
+    if (!src) return "busy";
+    const asm = src.find((x) => x.position === POS.assemble && x.item_index === ITEM.assemble && x.status === "succeeded");
+    const one = promptsFrom(outputOf(asm)).get(r.shot);
+    const b = await begin(ctx, POS.assemble, ITEM.assemble, "assemble", "tool");
+    if (b.state === "done") prompts = promptsFrom(outputOf({ output: b.output }));
+    else if (b.state === "busy") return "busy";
+    else if (b.state === "not_owner") return "lost";
+    else if (b.state !== "run" || !one) {
+      if (b.state === "run") await finish(ctx, POS.assemble, ITEM.assemble, { status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "source_prompt_missing", durationMs: 0 });
+      await close(ctx, "failed", "unavailable");
+      return "finished";
+    } else {
+      const srcMirror = outputOf(src.find((x) => x.position === POS.mirror && x.item_index === ITEM.mirror && x.status === "succeeded"));
+      const out = {
+        shots: [{ numer: 1, text: one.text, sha256: one.sha256, modules: one.modules as unknown as Json, footer: one.footer, pattern: one.pattern, references: one.references }],
+        regen_of: r.source_run_id, regen_shot: r.shot, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+        mirror: { session_id: srcMirror.session_id ?? null, concept: (srcMirror.concepts as Record<string, string> | undefined)?.[String(r.shot - 1)] ?? null },
+      };
+      await finish(ctx, POS.assemble, ITEM.assemble, { status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: out as unknown as Json, durationMs: 0 });
+      prompts = promptsFrom(out);
+    }
+  }
+  const p = prompts.get(1);
+  if (!p) { await close(ctx, "failed", "unavailable"); return "finished"; }
+  if (ctx.progress.planned !== 1) await setProgress(ctx, { planned: 1, regen_of: r.source_run_id, regen_shot: r.shot });
+  const m = outputOf(stepOf(ctx, POS.assemble, ITEM.assemble)).mirror as { session_id?: string | null; concept?: string | null } | undefined;
+  const mirror: Mirror = { sessionId: m?.session_id ?? null, concepts: m?.concept ? { 0: m.concept } : {} };
+  const shot: PlanShot = {
+    numer: 1, argument: "", typ: p.pattern === "detail" ? "detal" : "uzycie", kierunek: "", miejsce: "", swiatlo: "", swiatlo_typ: "inne",
+    kadr: "sredni", ludzie: "brak", stan: "", caly_produkt: false, referencje: p.references, opis: "", skala_cm: null, fixed: true,
+  };
+  return shotsPhase(ctx, [shot], prompts, mirror);
 }
 
 /* ══ the customer-visible mirror ══════════════════════════════════════════*/

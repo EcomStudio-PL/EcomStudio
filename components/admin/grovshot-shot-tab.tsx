@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { readShotAdmin } from "@/lib/server/grovshot-shot/admin";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { ShotKbPanel, ShotTestsPanel } from "@/components/admin/grovshot-shot-client";
+import { ShotQualityPanel } from "@/components/admin/grovshot-shot-quality";
+import { readQuality } from "@/lib/server/grovshot-shot/quality";
 
 /**
  * GROVBASE SHOT — the lifestyle engine's admin tabs on the GrovShot tool page:
@@ -20,8 +22,19 @@ import { ShotKbPanel, ShotTestsPanel } from "@/components/admin/grovshot-shot-cl
 type T = (key: string, values?: Record<string, string | number>) => string;
 
 export async function GrovshotShotTab({ supabase, t, view }: {
-  supabase: Awaited<ReturnType<typeof createClient>>; t: T; view: "kb" | "tests";
+  supabase: Awaited<ReturnType<typeof createClient>>; t: T; view: "kb" | "tests" | "quality";
 }) {
+  if (view === "quality") {
+    const data = await readQuality(supabase, 90);
+    return (
+      <div className="space-y-4" data-grovshot-shot-admin="quality">
+        <Card className="p-4 sm:p-5">
+          <CardHeader title={t("gss.q.title")} sub={t("gss.q.sub")} />
+          <div className="pt-4"><ShotQualityPanel data={data} /></div>
+        </Card>
+      </div>
+    );
+  }
   const { data: { user } } = await supabase.auth.getUser();
   const [admin, workspace] = await Promise.all([readShotAdmin(supabase), user ? getCurrentWorkspace(supabase, user.id) : Promise.resolve(null)]);
   const activeVersion = admin.active?.version ?? null;

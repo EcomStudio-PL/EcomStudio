@@ -181,8 +181,13 @@ async function main() {
       // GrovBase Shot admin (Baza wiedzy / Testy): an admin's own test photos
       // and test images in one run's diagnostics, never a customer gallery.
       "lib/server/grovshot-shot/admin.ts",
+      // GrovBase Shot quality panel (admin only): one reported image per
+      // report as evidence, never a customer gallery.
+      "lib/server/grovshot-shot/quality.ts",
       // Hands over originals on purpose.
       "app/api/library/zip/route.ts",
+      // GrovBase Shot's set ZIP: the chosen originals, on purpose.
+      "app/api/grovshot/sets/[id]/zip/route.ts",
       // Writes derivatives; signs what it just made.
       "app/api/library/thumb/route.ts",
       // The generator's own result strip signs what it just produced.

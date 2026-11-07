@@ -35,7 +35,12 @@ import { useFormatUses, useReorderHint } from "@/components/tool-guide/use-reord
 import { limitText } from "@/components/inflight/inflight-tile";
 import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
 import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
-import { V2Fields, V2Notes, dimsForOrder, useV2Order } from "@/components/genv3/grovshot-v2";
+import { V2Fields, V2Notes, useV2Order } from "@/components/genv3/grovshot-v2";
+import { GrovshotSets } from "@/components/genv3/grovshot-sets";
+
+/** GrovBase Shot's formats and sizes (the five of the spec; 1K is not offered). */
+const V2_RATIOS = ["1:1", "4:5", "3:4", "16:9", "9:16"];
+const V2_RESOLUTIONS = ["2K", "4K"];
 import {
   SHOTS_DEFAULT, SHOTS_MAX, SHOTS_MIN, STUDIO_MAX_REFS, customPhotoBudget, dropPhoto, parseTab, patchRow,
   planToBriefs, readStudioDraft, remapPhotos,
@@ -59,7 +64,19 @@ export type ManagedModeData = {
   initialShots?: number;
   /** GrovShot Lifestyle Engine V2 is on for this member (flag, not a trial):
    *  a lifestyle order runs on it, on this model (Nano Banana Pro). */
-  engineV2?: { modelId: string } | null;
+  engineV2?: EngineV2Panel | null;
+};
+
+/** GrovBase Shot (the lifestyle engine) for this member — the panel's shape
+ *  only; the start route decides everything again. */
+export type EngineV2Panel = {
+  modelId: string;
+  /** Admin-only options: the model choice, the manual shot plan. */
+  admin: boolean;
+  /** The scenarios an admin switched on (a selector only with two or more). */
+  scenarios: { lifestyle: boolean; reklamowa: boolean };
+  /** The shortest description the engine accepts. */
+  descriptionMin: number;
 };
 
 export type CustomModeData = {
@@ -198,18 +215,26 @@ export function GeneratorWorkspace({
     const id = managedData?.engineV2?.modelId;
     return id ? managedModels.filter((m) => m.id === id) : [];
   }, [managedData, managedModels]);
-  const v2 = !!managedData?.engineV2 && grov.sessionType === "lifestyle" && v2Models.length > 0;
-  const [dimsOpen, setDimsOpen] = useState(false);
+  // GrovBase Shot: lifestyle on (the only scenario today) → no scenario
+  // selector, every order of this member goes to the engine; with two or more
+  // scenarios on, the selector decides.
+  const shotScenarios = managedData?.engineV2?.scenarios ?? null;
+  const shotSingleScenario = !!shotScenarios && [shotScenarios.lifestyle, shotScenarios.reklamowa].filter(Boolean).length < 2;
+  const v2 = !!managedData?.engineV2 && v2Models.length > 0 && shotScenarios?.lifestyle !== false
+    && (shotSingleScenario || grov.sessionType === "lifestyle");
+  const shotAdmin = managedData?.engineV2?.admin === true;
+  const [setsTick, setSetsTick] = useState(0);
   const v2order = useV2Order();
-  // The engine asked for dimensions: the field opens by itself.
-  useEffect(() => { if (v2order.order?.error === "needs_dimensions") setDimsOpen(true); }, [v2order.order?.error]);
 
   // ── the active mode's effective values (snapped to its model) ─────────
   const models = managed ? (v2 ? v2Models : managedModels) : customModels;
   const cfg = managed ? grov : stw;
   const model = useMemo(() => models.find((m) => m.id === cfg.modelId) ?? models[0], [models, cfg.modelId]);
-  const effRatio = model ? snapRatio(model.ratios, cfg.ratio) : cfg.ratio;
-  const effResolution = model ? snapTo(model.resolutions, cfg.resolution) : cfg.resolution;
+  // GrovBase Shot offers five formats and 2K / 4K (2K recommended); 1K is not offered.
+  const ratiosOffered = model ? (managed && v2 ? V2_RATIOS.filter((r) => model.ratios.includes(r)) : model.ratios) : [];
+  const resolutionsOffered = model ? (managed && v2 ? V2_RESOLUTIONS.filter((r) => model.resolutions.includes(r)) : model.resolutions) : [];
+  const effRatio = model ? snapRatio(ratiosOffered, cfg.ratio) : cfg.ratio;
+  const effResolution = model ? snapTo(resolutionsOffered, cfg.resolution) : cfg.resolution;
   const effQuality = snapQuality(model, cfg.quality);
   const maxCount = managed ? SHOTS_MAX : Math.max(1, model?.maxOutputs ?? 1);
   const effCount = Math.min(Math.max(cfg.count, 1), maxCount);
@@ -503,8 +528,9 @@ export function GeneratorWorkspace({
             photos: refs.map((r) => r.path).slice(0, MAX_REFS),
             shots: effCount, aspectRatio: effRatio, resolution: effResolution, sessionType: "lifestyle",
             description: (grov.description ?? "").trim(),
-            dimensions: dimsForOrder(grov.dims ?? null),
-            shotBriefs: planToBriefs(grov.plan, effCount, refs),
+            notes: (grov.notes ?? "").trim(),
+            // The manual plan is an admin's tool (the server refuses it from anyone else).
+            ...(shotAdmin ? { shotBriefs: planToBriefs(grov.plan, effCount, refs) } : {}),
             acknowledge, quotedTotal: total,
           },
         }),
@@ -512,6 +538,7 @@ export function GeneratorWorkspace({
       });
       if (out.ok) {
         v2order.track(out.id);
+        setSetsTick((n) => n + 1);
         gate.flash();
         frame.accepted(clickedAt);
       } else if (out.error === "engine_v1") {
@@ -599,14 +626,16 @@ export function GeneratorWorkspace({
   const engineAvailable = managedData?.engineAvailable ?? false;
   const sending = stageLabel !== "" || preparing;
   const promptOk = stw.prompt.trim().length > 2;
+  const descOk = !(managed && v2) || (grov.description ?? "").trim().length >= (managedData?.engineV2?.descriptionMin ?? 0);
   const canGenerate = !!model && !gate.atLimit && !smart.busy && !uploading && refs.length > 0
     && (session.guest || missing === 0)
-    && (managed ? engineAvailable : promptOk);
+    && (managed ? engineAvailable && descOk : promptOk);
   const line = useBarLine({
     unavailable: models.length === 0 ? t("generator.noModelsTitle") : managed && !engineAvailable ? t("psess.unavailable") : null,
     invalid: refs.length === 0 ? t("genv3.needPhotos")
       : uploading ? t("bar.uploading")
         : !managed && !promptOk ? t("genv3.needPrompt")
+          : !descOk ? t("gsv2.needDescription", { n: managedData?.engineV2?.descriptionMin ?? 0 })
           : smart.busy ? t("bar.rewriting")
             : null,
     limit: gate.atLimit && gate.limit && !session.guest ? gate.limit : null,
@@ -621,13 +650,13 @@ export function GeneratorWorkspace({
   const defaultsNow = managed ? grovDefaults() : stworzDefaults();
   const defaultModel = models.find((m) => m.id === defaultsNow.modelId) ?? models[0];
   const qualityLabel = (q: string) => q === "low" ? t("genv3.qualityLow") : q === "high" ? t("genv3.qualityHigh") : t("genv3.qualityMedium");
-  const recommendedRes = model ? snapTo(model.resolutions, defaultsNow.resolution) : "";
+  const recommendedRes = model ? (managed && v2 && resolutionsOffered.includes("2K") ? "2K" : snapTo(resolutionsOffered, defaultsNow.resolution)) : "";
   const basePrice = unitPrice(model, recommendedRes, "custom", effQuality);
   const resolutionControl = model && model.resolutions.length > 0 && (
     <PanelSection title={t("genv3.resolution")} data="resolution">
       <Segmented label={t("genv3.resolution")} value={effResolution}
         onChange={(v) => setCfg({ resolution: v })}
-        options={model.resolutions.map((r) => ({ value: r, label: r, meta: delta(unitPrice(model, r, "custom", effQuality), basePrice, r === recommendedRes) }))} />
+        options={resolutionsOffered.map((r) => ({ value: r, label: r, meta: delta(unitPrice(model, r, "custom", effQuality), basePrice, r === recommendedRes) }))} />
     </PanelSection>
   );
   const recommendedQuality = snapQuality(model, "medium");
@@ -642,7 +671,7 @@ export function GeneratorWorkspace({
     </PanelSection>
   );
   const exact = new Set(model?.exactRatios ?? model?.ratios ?? []);
-  const formatOptions: FormatOption[] = (model?.ratios ?? []).slice()
+  const formatOptions: FormatOption[] = ratiosOffered.slice()
     .sort((a, b) => (a === "auto" ? -1 : b === "auto" ? 1 : 0))
     .map((r) => ({
       value: r, ratio: r === "auto" ? undefined : r, label: ratioName(t, r),
@@ -749,36 +778,40 @@ export function GeneratorWorkspace({
       <ToolDraftBanner session={session} />
       {photos}
       {v2 && <V2Notes order={v2order.order} busy={sending} onContinue={() => void session.gate(() => generateV2(true))} />}
-      <PanelSection title={t("genv3.scenario")} data="scenario">
-        <ScenarioCards value={grov.sessionType} onChange={(v) => setGrov((g) => ({ ...g, sessionType: v }))} previews={managedData?.sessionPreviews} />
-        {variant && variant.controls.length > 0 && (
-          <div className="mt-3">
-            <VariantChips variant={variant} choices={grov.choices}
-              onChoose={(k, v) => setGrov((g) => ({ ...g, choices: { ...g.choices, [k]: v } }))} />
-          </div>
-        )}
-      </PanelSection>
+      {!(v2 && shotSingleScenario) && (
+        <PanelSection title={t("genv3.scenario")} data="scenario">
+          <ScenarioCards value={grov.sessionType} onChange={(v) => setGrov((g) => ({ ...g, sessionType: v }))} previews={managedData?.sessionPreviews} />
+          {!v2 && variant && variant.controls.length > 0 && (
+            <div className="mt-3">
+              <VariantChips variant={variant} choices={grov.choices}
+                onChoose={(k, v) => setGrov((g) => ({ ...g, choices: { ...g.choices, [k]: v } }))} />
+            </div>
+          )}
+        </PanelSection>
+      )}
       {v2 && (
         <V2Fields description={grov.description ?? ""} onDescription={(v) => setGrov((g) => ({ ...g, description: v }))}
-          dims={grov.dims ?? null} onDims={(d) => setGrov((g) => ({ ...g, dims: d }))}
-          dimsOpen={dimsOpen || !!grov.dims} onDimsOpen={setDimsOpen} />
+          notes={grov.notes ?? ""} onNotes={(v) => setGrov((g) => ({ ...g, notes: v }))} />
       )}
       {formatControl}
       <PanelSection title={t("genv3.countShots")} data="count">
         <Stepper label={t("genv3.countShots")} value={effCount} min={SHOTS_MIN} max={SHOTS_MAX} onChange={(v) => setCfg({ count: v })} data="shots" />
-        <div className="mt-3">
-          <ShotPlan count={effCount} refs={refs} plan={grov.plan}
-            onPatch={(i, patch) => setGrov((g) => ({ ...g, plan: patchRow(g.plan, i, patch) }))} />
-        </div>
+        {(!v2 || shotAdmin) && (
+          <div className="mt-3">
+            <ShotPlan count={effCount} refs={refs} plan={grov.plan}
+              onPatch={(i, patch) => setGrov((g) => ({ ...g, plan: patchRow(g.plan, i, patch) }))} />
+          </div>
+        )}
       </PanelSection>
       <MoreSettings storageKey={`more:${toolKey}`} summary={moreSummary} changed={changedMore}
         onRestore={() => setGrov((g) => {
           const d = grovDefaults();
-          return { ...g, modelId: d.modelId, resolution: d.resolution, quality: d.quality };
+          return { ...g, modelId: d.modelId, resolution: v2 ? "2K" : d.resolution, quality: d.quality };
         })}>
-        {modelControl(t(v2 ? "gsv2.modelNote" : "genv3.grovshotModelNote"))}
+        {/* GrovBase Shot: the model is fixed (Nano Banana Pro); only an admin sees the choice, with no note under it. */}
+        {(!v2 || shotAdmin) && modelControl(v2 ? undefined : t("genv3.grovshotModelNote"))}
         {resolutionControl}
-        {qualityControl}
+        {!v2 && qualityControl}
       </MoreSettings>
     </>
   ) : (
@@ -837,7 +870,25 @@ export function GeneratorWorkspace({
             ctaAttrs={{ "data-generate-cta": true }}
           />
         )}
-        gallery={(
+        gallery={managedData?.engineV2 && managed ? (
+          <div className="flex min-h-0 flex-col gap-4" data-studio-gallery-shot>
+            <GrovshotSets refreshKey={setsTick} balance={balance} />
+            <GenerationGallery
+              initialItems={initialItems}
+              initialCursor={initialCursor}
+              freshItems={freshItems}
+              onFresh={setFreshItems}
+              pendingCount={0}
+              pendingRatio={effRatio}
+              inflight={{ tools: both ? ["prompts", "generator"] : ["prompts"] }}
+              models={galleryModels}
+              balance={balance}
+              onBalance={setBalance}
+              onAbsorb={absorbLatest}
+              guideTool={toolKey}
+            />
+          </div>
+        ) : (
           <GenerationGallery
             initialItems={initialItems}
             initialCursor={initialCursor}

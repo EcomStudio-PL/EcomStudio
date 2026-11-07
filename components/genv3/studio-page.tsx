@@ -18,7 +18,9 @@ import { guestReadClient, publicToolAudience } from "@/lib/server/public-tools";
 import type { PublicTool } from "@/lib/public-tools";
 import type { StudioTab } from "@/lib/generator/studio";
 import type { Client } from "@/lib/services/workspace";
-import { grovshotV2Enabled } from "@/lib/server/grovshot-v2/flag";
+import { grovshotV2Enabled, isAdminUserId } from "@/lib/server/grovshot-v2/flag";
+import { DEFAULT_SHOT_SETTINGS, parseShotSettings } from "@/lib/grovshot-shot/settings";
+import type { EngineV2Panel } from "@/components/genv3/workspace";
 import { GROVSHOT_V2_MODEL_IDENTIFIER } from "@/lib/grovshot-v2/stages";
 
 /** Must match the editor's own cap (components/genv3/workspace.tsx): a
@@ -54,10 +56,18 @@ async function managedData(supabase: Client) {
 /** GrovShot Lifestyle Engine V2 for THIS member: the flag (Admin → System),
  *  not a trial workspace — and the model it runs on, when the panel offers it.
  *  The start route decides again for every order; this only shapes the panel. */
-async function engineV2For(supabase: Client, userId: string, workspaceId: string, models: GenModel[]): Promise<{ modelId: string } | null> {
+async function engineV2For(supabase: Client, userId: string, workspaceId: string, models: GenModel[]): Promise<EngineV2Panel | null> {
   if (!(await grovshotV2Enabled(supabase, userId, workspaceId))) return null;
-  const { data } = await supabase.from("ai_models").select("id").eq("model_identifier", GROVSHOT_V2_MODEL_IDENTIFIER).eq("active", true).limit(1).maybeSingle();
-  return data?.id && models.some((m) => m.id === data.id) ? { modelId: data.id } : null;
+  const [{ data }, { data: settingsRow }, admin] = await Promise.all([
+    supabase.from("ai_models").select("id").eq("model_identifier", GROVSHOT_V2_MODEL_IDENTIFIER).eq("active", true).limit(1).maybeSingle(),
+    supabase.from("app_settings").select("value").eq("key", "grovshot_shot").maybeSingle(),
+    isAdminUserId(supabase, userId),
+  ]);
+  if (!data?.id || !models.some((m) => m.id === data.id)) return null;
+  const parsed = parseShotSettings(settingsRow?.value ?? null);
+  const settings = parsed.ok ? parsed.settings : DEFAULT_SHOT_SETTINGS;
+  // The panel only: the start route decides again (scenarios, admin options, the description).
+  return { modelId: data.id, admin, scenarios: settings.scenarios, descriptionMin: settings.description_min_chars };
 }
 
 /** Stwórz zdjęcie: the engines a customer may pick, in the panel's shape. */

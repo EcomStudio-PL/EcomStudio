@@ -122,3 +122,55 @@ export async function startShotOrder(supabase: Client, userId: string, workspace
   if (!out.id) return { ok: false, error: "run_create_failed", quote };
   return { ok: true, runId: out.id, created: Boolean(out.created), quote };
 }
+
+/**
+ * A PAID REGENERATION of one shot of the member's own lifestyle order: the
+ * same final prompt and references (the order's pinned knowledge, settings
+ * and model), one new generation, charged only when its image is delivered —
+ * a new order of one shot on the same ledger path. The earlier image stays;
+ * the customer picks the version the set uses.
+ */
+export async function startShotRegen(
+  supabase: Client, userId: string, workspaceId: string, sourceRunId: string, shot: number, quotedTotal: unknown,
+): Promise<StartResult> {
+  if (!Number.isInteger(shot) || shot < 1 || shot > 10) return { ok: false, error: "invalid_input" };
+  const { data: rows } = await supabase.rpc("ai_engine_run_read", { p_token: dispatchToken() ?? "", p_run_id: sourceRunId });
+  const src = Array.isArray(rows) ? rows[0] as { user_id?: string; workspace_id?: string; run_kind?: string; status?: string; input?: Record<string, unknown> } | undefined : undefined;
+  const input = src?.input ?? null;
+  if (!src || !input || src.user_id !== userId || src.workspace_id !== workspaceId || src.run_kind !== "grovshot"
+    || input.pipeline !== "lifestyle" || input.regen) return { ok: false, error: "not_found" };
+  if (src.status === "queued" || src.status === "running") return { ok: false, error: "order_in_progress" };
+  if (shot > Number(input.shots)) return { ok: false, error: "invalid_input" };
+  if (!(await grovshotV2Enabled(supabase, userId, workspaceId, { sessionType: "lifestyle" }))) return { ok: false, error: "engine_v1" };
+  const state = await readEngineState(supabase);
+  const resolution = String(input.resolution ?? "");
+  const unit = state.model?.pricing[resolution];
+  if (!state.model || typeof unit !== "number" || unit <= 0) return { ok: false, error: "model_unavailable" };
+  const quote = { unit, total: unit };
+  if (quotedTotal !== quote.total) return { ok: false, error: "price_changed", quote };
+  const unitPrice = imageUnitPrice(state, resolution);
+  if (unitPrice === null) return { ok: false, error: "model_unavailable" };
+  const regenInput: ShotInput = {
+    v: 2, engine: "grovshot_v2", pipeline: "lifestyle", engine_version: SHOT_ENGINE_VERSION, test: false,
+    photos: input.photos as string[], photo_shas: input.photo_shas as string[], shots: 1,
+    aspect_ratio: String(input.aspect_ratio), resolution, session_type: "lifestyle", description: "", notes: "", user_plan: null,
+    quote, model: input.model as ShotInput["model"], unit_price_usd_micros: unitPrice,
+    budget_cap_usd_micros: IMAGE_MAX_CALLS * (unitPrice + 10_000),
+    settings: input.settings, kb: input.kb as ShotInput["kb"], regen: { source_run_id: sourceRunId, shot },
+  };
+  const key = `gslsr:${workspaceId}:${Math.floor(Date.now() / 300_000)}:${sha256(`${sourceRunId}:${shot}`).slice(0, 32)}`;
+  const { data, error } = await supabase.rpc("grovshot_run_create", {
+    p_token: dispatchToken() ?? "",
+    p_run: {
+      workspace_id: workspaceId, idempotency_key: key, run_kind: "grovshot", shots: 1, engine_version: SHOT_ENGINE_VERSION,
+      prompt_version: Number((input.kb as { version?: number } | undefined)?.version) || null,
+      runs_per_hour: RUNS_PER_HOUR, uncharged_per_day: UNCHARGED_PER_DAY, input: regenInput,
+    } as unknown as Json,
+  });
+  const out = (error ? null : data) as { id?: string; created?: boolean; error?: string; missing?: number } | null;
+  if (!out) return { ...(slotRefusal(error?.message) ?? { ok: false, error: "run_create_failed" }), quote };
+  if (out.error === "insufficient_credits") return { ok: false, error: "insufficient_credits", quote, missingCredits: out.missing ?? undefined };
+  if (out.error) return { ok: false, error: out.error, quote };
+  if (!out.id) return { ok: false, error: "run_create_failed", quote };
+  return { ok: true, runId: out.id, created: Boolean(out.created), quote };
+}

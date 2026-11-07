@@ -60,7 +60,8 @@ import {
   type ExistingRule, type KnowledgeSnapshot, type SnapshotRule,
 } from "@/lib/grovshot-v2/knowledge";
 import { SPEC_MD_SHA256, seedFiles, seedRules } from "./gsv2-knowledge-seed";
-import { startShotOrder } from "@/lib/server/grovshot-v2/start-shot";
+import { startShotOrder, startShotRegen } from "@/lib/server/grovshot-v2/start-shot";
+import { usedVersion, zipName, type SetShot } from "@/lib/server/grovshot-shot/sets";
 import { canonicalJson, parseKb } from "@/lib/grovshot-shot/kb";
 import { DEFAULT_SHOT_SETTINGS } from "@/lib/grovshot-shot/settings";
 import type { SlotStore } from "@/lib/server/grovshot-v2/run";
@@ -2081,6 +2082,44 @@ async function partL() {
       && ((((plan?.output as Row)?.raw as Row)?.ujecia as Row[]) ?? []).length === 10);
     check("L25 the customer notes are data in the plan and scenes calls (tags), never system text",
       w.stageCalls.filter((c) => c.key === "grovshot_shot_plan" || c.key === "grovshot_shot_scenes").every((c) => (c.direct?.user ?? "").includes("<uwagi_klienta>") && !(c.direct?.system ?? "").includes("bez dzieci")));
+  }
+  {
+    // ── Etap 2: a paid regeneration of one shot ──
+    const w = await lsWorld({ photos: 7 });
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) return;
+    await lsDrive(w, r.runId);
+    const before = { calls: w.stageCalls.length, images: w.imageCalls.length, balance: db().wallet.balance, charges: charges().length };
+    const srcAsm = stepsOf(r.runId, P.write).find((x) => x.item_index === 30);
+    const srcPrompt = (((srcAsm?.output as Row)?.shots as Row[]) ?? []).find((x) => x.numer === 2);
+    const wrong = await startShotRegen(SUPA, USER, WS, r.runId, 2, 99);
+    check("L26 a regeneration at a price the customer was not shown is refused (price_changed), nothing created", !wrong.ok && wrong.error === "price_changed", wrong);
+    const other = await startShotRegen(SUPA, "99999999-9999-4999-8999-999999999999", WS, r.runId, 2, 7);
+    check("L27 someone else's order cannot be regenerated (not_found)", !other.ok && other.error === "not_found", other);
+    const rg = await startShotRegen(SUPA, USER, WS, r.runId, 2, 7);
+    check("L28 a regeneration is a new order of ONE shot pinned to the same knowledge, prompt source and price", rg.ok
+      && ((runOf(rg.ok ? rg.runId : "").input as Row).regen as Row)?.shot === 2 && (runOf(rg.ok ? rg.runId : "").input as Row).shots === 1, rg);
+    if (!rg.ok) return;
+    await lsDrive(w, rg.runId);
+    const newImage = w.imageCalls[w.imageCalls.length - 1];
+    check("L29 …the SAME final prompt and references, no Claude call, one image call, charged once (7 credits) only when delivered; the earlier image stays",
+      runOf(rg.runId).status === "ok" && w.stageCalls.length === before.calls && w.imageCalls.length === before.images + 1
+      && newImage.prompt === srcPrompt?.text && charges().length === before.charges + 1 && db().wallet.balance === before.balance - 7
+      && tableRows("generations").length === 4, { st: runOf(rg.runId).status, e: runOf(rg.runId).error, bal: db().wallet.balance });
+    const w2 = await lsWorld({ photos: 7, image: (i) => (i >= 3 ? "provider_quota" : "ok") });
+    const r2 = await lsStart(w2, 7, { shots: 3 });
+    if (!r2.ok) return;
+    await lsDrive(w2, r2.runId);
+    const bal = db().wallet.balance;
+    const rg2 = await startShotRegen(SUPA, USER, WS, r2.runId, 1, 7);
+    if (rg2.ok) await lsDrive(w2, rg2.runId);
+    check("L30 a regeneration that brings no image is not charged (the set keeps its image)",
+      rg2.ok && runOf(rg2.runId).status === "failed" && db().wallet.balance === bal, { st: rg2.ok ? runOf(rg2.runId).status : rg2, bal: db().wallet.balance });
+    const v = (id2: string, at: string) => ({ generationId: id2, assetId: id2, path: `ws/${id2}/a.png`, url: "", thumbUrl: "", previewUrl: "", width: 1, height: 1, createdAt: at, regenRunId: null });
+    const sh = (chosen: string | null): SetShot => ({ n: 1, title: null, kind: "hero", state: "delivered", reason: null, refunded: false, versions: [v("g1", "1"), v("g2", "2")], chosen, regenerating: false, regenFailed: false });
+    check("L31 the set uses the chosen version, else the newest; the ZIP names follow the gallery order and the real file type",
+      usedVersion(sh(null))?.generationId === "g2" && usedVersion(sh("g1"))?.generationId === "g1"
+      && zipName(1, "hero", "x/y.png") === "01_hero.png" && zipName(2, "uzycie", "x/y.jpg") === "02_uzycie.jpg" && zipName(10, null, "x/y.webp") === "10_zdjecie.webp");
   }
 }
 

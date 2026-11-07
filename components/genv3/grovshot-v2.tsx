@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Info, Plus } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { Input, Select, Textarea } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { PanelSection } from "@/components/genv3/controls";
 import { cn } from "@/lib/utils";
 import { V2_DESCRIPTION_MAX, type V2Dims } from "@/lib/generator/studio";
@@ -15,59 +15,34 @@ import { GROVSHOT_V2_STOP_CODES } from "@/lib/grovshot-v2/stages";
  * chosen by a CODE the server sent — never model prose.
  */
 
-const UNITS: V2Dims["unit"][] = ["cm", "mm", "m", "in"];
-
-export function V2Fields({ description, onDescription, dims, onDims, dimsOpen, onDimsOpen }: {
+/** GrovBase Shot: the Allegro description (required — the engine plans from
+ *  it) and the customer's short notes. No dimensions field: the description
+ *  carries them. */
+export function V2Fields({ description, onDescription, notes, onNotes }: {
   description: string; onDescription: (v: string) => void;
-  dims: V2Dims | null; onDims: (d: V2Dims | null) => void;
-  dimsOpen: boolean; onDimsOpen: (open: boolean) => void;
+  notes: string; onNotes: (v: string) => void;
 }) {
   const { t } = useI18n();
-  const d = dims ?? { width: "", depth: "", height: "", unit: "cm" as const };
-  const set = (patch: Partial<V2Dims>) => onDims({ ...d, ...patch });
   const nearCap = description.length > V2_DESCRIPTION_MAX * 0.9;
   return (
     <>
       <PanelSection title={t("gsv2.descLabel")} data="gsv2-description"
         aside={description.length > 0 ? `${description.length}/${V2_DESCRIPTION_MAX}` : undefined}>
-        <Textarea data-gsv2-description value={description} maxLength={V2_DESCRIPTION_MAX}
+        <Textarea data-gsv2-description value={description} maxLength={V2_DESCRIPTION_MAX} required
           onChange={(e) => onDescription(e.target.value)} aria-label={t("gsv2.descLabel")}
           placeholder={t("gsv2.descPh")} rows={5}
           className={cn("min-h-[7.5rem] resize-y text-[13px]", nearCap && "border-[rgb(var(--accent2)/0.55)]")} />
         <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{t("gsv2.descHint")}</p>
       </PanelSection>
-      {dimsOpen ? (
-        <PanelSection title={t("gsv2.dimsLabel")} optional data="gsv2-dimensions">
-          <div className="grid grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,0.8fr)] gap-2">
-            {(["width", "depth", "height"] as const).map((k) => (
-              <label key={k} className="min-w-0">
-                <span className="mb-1 block truncate text-[11px] font-medium text-faint">{t(`gsv2.dim.${k}`)}</span>
-                <Input data-gsv2-dim={k} inputMode="decimal" value={d[k]} placeholder="—"
-                  onChange={(e) => set({ [k]: e.target.value.replace(/[^0-9.,]/g, "").slice(0, 8) })}
-                  className="px-2.5 py-2 text-[13px]" />
-              </label>
-            ))}
-            <label className="min-w-0">
-              <span className="mb-1 block truncate text-[11px] font-medium text-faint">{t("gsv2.dim.unit")}</span>
-              <Select data-gsv2-dim="unit" value={d.unit} onChange={(e) => set({ unit: e.target.value as V2Dims["unit"] })}
-                className="px-2.5 py-2 text-[13px]">
-                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-              </Select>
-            </label>
-          </div>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{t("gsv2.dimsHint")}</p>
-          <button type="button" onClick={() => { onDims(null); onDimsOpen(false); }}
-            className="mt-1 text-[11.5px] font-semibold text-faint transition-colors hover:text-accent">{t("gsv2.dimsRemove")}</button>
-        </PanelSection>
-      ) : (
-        <button type="button" data-gsv2-add-dims onClick={() => onDimsOpen(true)}
-          className="flex items-center gap-1.5 self-start text-[12.5px] font-semibold text-accent transition-opacity hover:opacity-75">
-          <Plus size={14} aria-hidden />{t("gsv2.addDims")}
-        </button>
-      )}
+      <PanelSection title={t("gsv2.notesLabel")} optional data="gsv2-notes">
+        <Input data-gsv2-notes value={notes} maxLength={V2_NOTES_MAX} onChange={(e) => onNotes(e.target.value)}
+          aria-label={t("gsv2.notesLabel")} placeholder={t("gsv2.notesPh")} className="text-[13px]" />
+      </PanelSection>
     </>
   );
 }
+
+const V2_NOTES_MAX = 1_000;
 
 /** The dimensions as the order sends them (numbers, a unit), or null. */
 export function dimsForOrder(d: V2Dims | null): { width?: number; depth?: number; height?: number; unit: V2Dims["unit"] } | null {

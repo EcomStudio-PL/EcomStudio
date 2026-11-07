@@ -35,6 +35,15 @@ export function IceLauncher({ sessions, supported }: { sessions: Session[]; supp
   const session = sessions.find((s) => s.path === path) ?? null;
   const [pending, start] = useTransition();
   const [lift, setLift] = useState(false);
+  // A phone: a small pencil at the top edge, away from every tool's Generate bar.
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => setCompact(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
   // In a preview frame (the builder's, the gallery panel's): no button and no
   // editor — the frame shows the page as a visitor sees it.
   const framed = useFramed();
@@ -89,6 +98,42 @@ export function IceLauncher({ sessions, supported }: { sessions: Session[]; supp
       router.refresh();
     });
 
+  if (compact) {
+    const label = pending ? t("ice.launch.opening") : t("ice.launch.edit");
+    return (
+      <button
+        type="button"
+        onClick={begin}
+        disabled={pending}
+        data-ice-launch="compact"
+        aria-label={label}
+        title={label}
+        style={{
+          position: "fixed",
+          right: 12,
+          top: "calc(env(safe-area-inset-top) + 72px)",
+          zIndex: 40,
+          width: 36,
+          height: 36,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 999,
+          border: "1px solid rgb(255 255 255 / 0.18)",
+          background: "rgb(var(--accent))",
+          color: "#fff",
+          boxShadow: "0 6px 18px rgb(0 0 0 / 0.22)",
+          cursor: pending ? "progress" : "pointer",
+          opacity: pending ? 0.75 : 0.92,
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      </button>
+    );
+  }
   return (
     <button
       type="button"

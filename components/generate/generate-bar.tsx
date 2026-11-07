@@ -160,7 +160,8 @@ export function BarLine({ icon, tone = "muted", children, data }: {
     <p data-bar-reason={data} role={tone === "warn" ? "status" : undefined}
       className={cn("flex min-w-0 items-start gap-1.5 text-[12px] leading-snug", tone === "warn" ? "text-ink" : "text-muted")}>
       <span aria-hidden className={cn("mt-[1px] shrink-0", tone === "warn" ? "text-warning" : "text-faint")}>{icon}</span>
-      <span className="min-w-0">{children}</span>
+      {/* One line on a phone (the rest is cut with an ellipsis); wraps on desktop as before. */}
+      <span className="min-w-0 max-lg:truncate max-lg:whitespace-nowrap">{children}</span>
     </p>
   );
 }
@@ -208,7 +209,6 @@ export function useBarLine({ unavailable, invalid, limit, cost, balance, session
       : first === "limit" && limit ? (
         <BarLine icon={<Layers size={13} />} tone="warn" data="limit">
           {shortLimit(t, locale, limit.max)}
-          {limit.plan !== "agency" && <BarAction href="/plan" data="raise">{t("inflight.raiseLimit")}</BarAction>}
         </BarLine>
       ) : null;
   // The account's state, from the one Public Tools rule, as ONE line with the
