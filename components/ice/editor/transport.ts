@@ -2,6 +2,7 @@
 import {
   iceAssetsAction, iceCmsMapAction, iceCmsMoveAction, iceCmsSaveAction, iceCmsVisibilityAction, iceGalleryDiscardAction, iceGalleryPublishAction,
   iceGalleryRestoreAction, iceGallerySaveAction, iceGalleryStateAction, iceGalleryVersionsAction, iceHistoryAction,
+  iceHomeLayoutSaveAction, iceHomeLayoutStateAction,
   iceLibraryAction, icePageAction, icePageHistoryAction, iceRegisterUploadAction, iceSetEditAction, iceSlotSaveAction,
   iceSlotStateAction, iceTextSaveAction, iceTextStateAction, iceUploadTicketAction, iceUsageAction,
 } from "@/app/actions/ice";
@@ -32,4 +33,6 @@ export const actionsTransport: IceTransport = {
   galleryDiscard: iceGalleryDiscardAction,
   galleryVersions: iceGalleryVersionsAction,
   galleryRestore: iceGalleryRestoreAction,
+  homeLayoutState: iceHomeLayoutStateAction,
+  homeLayoutSave: iceHomeLayoutSaveAction,
 };

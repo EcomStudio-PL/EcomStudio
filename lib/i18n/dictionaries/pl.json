@@ -10579,6 +10579,11 @@
         "name": "Wyprasuj",
         "sub": "Wygładzone zagniecenia i lepsza prezentacja ubrania."
       }
+    },
+    "edit": {
+      "toolHidden": "Narzędzie ukryte",
+      "itemHidden": "Ukryty element",
+      "sectionHidden": "Ukryta"
     }
   },
   "thumb": {
@@ -10812,7 +10817,8 @@
       "history": "Historia zmian",
       "leave": "Zakończ edycję",
       "leaving": "Kończenie…",
-      "galleries": "Galerie PRZED/PO"
+      "galleries": "Galerie PRZED/PO",
+      "layout": "Układ strony"
     },
     "page": {
       "home": "Strona główna aplikacji (/home)",
@@ -10870,7 +10876,8 @@
       "target": {
         "text": "Tekst",
         "slot": "Obraz",
-        "cms": "Strona CMS"
+        "cms": "Strona CMS",
+        "layout": "Układ strony"
       },
       "loading": "Wczytywanie historii…",
       "by": "Autor: {name}",
@@ -10881,7 +10888,9 @@
       "noFile": "Brak",
       "nothing": "Nie ma wcześniejszej wersji do przywrócenia.",
       "restore": "Przywróć tę wersję",
-      "restored": "Przywrócono"
+      "restored": "Przywrócono",
+      "layoutChange": "Zmiana układu strony",
+      "layoutSummary": "Sekcje ukryte: {hidden} · elementy: {items}"
     },
     "cms": {
       "live": "zmiana publikowana od razu",
@@ -10987,7 +10996,10 @@
         "noSuffix": "brak końcówki -przed / -po (albo -before / -after)",
         "missingBefore": "brak pliku „przed” do pary „{base}”",
         "missingAfter": "brak pliku „po” do pary „{base}”",
-        "duplicate": "para „{base}” ma więcej niż jeden plik po tej samej stronie"
+        "duplicate": "para „{base}” ma więcej niż jeden plik po tej samej stronie",
+        "refOrphan": "zdjęcie produktu bez zdjęcia o nazwie „{base}” — przypisz je ręcznie albo usuń",
+        "refDuplicate": "więcej niż jedno zdjęcie produktu dla „{base}” — zostaw jedno",
+        "refAmbiguous": "pasuje do kilku zdjęć o nazwie „{base}” — przypisz je ręcznie"
       },
       "filesTitle": "Pliki: {n}",
       "pairsTitle": "Pary: {n}",
@@ -11042,7 +11054,12 @@
         "retouch": "Retusz",
         "thumbnail": "Miniaturka",
         "outdoor": "Sesja zewnątrz"
-      }
+      },
+      "photo": "Zdjęcie",
+      "refPhoto": "Zdjęcie produktu",
+      "refsHint": "Zdjęcie produktu (opcjonalnie) dodasz, nazywając plik jak zdjęcie z końcówką -ref: buty.jpg + buty-ref.jpg. Pliki bez -ref są zwykłymi zdjęciami, jak dotąd.",
+      "linkRef": "Przypisz do zdjęcia… {name}",
+      "unlinkRef": "Usuń zdjęcie produktu"
     },
     "error": {
       "generic": "Nie udało się. Spróbuj ponownie.",
@@ -11102,7 +11119,8 @@
       "launch_draft": "Teksty strony premiery mają nieopublikowany szkic — potwierdź publikację całej strony.",
       "text_token": "Ten znacznik w nawiasach klamrowych nie jest tu dozwolony — popraw literówkę albo usuń go.",
       "too_many": "Za dużo par — galeria mieści najwyżej 30.",
-      "version_missing": "Tej wersji już nie ma albo nie zawiera tej galerii."
+      "version_missing": "Tej wersji już nie ma albo nie zawiera tej galerii.",
+      "migration_missing": "Układ strony nie jest jeszcze dostępny w tej bazie danych."
     },
     "sec": {
       "carousel": "Karuzela narzędzi",
@@ -11125,7 +11143,8 @@
       "toolsSections": "Sekcje katalogu",
       "toolsCards": "Karty narzędzi",
       "toolsRequest": "Zaproponuj narzędzie",
-      "toolHeader": "Nagłówek narzędzia"
+      "toolHeader": "Nagłówek narzędzia",
+      "campaign": "Kampania (baner)"
     },
     "role": {
       "toolName": "Nazwa narzędzia",
@@ -11157,7 +11176,8 @@
       "cardTitle": "Tytuł karty",
       "cardBody": "Opis karty",
       "cardImage": "Obraz karty",
-      "link": "Link"
+      "link": "Link",
+      "productPhoto": "Zdjęcie produktu"
     },
     "block": {
       "hero": "Sekcja główna",
@@ -11576,7 +11596,88 @@
     "faq.err.field.note": "Notatka jest za długa albo ma niedozwolone znaki.",
     "faq.err.field.name": "Nazwa po polsku jest wymagana (bez [nawiasów] i < >).",
     "faq.err.field.topic": "Wybierz temat formularza.",
-    "faq.err.field.id": "Nieprawidłowy identyfikator."
+    "faq.err.field.id": "Nieprawidłowy identyfikator.",
+    "layout": {
+      "title": "Układ strony",
+      "sub": "Kolejność i widoczność sekcji oraz elementów. Każda zmiana jest od razu na stronie i w historii.",
+      "undo": "Cofnij",
+      "undoHint": "Cofnij ostatnią zmianę układu",
+      "undone": "Cofnięto zmianę układu.",
+      "saved": "Zapisano układ strony.",
+      "preview": "Podgląd jako klient",
+      "previewOff": "Zakończ podgląd klienta",
+      "previewNote": "Podgląd pokazuje stronę tak, jak widzi ją klient: bez ukrytych sekcji, elementów i narzędzi.",
+      "sections": "Sekcje",
+      "visible": "Widoczna",
+      "hiddenChip": "Ukryta",
+      "itemHiddenChip": "Ukryty",
+      "toolHiddenChip": "Narzędzie ukryte",
+      "up": "W górę",
+      "down": "W dół",
+      "earlier": "Przesuń wcześniej",
+      "later": "Przesuń dalej",
+      "hide": "Ukryj",
+      "show": "Pokaż",
+      "items": "Elementy ({n})",
+      "texts": "Teksty",
+      "tool": "Narzędzie przycisku",
+      "toolDefault": "{name} (domyślne)",
+      "groupTools": "Narzędzia",
+      "groupCats": "Kategorie",
+      "back": "Wróć",
+      "listTitle": "Elementy · {section}",
+      "add": "+ Dodaj element",
+      "added": "Dodano element.",
+      "addLimit": "Ta lista osiągnęła limit elementów.",
+      "addSlots": "Wykorzystano wszystkie numery zdjęć tej sekcji.",
+      "addExists": "Wszystkie dostępne pozycje są już na tej liście.",
+      "edit": "Edytuj",
+      "remove": "Usuń",
+      "confirmRemove": "Usunąć ten element ze strony? Zdjęcia zostają w bibliotece mediów, narzędzie i historia generacji pozostają bez zmian. Można to cofnąć.",
+      "removed": "Usunięto element ze strony.",
+      "empty": "Lista jest pusta — klienci nie widzą tej sekcji, dopóki nie dodasz elementu.",
+      "dragHint": "Przeciągnij, aby zmienić kolejność",
+      "bulk": "Wgraj wiele",
+      "photoN": "Zdjęcie {n}",
+      "pairN": "Porównanie {n}",
+      "withRef": "+ zdjęcie produktu",
+      "noPhoto": "puste miejsce",
+      "sectionMenu": "Sekcja: {name}",
+      "itemMenu": "Element strony",
+      "form": {
+        "title": "Edytuj element",
+        "tool": "Narzędzie",
+        "toolTaken": "(już na liście)",
+        "toolNote": "Element znika klientom, gdy narzędzie zostanie ukryte w panelu dostępności.",
+        "name": "Nazwa (opcjonalnie)",
+        "nameHint": "Puste = nazwa narzędzia: {name}",
+        "sub": "Opis (opcjonalnie)",
+        "subHint": "Puste = opis narzędzia.",
+        "caption": "Podpis (opcjonalnie)",
+        "pageTexts": "Nazwa i opis tego kafelka to teksty strony — edytujesz je jak każdy tekst (z historią w każdym języku).",
+        "editName": "Edytuj nazwę",
+        "editSub": "Edytuj opis",
+        "href": "Link (opcjonalnie)",
+        "hrefHint": "Tylko adres w aplikacji, np. /k/moda/street. Puste = strona narzędzia. Link działa tylko, gdy narzędzie jest dostępne.",
+        "industry": "Branża",
+        "visible": "Widoczny dla klientów",
+        "tileImage": "Obraz kafelka",
+        "tileImageNote": "To obraz karty narzędzia — ten sam co w katalogu narzędzi.",
+        "pairImages": "Zdjęcia przed / po",
+        "photo": "Zdjęcie",
+        "productPhoto": "Zdjęcie produktu (opcjonalnie)",
+        "productPhotoHint": "Klient zobaczy je po najechaniu kursorem (komputer) lub przytrzymaniu palcem (telefon). Kadrowane w tych samych proporcjach co zdjęcie; oryginalny plik nie jest zmieniany.",
+        "empty": "Brak — puste miejsce",
+        "choose": "Wybierz / zmień",
+        "unlink": "Usuń powiązanie",
+        "confirmUnlink": "Usunąć powiązanie zdjęcia produktu z tym zdjęciem? Plik zostaje w bibliotece.",
+        "save": "Zapisz element",
+        "badText": "Tekst zawiera niedozwolone znaki (np. < lub >) albo jest za długi.",
+        "badHref": "Link musi być adresem w aplikacji zaczynającym się od „/”.",
+        "pillNote": "Pigułka narzędzia w kafelku „Wgraj zdjęcie”: możesz zmienić jej kolejność i widoczność. Jej nazwę edytujesz jako tekst strony.",
+        "gone": "Tego elementu nie ma już w układzie (usunięty w międzyczasie)."
+      }
+    }
   },
   "iceAdmin": {
     "title": "Edytor wizualny",

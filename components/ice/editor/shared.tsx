@@ -43,6 +43,8 @@ const KNOWN = new Set([
   "text_token",
   // The launch page's galleries (lib/server/ice/gallery.ts).
   "bad_key", "bad_input", "too_many", "bad_item", "duplicate_id", "incomplete_pairs", "launch_draft", "version_missing",
+  // /home's layout (0170).
+  "migration_missing",
 ]);
 
 export function errorText(t: T, code: string): string {

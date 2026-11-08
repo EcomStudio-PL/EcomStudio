@@ -38,6 +38,9 @@ import { favoriteRingEnabled } from "@/lib/server/appearance";
 import { ImportantBanner } from "@/components/layout/important-banner";
 import { GenerationToast } from "@/components/layout/generation-toast";
 import { InflightTitle } from "@/components/inflight/inflight-section";
+import { SiteFooter } from "@/components/cms/site-shell";
+import { getGlobalSections, getNavPages, getPublicSite } from "@/lib/server/public-site";
+import { HomeFooter } from "@/components/seller-home/home-footer";
 
 export default async function AppLayout({ children, searchParams }: {
   children: React.ReactNode;
@@ -155,8 +158,9 @@ export default async function AppLayout({ children, searchParams }: {
   // slowest member anyway — measurably free, and it keeps the bonus branch
   // below from re-introducing a serial await.
   const [
-    { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, bell,
+    { dict: appDict, locale: appLocale }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, bell,
     availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout, searchTags, favoriteRing,
+    footerGlobal, footerNav, footerSite,
   ] = await Promise.all([
     getDictionary(),
     // The customer app's own namespaces, on top of what the root layout already
@@ -195,6 +199,12 @@ export default async function AppLayout({ children, searchParams }: {
     readToolSearchTags(supabase),
     // Ulubione V2: the ring around a liked tile (admin switch, default ON).
     favoriteRingEnabled(supabase),
+    // The public site's footer, shown under /home (components/seller-home/
+    // home-footer.tsx): the same two cached reads and one settings row every
+    // public page makes, in this batch rather than after it.
+    getGlobalSections(),
+    getNavPages(),
+    getPublicSite(supabase),
   ]);
   const menuItems = menuItemKeys(toolsLayout);
   const t0 = makeT(appDict);
@@ -289,6 +299,11 @@ export default async function AppLayout({ children, searchParams }: {
               it. */}
           <FeedbackCTA />
         </main>
+        {/* /home only: the public site's footer, after „Zgłoś błąd” — the
+            one shared component, not a copy. */}
+        <HomeFooter>
+          <SiteFooter global={footerGlobal} nav={footerNav} site={footerSite} locale={appLocale} t={t0} />
+        </HomeFooter>
         <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
         <CustomerDrawer name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
         {bonusView?.status === "ELIGIBLE" && (

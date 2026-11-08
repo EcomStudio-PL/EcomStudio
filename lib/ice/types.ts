@@ -1,4 +1,5 @@
 import type { GalleryItem, GalleryKey } from "@/lib/launch/gallery";
+import type { HomeLayout } from "@/lib/home-layout";
 
 /**
  * THE INLINE CONTENT EDITOR'S SHARED VOCABULARY — types only, no values, so
@@ -75,7 +76,7 @@ export type IcePage = {
   type: IcePageType;
   sections: IceSection[];
   /** Media groups that accept "Wgraj wiele". */
-  bulk?: { key: string; slots: string[]; pairs?: boolean }[];
+  bulk?: { key: string; slots: string[]; pairs?: boolean; refs?: boolean }[];
 };
 
 /* ── what the server hands the editor ─────────────────────────────────── */
@@ -313,10 +314,17 @@ export type IceTransport = {
   galleryDiscard: (input: { key: GalleryKey; base: string | null }) => Promise<IceResult<{ updatedAt: string }>>;
   galleryVersions: (input: { key: GalleryKey }) => Promise<IceResult<{ versions: IceGalleryVersion[]; assets: Record<string, IceAsset> }>>;
   galleryRestore: (input: { key: GalleryKey; version: string; base: string | null }) => Promise<IceResult<{ blockId: string; updatedAt: string }>>;
+  /* /home's layout (0170): sections, lists, their order and visibility —
+     one document, written whole with compare-and-set, with a history. */
+  homeLayoutState: () => Promise<IceResult<IceHomeLayout>>;
+  homeLayoutSave: (input: { doc: unknown; base: string | null; action?: "save" | "restore" }) => Promise<IceResult<IceHomeLayout>>;
   /** Where the browser puts an uploaded file. Absent = Supabase Storage (the
    *  real editor); a probe passes its own so nothing leaves the page. */
   putFile?: (path: string, file: File) => Promise<boolean>;
 };
+
+/** /home's layout as stored, with the updated_at a save must name. */
+export type IceHomeLayout = { layout: HomeLayout; updatedAt: string | null };
 
 export type IceCmsVisibilityInput = { blockId: string; path: string[]; hidden: boolean; base: string | null };
 

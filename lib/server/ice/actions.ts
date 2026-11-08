@@ -13,8 +13,9 @@ import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
 import de from "@/lib/i18n/dictionaries/de.json";
 import {
-  ICE_PAGES, ICE_TEXT_KEYS, allElements, icePageFor, isDeniedKey, pageTextKeys, pagesOfText, slotSpec, textSpec,
+  ICE_PAGES, ICE_TEXT_KEYS, allElements, homePage, icePageFor, isDeniedKey, pageTextKeys, pagesOfText, slotSpec, textSpec,
 } from "@/lib/ice/registry";
+import { readHomeLayout } from "@/lib/server/home-layout";
 import { altProblem, normaliseText, textProblem } from "@/lib/ice/validate";
 import { hasInvisible } from "@/lib/ice/stega";
 import { isIceMime, kindOf, maxBytesFor, safeName, sniff } from "@/lib/ice/sniff";
@@ -37,6 +38,7 @@ import {
 // module; they are exported from here so the "use server" wrappers in
 // app/actions/ice.ts reach every editor action through this one file.
 export { galleryDiscard, galleryPublish, galleryRestore, gallerySave, galleryState, galleryVersions } from "./gallery";
+export { homeLayoutSave, homeLayoutState } from "./home";
 
 /**
  * EVERY WRITE (AND ADMIN READ) THE VISUAL EDITOR MAKES.
@@ -147,12 +149,20 @@ export function rememberAdmin(): Promise<IceResult<undefined>> {
   });
 }
 
+/** The registry page for a path — /home built from the layout stored now
+ *  (its tiles, pairs and photos), every other page as registered. */
+async function registryPage(supabase: Client, path: string) {
+  const page = icePageFor(path);
+  if (!page || path !== "/home") return page;
+  return homePage((await readHomeLayout(supabase)).layout);
+}
+
 export function pageInfo(rawPath: string): Promise<IceResult<IcePageInfo>> {
   return run(async () => {
     const { supabase } = await requireIceAdmin();
     const path = cleanPath(rawPath);
     if (!path) throw new IceRefusal("unsupported");
-    const page = icePageFor(path);
+    const page = await registryPage(supabase, path);
     if (page) return { kind: "registry", page, textKeys: pageTextKeys(page) };
     const row = await cmsPageAt(supabase, path);
     if (!row) throw new IceRefusal("unsupported");
@@ -482,20 +492,24 @@ export function pageHistory(rawPath: string): Promise<IceResult<(IceVersion & { 
     const path = cleanPath(rawPath);
     if (!path) throw new IceRefusal("unsupported");
     const cols = "id, target, key, action, locale, before, after, created_at, created_by";
-    const page = icePageFor(path);
+    const page = await registryPage(supabase, path);
     let rows: VersionRow[] = [];
     if (page) {
       const texts = pageTextKeys(page);
       const slots = [...new Set(allElements(page).flatMap((e) => (e.slots ?? []).map((s) => s.key)))];
-      const [a, b] = await Promise.all([
+      const [a, b, c] = await Promise.all([
         supabase.from("content_versions").select(cols).eq("target", "text").in("key", texts).order("created_at", { ascending: false }).limit(40),
         slots.length
           ? supabase.from("content_versions").select(cols).eq("target", "slot").in("key", slots).order("created_at", { ascending: false }).limit(40)
           : Promise.resolve({ data: [], error: null }),
+        // /home: the layout's own changes (sections, lists) — 0170.
+        path === "/home"
+          ? supabase.from("content_versions").select(cols).eq("target", "layout").eq("key", "home").order("created_at", { ascending: false }).limit(40)
+          : Promise.resolve({ data: [], error: null }),
       ]);
       if (a.error) throw new Error(a.error.message);
       if (b.error) throw new Error(b.error.message);
-      rows = [...(a.data ?? []), ...(b.data ?? [])] as VersionRow[];
+      rows = [...(a.data ?? []), ...(b.data ?? []), ...(c.error ? [] : c.data ?? [])] as VersionRow[];
     } else {
       const row = await cmsPageAt(supabase, path);
       if (!row) throw new IceRefusal("unsupported");

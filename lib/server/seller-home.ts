@@ -9,7 +9,10 @@ import { fashionModel, fashionPrice, fashionToolAvailable } from "@/lib/server/f
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RETOUCH_DEFAULT_RESOLUTION, retouchModel, retouchPrice, retouchWorkflowSize } from "@/lib/server/retouch";
 import { loadBanners, loadSlots, type LiveBanner, type SlotMap } from "@/lib/server/media-slots";
-import { filledHomeSlots, sellerHomeSlotKeys, withSampleSlots, type HomeSlotMap } from "@/lib/server/seller-home-slots";
+import { HOME_SECTION_SLOT_KEYS, filledHomeSlots, slotReadBatches, withSampleSlots, type HomeSlotMap } from "@/lib/server/seller-home-slots";
+import { readHomeLayout } from "@/lib/server/home-layout";
+import { iceEditSession } from "@/lib/server/ice/session";
+import { defaultHomeLayout, layoutItems, layoutSlotKeys, type HomeLayout } from "@/lib/home-layout";
 import { bannerSlotKey, categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { getBonusConfig, getCampaignStart, readOffer, toView } from "@/lib/server/welcome-bonus";
 import { paymentsEnabled } from "@/lib/stripe/config";
@@ -89,18 +92,26 @@ export type SellerHomeData = {
    *  so the page is handed nothing it did not get before. */
   homeSlots?: HomeSlotMap;
   isAdmin: boolean;
+  /** The sections and lists as an admin arranged them (no row: the default). */
+  layout: HomeLayout;
+  /** An admin in „Edytuj stronę” on /home: hidden sections and items are drawn,
+   *  marked, instead of left out (never for a customer, never in the
+   *  "look as a customer" preview — viewerIsAdmin is false there). */
+  editing: boolean;
 };
 
 function emptyData(): SellerHomeData {
   return {
     balance: 0, items: {}, uploadTools: [], toolSlots: {}, channel: null, askChannel: false,
     interests: [], soon: [], pro: null, banners: [], slots: new Map(), isAdmin: false,
+    layout: defaultHomeLayout(), editing: false,
   };
 }
 
-/** Every catalogue item any section references. */
-export function referencedItems(): string[] {
-  const keys = new Set<string>();
+/** Every catalogue item any section references — the config's, and every
+ *  tool the layout binds a tile, a pair or a section button to. */
+export function referencedItems(layout?: HomeLayout): string[] {
+  const keys = new Set<string>(layout ? layoutItems(layout) : []);
   CAROUSEL.forEach((c) => keys.add(c.item));
   UPLOAD_TOOLS.forEach((u) => keys.add(u.item));
   BEFORE_AFTER.forEach((b) => keys.add(b.item));
@@ -141,7 +152,7 @@ export async function loadSellerHome(supabase: Client, user: {
   const [
     wallet, availability, isAdmin, catalogue, modelOptions, usable, engineRows, keyed,
     retouch, retouchConfigured, retouchOutputs, fashion, fashionAvail, planRow, activeSub,
-    generationCount, interestRows, surveyRow, bonusConfig, offer, campaignStart, banners, layout, thumbnail,
+    generationCount, interestRows, surveyRow, bonusConfig, offer, campaignStart, banners, layout, thumbnail, homeLayout, edit,
   ] = await Promise.all([
     getWallet(supabase, workspace.id),
     getAvailabilityMap(supabase),
@@ -182,7 +193,11 @@ export async function loadSellerHome(supabase: Client, user: {
     // Miniaturka runs its own pipeline: whether it can run, and the price of
     // its composition (Retusz is an option the screen prices on its own).
     readThumbnailState(supabase, { retouch: false }).catch(() => null),
+    // The page's own arrangement (0170) — the default when none is stored.
+    readHomeLayout(supabase),
+    iceEditSession(),
   ]);
+  const editing = isAdmin && edit?.path === "/home";
 
   /* ── per-item facts ─────────────────────────────────────────────────── */
 
@@ -286,11 +301,23 @@ export async function loadSellerHome(supabase: Client, user: {
     return { key, href, status: status(gate, runs), credits: entry ? (waiting ? null : entry.credits) : 0 };
   }
 
+  /** Whether a CUSTOMER is offered this item — the same switchboard and
+   *  /tools layout answer, asked without the admin's pass. */
+  function customerOffered(key: string, s: ItemState): boolean {
+    if (s.status === "disabled") return false;
+    if (key.startsWith("cat:")) {
+      const cat = CATEGORIES.find((c) => c.key === key.slice(4));
+      return Boolean(cat) && menuVisible(availability, categoryGates(cat!), false);
+    }
+    const item = catalogItem(key);
+    return Boolean(item) && itemReachable(availability, item!, false) && layout.flags[key]?.tools !== false;
+  }
+
   const items: Record<string, ItemState> = {};
-  for (const k of referencedItems()) {
+  for (const k of referencedItems(homeLayout.layout)) {
     const s = itemState(k);
     // A customer never sees a switched-off item; an admin sees it, marked.
-    if (s && (s.status !== "disabled" || isAdmin)) items[k] = s;
+    if (s && (s.status !== "disabled" || isAdmin)) items[k] = isAdmin && !customerOffered(k, s) ? { ...s, customerHidden: true } : s;
   }
 
   /* ── admin card pictures for the tools on the page ──────────────────── */
@@ -300,16 +327,30 @@ export async function loadSellerHome(supabase: Client, user: {
     const slot = adminSlotKey(k);
     if (slot) wanted[k] = slot;
   }
-  // ONE read for every picture the page may paint: the tool cards, the
-  // campaign banners, and /home's own section slots (the visual editor's) —
-  // never one per section.
-  const slots = await loadSlots(supabase, sellerHomeSlotKeys(Object.values(wanted), banners.map((b) => bannerSlotKey(b.key))));
+  // Every picture the page may paint, read together (never one read per
+  // section): the tool cards and the campaign banners always in the first
+  // batch, then /home's own section slots — the registry's and the layout's
+  // (its pairs, grid photos and their product photos) — in batches that never
+  // pass the resolver's 200-key cap, so a growing layout never drops a card.
+  const sectionKeys = [...new Set([...HOME_SECTION_SLOT_KEYS, ...layoutSlotKeys(homeLayout.layout)])];
+  const batches = slotReadBatches([...Object.values(wanted), ...banners.map((b) => bannerSlotKey(b.key))], sectionKeys);
+  const read = await Promise.all(batches.map((keys) => loadSlots(supabase, keys)));
+  const slots = new Map(read.flatMap((m) => [...m]));
   // Only the slots an admin actually filled.
   const toolSlots = Object.fromEntries(Object.entries(wanted).filter(([, slot]) => slots.has(slot)));
-  const homeSlots = filledHomeSlots(slots);
+  const homeSlots = filledHomeSlots(slots, sectionKeys);
   // A filled sample slot reaches the upload tile as a per-request copy of
   // its pill; with none filled the pills are resolveUploadTools' own.
-  const uploadTools = withSampleSlots(resolveUploadTools(items), homeSlots);
+  // The pills in the layout's order; a hidden one left out — in edit mode
+  // drawn and marked, with the tool's own "hidden for customers" mark too.
+  const resolved = resolveUploadTools(items);
+  const arranged = homeLayout.layout.pills.flatMap((p) => {
+    const tool = resolved.find((x) => x.key === p.id);
+    if (!tool || (p.hidden && !editing)) return [];
+    const flag = !editing ? undefined : p.hidden ? "item" as const : items[tool.item]?.customerHidden ? "tool" as const : undefined;
+    return [flag ? { ...tool, flag } : tool];
+  });
+  const uploadTools = withSampleSlots(arranged, homeSlots);
 
   /* ── the seller ─────────────────────────────────────────────────────── */
 
@@ -361,5 +402,7 @@ export async function loadSellerHome(supabase: Client, user: {
     slots,
     ...(homeSlots ? { homeSlots } : {}),
     isAdmin,
+    layout: homeLayout.layout,
+    editing,
   };
 }

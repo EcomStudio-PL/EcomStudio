@@ -10579,6 +10579,11 @@
         "name": "Bügeln",
         "sub": "Geglättete Falten für eine bessere Präsentation."
       }
+    },
+    "edit": {
+      "toolHidden": "Werkzeug ausgeblendet",
+      "itemHidden": "Ausgeblendetes Element",
+      "sectionHidden": "Ausgeblendet"
     }
   },
   "thumb": {
@@ -10812,7 +10817,8 @@
       "history": "Änderungsverlauf",
       "leave": "Bearbeitung beenden",
       "leaving": "Wird beendet…",
-      "galleries": "VORHER/NACHHER-Galerien"
+      "galleries": "VORHER/NACHHER-Galerien",
+      "layout": "Seitenlayout"
     },
     "page": {
       "home": "App-Startseite (/home)",
@@ -10870,7 +10876,8 @@
       "target": {
         "text": "Text",
         "slot": "Bild",
-        "cms": "CMS-Seite"
+        "cms": "CMS-Seite",
+        "layout": "Seitenlayout"
       },
       "loading": "Verlauf wird geladen…",
       "by": "Von {name}",
@@ -10881,7 +10888,9 @@
       "noFile": "Keine",
       "nothing": "Es gibt keine frühere Version zum Wiederherstellen.",
       "restore": "Diese Version wiederherstellen",
-      "restored": "Wiederhergestellt"
+      "restored": "Wiederhergestellt",
+      "layoutChange": "Änderung des Seitenlayouts",
+      "layoutSummary": "Ausgeblendete Abschnitte: {hidden} · Elemente: {items}"
     },
     "cms": {
       "live": "wird sofort veröffentlicht",
@@ -10987,7 +10996,10 @@
         "noSuffix": "keine Endung -before / -after (oder -przed / -po)",
         "missingBefore": "die „Vorher“-Datei zum Paar „{base}“ fehlt",
         "missingAfter": "die „Nachher“-Datei zum Paar „{base}“ fehlt",
-        "duplicate": "Paar „{base}“ hat mehr als eine Datei für dieselbe Seite"
+        "duplicate": "Paar „{base}“ hat mehr als eine Datei für dieselbe Seite",
+        "refOrphan": "ein Produktfoto ohne Foto namens „{base}“ — manuell zuordnen oder entfernen",
+        "refDuplicate": "mehr als ein Produktfoto für „{base}“ — behalte eines",
+        "refAmbiguous": "passt zu mehreren Fotos namens „{base}“ — manuell zuordnen"
       },
       "filesTitle": "Dateien: {n}",
       "pairsTitle": "Paare: {n}",
@@ -11042,7 +11054,12 @@
         "retouch": "Retusche",
         "thumbnail": "Thumbnail",
         "outdoor": "Outdoor-Session"
-      }
+      },
+      "photo": "Foto",
+      "refPhoto": "Produktfoto",
+      "refsHint": "Ein optionales Produktfoto fügst du hinzu, indem du die Datei wie das Foto mit -ref benennst: schuhe.jpg + schuhe-ref.jpg. Dateien ohne -ref sind wie bisher normale Fotos.",
+      "linkRef": "Foto zuordnen… {name}",
+      "unlinkRef": "Produktfoto entfernen"
     },
     "error": {
       "generic": "Das hat nicht geklappt. Bitte versuche es erneut.",
@@ -11102,7 +11119,8 @@
       "launch_draft": "Die Texte der Launch-Seite haben einen unveröffentlichten Entwurf — bestätige, dass die ganze Seite veröffentlicht wird.",
       "text_token": "Dieser Platzhalter in geschweiften Klammern ist hier nicht erlaubt — korrigiere den Tippfehler oder entferne ihn.",
       "too_many": "Zu viele Paare — eine Galerie fasst höchstens 30.",
-      "version_missing": "Diese Version gibt es nicht mehr, oder sie enthält diese Galerie nicht."
+      "version_missing": "Diese Version gibt es nicht mehr, oder sie enthält diese Galerie nicht.",
+      "migration_missing": "Das Seitenlayout ist in dieser Datenbank noch nicht verfügbar."
     },
     "sec": {
       "carousel": "Werkzeug-Karussell",
@@ -11125,7 +11143,8 @@
       "toolsSections": "Katalogbereiche",
       "toolsCards": "Werkzeugkarten",
       "toolsRequest": "Werkzeug vorschlagen",
-      "toolHeader": "Werkzeug-Kopfbereich"
+      "toolHeader": "Werkzeug-Kopfbereich",
+      "campaign": "Kampagne (Banner)"
     },
     "role": {
       "toolName": "Werkzeugname",
@@ -11157,7 +11176,8 @@
       "cardTitle": "Kartentitel",
       "cardBody": "Kartenbeschreibung",
       "cardImage": "Kartenbild",
-      "link": "Link"
+      "link": "Link",
+      "productPhoto": "Produktfoto"
     },
     "block": {
       "hero": "Hero",
@@ -11576,7 +11596,88 @@
     "faq.err.field.note": "Die Notiz ist zu lang oder enthält unzulässige Zeichen.",
     "faq.err.field.name": "Der polnische Name ist erforderlich (keine [Klammern] oder < >).",
     "faq.err.field.topic": "Wähle ein Formularthema.",
-    "faq.err.field.id": "Ungültige Kennung."
+    "faq.err.field.id": "Ungültige Kennung.",
+    "layout": {
+      "title": "Seitenlayout",
+      "sub": "Reihenfolge und Sichtbarkeit von Abschnitten und Elementen. Jede Änderung ist sofort live und im Verlauf gespeichert.",
+      "undo": "Rückgängig",
+      "undoHint": "Letzte Layoutänderung rückgängig machen",
+      "undone": "Layoutänderung rückgängig gemacht.",
+      "saved": "Seitenlayout gespeichert.",
+      "preview": "Vorschau als Kunde",
+      "previewOff": "Kundenvorschau beenden",
+      "previewNote": "Die Vorschau zeigt die Seite wie ein Kunde: ohne ausgeblendete Abschnitte, Elemente und Werkzeuge.",
+      "sections": "Abschnitte",
+      "visible": "Sichtbar",
+      "hiddenChip": "Ausgeblendet",
+      "itemHiddenChip": "Ausgeblendet",
+      "toolHiddenChip": "Werkzeug ausgeblendet",
+      "up": "Nach oben",
+      "down": "Nach unten",
+      "earlier": "Nach vorne",
+      "later": "Nach hinten",
+      "hide": "Ausblenden",
+      "show": "Einblenden",
+      "items": "Elemente ({n})",
+      "texts": "Texte",
+      "tool": "Werkzeug der Schaltfläche",
+      "toolDefault": "{name} (Standard)",
+      "groupTools": "Werkzeuge",
+      "groupCats": "Kategorien",
+      "back": "Zurück",
+      "listTitle": "Elemente · {section}",
+      "add": "+ Element hinzufügen",
+      "added": "Element hinzugefügt.",
+      "addLimit": "Diese Liste hat ihr Elementlimit erreicht.",
+      "addSlots": "Alle Fotonummern dieses Abschnitts sind vergeben.",
+      "addExists": "Alle verfügbaren Einträge sind bereits in dieser Liste.",
+      "edit": "Bearbeiten",
+      "remove": "Entfernen",
+      "confirmRemove": "Dieses Element von der Seite entfernen? Fotos bleiben in der Mediathek; Werkzeug und Generierungsverlauf bleiben unverändert. Das lässt sich rückgängig machen.",
+      "removed": "Element von der Seite entfernt.",
+      "empty": "Die Liste ist leer — Kunden sehen diesen Abschnitt erst, wenn du ein Element hinzufügst.",
+      "dragHint": "Ziehen zum Umsortieren",
+      "bulk": "Mehrere hochladen",
+      "photoN": "Foto {n}",
+      "pairN": "Vergleich {n}",
+      "withRef": "+ Produktfoto",
+      "noPhoto": "leerer Platz",
+      "sectionMenu": "Abschnitt: {name}",
+      "itemMenu": "Seitenelement",
+      "form": {
+        "title": "Element bearbeiten",
+        "tool": "Werkzeug",
+        "toolTaken": "(bereits gelistet)",
+        "toolNote": "Das Element verschwindet für Kunden, wenn das Werkzeug im Verfügbarkeitspanel ausgeblendet wird.",
+        "name": "Name (optional)",
+        "nameHint": "Leer = Name des Werkzeugs: {name}",
+        "sub": "Beschreibung (optional)",
+        "subHint": "Leer = Beschreibung des Werkzeugs.",
+        "caption": "Bildunterschrift (optional)",
+        "pageTexts": "Name und Beschreibung dieser Kachel sind Seitentexte — bearbeite sie wie jeden Text (mit Verlauf je Sprache).",
+        "editName": "Name bearbeiten",
+        "editSub": "Beschreibung bearbeiten",
+        "href": "Link (optional)",
+        "hrefHint": "Nur eine App-Adresse, z. B. /k/moda/street. Leer = Seite des Werkzeugs. Der Link funktioniert nur, solange das Werkzeug verfügbar ist.",
+        "industry": "Branche",
+        "visible": "Für Kunden sichtbar",
+        "tileImage": "Kachelbild",
+        "tileImageNote": "Das ist das Bild der Werkzeugkarte — dasselbe wie im Werkzeugkatalog.",
+        "pairImages": "Vorher-/Nachher-Fotos",
+        "photo": "Foto",
+        "productPhoto": "Produktfoto (optional)",
+        "productPhotoHint": "Kunden sehen es beim Darüberfahren (Desktop) oder langem Drücken (Telefon). Im selben Format wie das Foto zugeschnitten; die Originaldatei bleibt unverändert.",
+        "empty": "Keins — leerer Platz",
+        "choose": "Wählen / ändern",
+        "unlink": "Verknüpfung lösen",
+        "confirmUnlink": "Produktfoto von diesem Foto lösen? Die Datei bleibt in der Mediathek.",
+        "save": "Element speichern",
+        "badText": "Der Text enthält unzulässige Zeichen (z. B. < oder >) oder ist zu lang.",
+        "badHref": "Der Link muss eine App-Adresse sein, die mit „/“ beginnt.",
+        "pillNote": "Eine Werkzeug-Pille der Upload-Kachel: Reihenfolge und Sichtbarkeit sind änderbar. Ihr Name ist ein Seitentext.",
+        "gone": "Dieses Element ist nicht mehr im Layout (inzwischen entfernt)."
+      }
+    }
   },
   "iceAdmin": {
     "title": "Visueller Editor",

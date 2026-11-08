@@ -1235,3 +1235,89 @@
   border: 0;
   background: rgb(var(--bg));
 }
+
+/* ── „Układ strony” (layout-panel.tsx) ─────────────────────────────────── */
+
+.layoutRow {
+  grid-template-columns: auto 56px minmax(0, 1fr) auto;
+}
+
+.layoutThumb {
+  display: block;
+  width: 56px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgb(var(--sunken));
+}
+
+.layoutThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A section's toolbar on the page: at its top-right corner, page coordinates. */
+.layoutBar {
+  position: absolute;
+  z-index: 999999970;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px 3px 10px;
+  transform: translateX(-100%);
+  border-radius: 99px;
+  border: 1px solid rgb(var(--line-strong));
+  background: rgb(var(--surface) / 0.94);
+  color: rgb(var(--ink));
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+  font: 600 11px/1.2 var(--font-body);
+  opacity: 0.86;
+  transition: opacity 120ms ease;
+}
+
+.layoutBar:hover,
+.layoutBar:focus-within {
+  opacity: 1;
+}
+
+.layoutBarName {
+  max-width: 14ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin-right: 4px;
+  color: rgb(var(--muted));
+}
+
+/* The item under the mouse: its own small toolbar at its corner. */
+.layoutItemBar {
+  position: fixed;
+  z-index: 999999975;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--line-strong));
+  background: rgb(var(--surface) / 0.96);
+  color: rgb(var(--ink));
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+}
+
+@media (max-width: 639.98px) {
+  .layoutRow {
+    grid-template-columns: auto 44px minmax(0, 1fr);
+  }
+  .layoutRow > :last-child {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+  .layoutThumb {
+    width: 44px;
+    height: 34px;
+  }
+  .layoutBarName {
+    display: none;
+  }
+}

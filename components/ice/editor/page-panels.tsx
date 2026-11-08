@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { notify } from "@/lib/notify";
 import type { IceCmsField, IceElement, IceVersion } from "@/lib/ice/types";
 import { GALLERY_KEYS } from "@/lib/launch/gallery";
+import { defaultHomeLayout, normalizeHomeLayout } from "@/lib/home-layout";
 import { galleryUid, type Target } from "./scan";
 import { cmsFieldLabel } from "./cms-panel";
 import { toggleLabel } from "./visibility-panel";
@@ -49,11 +50,11 @@ export function entriesOf(ctx: EditorCtx, targets: Target[]): Entry[] {
   return [...fields, ...slots, ...galleries];
 }
 
-export function ElementsPanel({ ctx, targets, onPick, onClose }: {
-  ctx: EditorCtx; targets: Target[]; onPick: (uid: string) => void; onClose: () => void;
+export function ElementsPanel({ ctx, targets, query, onPick, onClose }: {
+  ctx: EditorCtx; targets: Target[]; query?: string; onPick: (uid: string) => void; onClose: () => void;
 }) {
   const { t } = ctx;
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(query ?? "");
   const entries = useMemo(() => entriesOf(ctx, targets), [ctx, targets]);
   const shown = entries.filter((e) => !q.trim() || `${e.section} ${e.label}`.toLowerCase().includes(q.trim().toLowerCase()));
   const groups = new Map<string, Entry[]>();
@@ -87,7 +88,15 @@ const valueOf = (v: unknown): string | null =>
 
 type PageVersion = IceVersion & { target: string; key: string };
 
-export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onOpen: (uid: string) => void; onClose: () => void }) {
+/** A layout version's document (null before the first save = the default layout). */
+const layoutDoc = (side: unknown) =>
+  side && typeof side === "object" && "doc" in side ? normalizeHomeLayout((side as { doc: unknown }).doc) : defaultHomeLayout();
+
+export function PageHistoryPanel({ ctx, onOpen, onClose, onRestoreLayout }: {
+  ctx: EditorCtx; onOpen: (uid: string) => void; onClose: () => void;
+  /** /home: save a layout document from the history back. */
+  onRestoreLayout?: (doc: unknown) => Promise<boolean>;
+}) {
   const { t, transport, info } = ctx;
   const [rows, setRows] = useState<PageVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +143,7 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
   };
 
   const labelOf = (v: PageVersion) => {
+    if (v.target === "layout") return t("ice.history.layoutChange");
     if (v.target === "cms") {
       const toggle = cmsToggle(v.key);
       if (toggle) return `${t("ice.vis.title")} · ${toggleLabel(t, toggle, ctx.locale)}`;
@@ -157,11 +167,26 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
     return f ? (f.kind === "text" ? `c:${f.id}` : f.kind === "link" ? `cl:${f.id}` : `cm:${f.id}`) : null;
   };
   const shownValue = (v: PageVersion, side: unknown) => {
+    if (v.target === "layout") {
+      const l = layoutDoc(side);
+      const items = l.carousel.length + l.featured.length + l.beforeAfter.length + l.pills.length + l.thumbnails.length + l.sessions.length + l.showcase.length;
+      const hiddenNames = l.sections.filter((x) => x.hidden).map((x) => t(`ice.sec.${x.id}`));
+      return `${t("ice.history.layoutSummary", { hidden: hiddenNames.length ? hiddenNames.join(", ") : "0", items })} · ${l.sections.filter((x) => !x.hidden).map((x) => t(`ice.sec.${x.id}`)).join(" → ")}`;
+    }
     const hidden = hiddenOf(side);
     if (hidden !== null) return t(hidden ? "ice.vis.hidden" : "ice.vis.shown");
     const position = side && typeof side === "object" ? (side as { position?: unknown }).position : undefined;
     if (typeof position === "number") return t("ice.contact.position", { n: position });
     return valueOf(side) ?? (v.target === "text" ? t("ice.text.defaultShort") : "—");
+  };
+
+  /** Undo one layout change: the whole document before it, saved back. */
+  const undoLayout = async (v: PageVersion) => {
+    if (!onRestoreLayout) return;
+    setBusy(true);
+    const ok = await onRestoreLayout(layoutDoc(v.before));
+    setBusy(false);
+    if (ok) void load();
   };
 
   /** Undo one text change: back to the value before it (null = default). */
@@ -207,6 +232,9 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
                 <div className={s.row}>
                   {uid && <Btn small onClick={() => onOpen(uid)}>{t("ice.history.open")}</Btn>}
                   {v.target === "text" && <Btn small kind="ghost" disabled={busy} onClick={() => void undoText(v)}>{t("ice.history.undoThis")}</Btn>}
+                  {v.target === "layout" && onRestoreLayout && (
+                    <Btn small kind="ghost" disabled={busy} onClick={() => void undoLayout(v)}>{t("ice.history.undoThis")}</Btn>
+                  )}
                 </div>
               </li>
             );

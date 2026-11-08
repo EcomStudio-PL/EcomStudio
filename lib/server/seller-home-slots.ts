@@ -41,30 +41,31 @@ export const HOME_SECTION_SLOT_KEYS: readonly string[] = (() => {
 })();
 
 /**
- * The keys of /home's ONE batched slot read: the tool cards and the campaign
- * banners it always read, plus its own section slots.
+ * The keys of /home's slot reads: the tool cards and the campaign banners it
+ * always read FIRST, then its own section slots (the registry's and the
+ * layout's), cut into calls of at most SLOT_READ_CAP keys.
  *
- * Over the resolver's cap the read would return nothing at all — every tool
- * card and banner picture would vanish with it. So past the cap the section
- * slots are left out (they fall back to their placeholders) and the cards
- * and banners keep working; the tests hold the real count far below it.
+ * One call past the cap would return nothing at all — every tool card and
+ * banner picture would vanish with it — so no call ever passes it; a layout
+ * that grows only adds a call. Duplicates are read once.
  */
-export function sellerHomeSlotKeys(cardSlots: readonly string[], bannerSlots: readonly string[]): string[] {
-  const always = [...new Set([...cardSlots, ...bannerSlots])];
-  const all = [...new Set([...always, ...HOME_SECTION_SLOT_KEYS])];
-  if (all.length <= SLOT_READ_CAP) return all;
-  console.error(`[seller-home] ${all.length} slot keys exceed the resolver's ${SLOT_READ_CAP}; the section slots are skipped`);
-  return always;
+export function slotReadBatches(always: readonly string[], section: readonly string[]): string[][] {
+  const keys = [...new Set([...always, ...section])];
+  const batches: string[][] = [];
+  for (let i = 0; i < keys.length; i += SLOT_READ_CAP) batches.push(keys.slice(i, i + SLOT_READ_CAP));
+  return batches;
 }
 
 /** The /home section slots an admin filled — only those. */
 export type HomeSlotMap = Readonly<Record<string, ResolvedSlot>>;
 
-/** The filled section slots out of the screen's one read; none → undefined,
- *  so nothing new travels with the page while the editor has not been used. */
-export function filledHomeSlots(slots: SlotMap): HomeSlotMap | undefined {
+/** The filled section slots out of the screen's read; none → undefined,
+ *  so nothing new travels with the page while the editor has not been used.
+ *  `keys`: the section slots the page paints (the layout's — its pairs, grid
+ *  photos and their product photos); the registry's default list without one. */
+export function filledHomeSlots(slots: SlotMap, keys: readonly string[] = HOME_SECTION_SLOT_KEYS): HomeSlotMap | undefined {
   const out: Record<string, ResolvedSlot> = {};
-  for (const key of HOME_SECTION_SLOT_KEYS) {
+  for (const key of keys) {
     const slot = slots.get(key);
     if (slot) out[key] = slot;
   }

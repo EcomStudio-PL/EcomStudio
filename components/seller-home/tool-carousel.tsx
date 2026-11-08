@@ -1,10 +1,11 @@
 import { cn } from "@/lib/utils";
-import { CAROUSEL, SECTION_COPY, SHIPPED_TOOL_PHOTO, TOOL_TILE, ratioOf } from "@/lib/seller-home-config";
+import { SECTION_COPY, SHIPPED_TOOL_PHOTO, TOOL_TILE, ratioOf } from "@/lib/seller-home-config";
 import type { SellerHomeData } from "@/lib/server/seller-home";
 import { MediaSlot } from "./media-slot";
 import { LoopRail } from "./loop-rail";
 import { Rail } from "./rail";
 import { StatusBadge, ToolLink } from "./parts";
+import { EditFlags, flagged, toolTiles, type ToolTile } from "./home-view";
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -26,37 +27,37 @@ const LOOP_MIN = 5;
  * and one line under it. A live tool's whole tile opens it; any other is
  * drawn with its badge and opens nothing.
  */
-export function ToolCarousel({ data, t }: { data: SellerHomeData; t: T }) {
-  const tiles = CAROUSEL.flatMap((def, index) => {
-    const state = data.items[def.item];
-    return state ? [{ def, state, index }] : [];
-  });
+export function ToolCarousel({ data, t, locale }: { data: SellerHomeData; t: T; locale: string }) {
+  // The layout's tiles (lib/home-layout.ts): hidden ones and tools a customer
+  // is not offered take no place at all — the loop and the rail count only
+  // what is drawn.
+  const tiles = toolTiles("carousel", data, t, locale, TOOL_TILE).map((tile, index) => ({ tile, index }));
   if (tiles.length === 0) return null;
   const hint = t("sellerHome.slot.size", { w: TOOL_TILE.width, h: TOOL_TILE.height });
 
   // One tile; `copy` draws it again for the loop's copies — the same picture
   // and link, but out of the Tab order (and, by LoopRail, of the
   // accessibility tree), with no data-carousel-tile of its own.
-  const tile = ({ def, state, index }: (typeof tiles)[number], copy: boolean) => {
-    const name = t(def.nameKey);
-    const live = state.status === "live";
-    const slot = data.toolSlots[def.item];
+  const tile = ({ tile: x, index }: { tile: ToolTile; index: number }, copy: boolean) => {
+    const live = x.state.status === "live";
+    const slot = data.toolSlots[x.item];
     return (
-      <ToolLink key={def.item} state={state} ariaLabel={name} tabIndex={copy && live ? -1 : undefined}
-        {...(copy ? { "data-carousel-clone": def.item } : { "data-carousel-tile": def.item })}
-        className="group block min-w-0 rounded-xl outline-offset-2">
+      <ToolLink key={x.id} state={x.state} ariaLabel={x.name} tabIndex={copy && live ? -1 : undefined}
+        {...(copy ? { "data-carousel-clone": x.item } : { "data-carousel-tile": x.item, "data-home-item": `carousel:${x.id}` })}
+        className={cn("group block min-w-0 rounded-xl outline-offset-2", flagged(x.flags))}>
         <span className={cn("relative block overflow-hidden rounded-xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]",
           live && "transition-shadow duration-300 group-hover:shadow-[0_16px_34px_-18px_rgb(var(--accent)/0.7)]")}>
-          <MediaSlot media={def.media} ratio={ratioOf(TOOL_TILE)} tone={index}
+          <MediaSlot media={x.media} ratio={ratioOf(TOOL_TILE)} tone={index}
             admin={slot ? { slot, slots: data.slots } : null}
-            shipped={live ? SHIPPED_TOOL_PHOTO[def.item] ?? null : null}
-            dim={!live} label={name} hint={hint} priority={!copy && index < 5}
+            shipped={live ? SHIPPED_TOOL_PHOTO[x.item] ?? null : null}
+            dim={!live} label={x.name} hint={hint} priority={!copy && index < 5}
             sizes="(max-width: 639px) 84vw, (max-width: 1023px) 40vw, 22vw"
             className={cn("rounded-xl", live && "transition-transform duration-500 ease-out group-hover:scale-[1.025] motion-reduce:transition-none motion-reduce:group-hover:scale-100")} />
-          <StatusBadge status={state.status} t={t} className="absolute left-2 top-2" />
+          <StatusBadge status={x.state.status} t={t} className="absolute left-2 top-2" />
+          {!copy && <EditFlags flags={x.flags} t={t} />}
         </span>
-        <span className="mt-2 block truncate px-0.5 text-[13px] font-semibold leading-tight text-ink">{name}</span>
-        <span className="mt-0.5 block truncate px-0.5 text-[12px] leading-snug text-muted">{t(def.subKey)}</span>
+        <span className="mt-2 block truncate px-0.5 text-[13px] font-semibold leading-tight text-ink">{x.name}</span>
+        <span className="mt-0.5 block truncate px-0.5 text-[12px] leading-snug text-muted">{x.sub}</span>
       </ToolLink>
     );
   };

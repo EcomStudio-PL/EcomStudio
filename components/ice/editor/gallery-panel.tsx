@@ -94,6 +94,10 @@ const PROBLEM_KEY: Record<BulkProblemReason, string> = {
   missingBefore: "ice.bulk.problem.missingBefore",
   missingAfter: "ice.bulk.problem.missingAfter",
   duplicate: "ice.bulk.problem.duplicate",
+  // Only /home's photo grids pair product photos; the galleries never see these.
+  refOrphan: "ice.bulk.problem.refOrphan",
+  refDuplicate: "ice.bulk.problem.refDuplicate",
+  refAmbiguous: "ice.bulk.problem.refAmbiguous",
 };
 
 /** A refusal as a sentence, with the pair it names when it names one. */

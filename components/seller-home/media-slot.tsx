@@ -7,6 +7,7 @@ import { WholeImage } from "@/components/home/card-art";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { ratioOf, type MediaSrc } from "@/lib/seller-home-config";
 import { IceSlotImage, homeSlot, type HomeSlots } from "./ice-slot-image";
+import { RefSwap } from "./ref-swap";
 
 /**
  * MEDIA SLOT — the one picture frame /home uses everywhere.
@@ -57,12 +58,15 @@ type Props = {
   dim?: boolean;
   /** The empty state without its caption — for very small frames. */
   bare?: boolean;
+  /** A grid tile's product photo slot (`<slot>.ref`): when it is filled the
+   *  result swaps to it on hover / a held finger (./ref-swap.tsx). */
+  refKey?: string;
   className?: string;
 };
 
 export function MediaSlot({
   media, ratio, fill = false, label, hint, tone = 0, sizes, priority = false,
-  home = null, admin = null, shipped = null, dim = false, bare = false, className,
+  home = null, admin = null, shipped = null, dim = false, bare = false, refKey, className,
 }: Props) {
   const shape = ratio ?? ratioOf(media);
   const frame = cn(
@@ -91,10 +95,19 @@ export function MediaSlot({
   // the editor's zoom never spills out); only `data-media-slot` says which.
   const assigned = homeSlot(home, media.configKey);
   if (assigned && home) {
+    const result = (
+      <IceSlotImage slot={assigned} locale={home.locale} alt={media.alt} label={label || undefined}
+        sizes={sizes} priority={priority} />
+    );
+    // The product photo it was made from, swapped in on hover / a held finger.
+    // Images only on both sides; no product photo → exactly as before.
+    const reference = refKey && assigned.mediaType === "image" ? homeSlot(home, refKey) : undefined;
     return (
-      <span className={frame} style={style} data-media-slot="global" data-config-key={media.configKey}>
-        <IceSlotImage slot={assigned} locale={home.locale} alt={media.alt} label={label || undefined}
-          sizes={sizes} priority={priority} />
+      <span className={frame} style={style} data-media-slot="global" data-config-key={media.configKey}
+        {...(reference && reference.mediaType === "image" ? { "data-has-ref": "" } : {})}>
+        {reference && reference.mediaType === "image"
+          ? <RefSwap reference={<IceSlotImage slot={reference} locale={home.locale} alt="" sizes={sizes} />}>{result}</RefSwap>
+          : result}
       </span>
     );
   }

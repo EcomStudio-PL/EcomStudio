@@ -41,12 +41,20 @@ import { GalleryCta, StatusBadge, ToolLink, TryLink } from "@/components/seller-
 import { BeforeAfterRow, PromoBanner, SessionsSection, Showcase, ThumbnailsSection } from "@/components/seller-home/sections";
 import type { HomeSlots } from "@/components/seller-home/ice-slot-image";
 import { ToolCarousel } from "@/components/seller-home/tool-carousel";
+import { defaultHomeLayout, gridMedia, layoutSlotKeys } from "@/lib/home-layout";
+import type { SellerHomeData } from "@/lib/server/seller-home";
+
+/** A viewer's /home facts from its item states alone (the default layout, not editing). */
+const D = (items: Record<string, unknown>): SellerHomeData => ({
+  balance: 0, uploadTools: [], toolSlots: {}, channel: null, askChannel: false, interests: [], soon: [], pro: null,
+  banners: [], slots: new Map(), isAdmin: false, layout: defaultHomeLayout(), editing: false, items,
+}) as unknown as SellerHomeData;
 import { findCategory } from "@/lib/categories";
 import { allElements, cardSlotKey, icePageFor } from "@/lib/ice/registry";
 import { slotAltI18n, slotCrop } from "@/lib/media-slots";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import {
-  HOME_SECTION_SLOT_KEYS, SAMPLE_MAX_WIDTH, SLOT_READ_CAP, filledHomeSlots, sampleSource, sellerHomeSlotKeys, withSampleSlots,
+  HOME_SECTION_SLOT_KEYS, SAMPLE_MAX_WIDTH, SLOT_READ_CAP, filledHomeSlots, sampleSource, slotReadBatches, withSampleSlots,
 } from "@/lib/server/seller-home-slots";
 import type { ResolvedSlot, SlotMap } from "@/lib/server/media-slots";
 import type { Client } from "@/lib/services/workspace";
@@ -146,7 +154,11 @@ const FROZEN: readonly [string, string][] = [
   // Generacje w toku V2: one more client component mounted beside the toast,
   // <InflightTitle /> (the "(2) GrovBase" tab prefix and the batch pump). It
   // renders nothing and touches no metadata.
-  ["app/(app)/layout.tsx", "7c8191c821bb07927acb4a7e16bc3c43e70fb77ec065a6453e75ae57f38da7fc"],
+  // Edytor strony głównej V2: the public site's SiteFooter (the one shared
+  // component) is rendered after <main> — so after „Zgłoś błąd” — inside
+  // <HomeFooter>, which shows it on /home only (by the page on screen); its
+  // three reads ride the existing batch. Nothing else moved.
+  ["app/(app)/layout.tsx", "797e20586bff35eebb53d49c70b5d1b419e9cba13e11d8ef6e522f8fc0b6ce33"],
   // Public Tools V1 (activation): a visitor's pages wear the same dock; with
   // `guest`, the account slots open the sign-in dialog in place. A member's
   // dock (no `guest`) renders and behaves exactly as before.
@@ -243,12 +255,18 @@ check("one --home-section-gap token: 14 / 18 / 22px, switching where the margins
   && /lg:\[--home-section-gap:22px\]/.test(body) && /gap-\[var\(--home-section-gap\)\]/.test(body));
 check("the page clips sideways only (no body scroll, the halo is not cut vertically)", /\[overflow-x:clip\]/.test(body) && !/overflow-hidden/.test(body));
 check("no visible H1 — the H1 is screen-reader only", /<h1 className="sr-only">/.test(body) && !/text-\[2\.\d+rem\]|text-\[1\.75rem\]/.test(SH));
-const ORDER = ["<ToolCarousel", "<UploadTile", "<BeforeAfterRow", "PROMO_BANNERS.first", "<Showcase", "PROMO_BANNERS.second",
-  "<ThumbnailsSection", "<SessionsSection", "<FeaturedTools", "PROMO_BANNERS.third", "<ComingSoon"];
+// The order is the layout's (lib/home-layout.ts): by default exactly the
+// spec's, the campaign zone between before/after and banner #1 as before.
+const ORDER = ["ToolCarousel(", "<UploadTile", "BeforeAfterRow(", "<DashboardBanner", "PROMO_BANNERS.first", "Showcase(", "PROMO_BANNERS.second",
+  "ThumbnailsSection(", "SessionsSection(", "FeaturedTools(", "PROMO_BANNERS.third", "<ComingSoon"];
 const at = ORDER.map((m) => body.indexOf(m));
-check("the eleven sections in the spec's exact order", at.every((p, i) => p > 0 && (i === 0 || p > at[i - 1])), at.join(","));
-check("the carousel is first, with no heading above it", body.indexOf("<ToolCarousel") < body.indexOf("<UploadTile")
-  && !/SectionHead/.test(carousel));
+const DEFAULT_IDS = "carousel,upload,beforeAfter,campaign,promo1,showcase,promo2,thumbnails,sessions,featured,promo3,soon";
+check("the eleven sections in the spec's exact order (the default layout; the campaign zone where it always was)",
+  at.every((p, i) => p > 0 && (i === 0 || p > at[i - 1]))
+  && defaultHomeLayout().sections.map((x) => x.id).join(",") === DEFAULT_IDS && defaultHomeLayout().sections.every((x) => !x.hidden)
+  && /data\.layout\.sections\.flatMap\(/.test(body), at.join(","));
+check("the carousel is first, with no heading above it", body.indexOf("ToolCarousel(") < body.indexOf("<UploadTile")
+  && DEFAULT_IDS.startsWith("carousel,") && !/SectionHead/.test(carousel));
 check("removed from the page: recent projects, H1 hero, radio task cards, credit panel, price anchor, all-tools grid, filters, „Zrób to samo”",
   !/RecentProjects|PriceAnchor|AllTools|imagesAffordable|filterGallery|doSame|chooseTaskAndFocusUpload|sellerHome\.(anchor|recent|hero|press|credits)\./.test(SH)
   && !existsSync("components/seller-home/gallery.tsx") && !existsSync("components/seller-home/hero.tsx"));
@@ -282,9 +300,9 @@ check("…smooth only without reduced motion", /prefers-reduced-motion: reduce/.
 check("tiles keep the catalogue frame 2336×1744 (not 5:4 — the /tools rule)", ratioOf(TOOL_TILE) === PHOTO_THUMB_RATIO && PHOTO_THUMB_RATIO === "2336/1744"
   && /ratio=\{ratioOf\(TOOL_TILE\)\}/.test(carousel));
 check("…an admin's card picture fills an empty tile; the shipped example only for a live tool",
-  /admin=\{slot \? \{ slot, slots: data\.slots \} : null\}/.test(carousel) && /shipped=\{live \? SHIPPED_TOOL_PHOTO\[def\.item\] \?\? null : null\}/.test(carousel)
+  /admin=\{slot \? \{ slot, slots: data\.slots \} : null\}/.test(carousel) && /shipped=\{live \? SHIPPED_TOOL_PHOTO\[x\.item\] \?\? null : null\}/.test(carousel)
   && Object.values(SHIPPED_TOOL_PHOTO).every((p) => existsSync(`public${p}`)));
-check("…a whole live tile is the link; small name + one line under the picture", /<ToolLink key=\{def\.item\} state=\{state\}/.test(carousel)
+check("…a whole live tile is the link; small name + one line under the picture", /<ToolLink key=\{x\.id\} state=\{x\.state\}/.test(carousel)
   && /text-\[13px\] font-semibold/.test(carousel) && /text-\[12px\] leading-snug text-muted/.test(carousel));
 
 /* ── 3b. the endless loop ─────────────────────────────────────────────────*/
@@ -297,7 +315,7 @@ check("the loop is one copy of the list on either side of the real cards: [copie
   /\{ready && copy\("before"\)\}/.test(loopRail) && /data-loop-item=\{i\}/.test(loopRail) && /\{copy\("after"\)\}/.test(loopRail));
 check("…copies are aria-hidden drawings, out of the Tab order (links tabIndex -1), no tile key of their own",
   /aria-hidden="true" data-loop-clone=\{side\}/.test(loopRail) && /tabIndex=\{copy && live \? -1 : undefined\}/.test(carousel)
-  && /copy \? \{ "data-carousel-clone": def\.item \} : \{ "data-carousel-tile": def\.item \}/.test(carousel)
+  && /copy \? \{ "data-carousel-clone": x\.item \} : \{ "data-carousel-tile": x\.item, "data-home-item": `carousel:\$\{x\.id\}` \}/.test(carousel)
   && /tabIndex=\{tabIndex\}/.test(code("components/seller-home/parts.tsx")));
 check("…a pointer's focus never stays on a copy (a mouse's dropped on release, a tap's at once), yet a copy drags and clicks like its card",
   /if \(el && track\.contains\(el\) && el\.closest\("\[data-loop-clone\]"\)\) el\.blur\(\);/.test(loopRail) && !/onMouseDown/.test(loopRail)
@@ -367,11 +385,11 @@ check("no carousel library: native scrolling and scroll-snap, like Rail", !/from
 {
   const carouselData = (hide: readonly string[] = []) => ({
     balance: 0, uploadTools: [], toolSlots: {}, channel: null, askChannel: false, interests: [], soon: [], pro: null,
-    banners: [], slots: new Map(), isAdmin: false,
+    banners: [], slots: new Map(), isAdmin: false, layout: defaultHomeLayout(), editing: false,
     items: Object.fromEntries(CAROUSEL.filter((c) => !hide.includes(c.item)).map((c) =>
       [c.item, S(c.item, `/t/${c.item}`, c.item === "moda.ghostMannequin" ? "soon" : c.item === "custom" ? "maintenance" : "live", 4)])),
   }) as unknown as Parameters<typeof ToolCarousel>[0]["data"];
-  const out = html(createElement(ToolCarousel, { data: carouselData(), t: T }));
+  const out = html(createElement(ToolCarousel, { data: carouselData(), t: T, locale: "pl" }));
   const realTiles = (out.match(/data-carousel-tile="/g) ?? []).length;
   const copyTiles = (out.match(/data-carousel-clone="/g) ?? []).length;
   const copyLinks = out.match(/<a [^>]*data-carousel-clone="[^"]*"[^>]*>/g) ?? [];
@@ -386,10 +404,10 @@ check("no carousel library: native scrolling and scroll-snap, like Rail", !/from
     /<span aria-disabled="true"[^>]*data-carousel-clone="moda\.ghostMannequin"/.test(out) && /<span aria-disabled="true"[^>]*data-carousel-clone="custom"/.test(out)
     && copyLinks.every((a) => { const key = a.match(/data-carousel-clone="([^"]*)"/)?.[1]; return a.includes(`href="/t/${key}"`); }));
   check("…no id anywhere in the carousel (copies cannot duplicate one)", !/\sid="/.test(out));
-  const hidden = html(createElement(ToolCarousel, { data: carouselData(["retouch", "ai_shadow"]), t: T }));
+  const hidden = html(createElement(ToolCarousel, { data: carouselData(["retouch", "ai_shadow"]), t: T, locale: "pl" }));
   check("…a hidden tool is gone from the cards AND the copies", !/"retouch"|"ai_shadow"/.test(hidden.replace(/href="[^"]*"/g, ""))
     && (hidden.match(/data-carousel-tile="/g) ?? []).length === 9 && (hidden.match(/data-carousel-clone="/g) ?? []).length === 9);
-  const few = html(createElement(ToolCarousel, { data: carouselData(CAROUSEL.slice(4).map((c) => c.item)), t: T }));
+  const few = html(createElement(ToolCarousel, { data: carouselData(CAROUSEL.slice(4).map((c) => c.item)), t: T, locale: "pl" }));
   check("…four tools: the plain Rail — no loop, no copies, nothing twice",
     !/data-loop-rail/.test(few) && !/data-carousel-clone/.test(few) && (few.match(/data-carousel-tile="/g) ?? []).length === 4);
 }
@@ -482,17 +500,17 @@ check("try links and gallery buttons render only for a live tool (rendered, not 
   html(createElement(GalleryCta, { state: soonX, label: "L" })) === "" && html(createElement(TryLink, { state: soonX, label: "L" })) === ""
   && html(createElement(GalleryCta, { state: null, label: "L" })) === "" && html(createElement(TryLink, { state: undefined, label: "L" })) === ""
   && /href="\/x"/.test(html(createElement(GalleryCta, { state: liveX, label: "L" }))) && /href="\/x"/.test(html(createElement(TryLink, { state: liveX, label: "L" }))));
-const sessSoon = html(createElement(SessionsSection, { items: { generator: S("generator", "/prompts", "soon", 4) }, t: T }));
+const sessSoon = html(createElement(SessionsSection, { data: D({ generator: S("generator", "/prompts", "soon", 4) }), t: T }));
 check("session buttons: a link only while the tool runs; not running → badge; out of reach → not drawn",
   !/data-session-cta/.test(sessSoon) && /aria-disabled="true"/.test(sessSoon) && /sellerHome\.status\.soon/.test(sessSoon)
   && !/sellerHome\.sessions\.outdoor/.test(sessSoon)
-  && html(createElement(SessionsSection, { items: {}, t: T })) === ""
-  && /data-session-cta="generator"[^>]*|href="\/prompts"/.test(html(createElement(SessionsSection, { items: { generator: S("generator", "/prompts", "live", 4) }, t: T }))));
+  && html(createElement(SessionsSection, { data: D({}), t: T })) === ""
+  && /data-session-cta="generator"[^>]*|href="\/prompts"/.test(html(createElement(SessionsSection, { data: D({ generator: S("generator", "/prompts", "live", 4) }), t: T }))));
 check("Miniaturki is the thumbnail tool's section: gone when the viewer may not see that tool",
-  html(createElement(ThumbnailsSection, { items: {}, t: T })) === ""
-  && /data-seller-thumbnails/.test(html(createElement(ThumbnailsSection, { items: { "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }, t: T }))));
+  html(createElement(ThumbnailsSection, { data: D({}), t: T })) === ""
+  && /data-seller-thumbnails/.test(html(createElement(ThumbnailsSection, { data: D({ "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }), t: T }))));
 check("featured and carousel cards go through ToolLink (inert = no href), and only a live card lifts / zooms / glows on hover",
-  /<ToolLink key=\{card\.item\} state=\{state\}/.test(sections) && /<ToolLink key=\{def\.item\} state=\{state\}/.test(carousel)
+  /<ToolLink key=\{card\.id\} state=\{state\}/.test(sections) && /<ToolLink key=\{x\.id\} state=\{x\.state\}/.test(carousel)
   && /live && "transition-transform duration-300 hover:-translate-y-0\.5/.test(sections) && /live && "transition-transform duration-500 ease-out group-hover:scale/.test(carousel)
   && !/className="[^"]*group-hover:scale/.test(sections + carousel));
 
@@ -577,14 +595,15 @@ check("before/after: six large cards in one row (rail), each with its tool and i
   BEFORE_AFTER.length === 6 && BEFORE_AFTER.every((b) => Boolean(catalogItem(b.item)) && (INDUSTRIES as readonly string[]).includes(b.industry))
   && /xl:\[--rail-cols:5\]/.test(sections) && /2xl:\[--rail-cols:6\]/.test(sections));
 check("three banners, one reusable component", Object.keys(PROMO_BANNERS).join(",") === "first,second,third"
-  && (body.match(/<PromoBanner /g) ?? []).length === 3);
+  && (body.match(/PromoBanner\(\{ def: PROMO_BANNERS\.(first|second|third)/g) ?? []).length === 3);
 check("showcase: ~40/60 split, 12 results 3 × 4 fading into the panel, one button, no heading",
   /lg:grid-cols-\[2fr_3fr\]/.test(sections) && SHOWCASE.gallery.length === 12 && /cols="columns-2 sm:columns-3"/.test(sections)
   && Boolean(catalogItem(SHOWCASE.item)));
 check("Miniaturki: 20 square tiles in an even grid — 5 / 3 / 2 columns, 4 rows on a desktop, one button to the thumbnail tool",
   THUMBNAILS.tiles.length === 20 && /\[--sq-cols:2\]/.test(sections) && /sm:\[--sq-cols:3\]/.test(sections) && /lg:\[--sq-cols:5\]/.test(sections)
   && /lg:\[--sq-rows:4\]/.test(sections) && /grid-cols-\[repeat\(var\(--sq-cols\),minmax\(0,1fr\)\)\] gap-\[var\(--sq-gap\)\]/.test(sections)
-  && THUMBNAILS.item === "ecommerce.thumbnail" && /<SquareGallery tiles=\{THUMBNAILS\.tiles\}/.test(sections) && !/columns-2 sm:columns-3 lg:columns-5/.test(sections));
+  && THUMBNAILS.item === "ecommerce.thumbnail" && /<SquareGallery tiles=\{tag\(gridTiles\("thumbnails", data\), "thumbnails"\)\}/.test(sections)
+  && defaultHomeLayout().thumbnails.map((x) => gridMedia("thumbnails", x.n).configKey).join() === THUMBNAILS.tiles.map((x) => x.media.configKey).join() && !/columns-2 sm:columns-3 lg:columns-5/.test(sections));
 check("…every slot is 1:1, recommended 1200×1200; keys 1–20 unchanged, nothing filled in, nothing else in the list",
   THUMBNAILS.tiles.every((t, i) => t.media.configKey === `homeMedia.thumbnails.${i + 1}` && t.media.kind === "image"
     && t.media.width === 1200 && t.media.height === 1200 && t.media.src === null)
@@ -595,7 +614,7 @@ check("…the last row melts into the page — a mask (the real background in ei
   /\[mask-image:linear-gradient\(to_bottom,black_67%,[^\]]*transparent_99%\)\]/.test(sections) && /lg:\[mask-image:linear-gradient\(to_bottom,black_75%,[^\]]*transparent_99%\)\]/.test(sections)
   && !/function SquareGallery[\s\S]*?(bg-white|from-white|#fff)[\s\S]*?\n}\n/.test(sections));
 {
-  const thumbs = html(createElement(ThumbnailsSection, { items: { "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }, t: T }));
+  const thumbs = html(createElement(ThumbnailsSection, { data: D({ "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }), t: T }));
   const frames = thumbs.match(/<span[^>]*data-config-key="homeMedia\.thumbnails\.\d+"[^>]*>/g) ?? [];
   check("…rendered: 20 frames, every one aspect-ratio 1/1, every hint 1200×1200",
     frames.length === 20 && frames.every((f) => /aspect-ratio:1\/1/.test(f)) && (thumbs.match(/sellerHome\.slot\.size\(1200,1200\)/g) ?? []).length === 20);
@@ -960,37 +979,43 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
     ...Object.values(PROMO_BANNERS).map((b) => b.media), SHOWCASE.visual, ...SHOWCASE.gallery,
     ...THUMBNAILS.tiles.map((x) => x.media), ...SESSIONS.tiles.map((x) => x.media),
   ].map((m) => m.configKey);
-  check("(e) the section slots /home reads are the editor registry's „global” ones: 79 = samples 15 + before/after 12 + banners 3 + showcase 13 + Miniaturki 20 + Sesje 16",
-    HOME_SECTION_SLOT_KEYS.length === 79 && expected.length === 79 && new Set(HOME_SECTION_SLOT_KEYS).size === 79
-    && expected.every((k) => HOME_SECTION_SLOT_KEYS.includes(k)) && globalSpecs.length === 79
-    && globalSpecs.every((s) => HOME_SECTION_SLOT_KEYS.includes(s.key) && s.entityId === "sellerHome"),
+  // …plus, since the layout (0170), each grid photo's optional product photo
+  // (`<slot>.ref`): showcase 12 + Miniaturki 20 + Sesje 16 = 48.
+  const refKeys = [...SHOWCASE.gallery, ...THUMBNAILS.tiles.map((x) => x.media), ...SESSIONS.tiles.map((x) => x.media)].map((m) => `${m.configKey}.ref`);
+  check("(e) the section slots /home reads are the editor registry's „global” ones: 79 = samples 15 + before/after 12 + banners 3 + showcase 13 + Miniaturki 20 + Sesje 16, + 48 product photos",
+    expected.length === 79 && refKeys.length === 48 && HOME_SECTION_SLOT_KEYS.length === 127 && new Set(HOME_SECTION_SLOT_KEYS).size === 127
+    && [...expected, ...refKeys].every((k) => HOME_SECTION_SLOT_KEYS.includes(k)) && globalSpecs.length === 127
+    && globalSpecs.every((s) => HOME_SECTION_SLOT_KEYS.includes(s.key) && s.entityId === "sellerHome")
+    && HOME_SECTION_SLOT_KEYS.every((k) => expected.includes(k) || refKeys.includes(k))
+    && layoutSlotKeys(defaultHomeLayout()).every((k) => HOME_SECTION_SLOT_KEYS.includes(k)),
     String(HOME_SECTION_SLOT_KEYS.length));
   check("…not the carousel or featured tiles — they keep the tool-card slot they share with /tools",
     [...CAROUSEL, ...FEATURED].every((c) => !HOME_SECTION_SLOT_KEYS.includes(c.media.configKey)));
   const cardKeys = REFERENCED.map(cardSlotKey);
-  const readKeys = sellerHomeSlotKeys(cardKeys, ["banner.a.media", "banner.b.media", "banner.c.media"]);
-  check("…ONE batched read: every tool card, the 3 campaign banners and all 79 section slots, ≤ 200 keys (the resolver's bound)",
-    SLOT_READ_CAP === 200 && readKeys.length <= SLOT_READ_CAP && new Set(readKeys).size === readKeys.length
-    && HOME_SECTION_SLOT_KEYS.every((k) => readKeys.includes(k)) && cardKeys.every((k) => readKeys.includes(k))
-    && /array_length\(p_keys, 1\) <= 200/.test(read("supabase/migrations/0141_inline_content_editor.sql")), String(readKeys.length));
-  check("…the loader still makes exactly one loadSlots call, with that list",
-    (loader.match(/loadSlots\(/g) ?? []).length === 1 && /loadSlots\(supabase, sellerHomeSlotKeys\(/.test(loader));
+  const bannerKeys = ["banner.a.media", "banner.b.media", "banner.c.media"];
+  const batches = slotReadBatches([...cardKeys, ...bannerKeys], HOME_SECTION_SLOT_KEYS);
+  const readAll = batches.flat();
+  check("…batched reads: every tool card, the 3 campaign banners and all 127 section slots, no call past 200 keys (the resolver's bound), each key once",
+    SLOT_READ_CAP === 200 && batches.every((b) => b.length > 0 && b.length <= SLOT_READ_CAP) && new Set(readAll).size === readAll.length
+    && HOME_SECTION_SLOT_KEYS.every((k) => readAll.includes(k)) && [...cardKeys, ...bannerKeys].every((k) => batches[0].includes(k))
+    && /array_length\(p_keys, 1\) <= 200/.test(read("supabase/migrations/0141_inline_content_editor.sql")), batches.map((b) => b.length).join("+"));
+  check("…the loader reads only through those batches (one loadSlots call site), the cards and banners first",
+    (loader.match(/loadSlots\(/g) ?? []).length === 1 && /batches\.map\(\(keys\) => loadSlots\(supabase, keys\)\)/.test(loader)
+    && /slotReadBatches\(\[\.\.\.Object\.values\(wanted\), \.\.\.banners\.map/.test(loader));
   {
-    const quiet = console.error;
-    console.error = () => {};
-    const over = sellerHomeSlotKeys(Array.from({ length: 150 }, (_, i) => `tool.x${i}.card`), []);
-    console.error = quiet;
-    check("…past the bound the section slots are left out, never the cards (a read past 200 returns nothing at all)",
-      over.length === 150 && !over.some((k) => HOME_SECTION_SLOT_KEYS.includes(k)));
+    const many = slotReadBatches(Array.from({ length: 150 }, (_, i) => `tool.x${i}.card`), HOME_SECTION_SLOT_KEYS);
+    check("…a list past the bound adds a call instead of dropping anything: the cards stay in the first",
+      many.length === 2 && many.every((b) => b.length <= SLOT_READ_CAP) && many.flat().length === 277
+      && Array.from({ length: 150 }, (_, i) => `tool.x${i}.card`).every((k) => many[0].includes(k)));
   }
 
   // (a) — nothing filled, nothing different.
   const sectionsOf = (home?: HomeSlots) => [
-    html(createElement(BeforeAfterRow, { items: ALL, t: T, ...(home ? { home } : {}) })),
+    html(createElement(BeforeAfterRow, { data: D(ALL), t: T, locale: "pl", ...(home ? { home } : {}) })),
     ...Object.values(PROMO_BANNERS).map((def) => html(createElement(PromoBanner, { def, items: ALL, t: T, ...(home ? { home } : {}) }))),
-    html(createElement(Showcase, { items: ALL, t: T, ...(home ? { home } : {}) })),
-    html(createElement(ThumbnailsSection, { items: ALL, t: T, ...(home ? { home } : {}) })),
-    html(createElement(SessionsSection, { items: ALL, t: T, ...(home ? { home } : {}) })),
+    html(createElement(Showcase, { data: D(ALL), t: T, ...(home ? { home } : {}) })),
+    html(createElement(ThumbnailsSection, { data: D(ALL), t: T, ...(home ? { home } : {}) })),
+    html(createElement(SessionsSection, { data: D(ALL), t: T, ...(home ? { home } : {}) })),
   ].join("\n");
   const bare = sectionsOf();
   check("(a) no slot filled: every section's markup is identical with no map, an empty map, or a map of other keys",
@@ -1079,7 +1104,7 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
     && BEFORE_AFTER.every((b) => [b.media.before, b.media.after].every((m) => m.width === 1080 && m.height === 1080))
     && globalSpecs.filter((s) => s.key.startsWith("homeMedia.beforeAfter.")).length === 12
     && globalSpecs.filter((s) => s.key.startsWith("homeMedia.beforeAfter.")).every((s) => s.ratio === "1080/1080" && s.width === 1080 && s.height === 1080));
-  const baRow = html(createElement(BeforeAfterRow, { items: ALL, t: T }));
+  const baRow = html(createElement(BeforeAfterRow, { data: D(ALL), t: T, locale: "pl" }));
   const baFrames = baRow.match(/<div[^>]*\sdata-before-after="true"[^>]*>/g) ?? [];
   check("…rendered: six frames, every one aspect-ratio 1080/1080, every empty half's hint 1080×1080 — all derived, no 4:5 left",
     baFrames.length === 6 && baFrames.every((f) => /aspect-ratio:1080\/1080/.test(f)) && !/1080\/1350|1080,1350/.test(baRow)
@@ -1094,7 +1119,7 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
     const first = BEFORE_AFTER[0];
     const cut = (row: string) => row.slice(row.indexOf(`data-ba-card="${first.key}"`), row.indexOf(`data-ba-card="${BEFORE_AFTER[1].key}"`));
     const half = filled(first.media.before.configKey, { crop: { x: 25, y: 75, zoom: 2 } });
-    const row = html(createElement(BeforeAfterRow, { items: ALL, t: T, home: homeOf({ [first.media.before.configKey]: half }) }));
+    const row = html(createElement(BeforeAfterRow, { data: D(ALL), t: T, locale: "pl", home: homeOf({ [first.media.before.configKey]: half }) }));
     const card = cut(row);
     const pic = tagOf(card, "img");
     check("a filled before/after half paints the library picture (its crop, not draggable); the other half keeps its placeholder",
@@ -1104,7 +1129,7 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
       /type="range"/.test(card) && /data-before-after-grip/.test(card) && /data-before-after-range/.test(card)
       && row.replace(card, "") === baRow.replace(cut(baRow), ""));
     check("…a clip assigned to a half is not painted (the slider compares two stills)",
-      html(createElement(BeforeAfterRow, { items: ALL, t: T, home: homeOf({ [first.media.before.configKey]: filled(first.media.before.configKey, { mediaType: "video" }) }) })) === baRow);
+      html(createElement(BeforeAfterRow, { data: D(ALL), t: T, locale: "pl", home: homeOf({ [first.media.before.configKey]: filled(first.media.before.configKey, { mediaType: "video" }) }) })) === baRow);
   }
 
   // (f) — upload samples.
@@ -1130,7 +1155,7 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
       && JSON.stringify(UPLOAD_TOOLS) === config && pills.find((x) => x.key === "retouch") === tools.find((x) => x.key === "retouch"));
     check("…a sample the config already names keeps its own file",
       withSampleSlots([{ ...orig, samples: orig.samples.map((m, i) => (i === 1 ? { ...m, src: "/home/own.webp" } : m)) }], { [key]: one(undefined) })[0].samples[1].src === "/home/own.webp");
-    check("…the loader builds the pills after the one read", /const uploadTools = withSampleSlots\(resolveUploadTools\(items\), homeSlots\);/.test(loader)
+    check("…the loader builds the pills after the one read", /const resolved = resolveUploadTools\(items\);/.test(loader) && /const uploadTools = withSampleSlots\(arranged, homeSlots\);/.test(loader)
       && loader.indexOf("withSampleSlots(") > loader.indexOf("loadSlots("));
   }
 

@@ -1,7 +1,11 @@
 import {
-  BEFORE_AFTER, BEFORE_AFTER_SIZE, BANNER_FRAME, CAROUSEL, FEATURED, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE,
+  BANNER_FRAME, BEFORE_AFTER_SIZE, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE,
   THUMBNAILS, TOOL_TILE, UPLOAD_TOOLS, ratioOf, type MediaSrc,
 } from "@/lib/seller-home-config";
+import {
+  defaultHomeLayout, familySlot, gridMedia, pairMedia, pairSlotKeys, refMedia,
+  type GridListKey, type HomeLayout, type HomeToolEntry, type ToolListKey,
+} from "@/lib/home-layout";
 import { CATEGORIES, findCategory } from "@/lib/categories";
 import { CATALOG_ITEMS } from "@/lib/tool-cards";
 import { LAYOUT_SECTIONS, itemLabelKey } from "@/lib/tool-layout";
@@ -94,14 +98,38 @@ const media = (slot: IceSlotSpec, role: string, dom: string, index?: number): Ic
 
 const cfg = (key: string) => `[data-config-key="${key}"]`;
 
-function homePage(): IcePage {
+/**
+ * /home AS THE EDITOR SEES IT — built from the page's layout (lib/home-layout.ts):
+ * every tile, pair and photo the layout holds, a grid photo's product photo
+ * (`<slot>.ref`) next to it. The static ICE_PAGES entry is the DEFAULT layout
+ * (the page as it always was): what the text registry, the deny checks and
+ * the tests read. The editor itself is handed the page built from the layout
+ * the database holds now (lib/server/ice/actions.ts pageInfo).
+ */
+export function homePage(layout: HomeLayout = defaultHomeLayout()): IcePage {
+  const homeSize = (m: MediaSrc) => homeSlot(m, { ratio: ratioOf(m), width: m.width, height: m.height });
+  const toolTexts = (e: HomeToolEntry, list: ToolListKey, i: number): IceElement[] => {
+    if (!e.from) return [];
+    const ns = list === "carousel" ? "sellerHome.tool" : "sellerHome.featured";
+    return [text(`${ns}.${e.from}.name`, "toolName", SHORT, i + 1), text(`${ns}.${e.from}.${list === "carousel" ? "desc" : "sub"}`, "toolLine", LINE, i + 1)];
+  };
+  const toolMediaKey = (e: HomeToolEntry, list: ToolListKey) => `homeMedia.${list}.${e.from ?? e.id}`;
+  const gridElements = (k: GridListKey, role: string): IceElement[] => layout[k].flatMap((e, i) => {
+    const main = gridMedia(k, e.n);
+    const ref = refMedia(k, e.n);
+    return [
+      media(homeSlot(main), role, cfg(main.configKey), i + 1),
+      // The product photo is not painted until hovered: no frame on the page,
+      // reached from the tile's form and the elements list.
+      { id: ref.configKey, kind: "media", role: "productPhoto", slots: [homeSlot(ref)], index: i + 1 },
+    ];
+  });
   const sections: IceSection[] = [
     {
       key: "carousel",
-      elements: CAROUSEL.flatMap((tile, i) => [
-        text(tile.nameKey, "toolName", SHORT, i + 1),
-        text(tile.subKey, "toolLine", LINE, i + 1),
-        media(cardSlot(tile.item), "tileImage", cfg(tile.media.configKey), i + 1),
+      elements: layout.carousel.flatMap((e, i) => [
+        ...toolTexts(e, "carousel", i),
+        media(cardSlot(e.item), "tileImage", cfg(toolMediaKey(e, "carousel")), i + 1),
       ]),
     },
     {
@@ -117,8 +145,8 @@ function homePage(): IcePage {
         text("sellerHome.samples", "caption", LINE),
         ...UPLOAD_TOOLS.map((u): IceElement => ({
           id: `samples:${u.key}`, kind: "samples", role: `samples.${u.key}`,
-          slots: u.samples.map((s) => homeSlot(s, { sample: true, video: false })),
-          dom: u.samples.map((s) => `[data-sample="${s.configKey}"],[data-sample-empty="${s.configKey}"]`).join(","),
+          slots: u.samples.map((sm) => homeSlot(sm, { sample: true, video: false })),
+          dom: u.samples.map((sm) => `[data-sample="${sm.configKey}"],[data-sample-empty="${sm.configKey}"]`).join(","),
         })),
       ],
     },
@@ -129,12 +157,14 @@ function homePage(): IcePage {
         text("sellerHome.ba.sub", "sub", LINE),
         text("sellerHome.before", "badge", SHORT),
         text("sellerHome.after", "badge", SHORT),
-        ...BEFORE_AFTER.map((b, i): IceElement => ({
-          id: `pair:${i + 1}`, kind: "pair", role: "pair", index: i + 1,
-          slots: [homeSlot(b.media.before, { ratio: ratioOf(BEFORE_AFTER_SIZE), width: BEFORE_AFTER_SIZE.width, height: BEFORE_AFTER_SIZE.height }),
-            homeSlot(b.media.after, { ratio: ratioOf(BEFORE_AFTER_SIZE), width: BEFORE_AFTER_SIZE.width, height: BEFORE_AFTER_SIZE.height })],
-          dom: `[data-ba-card="${b.key}"] [data-before-after]`,
-        })),
+        ...layout.beforeAfter.map((b, i): IceElement => {
+          const pair = pairMedia(b.n);
+          return {
+            id: `pair:${b.n}`, kind: "pair", role: "pair", index: i + 1,
+            slots: [homeSize(pair.before), homeSize(pair.after)],
+            dom: `[data-ba-card="ba${b.n}"] [data-before-after]`,
+          };
+        }),
         ...["home_garden", "tools", "beauty", "fashion", "automotive", "pets"].map((k) => text(`sellerHome.industry.${k}`, "industry", SHORT)),
       ],
     },
@@ -166,7 +196,7 @@ function homePage(): IcePage {
             { label: "tablet", ratio: ratioOf(SHOWCASE.frame.tablet) },
           ],
         }), "visual", cfg(SHOWCASE.visual.configKey)),
-        ...SHOWCASE.gallery.map((m, i) => media(homeSlot(m), "galleryImage", cfg(m.configKey), i + 1)),
+        ...gridElements("showcase", "galleryImage"),
       ],
     },
     {
@@ -176,7 +206,7 @@ function homePage(): IcePage {
         text(THUMBNAILS.subKey, "sub", LINE),
         text(THUMBNAILS.tryKey, "link", SHORT),
         text(THUMBNAILS.ctaKey, "button", SHORT),
-        ...THUMBNAILS.tiles.map((tile, i) => media(homeSlot(tile.media), "thumbnail", cfg(tile.media.configKey), i + 1)),
+        ...gridElements("thumbnails", "thumbnail"),
       ],
     },
     {
@@ -186,7 +216,7 @@ function homePage(): IcePage {
         text(SESSIONS.subKey, "sub", LINE),
         text(SESSIONS.studio.labelKey, "button", SHORT),
         text(SESSIONS.outdoor.labelKey, "button", SHORT),
-        ...SESSIONS.tiles.map((tile, i) => media(homeSlot(tile.media), "session", cfg(tile.media.configKey), i + 1)),
+        ...gridElements("sessions", "session"),
       ],
     },
     {
@@ -194,10 +224,9 @@ function homePage(): IcePage {
       elements: [
         text("sellerHome.featured.title", "title", TITLE),
         text("sellerHome.featured.sub", "sub", LINE),
-        ...FEATURED.flatMap((f, i) => [
-          text(f.nameKey, "toolName", SHORT, i + 1),
-          text(f.subKey, "toolLine", LINE, i + 1),
-          media(cardSlot(f.item), "tileImage", cfg(f.media.configKey), i + 1),
+        ...layout.featured.flatMap((e, i) => [
+          ...toolTexts(e, "featured", i),
+          media(cardSlot(e.item), "tileImage", cfg(toolMediaKey(e, "featured")), i + 1),
         ]),
       ],
     },
@@ -211,20 +240,21 @@ function homePage(): IcePage {
       ],
     },
   ];
-  const slotsOf = (section: string) => sections.find((s) => s.key === section)!.elements
-    .filter((e) => e.kind === "media").map((e) => e.slots![0].key);
+  const slotsOf = (section: string, refs = false) => sections.find((sec) => sec.key === section)!.elements
+    .filter((e) => e.kind === "media" && (refs || !e.slots![0].key.endsWith(".ref"))).map((e) => e.slots![0].key);
   return {
     key: "home",
     path: "/home",
     type: "app",
     sections,
     bulk: [
-      { key: "thumbnails", slots: slotsOf("thumbnails") },
-      { key: "showcase", slots: slotsOf("showcase").filter((k) => k !== SHOWCASE.visual.configKey) },
-      { key: "sessions", slots: slotsOf("sessions") },
-      { key: "carousel", slots: slotsOf("carousel") },
-      ...UPLOAD_TOOLS.map((u) => ({ key: `samples.${u.key}`, slots: u.samples.map((s) => s.configKey) })),
-      { key: "beforeAfter", slots: BEFORE_AFTER.flatMap((b) => [b.media.before.configKey, b.media.after.configKey]), pairs: true },
+      // A grid group pairs „<name>-ref” files with their result (the tile's product photo).
+      { key: "thumbnails", slots: slotsOf("thumbnails"), refs: true },
+      { key: "showcase", slots: slotsOf("showcase").filter((k) => k !== SHOWCASE.visual.configKey), refs: true },
+      { key: "sessions", slots: slotsOf("sessions"), refs: true },
+      { key: "carousel", slots: [...new Set(slotsOf("carousel"))] },
+      ...UPLOAD_TOOLS.map((u) => ({ key: `samples.${u.key}`, slots: u.samples.map((sm) => sm.configKey) })),
+      { key: "beforeAfter", slots: layout.beforeAfter.flatMap((b) => [...pairSlotKeys(b.n)]), pairs: true },
     ],
   };
 }
@@ -494,7 +524,12 @@ export function textSpec(key: string): IceElement | undefined {
 }
 
 export function slotSpec(key: string): IceSlotSpec | undefined {
-  return SLOTS.get(key);
+  const known = SLOTS.get(key);
+  if (known) return known;
+  // A numbered /home slot the layout may add (a pair past the sixth, a grid
+  // photo past the config's, a product photo): framed like its family.
+  const family = familySlot(key);
+  return family ? homeSlot(family.media, { ratio: ratioOf(family.media), width: family.media.width, height: family.media.height }) : undefined;
 }
 
 /** Pages a text key appears on (for "również używane na…"). */

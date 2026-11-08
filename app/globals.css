@@ -2213,3 +2213,44 @@ html[data-photo-dragging] { user-select: none; -webkit-user-select: none; }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── /home: A RESULT AND THE PRODUCT PHOTO IT WAS MADE FROM ─────────────────
+   (components/seller-home/ref-swap.tsx) The product photo lies over the
+   result, transparent; hover (a real pointer) or a held finger (data-on)
+   brings it in. Only opacity moves: same frame, same crop, no layout shift.
+   Reduced motion: instant. Touch: no callout menu, no text selection, the
+   page still scrolls (touch-action is left alone). */
+.ref-swap { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+/* Only the product photo's layer moves: fading in over the opaque result is
+   the crossfade, with no half-transparent moment showing the page behind. */
+.ref-swap > [data-ref] { opacity: 0; transition: opacity 250ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .ref-swap:hover > [data-ref] { opacity: 1; }
+}
+.ref-swap[data-on] > [data-ref] { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .ref-swap > [data-ref] { transition: none; }
+}
+
+/* /home's footer (components/seller-home/home-footer.tsx): the page's own
+   bottom room moves from <main> into the footer, so „Zgłoś błąd” sits right
+   above it; the footer's last row then clears the phone navigation and the
+   „Edytuj stronę” button (bottom-right, where the language switch is). */
+.app-shell:has([data-home-footer]) > main {
+  padding-bottom: 1.75rem;
+}
+[data-home-footer] {
+  --home-footer-room: 0px;
+  --home-footer-fab: 0px;
+}
+@media (max-width: 1023.98px) {
+  [data-home-footer] {
+    --home-footer-room: var(--dock-h);
+  }
+}
+html:has([data-ice-launch]:not([data-ice-launch="compact"])) [data-home-footer] {
+  --home-footer-fab: 60px;
+}
+[data-home-footer] [data-site-footer] > div:last-child {
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom) + var(--home-footer-room) + var(--home-footer-fab));
+}

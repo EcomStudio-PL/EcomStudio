@@ -5,8 +5,10 @@ import { ICE_MAX_IMAGE_BYTES, ICE_MAX_SAMPLE_BYTES } from "@/lib/ice/sniff";
 import { notify } from "@/lib/notify";
 import { useFileDrop } from "@/components/ui/file-drop";
 import {
-  groupPairs, naturalCompare, pairSuffix, type BulkFile, type BulkProblem, type BulkProblemReason, type BulkUnit, type PairSide,
+  groupPairs, groupRefs, naturalCompare, pairSuffix, type BulkFile, type BulkProblem, type BulkProblemReason, type BulkUnit, type PairSide,
+  type RefLinks,
 } from "@/lib/ice/pairs";
+import { refSlotKey } from "@/lib/home-layout";
 import {
   Btn, Sheet, bytes, call, cls, errorText, fitWarnings, localSize, previewUrl, roleLabel, type EditorCtx, type T,
 } from "./shared";
@@ -16,7 +18,7 @@ import s from "./editor.module.css";
 // The name pairing moved to lib/ice/pairs.ts so the launch page's gallery
 // upload (gallery-panel.tsx) and the unit tests share it without this panel;
 // it is re-exported under the names it always had.
-export { groupPairs, pairSuffix };
+export { groupPairs, groupRefs, pairSuffix };
 export type { BulkFile, BulkProblem, BulkProblemReason, BulkUnit, PairSide };
 
 /**
@@ -37,6 +39,12 @@ export type { BulkFile, BulkProblem, BulkProblemReason, BulkUnit, PairSide };
  *
  * Only the group's own slots are ever written: the targets come from
  * `ctx.info.page.bulk`, never from the files.
+ *
+ * A /home photo grid (`refs`) also takes each photo's PRODUCT PHOTO: a file
+ * named like the photo with -ref ("buty.jpg" + "buty-ref.jpg") goes into the
+ * photo's `<slot>.ref` in the same transaction. Files without -ref are photos
+ * as before; a product photo that fits no photo, or fits two, is listed as a
+ * problem and can be linked by hand — never guessed.
  */
 
 /** The server's ceiling for one slotState / slotSave call. */
@@ -49,7 +57,8 @@ const ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
 /* ── the plan: pure, so the tests can hold it without a DOM ───────────────── */
 
 export type BulkMode = "empty" | "replace";
-/** A row of the group: one slot, or a pair slot's [before, after] keys. */
+/** A row of the group: one slot, a pair slot's [before, after] keys, or a
+ *  grid photo's [photo, product photo]. */
 export type BulkRow<F extends BulkFile> = { keys: string[]; occupied: boolean; unit: BulkUnit<F> | null };
 export type BulkPlan<F extends BulkFile> = {
   /** Every file (or complete pair) that will be uploaded, in final order. */
@@ -80,6 +89,10 @@ export type BulkPlan<F extends BulkFile> = {
 export function planBulk<F extends BulkFile>(input: {
   slots: readonly string[];
   pairs: boolean;
+  /** A grid with product photos: `slots` is photo, product photo, photo, … */
+  refs?: boolean;
+  /** Product photos linked by hand (refs only). */
+  links?: RefLinks;
   mode: BulkMode;
   files: readonly F[];
   order: readonly string[] | null;
@@ -89,6 +102,8 @@ export function planBulk<F extends BulkFile>(input: {
   let problems: BulkProblem<F>[] = [];
   if (input.pairs) {
     ({ pairs: units, problems } = groupPairs(input.files));
+  } else if (input.refs) {
+    ({ units, problems } = groupRefs(input.files, input.links));
   } else {
     units = [...input.files]
       .sort((a, b) => naturalCompare(a.name, b.name) || naturalCompare(a.id, b.id))
@@ -104,22 +119,26 @@ export function planBulk<F extends BulkFile>(input: {
   const groups: string[][] = [];
   // A pairs group lists its slots as before, after, before, after… — the
   // registry builds it that way from the pair elements.
-  if (input.pairs) for (let i = 0; i + 1 < keys.length; i += 2) groups.push([keys[i], keys[i + 1]]);
+  if (input.pairs || input.refs) for (let i = 0; i + 1 < keys.length; i += 2) groups.push([keys[i], keys[i + 1]]);
   else for (const k of keys) groups.push([k]);
 
-  const rows: BulkRow<F>[] = groups.map((g) => ({ keys: g, occupied: g.some((k) => input.filled(k)), unit: null }));
+  // A grid row is taken by its PHOTO: an empty photo with a product photo
+  // left from before is still an empty row.
+  const rows: BulkRow<F>[] = groups.map((g) => ({ keys: g, occupied: input.refs ? input.filled(g[0]) : g.some((k) => input.filled(k)), unit: null }));
   const targets = rows.filter((r) => input.mode === "replace" || !r.occupied);
   targets.forEach((r, i) => {
     r.unit = units[i] ?? null;
   });
-  const replaced = targets.reduce((n, r) => n + (r.unit ? r.keys.filter((k) => input.filled(k)).length : 0), 0);
+  // What is overwritten: a filled slot that receives a file (a photo with no
+  // product photo leaves the product photo slot as it is).
+  const replaced = targets.reduce((n, r) => n + (r.unit ? r.keys.filter((k, i) => input.filled(k) && Boolean(r.unit!.files[i])).length : 0), 0);
   return { units, problems, rows, targets: targets.length, libraryOnly: units.slice(targets.length), replaced };
 }
 
 /* ── the group, as the registry describes it ──────────────────────────────── */
 
 type SlotInfo = { spec: IceSlotSpec; element: IceElement; pos: number };
-type Group = { key: string; pairs: boolean; keys: string[]; slots: Map<string, SlotInfo> };
+type Group = { key: string; pairs: boolean; refs: boolean; keys: string[]; slots: Map<string, SlotInfo> };
 
 function resolveGroup(info: IcePageInfo, groupKey: string): Group | null {
   if (info.kind !== "registry") return null;
@@ -141,12 +160,18 @@ function resolveGroup(info: IcePageInfo, groupKey: string): Group | null {
       const [b, a] = [def.slots[i], def.slots[i + 1]];
       if (b !== a && slots.has(b) && slots.has(a) && !keys.includes(b) && !keys.includes(a)) keys.push(b, a);
     }
+  } else if (def.refs) {
+    // Each photo, then its product photo — both must be the registry's.
+    for (const k of new Set(def.slots)) {
+      const ref = refSlotKey(k);
+      if (slots.has(k) && slots.has(ref)) keys.push(k, ref);
+    }
   } else {
     keys = [...new Set(def.slots)].filter((k) => slots.has(k));
   }
-  // MAX_SLOTS is even, so a pairs group is never cut between its halves.
+  // MAX_SLOTS is even, so a pairs or refs group is never cut between its halves.
   keys = keys.slice(0, MAX_SLOTS);
-  return keys.length ? { key: def.key, pairs: Boolean(def.pairs), keys, slots } : null;
+  return keys.length ? { key: def.key, pairs: Boolean(def.pairs), refs: !def.pairs && Boolean(def.refs), keys, slots } : null;
 }
 
 /** "Miniatura 3", "Para 2 · przed", "Przykłady 4" — role + the element's own
@@ -205,6 +230,9 @@ const PROBLEM_KEY: Record<BulkProblemReason, string> = {
   missingBefore: "ice.bulk.problem.missingBefore",
   missingAfter: "ice.bulk.problem.missingAfter",
   duplicate: "ice.bulk.problem.duplicate",
+  refOrphan: "ice.bulk.problem.refOrphan",
+  refDuplicate: "ice.bulk.problem.refDuplicate",
+  refAmbiguous: "ice.bulk.problem.refAmbiguous",
 };
 
 /** A unit's status is its worst file's: one failed half fails the pair. */
@@ -230,6 +258,8 @@ export function BulkPanel({ ctx, groupKey, onClose }: { ctx: EditorCtx; groupKey
   const [items, setItems] = useState<Item[]>([]);
   const [rejected, setRejected] = useState<Rejected[]>([]);
   const [order, setOrder] = useState<string[] | null>(null);
+  /** Product photos linked by hand to a photo (refs groups). */
+  const [links, setLinks] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<BulkMode>("empty");
   // The confirmation is for a NUMBER of replaced pictures: when the plan
   // changes that number (files added, states reloaded), it must be given again.
@@ -321,13 +351,15 @@ export function BulkPanel({ ctx, groupKey, onClose }: { ctx: EditorCtx; groupKey
   const plan = useMemo(() => planBulk<Item>({
     slots: group?.keys ?? [],
     pairs: Boolean(group?.pairs),
+    refs: Boolean(group?.refs),
+    links,
     mode,
     files: items,
     order,
     // Before the states arrive the targets are not shown and Start stays
     // disabled; the plan is still used for the list's order.
     filled: (k) => Boolean(states?.get(k)?.media),
-  }), [group, mode, items, order, states]);
+  }), [group, mode, items, order, states, links]);
 
   // Keep keyboard focus on the arrow that was pressed after its row moved.
   useEffect(() => {
@@ -380,7 +412,9 @@ export function BulkPanel({ ctx, groupKey, onClose }: { ctx: EditorCtx; groupKey
     const el = group.slots.get(row.keys[0])?.element;
     return el?.kind === "pair" ? roleLabel(t, el) : t("ice.bulk.pairN", { n: index + 1 });
   };
-  const half = (i: number) => t(i === 0 ? "ice.bulk.before" : "ice.bulk.after");
+  const half = (i: number) => (group.refs ? t(i === 0 ? "ice.bulk.photo" : "ice.bulk.refPhoto") : t(i === 0 ? "ice.bulk.before" : "ice.bulk.after"));
+  // Photos a hand-linked product photo may go to: those without one yet.
+  const linkable = group.refs ? plan.units.filter((u) => u.files.length === 1) : [];
   const rowOf = new Map<string, { row: BulkRow<Item>; index: number }>();
   plan.rows.forEach((row, index) => {
     if (row.unit) rowOf.set(row.unit.id, { row, index });
@@ -567,6 +601,7 @@ export function BulkPanel({ ctx, groupKey, onClose }: { ctx: EditorCtx; groupKey
             </p>
           )}
           {group.pairs && <p className={s.note}>{t("ice.bulk.pairsHint")}</p>}
+          {group.refs && <p className={s.note}>{t("ice.bulk.refsHint")}</p>}
           {sample && <p className={s.note}>{t("ice.bulk.sampleNote")}</p>}
           {shared && <p className={s.warn}>{t("ice.bulk.sharedNote", { page: shared.sharedWith ?? "/tools" })}</p>}
         </div>
@@ -606,6 +641,15 @@ export function BulkPanel({ ctx, groupKey, onClose }: { ctx: EditorCtx; groupKey
               {plan.problems.map((p) => (
                 <li key={p.file.id} className={s.bulkProblem}>
                   <span><span className={s.bulkName}>{p.file.name}</span> — {t(PROBLEM_KEY[p.reason], { base: p.base })}</span>
+                  {group.refs && linkable.length > 0 && (
+                    // The fix by hand: say which photo this product photo is for.
+                    <select className={s.input} style={{ maxWidth: 220 }} disabled={running} value="" data-ref-link={p.file.id}
+                      aria-label={t("ice.bulk.linkRef", { name: p.file.name })}
+                      onChange={(e) => { const to = e.target.value; if (to) setLinks((m) => ({ ...m, [p.file.id]: to })); }}>
+                      <option value="">{t("ice.bulk.linkRef", { name: "" }).trim()}</option>
+                      {linkable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  )}
                   <button type="button" className={cls(s.btn, s.ghost, s.bulkIconBtn)} disabled={running}
                     onClick={() => removeFiles([p.file.id])} aria-label={t("ice.bulk.remove", { name: p.file.name })}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -657,6 +701,14 @@ export function BulkPanel({ ctx, groupKey, onClose }: { ctx: EditorCtx; groupKey
                       {st === "error" && err && <p className={cls(s.meta, s.bulkErrText)}>{errorText(t, err)}</p>}
                     </div>
                     <div className={s.bulkTools}>
+                      {group.refs && u.files.length > 1 && (
+                        // Unpair: the product photo leaves this photo (back to the problems, to link elsewhere or remove).
+                        <Btn small kind="ghost" disabled={running} onClick={() => {
+                          const ref = u.files[1];
+                          setLinks((m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== ref.id)));
+                          removeFiles([ref.id]);
+                        }}>{t("ice.bulk.unlinkRef")}</Btn>
+                      )}
                       <button type="button" className={cls(s.btn, s.ghost, s.bulkIconBtn)} data-move={`${u.id}:up`}
                         disabled={running || i === 0} onClick={() => move(u, -1)} aria-label={t("ice.bulk.up", { name: u.name })}>
                         <Chevron up />

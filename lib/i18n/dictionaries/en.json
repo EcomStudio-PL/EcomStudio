@@ -10579,6 +10579,11 @@
         "name": "Iron it",
         "sub": "Creases smoothed out for a better garment presentation."
       }
+    },
+    "edit": {
+      "toolHidden": "Tool hidden",
+      "itemHidden": "Hidden item",
+      "sectionHidden": "Hidden"
     }
   },
   "thumb": {
@@ -10812,7 +10817,8 @@
       "history": "Change history",
       "leave": "Finish editing",
       "leaving": "Finishing…",
-      "galleries": "BEFORE/AFTER galleries"
+      "galleries": "BEFORE/AFTER galleries",
+      "layout": "Page layout"
     },
     "page": {
       "home": "App home (/home)",
@@ -10870,7 +10876,8 @@
       "target": {
         "text": "Text",
         "slot": "Image",
-        "cms": "CMS page"
+        "cms": "CMS page",
+        "layout": "Page layout"
       },
       "loading": "Loading history…",
       "by": "By {name}",
@@ -10881,7 +10888,9 @@
       "noFile": "None",
       "nothing": "There is no earlier version to restore.",
       "restore": "Restore this version",
-      "restored": "Restored"
+      "restored": "Restored",
+      "layoutChange": "Page layout change",
+      "layoutSummary": "Hidden sections: {hidden} · items: {items}"
     },
     "cms": {
       "live": "published immediately",
@@ -10987,7 +10996,10 @@
         "noSuffix": "no -before / -after suffix (or -przed / -po)",
         "missingBefore": "the “before” file of pair “{base}” is missing",
         "missingAfter": "the “after” file of pair “{base}” is missing",
-        "duplicate": "pair “{base}” has more than one file for the same side"
+        "duplicate": "pair “{base}” has more than one file for the same side",
+        "refOrphan": "a product photo with no photo named “{base}” — link it by hand or remove it",
+        "refDuplicate": "more than one product photo for “{base}” — keep one",
+        "refAmbiguous": "fits several photos named “{base}” — link it by hand"
       },
       "filesTitle": "Files: {n}",
       "pairsTitle": "Pairs: {n}",
@@ -11042,7 +11054,12 @@
         "retouch": "Retouch",
         "thumbnail": "Thumbnail",
         "outdoor": "Outdoor session"
-      }
+      },
+      "photo": "Photo",
+      "refPhoto": "Product photo",
+      "refsHint": "Add an optional product photo by naming the file like the photo with -ref: shoes.jpg + shoes-ref.jpg. Files without -ref are ordinary photos, as before.",
+      "linkRef": "Link to photo… {name}",
+      "unlinkRef": "Remove product photo"
     },
     "error": {
       "generic": "That did not work. Please try again.",
@@ -11102,7 +11119,8 @@
       "launch_draft": "The launch page's texts have an unpublished draft — confirm publishing the whole page.",
       "text_token": "This curly-brace token is not allowed here — fix the typo or remove it.",
       "too_many": "Too many pairs — a gallery holds at most 30.",
-      "version_missing": "That version no longer exists or does not contain this gallery."
+      "version_missing": "That version no longer exists or does not contain this gallery.",
+      "migration_missing": "The page layout is not available in this database yet."
     },
     "sec": {
       "carousel": "Tool carousel",
@@ -11125,7 +11143,8 @@
       "toolsSections": "Catalogue sections",
       "toolsCards": "Tool cards",
       "toolsRequest": "Suggest a tool",
-      "toolHeader": "Tool header"
+      "toolHeader": "Tool header",
+      "campaign": "Campaign (banner)"
     },
     "role": {
       "toolName": "Tool name",
@@ -11157,7 +11176,8 @@
       "cardTitle": "Card title",
       "cardBody": "Card description",
       "cardImage": "Card image",
-      "link": "Link"
+      "link": "Link",
+      "productPhoto": "Product photo"
     },
     "block": {
       "hero": "Hero",
@@ -11576,7 +11596,88 @@
     "faq.err.field.note": "The note is too long or has characters that are not allowed.",
     "faq.err.field.name": "The Polish name is required (no [brackets] or < >).",
     "faq.err.field.topic": "Choose a form topic.",
-    "faq.err.field.id": "Invalid identifier."
+    "faq.err.field.id": "Invalid identifier.",
+    "layout": {
+      "title": "Page layout",
+      "sub": "Order and visibility of sections and items. Every change is live at once and kept in the history.",
+      "undo": "Undo",
+      "undoHint": "Undo the last layout change",
+      "undone": "Layout change undone.",
+      "saved": "Page layout saved.",
+      "preview": "Preview as a customer",
+      "previewOff": "End customer preview",
+      "previewNote": "The preview shows the page as a customer sees it: without hidden sections, items and tools.",
+      "sections": "Sections",
+      "visible": "Visible",
+      "hiddenChip": "Hidden",
+      "itemHiddenChip": "Hidden",
+      "toolHiddenChip": "Tool hidden",
+      "up": "Up",
+      "down": "Down",
+      "earlier": "Move earlier",
+      "later": "Move later",
+      "hide": "Hide",
+      "show": "Show",
+      "items": "Items ({n})",
+      "texts": "Texts",
+      "tool": "Button tool",
+      "toolDefault": "{name} (default)",
+      "groupTools": "Tools",
+      "groupCats": "Categories",
+      "back": "Back",
+      "listTitle": "Items · {section}",
+      "add": "+ Add item",
+      "added": "Item added.",
+      "addLimit": "This list has reached its item limit.",
+      "addSlots": "All photo numbers of this section are used.",
+      "addExists": "Every available entry is already on this list.",
+      "edit": "Edit",
+      "remove": "Remove",
+      "confirmRemove": "Remove this item from the page? Its photos stay in the media library; the tool and generation history are not changed. This can be undone.",
+      "removed": "Item removed from the page.",
+      "empty": "The list is empty — customers do not see this section until you add an item.",
+      "dragHint": "Drag to reorder",
+      "bulk": "Upload many",
+      "photoN": "Photo {n}",
+      "pairN": "Comparison {n}",
+      "withRef": "+ product photo",
+      "noPhoto": "empty slot",
+      "sectionMenu": "Section: {name}",
+      "itemMenu": "Page item",
+      "form": {
+        "title": "Edit item",
+        "tool": "Tool",
+        "toolTaken": "(already listed)",
+        "toolNote": "The item disappears for customers when the tool is hidden in the availability panel.",
+        "name": "Name (optional)",
+        "nameHint": "Empty = the tool's name: {name}",
+        "sub": "Description (optional)",
+        "subHint": "Empty = the tool's description.",
+        "caption": "Caption (optional)",
+        "pageTexts": "This tile's name and description are page texts — edit them like any text (with history per language).",
+        "editName": "Edit name",
+        "editSub": "Edit description",
+        "href": "Link (optional)",
+        "hrefHint": "An in-app address only, e.g. /k/moda/street. Empty = the tool's page. The link works only while the tool is available.",
+        "industry": "Industry",
+        "visible": "Visible to customers",
+        "tileImage": "Tile image",
+        "tileImageNote": "This is the tool card's picture — the same one as in the tool catalogue.",
+        "pairImages": "Before / after photos",
+        "photo": "Photo",
+        "productPhoto": "Product photo (optional)",
+        "productPhotoHint": "Customers see it on hover (desktop) or a long press (phone). Cropped to the same ratio as the photo; the original file is never changed.",
+        "empty": "None — empty slot",
+        "choose": "Choose / change",
+        "unlink": "Unlink",
+        "confirmUnlink": "Unlink the product photo from this photo? The file stays in the library.",
+        "save": "Save item",
+        "badText": "The text holds characters that are not allowed (such as < or >) or is too long.",
+        "badHref": "The link must be an in-app address starting with “/”.",
+        "pillNote": "A tool pill of the upload tile: you can change its order and visibility. Its name is a page text.",
+        "gone": "This item is no longer in the layout (removed meanwhile)."
+      }
+    }
   },
   "iceAdmin": {
     "title": "Visual editor",

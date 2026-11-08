@@ -46,3 +46,7 @@ export async function iceGalleryVersionsAction(input: { key: GalleryKey }) { ret
 export async function iceGalleryRestoreAction(input: { key: GalleryKey; version: string; base: string | null }) {
   return ice.galleryRestore(input);
 }
+export async function iceHomeLayoutStateAction() { return ice.homeLayoutState(); }
+export async function iceHomeLayoutSaveAction(input: { doc: unknown; base: string | null; action?: "save" | "restore" }) {
+  return ice.homeLayoutSave(input);
+}

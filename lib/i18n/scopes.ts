@@ -163,7 +163,10 @@ const admin = [
 
 /** Added by components/ice/ice-gate.tsx — the visual editor, admins only. */
 const ice = [
+  "compress",
+  "editor",
   "ice",
+  "resize",
 ] as const;
 
 export const SCOPES = { root, app, admin, ice };

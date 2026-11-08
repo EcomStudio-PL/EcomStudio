@@ -14,7 +14,9 @@ export type PairSide = "before" | "after";
 export type BulkFile = { id: string; name: string };
 /** What fills one row: one file, or a pair's [before, after]. */
 export type BulkUnit<F extends BulkFile> = { id: string; name: string; files: F[] };
-export type BulkProblemReason = "noSuffix" | "missingBefore" | "missingAfter" | "duplicate";
+export type BulkProblemReason = "noSuffix" | "missingBefore" | "missingAfter" | "duplicate"
+  /* a grid's product photos („<name>-ref”): */
+  | "refOrphan" | "refDuplicate" | "refAmbiguous";
 export type BulkProblem<F extends BulkFile> = { file: F; reason: BulkProblemReason; base: string };
 
 /** Natural, case-insensitive order: "2.jpg" before "10.jpg". */
@@ -71,4 +73,85 @@ export function groupPairs<F extends BulkFile>(files: readonly F[]): { pairs: Bu
   pairs.sort((a, b) => naturalCompare(a.name, b.name) || naturalCompare(a.id, b.id));
   problems.sort((a, b) => naturalCompare(a.file.name, b.file.name) || naturalCompare(a.file.id, b.file.id));
   return { pairs, problems };
+}
+
+/* ── a photo and its product photo: „buty.jpg” + „buty-ref.jpg” ──────────── */
+
+/**
+ * "buty-ref.jpg" → "buty": the base of a product photo. The suffix -ref (any
+ * case) must sit right before the extension; anything else is null — an
+ * ordinary photo.
+ */
+export function refSuffix(name: string): string | null {
+  const stem = name.replace(/\.[^./\\]+$/, "");
+  const m = /^(.+)-ref$/i.exec(stem);
+  const base = m?.[1].trim();
+  return m && base ? base : null;
+}
+
+/** A photo's base: its name without the extension, compared without case. */
+const photoBase = (name: string) => name.replace(/\.[^./\\]+$/, "").trim().toLocaleLowerCase();
+
+/** Product photos the admin linked by hand: ref file id → photo file id. */
+export type RefLinks = Readonly<Record<string, string>>;
+
+/**
+ * Files → one unit per PHOTO, in natural order: [photo] or [photo, its
+ * product photo]. Every file without -ref is a photo — so a single upload, or
+ * a folder with no -ref files, is exactly what it always was.
+ *
+ * A product photo is matched by base name, regardless of case and extension.
+ * Never guessed: one with no photo of that name (refOrphan), two for the same
+ * photo (refDuplicate), or one whose name fits two photos ("a.jpg" and
+ * "a.png" — refAmbiguous) is a problem the admin resolves — by linking it by
+ * hand (`manual`, which wins over the name) or by removing a file. A unit's id
+ * is its photo's id, so linking or unlinking never moves it in the order.
+ */
+export function groupRefs<F extends BulkFile>(files: readonly F[], manual: RefLinks = {}): { units: BulkUnit<F>[]; problems: BulkProblem<F>[] } {
+  const photos: F[] = [];
+  const refs: F[] = [];
+  for (const f of files) (refSuffix(f.name) !== null ? refs : photos).push(f);
+  const photoIds = new Set(photos.map((p) => p.id));
+  const byBase = new Map<string, F[]>();
+  for (const p of photos) byBase.set(photoBase(p.name), [...(byBase.get(photoBase(p.name)) ?? []), p]);
+
+  const refOf = new Map<string, F>();
+  const problems: BulkProblem<F>[] = [];
+  // By hand first: a link to a photo that is still here and has no other.
+  const linked = new Set<string>();
+  for (const r of refs) {
+    const to = manual[r.id];
+    if (to && photoIds.has(to) && !refOf.has(to)) {
+      refOf.set(to, r);
+      linked.add(r.id);
+    }
+  }
+  // Then by name.
+  const byRefBase = new Map<string, F[]>();
+  for (const r of refs) {
+    if (linked.has(r.id)) continue;
+    const b = refSuffix(r.name)!.toLocaleLowerCase();
+    byRefBase.set(b, [...(byRefBase.get(b) ?? []), r]);
+  }
+  for (const [b, rs] of byRefBase) {
+    const base = refSuffix(rs[0].name)!;
+    const all = byBase.get(b) ?? [];
+    const free = all.filter((p) => !refOf.has(p.id));
+    const reason: BulkProblemReason | null = rs.length > 1 || (all.length === 1 && free.length === 0) ? "refDuplicate"
+      : all.length === 0 ? "refOrphan"
+      : all.length > 1 ? "refAmbiguous" : null;
+    if (reason) {
+      for (const r of rs) problems.push({ file: r, reason, base });
+      continue;
+    }
+    refOf.set(free[0].id, rs[0]);
+  }
+  const units: BulkUnit<F>[] = [...photos]
+    .sort((a, b) => naturalCompare(a.name, b.name) || naturalCompare(a.id, b.id))
+    .map((p) => {
+      const r = refOf.get(p.id);
+      return { id: p.id, name: p.name, files: r ? [p, r] : [p] };
+    });
+  problems.sort((a, b) => naturalCompare(a.file.name, b.file.name) || naturalCompare(a.file.id, b.file.id));
+  return { units, problems };
 }

@@ -277,8 +277,9 @@ function ToolPills({ tools, selected }: { tools: UploadToolView[]; selected: Upl
             tabIndex={on || (!selected && i === live[0]) ? 0 : -1}
             onClick={() => { if (isLive) setSelectedTool(tool.key); }}
             onKeyDown={(e) => onKey(e, i)}
-            data-upload-tool={tool.key} data-selected={on || undefined}
+            data-upload-tool={tool.key} data-selected={on || undefined} data-home-item={`pills:${tool.key}`}
             className={cn(
+              tool.flag && "opacity-55 saturate-50",
               "inline-flex h-9 items-center gap-1 rounded-xl border px-2.5 text-[12px] font-semibold transition-colors duration-200 sm:gap-1.5 sm:px-3.5 sm:text-[12.5px]",
               on
                 ? "border-[rgb(var(--accent)/0.7)] bg-[rgb(var(--accent)/0.1)] text-accent-strong dark:text-accent"
@@ -288,6 +289,12 @@ function ToolPills({ tools, selected }: { tools: UploadToolView[]; selected: Upl
             {on && <Check size={13} strokeWidth={3} aria-hidden />}
             {t(tool.pillKey)}
             {!isLive && <StatusBadge status={tool.status} t={t} />}
+            {tool.flag && (
+              // Edit mode only: why a customer would not see this pill.
+              <span data-home-flag={tool.flag} className="rounded-full bg-[rgb(20_14_28/0.82)] px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.05em] text-white">
+                {t(tool.flag === "tool" ? "sellerHome.edit.toolHidden" : "sellerHome.edit.itemHidden")}
+              </span>
+            )}
           </button>
         );
       })}

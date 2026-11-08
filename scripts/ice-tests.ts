@@ -68,6 +68,7 @@ import {
   blockFields, blockSlots, blockToggles, isUuid, markBlocks, markPublishedPage, markText, valueAt, type CmsBlockLike,
 } from "@/lib/server/ice/cms";
 import * as actions from "@/lib/server/ice/actions";
+import { addEntry, defaultHomeLayout, setSectionHidden } from "@/lib/home-layout";
 import * as wrappers from "@/app/actions/ice";
 import { iceGateData } from "@/lib/server/ice/gate";
 import { cmsPageAt, iceRefusesPath } from "@/lib/server/ice/core";
@@ -253,16 +254,22 @@ async function sectionA() {
   check("A7b every slot's ratio is its own width/height", allElements(HOME).flatMap((e) => e.slots ?? [])
     .every((s) => Math.abs(ratioValue(s.ratio) - s.width / s.height) < 1e-9));
 
-  const thumbs = sectionSlots(HOME, "thumbnails");
+  // Since the layout (0170) every grid photo also has an optional product
+  // photo, `<slot>.ref` — the same frame, its own slot; counted apart here.
+  const isRef = (s: { key: string }) => s.key.endsWith(".ref");
+  const thumbsAll = sectionSlots(HOME, "thumbnails");
+  const thumbs = thumbsAll.filter((s) => !isRef(s));
   check("A7c thumbnails: 20 global image slots, 1:1, 1200×1200",
     thumbs.length === 20 && thumbs.every((s) => s.entityType === "global" && !s.video && ratioValue(s.ratio) === 1 && s.width === 1200 && s.height === 1200)
-    && same(thumbs.map((s) => s.key), THUMBNAILS.tiles.map((t) => t.media.configKey)),
+    && same(thumbs.map((s) => s.key), THUMBNAILS.tiles.map((t) => t.media.configKey))
+    && same(thumbsAll.filter(isRef).map((s) => s.key), thumbs.map((s) => `${s.key}.ref`))
+    && thumbsAll.filter(isRef).every((r, i) => r.ratio === thumbs[i].ratio && r.width === thumbs[i].width && !r.video),
     `${thumbs.length} slots, ratio ${thumbs[0]?.ratio}`);
   note(`thumbnail ratio string is "${thumbs[0]?.ratio}" (= 1/1 as a CSS aspect-ratio)`);
-  const sessions = sectionSlots(HOME, "sessions");
+  const sessions = sectionSlots(HOME, "sessions").filter((s) => !isRef(s));
   check("A7d sessions: 16 global image slots, sized like SESSIONS.tiles",
     sessions.length === 16 && sessions.every((s, i) => !s.video && s.width === SESSIONS.tiles[i].media.width && s.height === SESSIONS.tiles[i].media.height));
-  const showcase = sectionSlots(HOME, "showcase");
+  const showcase = sectionSlots(HOME, "showcase").filter((s) => !isRef(s));
   const gallery = showcase.filter((s) => s.key.startsWith("homeMedia.showcase.gallery."));
   const visual = showcase.filter((s) => s.key === SHOWCASE.visual.configKey);
   check("A7e showcase: 12 gallery image slots + 1 visual that takes a video (phone/tablet frames)",
@@ -284,8 +291,8 @@ async function sectionA() {
     && baSlots.every((s) => s.ratio === ratioOf(BEFORE_AFTER_SIZE) && s.width === BEFORE_AFTER_SIZE.width && s.height === BEFORE_AFTER_SIZE.height),
     `ratio ${baSlots[0]?.ratio} vs ${ratioOf(BEFORE_AFTER_SIZE)}`);
   note(`BEFORE_AFTER_SIZE is currently ${BEFORE_AFTER_SIZE.width}×${BEFORE_AFTER_SIZE.height} (ratio "${ratioOf(BEFORE_AFTER_SIZE)}")`);
-  check("A7i the /home global slots are exactly thumbnails 20 + sessions 16 + showcase 13 + promo 3 + samples 15 + pairs 12",
-    homeGlobals.length === 20 + 16 + 13 + 3 + 15 + 12, `got ${homeGlobals.length}`);
+  check("A7i the /home global slots are exactly thumbnails 20 + sessions 16 + showcase 13 + promo 3 + samples 15 + pairs 12, + 48 product photos (20 + 16 + 12)",
+    homeGlobals.filter((s) => !isRef(s)).length === 20 + 16 + 13 + 3 + 15 + 12 && homeGlobals.filter(isRef).length === 20 + 16 + 12, `got ${homeGlobals.length}`);
 
   const cardSlots = allElements(HOME).flatMap((e) => e.slots ?? []).filter((s) => s.entityType !== "global");
   const cardKeys = new Set(cardSlots.map((s) => s.key));
@@ -316,7 +323,8 @@ async function sectionA() {
     return Boolean(spec && (v![2] === "mobile" ? spec.mobile : spec.video));
   };
   const unregistered = [...configKeys].filter((k) => !covered(k));
-  const stray = globalKeys.filter((k) => !configKeys.has(k));
+  // A product photo is a slot of its own with no config file (an admin fills it).
+  const stray = globalKeys.filter((k) => !configKeys.has(k) && !(k.endsWith(".ref") && configKeys.has(k.slice(0, -".ref".length))));
   check("A7k every /home asset (seller-home-config assetList) is a registered slot (its .mobile/.poster a column of it), or a tool tile that uses its card slot",
     unregistered.length === 0 && stray.length === 0, `unregistered: ${short(unregistered)}; not in config: ${short(stray)}`);
 
@@ -411,6 +419,12 @@ async function sectionA() {
   let selCount = 0;
   for (const p of ICE_PAGES) for (const e of allElements(p)) {
     if (e.kind === "text") continue;
+    // A grid photo's product photo is not painted until hovered: no frame of
+    // its own on the page (reached from „Układ strony” and the list).
+    if (e.role === "productPhoto") {
+      if (e.dom !== undefined || !e.id.endsWith(".ref")) badSel.push(`${p.path}:${e.id}`);
+      continue;
+    }
     selCount++;
     if (typeof e.dom !== "string" || !e.dom || !balanced(e.dom) || !splitTop(e.dom).every((part) => PART.test(part))) badSel.push(`${p.path}:${e.id}`);
   }
@@ -1136,6 +1150,9 @@ async function sectionI() {
     ["galleryRestore", () => actions.galleryRestore({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
     ["cmsVisibility", () => actions.cmsVisibility({ blockId: B_HERO, path: [], hidden: true, base: null })],
     ["cmsMove", () => actions.cmsMove({ blockId: B_HERO, list: "items", from: 0, to: 1, base: null })],
+    // /home's layout (0170).
+    ["homeLayoutState", () => actions.homeLayoutState()],
+    ["homeLayoutSave", () => actions.homeLayoutSave({ doc: defaultHomeLayout(), base: null })],
   ];
   const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths" && k !== "iceDbReady");
   const covered = new Set(CALLS.map(([n]) => n.replace(/\(.*\)$/, "")));
@@ -1182,6 +1199,8 @@ async function sectionI() {
       ["iceGalleryRestoreAction", () => wrappers.iceGalleryRestoreAction({ key: "thumbs", version: "eeeeeeee-0000-4000-8000-000000000001", base: null })],
       ["iceCmsVisibilityAction", () => wrappers.iceCmsVisibilityAction({ blockId: B_HERO, path: [], hidden: true, base: null })],
       ["iceCmsMoveAction", () => wrappers.iceCmsMoveAction({ blockId: B_HERO, list: "items", from: 0, to: 1, base: null })],
+      ["iceHomeLayoutStateAction", () => wrappers.iceHomeLayoutStateAction()],
+      ["iceHomeLayoutSaveAction", () => wrappers.iceHomeLayoutSaveAction({ doc: {}, base: null })],
     ];
     const names = Object.keys(wrappers);
     const results = await Promise.all(wrapperCalls.map(([, f]) => f()));
@@ -1622,7 +1641,38 @@ async function sectionI() {
     freshDb();
     const h = await actions.pageInfo("/home");
     const d = h.ok ? h.data : null;
-    check("I22 pageInfo(/home) → the registry page and its text keys", d?.kind === "registry" && d.page === HOME && same(d.textKeys, pageTextKeys(HOME)));
+    // /home is built from the stored layout; none stored (or 0170 missing) → the default = the static page.
+    check("I22 pageInfo(/home) → the registry page and its text keys", d?.kind === "registry" && JSON.stringify(d.page) === JSON.stringify(HOME) && same(d.textKeys, pageTextKeys(HOME)));
+    const withLayout = freshDb();
+    const added = addEntry(defaultHomeLayout(), "thumbnails");
+    const stored = "layout" in added ? added.layout : defaultHomeLayout();
+    withLayout.rpcs.home_layout_published = () => ({ data: { doc: stored, updated_at: BASE_TS }, error: null });
+    const hl = await actions.pageInfo("/home");
+    const ids = hl.ok && hl.data.kind === "registry" ? hl.data.page.sections.flatMap((x) => x.elements.map((e) => e.id)) : [];
+    check("I22-layout …built from the layout stored now: an added photo and its product photo are editable elements",
+      ids.includes("homeMedia.thumbnails.21") && ids.includes("homeMedia.thumbnails.21.ref") && !(icePageFor("/home")?.sections.flatMap((x) => x.elements.map((e) => e.id)) ?? []).includes("homeMedia.thumbnails.21"));
+    {
+      // homeLayoutSave: re-validated, compare-and-set, audited, /home re-rendered.
+      const db = freshDb();
+      let sent: Record<string, unknown> | null = null;
+      db.rpcs.home_layout_write = (args) => { sent = args; return { data: { updated_at: "2026-11-08T10:00:00.000Z" }, error: null }; };
+      const dirty = { ...defaultHomeLayout(), carousel: [{ id: "x1", item: "generator", name: { pl: "<script>x</script>", en: "Ok" }, href: "https://evil.example" }] };
+      const r = await actions.homeLayoutSave({ doc: dirty, base: null });
+      const doc = (sent as { p_doc?: { carousel?: { name?: unknown; href?: unknown }[] } } | null)?.p_doc;
+      check("I30 homeLayoutSave stores the server's normalized document (unsafe text and outside links dropped), audited, /home revalidated",
+        r.ok && JSON.stringify(doc?.carousel?.[0]?.name) === '{"en":"Ok"}' && doc?.carousel?.[0]?.href === undefined
+        && iceState.audits.length === 1 && iceState.audits[0].action === "ice.layout.saved" && iceState.revalidated.includes("path:/home"), JSON.stringify({ r, audits: iceState.audits.length, rev: iceState.revalidated }));
+      const c = freshDb();
+      c.tables.home_layout = [{ id: "home", doc: defaultHomeLayout(), updated_at: BASE_TS }];
+      c.rpcs.home_layout_write = () => ({ data: null, error: { message: "conflict" } });
+      const conflict = await actions.homeLayoutSave({ doc: setSectionHidden(defaultHomeLayout(), "soon", true), base: "2020-01-01T00:00:00.000Z" });
+      check("I31 …a stale base is refused as a conflict and hands back what is stored now (nothing overwritten, nothing audited)",
+        !conflict.ok && conflict.error === "conflict" && Boolean(conflict.current) && iceState.audits.length === 0);
+      const n = freshDb();
+      n.tables.home_layout = [{ id: "home", doc: defaultHomeLayout(), updated_at: BASE_TS }];
+      const noop = await actions.homeLayoutSave({ doc: defaultHomeLayout(), base: BASE_TS });
+      check("I32 …saving what is already stored is a noop (no history row, no rpc)", !noop.ok && noop.error === "noop" && !n.calls.some((x) => x.kind === "rpc" && x.name === "home_layout_write"));
+    }
     const p = await actions.pageInfo("/plan");
     check("I22b pageInfo(/plan) → the /plany page", p.ok && p.data.kind === "registry" && p.data.page === PLANS);
     const c = await actions.pageInfo("/oferta");

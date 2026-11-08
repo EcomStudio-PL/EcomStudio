@@ -31,6 +31,9 @@ export type ItemState = {
   /** Credits ONE image costs at the tool's default size/quality, from the
    *  tool's own price source. 0 = free; null = no price could be read. */
   credits: number | null;
+  /** Admins only: a customer is not offered this tool (switched off, taken
+   *  off /tools) — the editor marks what it hides „Narzędzie ukryte”. */
+  customerHidden?: boolean;
 };
 
 export type ItemStates = Readonly<Record<string, ItemState>>;
@@ -55,6 +58,8 @@ export type UploadToolView = {
   handoff: boolean;
   credits: number | null;
   samples: readonly MediaSrc[];
+  /** Edit mode only: why a customer would not see this pill. */
+  flag?: "item" | "tool";
 };
 
 /** The three pills, resolved. A pill whose tool is unknown to the viewer

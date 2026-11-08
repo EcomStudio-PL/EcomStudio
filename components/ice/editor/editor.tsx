@@ -18,6 +18,7 @@ import { SamplesPanel } from "./samples-panel";
 import { BulkPanel } from "./bulk-panel";
 import { GalleryPanel } from "./gallery-panel";
 import { FaqPanel } from "./faq-panel";
+import { LayoutOverlay, LayoutPanel, useHomeLayoutStore, type LayoutView } from "./layout-panel";
 import { isFaqPage, type FaqPage } from "@/lib/faq";
 import { useFramed } from "../framed";
 import s from "./editor.module.css";
@@ -35,8 +36,10 @@ import s from "./editor.module.css";
  */
 
 type Open =
-  | { kind: "target"; target: Target }
-  | { kind: "elements" }
+  /** `back`: the panel it was opened from („Układ strony”), returned to on close. */
+  | { kind: "target"; target: Target; back?: Open }
+  /** `query`: the list searched for (a section's texts, from „Układ strony”). */
+  | { kind: "elements"; query?: string }
   | { kind: "history" }
   | { kind: "bulkGroups" }
   | { kind: "bulk"; group: string }
@@ -46,7 +49,9 @@ type Open =
    *  section that was clicked (null: the toolbar button). */
   | { kind: "gallery"; key: GalleryKey | null }
   /** FAQ V1: the shared FAQ base, on a page that shows it. */
-  | { kind: "faq" };
+  | { kind: "faq" }
+  /** /home's sections and lists (lib/home-layout.ts). */
+  | { kind: "layout"; view: LayoutView };
 
 type Hover = { box: { x: number; y: number; w: number; h: number }; label: string };
 
@@ -436,8 +441,15 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
       // A gallery DRAFT save, discard or restore changes nothing a visitor
       // sees and revalidates nothing, so it needs no fresh render.
       galleryPublish: (input) => after(transport.galleryPublish(input)),
+      // /home's layout: the page under the editor changes order and content.
+      homeLayoutSave: (input) => after(transport.homeLayoutSave(input)),
     };
   }, [router, transport]);
+  // /home's layout, shared by „Układ strony” and the toolbars on the page.
+  // After a save the page's element list is re-read: an added tile or photo
+  // is an element of its own.
+  const isHome = path === "/home";
+  const layoutStore = useHomeLayoutStore(tx, t, isHome, loadInfo);
 
   const ctx: EditorCtx | null = useMemo(() => info && ({
     transport: tx,
@@ -464,7 +476,19 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
     router.refresh();
   };
 
-  const close = useCallback(() => setOpen(null), []);
+  // A panel opened from „Układ strony” goes back to it.
+  const close = useCallback(() => setOpen((o) => (o?.kind === "target" && o.back ? o.back : null)), []);
+  /** From „Układ strony”: an element's own panel (a picture, a text), then back. */
+  const openUidFrom = useCallback((uid: string, back: Open) => {
+    const found = targetsRef.current.find((x) => x.uid === uid) ?? (info ? detachedTarget(info, uid) : null);
+    if (!found) {
+      notify.message(t("ice.elements.notShown"));
+      return;
+    }
+    targetElements(found)[0]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const fresh = info ? scanPage(info, session.nonce).find((x) => x.uid === uid) ?? found : found;
+    setOpen({ kind: "target", target: fresh, back });
+  }, [info, session.nonce, t]);
   const found = targets.length;
   const bulkGroups = info?.kind === "registry" ? info.page.bulk ?? [] : [];
   const hasToggles = info?.kind === "cms" && info.cms.toggles.length > 0;
@@ -484,6 +508,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
           <span>{t("ice.bar.mode")} · {path} · {t("ice.bar.count", { n: found })}</span>
         </span>
         <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "elements" })}>{t("ice.bar.elements")}</Btn>
+        {isHome && <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "layout", view: { at: "sections" } })}>{t("ice.bar.layout")}</Btn>}
         {bulkGroups.length > 0 && <Btn small kind="ghost" onClick={() => openPanel({ kind: "bulkGroups" })}>{t("ice.bar.bulk")}</Btn>}
         {hasToggles && <Btn small kind="ghost" onClick={() => openPanel({ kind: "visibility" })}>{t("ice.bar.visibility")}</Btn>}
         {hasGalleries(info, path) && (
@@ -507,8 +532,18 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
         : open.target.element.kind === "samples" ? <SamplesPanel key={open.target.uid} ctx={ctx} element={open.target.element} onClose={close} />
         : <MediaPanel key={open.target.uid} ctx={ctx} element={open.target.element} onClose={close} />
       )}
-      {ctx && open?.kind === "elements" && <ElementsPanel ctx={ctx} targets={targets} onPick={pickUid} onClose={close} />}
-      {ctx && open?.kind === "history" && <PageHistoryPanel ctx={ctx} onOpen={pickUid} onClose={close} />}
+      {ctx && open?.kind === "elements" && <ElementsPanel key={open.query ?? ""} ctx={ctx} targets={targets} query={open.query} onPick={pickUid} onClose={close} />}
+      {ctx && open?.kind === "history" && (
+        <PageHistoryPanel ctx={ctx} onOpen={pickUid} onClose={close} onRestoreLayout={isHome ? layoutStore.restore : undefined} />
+      )}
+      {ctx && open?.kind === "layout" && (
+        <LayoutPanel ctx={ctx} store={layoutStore} view={open.view}
+          onView={(view) => setOpen({ kind: "layout", view })}
+          onOpenUid={(uid) => openUidFrom(uid, open)}
+          onTexts={(query) => setOpen({ kind: "elements", query })}
+          onClose={close} />
+      )}
+      {isHome && layoutStore.state && <LayoutOverlay t={t} store={layoutStore} onView={(view) => openPanel({ kind: "layout", view })} />}
       {ctx && open?.kind === "bulkGroups" && <BulkGroupsPanel ctx={ctx} onPick={(g) => setOpen({ kind: "bulk", group: g })} onClose={close} />}
       {ctx && open?.kind === "bulk" && <BulkPanel key={open.group} ctx={ctx} groupKey={open.group} onClose={close} />}
       {ctx && open?.kind === "visibility" && <VisibilityPanel ctx={ctx} onPick={pickUid} onClose={close} />}

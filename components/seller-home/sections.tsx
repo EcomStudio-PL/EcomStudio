@@ -3,10 +3,11 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  BEFORE_AFTER, BEFORE_AFTER_SIZE, BANNER_FRAME, FEATURED, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
+  BEFORE_AFTER_SIZE, BANNER_FRAME, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
   industryKey, ratioOf,
-  type GalleryTileDef, type MediaSrc, type PromoBannerDef,
+  type MediaSrc, type PromoBannerDef,
 } from "@/lib/seller-home-config";
+import { sectionItem } from "@/lib/home-layout";
 import type { ItemStates } from "@/lib/seller-home-model";
 import type { SellerHomeData } from "@/lib/server/seller-home";
 import { BeforeAfter } from "./before-after";
@@ -14,10 +15,14 @@ import { homeSlot, iceImage, type HomeSlots, type IceImage } from "./ice-slot-im
 import { MediaSlot } from "./media-slot";
 import { Rail } from "./rail";
 import { GalleryCta, SectionHead, StatusBadge, ToolLink, TryLink } from "./parts";
+import { EditFlags, flagged, gridTiles, pairCards, toolTiles, type GridTile } from "./home-view";
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
 const size = (t: T, w: number, h: number) => t("sellerHome.slot.size", { w, h });
+
+/** A grid's tiles with their editor handle (`<list>:<id>` in data-home-item). */
+const tag = (tiles: GridTile[], list: string): GridTile[] => tiles.map((x) => ({ ...x, id: `${list}:${x.id}` }));
 
 /* ── 3. before / after ────────────────────────────────────────────────────*/
 
@@ -32,8 +37,10 @@ const size = (t: T, w: number, h: number) => t("sellerHome.slot.size", { w, h })
  * <img> description (`before` / `after`, only when filled — an unfilled card
  * is handed exactly the props it always was); a config file still wins.
  */
-export function BeforeAfterRow({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
-  const cards = BEFORE_AFTER.filter((b) => items[b.item]);
+export function BeforeAfterRow({ data, t, home, locale }: { data: SellerHomeData; t: T; home?: HomeSlots; locale: string }) {
+  // The layout's pairs: a hidden pair, or one whose tool a customer is not
+  // offered, takes no place in the row.
+  const cards = pairCards(data, t, locale);
   if (cards.length === 0) return null;
   const hint = size(t, BEFORE_AFTER_SIZE.width, BEFORE_AFTER_SIZE.height);
   /** A filled half (images only — the slider compares two stills). */
@@ -48,13 +55,14 @@ export function BeforeAfterRow({ items, t, home }: { items: ItemStates; t: T; ho
         role={t("sellerHome.carousel.role")} landmark={false} arrowTop="calc(50% - 1.4rem)"
         className="[--rail-cols:1.3] [--rail-gap:10px] sm:[--rail-cols:2.4] sm:[--rail-gap:12px] lg:[--rail-cols:4] lg:[--rail-gap:14px] xl:[--rail-cols:5] 2xl:[--rail-cols:6]">
         {cards.map((card, i) => {
-          const state = items[card.item];
-          const name = t(card.nameKey);
+          const state = card.state;
+          const name = card.name;
           const before = half(card.media.before);
           const after = half(card.media.after);
           return (
-            <article key={card.key} className="min-w-0" data-ba-card={card.key}>
-              <div className="overflow-hidden rounded-xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]">
+            <article key={card.id} className={cn("min-w-0", flagged(card.flags))} data-ba-card={card.key} data-home-item={`beforeAfter:${card.id}`}>
+              <div className="relative overflow-hidden rounded-xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]">
+                <EditFlags flags={card.flags} t={t} />
                 <BeforeAfter pair={card.media} ratio={ratioOf(BEFORE_AFTER_SIZE)} tone={i * 2}
                   {...(before ? { before } : {})} {...(after ? { after } : {})}
                   sizes="(max-width: 639px) 76vw, (max-width: 1023px) 40vw, 20vw"
@@ -104,11 +112,16 @@ const BANNER_TONES: readonly string[] = [
  * the config's file OR the picture / clip an admin assigned in the visual
  * editor (MediaSlot paints whichever wins).
  */
-export function PromoBanner({ def, items, t, home }: { def: PromoBannerDef; items: ItemStates; t: T; home?: HomeSlots }) {
-  const state = def.item ? items[def.item] : null;
+export function PromoBanner({ def, items, t, home, item }: {
+  def: PromoBannerDef; items: ItemStates; t: T; home?: HomeSlots;
+  /** The tool its button opens, as the layout says (default: the config's). */
+  item?: string | null;
+}) {
+  const tool = item === undefined ? def.item : item;
+  const state = tool ? items[tool] : null;
   // A banner about a tool this viewer may not see (switched off, off /tools)
   // is not drawn at all — it would advertise something that is not there.
-  if (def.item && !state) return null;
+  if (tool && !state) return null;
   const live = state?.status === "live";
   const hasMedia = Boolean(def.media.src) || Boolean(homeSlot(home, def.media.configKey));
   const title = def.titleKey ? t(def.titleKey) : null;
@@ -195,7 +208,7 @@ export function PromoBanner({ def, items, t, home }: { def: PromoBannerDef; item
  * tile in its own shape — nothing is stretched or cropped to fit a grid.
  */
 function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset = 0, home, t }: {
-  tiles: readonly GalleryTileDef[];
+  tiles: readonly GridTile[];
   /** Name of a tile in the empty state ("Miniaturka", "Sesja"). */
   label: string;
   /** column-count per breakpoint. */
@@ -214,9 +227,11 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
       <div className={cn("relative overflow-hidden [mask-image:linear-gradient(to_bottom,black_72%,transparent_99%)]", frame)} data-fade-gallery>
         <div className={cn("absolute inset-x-0 top-0 gap-2 sm:gap-2.5", cols)}>
           {tiles.map((tile, i) => (
-            <div key={tile.media.configKey} className="mb-2 break-inside-avoid overflow-hidden rounded-xl sm:mb-2.5">
-              <MediaSlot media={tile.media} tone={i + toneOffset} sizes={sizes} home={home}
+            <div key={tile.id} className={cn("relative mb-2 break-inside-avoid overflow-hidden rounded-xl sm:mb-2.5", flagged(tile.flags))}
+              data-home-item={tile.id}>
+              <MediaSlot media={tile.media} tone={i + toneOffset} sizes={sizes} home={home} refKey={tile.refKey}
                 label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
+              <EditFlags flags={tile.flags} t={t} />
             </div>
           ))}
         </div>
@@ -233,8 +248,9 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
  * twelve of its results on the right fading into the panel, one button. No
  * heading, no paragraph — the pictures make the case.
  */
-export function Showcase({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
-  const state = items[SHOWCASE.item];
+export function Showcase({ data, t, home }: { data: SellerHomeData; t: T; home?: HomeSlots }) {
+  const tool = sectionItem(data.layout, "showcase");
+  const state = tool ? data.items[tool] : undefined;
   if (!state) return null;
   const visual = SHOWCASE.visual;
   return (
@@ -247,7 +263,7 @@ export function Showcase({ items, t, home }: { items: ItemStates; t: T; home?: H
             label={t("sellerHome.slot.showcase")} hint={size(t, visual.width, visual.height)} />
           <StatusBadge status={state.status} t={t} className="absolute left-3 top-3" />
         </div>
-        <FadeGallery tiles={SHOWCASE.gallery.map((media) => ({ media }))} label={t("sellerHome.slot.result")}
+        <FadeGallery tiles={tag(gridTiles("showcase", data), "showcase")} label={t("sellerHome.slot.result")}
           cols="columns-2 sm:columns-3" window="aspect-[2/2.4] sm:aspect-[3/2.7]"
           sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw" toneOffset={3} home={home} t={t}
           cta={<GalleryCta state={state} label={t(SHOWCASE.ctaKey)} />} />
@@ -269,7 +285,7 @@ export function Showcase({ items, t, home }: { items: ItemStates; t: T; home?: H
  * theme — and the button sits on that fade.
  */
 function SquareGallery({ tiles, label, cta, home, t }: {
-  tiles: readonly GalleryTileDef[];
+  tiles: readonly GridTile[];
   label: string;
   cta: React.ReactNode;
   /** Tiles filled in the visual editor (absent = none). */
@@ -288,10 +304,11 @@ function SquareGallery({ tiles, label, cta, home, t }: {
         )}>
         <div className="grid grid-cols-[repeat(var(--sq-cols),minmax(0,1fr))] gap-[var(--sq-gap)]">
           {tiles.map((tile, i) => (
-            <div key={tile.media.configKey} className="overflow-hidden rounded-xl" data-square-tile>
-              <MediaSlot media={tile.media} ratio="1/1" tone={i} home={home}
+            <div key={tile.id} className={cn("relative overflow-hidden rounded-xl", flagged(tile.flags))} data-square-tile data-home-item={tile.id}>
+              <MediaSlot media={tile.media} ratio="1/1" tone={i} home={home} refKey={tile.refKey}
                 sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw"
                 label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
+              <EditFlags flags={tile.flags} t={t} />
             </div>
           ))}
         </div>
@@ -301,15 +318,16 @@ function SquareGallery({ tiles, label, cta, home, t }: {
   );
 }
 
-export function ThumbnailsSection({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
-  const state = items[THUMBNAILS.item];
-  // The section is the thumbnail tool's: gone when the viewer may not see it.
+export function ThumbnailsSection({ data, t, home }: { data: SellerHomeData; t: T; home?: HomeSlots }) {
+  const tool = sectionItem(data.layout, "thumbnails");
+  const state = tool ? data.items[tool] : undefined;
+  // The section is its tool's: gone when the viewer may not see it.
   if (!state) return null;
   return (
     <section className="relative" aria-labelledby="seller-thumbs-title" data-seller-thumbnails>
       <SectionHead id="seller-thumbs-title" title={t(THUMBNAILS.titleKey)} sub={t(THUMBNAILS.subKey)}
         action={<TryLink state={state} label={t(THUMBNAILS.tryKey)} />} />
-      <SquareGallery tiles={THUMBNAILS.tiles} label={t("sellerHome.slot.thumbnail")} home={home} t={t}
+      <SquareGallery tiles={tag(gridTiles("thumbnails", data), "thumbnails")} label={t("sellerHome.slot.thumbnail")} home={home} t={t}
         cta={<GalleryCta state={state} label={t(THUMBNAILS.ctaKey)} />} />
     </section>
   );
@@ -317,7 +335,8 @@ export function ThumbnailsSection({ items, t, home }: { items: ItemStates; t: T;
 
 /* ── 8. Sesje produktowe ──────────────────────────────────────────────────*/
 
-export function SessionsSection({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
+export function SessionsSection({ data, t, home }: { data: SellerHomeData; t: T; home?: HomeSlots }) {
+  const items = data.items;
   const studio = items[SESSIONS.studio.item];
   const outdoor = items[SESSIONS.outdoor.item];
   // Both tools out of this viewer's reach: the section has nothing to open.
@@ -364,7 +383,7 @@ export function SessionsSection({ items, t, home }: { items: ItemStates; t: T; h
         </div>
       </div>
       <div className="relative">
-        <FadeGallery tiles={SESSIONS.tiles} label={t("sellerHome.slot.session")}
+        <FadeGallery tiles={tag(gridTiles("sessions", data), "sessions")} label={t("sellerHome.slot.session")}
           cols="columns-2 sm:columns-3 lg:columns-4" window="aspect-[2/2.9] sm:aspect-[3/3] lg:aspect-[4/2.75]"
           sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 24vw" toneOffset={1} home={home} t={t} />
       </div>
@@ -374,8 +393,8 @@ export function SessionsSection({ items, t, home }: { items: ItemStates; t: T; h
 
 /* ── 9. three featured tools ──────────────────────────────────────────────*/
 
-export function FeaturedTools({ data, t }: { data: SellerHomeData; t: T }) {
-  const cards = FEATURED.filter((f) => data.items[f.item]);
+export function FeaturedTools({ data, t, locale }: { data: SellerHomeData; t: T; locale: string }) {
+  const cards = toolTiles("featured", data, t, locale, TOOL_TILE);
   if (cards.length === 0) return null;
   const hint = size(t, TOOL_TILE.width, TOOL_TILE.height);
   return (
@@ -385,15 +404,15 @@ export function FeaturedTools({ data, t }: { data: SellerHomeData; t: T }) {
         role={t("sellerHome.carousel.role")} landmark={false} arrowTop="calc(50% - 1.5rem)"
         className="[--rail-cols:1.15] [--rail-gap:10px] sm:[--rail-cols:2.2] sm:[--rail-gap:12px] lg:[--rail-cols:3] lg:[--rail-gap:14px]">
         {cards.map((card, i) => {
-          const state = data.items[card.item];
+          const state = card.state;
           const live = state.status === "live";
-          const name = t(card.nameKey);
+          const name = card.name;
           const slot = data.toolSlots[card.item];
           return (
             // Hover lift, rim and zoom only on a card that opens — an inert
             // card must not look clickable.
-            <ToolLink key={card.item} state={state} ariaLabel={name} data-featured={card.item}
-              className={cn("group block min-w-0 rounded-2xl outline-offset-2",
+            <ToolLink key={card.id} state={state} ariaLabel={name} data-featured={card.item} data-home-item={`featured:${card.id}`}
+              className={cn("group block min-w-0 rounded-2xl outline-offset-2", flagged(card.flags),
                 live && "transition-transform duration-300 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0")}>
               <span className={cn("relative block overflow-hidden rounded-2xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]",
                 live && "transition-[box-shadow] duration-300 group-hover:shadow-[0_0_0_1.5px_rgb(var(--accent)/0.55),0_20px_40px_-22px_rgb(var(--accent)/0.7)]")}>
@@ -402,9 +421,10 @@ export function FeaturedTools({ data, t }: { data: SellerHomeData; t: T }) {
                   label={name} hint={hint} sizes="(max-width: 639px) 86vw, (max-width: 1023px) 44vw, 32vw"
                   className={cn(live && "transition-transform duration-700 ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100")} />
                 <StatusBadge status={state.status} t={t} className="absolute left-2.5 top-2.5" />
+                <EditFlags flags={card.flags} t={t} />
               </span>
               <span className="mt-2 block truncate px-0.5 text-[14px] font-semibold leading-tight text-ink">{name}</span>
-              <span className="mt-0.5 block truncate px-0.5 text-[12.5px] text-muted">{t(card.subKey)}</span>
+              <span className="mt-0.5 block truncate px-0.5 text-[12.5px] text-muted">{card.sub}</span>
             </ToolLink>
           );
         })}

@@ -2542,6 +2542,27 @@ export type Database = {
           },
         ]
       }
+      home_layout: {
+        Row: {
+          doc: Json
+          id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          doc: Json
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          doc?: Json
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       generation_jobs: {
         Row: {
           aspect_ratio: string
@@ -7668,6 +7689,14 @@ export type Database = {
       }
       grovshot_shot_experiment_publish: {
         Args: { p_run_id: string }
+        Returns: Json
+      }
+      home_layout_published: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      home_layout_write: {
+        Args: { p_doc: Json; p_base: string | null; p_action: string }
         Returns: Json
       }
       grovshot_diagnostics_purge: {
