@@ -12734,7 +12734,12 @@
         "concurrency_limit": "You already have many generations in progress. Try when one finishes.",
         "order_in_progress": "The set is still being made — you can regenerate once it finishes."
       },
-      "process": "Process view"
+      "process": "Process view",
+      "regenCta": "Generate again · {n} cr.",
+      "regenArm": "Confirm · {n} cr.",
+      "regenArmNoPrice": "Confirm",
+      "regenPriceChanged": "The price changed — now {n} cr. Click again to confirm.",
+      "regenPrice": "· {n} cr."
     }
   },
   "gss": {
@@ -13166,6 +13171,25 @@
     "err.price_unknown": "No pinned call price.",
     "err.source_is_experiment": "Run the experiment on the source order.",
     "err.not_delivered": "The experiment has no delivered image.",
-    "err.no_target": "No customer shot to add the result to."
+    "err.no_target": "No customer shot to add the result to.",
+    "shot.refsDecision": "References (code decision)",
+    "shot.refsPlanned": "From the plan",
+    "shot.refsFinal": "Sent (order)",
+    "shot.aux": "auxiliary",
+    "shot.corrections": "Corrections",
+    "shot.binding": "Binding block",
+    "shot.bindingKb": "from the knowledge base",
+    "shot.bindingDefault": "engine default (knowledge base has no section)",
+    "corr.added_whole": "whole-product photo added",
+    "corr.moved_whole_first": "whole product moved first",
+    "corr.moved_after_whole": "detail after the whole product",
+    "corr.aux_graphic": "graphic as auxiliary",
+    "corr.skipped_graphic": "collage / other products skipped",
+    "corr.limited": "image limit",
+    "corr.blocked_no_whole": "no clean whole-product photo – shot not generated",
+    "corr.product_trimmed": "PRODUCT trimmed to the limit",
+    "exp.bindingHint": "The first paragraph is the binding block: “zdjęcie 1” = the first position above. If you reorder, fix the numbers in the text – exactly this text is sent.",
+    "exp.before": "Before (order)",
+    "exp.after": "After (experiment)"
   }
 }

@@ -12736,7 +12736,12 @@
         "concurrency_limit": "Masz już dużo generacji w toku. Spróbuj, gdy któraś się zakończy.",
         "order_in_progress": "Zestaw jeszcze powstaje — ponowna generacja będzie możliwa po jego zakończeniu."
       },
-      "process": "Podgląd procesu"
+      "process": "Podgląd procesu",
+      "regenCta": "Wygeneruj ponownie · {n} kr.",
+      "regenArm": "Potwierdź · {n} kr.",
+      "regenArmNoPrice": "Potwierdź",
+      "regenPriceChanged": "Cena się zmieniła — teraz {n} kr. Kliknij ponownie, aby potwierdzić.",
+      "regenPrice": "· {n} kr."
     }
   },
   "gss": {
@@ -13168,6 +13173,25 @@
     "err.price_unknown": "Brak zapisanej ceny wywołania.",
     "err.source_is_experiment": "Eksperyment uruchamia się na zleceniu źródłowym.",
     "err.not_delivered": "Eksperyment nie ma dostarczonego obrazu.",
-    "err.no_target": "Brak ujęcia klienta, do którego można dodać wynik."
+    "err.no_target": "Brak ujęcia klienta, do którego można dodać wynik.",
+    "shot.refsDecision": "Referencje (decyzja kodu)",
+    "shot.refsPlanned": "Z planu",
+    "shot.refsFinal": "Wysłane (kolejność)",
+    "shot.aux": "pomocnicza",
+    "shot.corrections": "Korekty",
+    "shot.binding": "Blok wiązania",
+    "shot.bindingKb": "z bazy wiedzy",
+    "shot.bindingDefault": "domyślny silnika (baza wiedzy bez sekcji)",
+    "corr.added_whole": "dodano zdjęcie całości",
+    "corr.moved_whole_first": "całość przesunięta na początek",
+    "corr.moved_after_whole": "detal za całością",
+    "corr.aux_graphic": "grafika jako pomocnicza",
+    "corr.skipped_graphic": "pominięto kolaż / inne produkty",
+    "corr.limited": "limit liczby zdjęć",
+    "corr.blocked_no_whole": "brak czystego zdjęcia całego produktu – ujęcie nie generowane",
+    "corr.product_trimmed": "PRODUKT skrócony do limitu",
+    "exp.bindingHint": "Pierwszy akapit to blok wiązania: „zdjęcie 1” = pierwsza pozycja powyżej. Po zmianie kolejności popraw numery w tekście – wysyłamy dokładnie ten tekst.",
+    "exp.before": "Przed (zlecenie)",
+    "exp.after": "Po (eksperyment)"
   }
 }

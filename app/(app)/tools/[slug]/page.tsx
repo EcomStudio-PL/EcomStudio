@@ -1,6 +1,4 @@
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -111,10 +109,6 @@ function WorkbenchPage({ slug, t, entry, balance }: {
 }) {
   return (
     <div>
-      <Link href="/tools"
-        className="mb-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-        <ArrowLeft size={14} aria-hidden /> {t("nav.allTools")}
-      </Link>
       <PageHeader
         // A tool that cannot run has no price to state: 0 credits would read
         // as "Za darmo" above a panel saying it is unavailable.

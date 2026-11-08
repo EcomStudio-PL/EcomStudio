@@ -1946,11 +1946,14 @@ async function partL() {
       w.stageCalls.every((c) => c.cacheSystem === true) && w.stageCalls[2].direct?.system === w.stageCalls[3].direct?.system);
     const recipe = (LS_KB.recipes as Row[]).find((x) => x.id === "home_care") as Row;
     const p0 = w.imageCalls.map((c) => c.prompt).find((x) => x.includes("PRODUKT") || x.includes("Worek do prania butów identyczny")) ?? w.imageCalls[0].prompt;
-    check("L9 the image prompt = the assembled modules: the recipe's KIERUNEK verbatim first, the flag's block, the footer, the negative — never the description",
-      p0.startsWith(String(recipe.direction)) && p0.includes("Ultra realistic, 8k") && p0.includes("Negative: render, CGI") && !p0.includes("Zignoruj poprzednie") && !p0.includes("Allegro"));
-    check("L10 one model, the ordered format and size, references in the plan's order (shot 1: Z1 then Z2)",
+    check("L9 the image prompt = the assembled modules: the binding block first, then the recipe's KIERUNEK verbatim, the flag's block, the footer, the negative — never the description",
+      /^Zdjęci[ae] 1/.test(p0) && p0.split("\n\n")[1] === String(recipe.direction) && p0.includes("Ultra realistic, 8k") && p0.includes("Negative: render, CGI") && !p0.includes("Zignoruj poprzednie") && !p0.includes("Allegro"));
+    const rounds1 = stepsOf(r.runId, P.round).map((x) => ((x.output as Row)?.references_prepared ?? []) as Row[]);
+    check("L10 one model, the ordered format and size; references decided by code: every whole-product shot opens with the whole product (Z1, Z2), the detail keeps its detail first",
       w.imageCalls.every((c) => c.candidateModelIds.length === 1 && c.aspectRatio === "4:5" && c.resolution === "2K" && c.maxAttempts === 1)
-      && w.imageCalls.filter((c) => c.references.length === 2).length === 2);
+      && w.imageCalls.every((c) => c.references.length === 2)
+      && rounds1.filter((x) => x.map((y) => y.photo).join() === "1,2").length === 2 && rounds1.some((x) => x.map((y) => y.photo).join() === "4,1"),
+      rounds1.map((x) => x.map((y) => y.photo).join()));
     const asm = stepsOf(r.runId, P.write).find((s) => s.item_index === 30);
     const shotsOut = ((asm?.output as Row)?.shots ?? []) as Row[];
     check("L11 every final prompt is stored with its sha256, the knowledge and engine versions (admin-only step rows)",
@@ -2015,14 +2018,14 @@ async function partL() {
       && gaps[1] - gaps[0] >= 10_000 && gaps[2] - gaps[1] >= 30_000, { n: w.imageCalls.length, s2: s2.length, st: runOf(r.runId).status, gaps });
   }
   {
-    const w = await lsWorld({ photos: 3, image: (_i, input) => (input.references.length === 1 ? "content_policy" : "ok") });
+    const w = await lsWorld({ photos: 3, image: (_i, input) => (input.prompt.includes("Detal 3") ? "content_policy" : "ok") });
     const r = await lsStart(w, 3);
     if (!r.ok) return;
     await lsDrive(w, r.runId);
     const failedShot = stepsOf(r.runId, P.settle).find((s) => s.status === "failed");
     check("L19 a safety refusal: ONE retry with the same request, then that shot is not delivered and not charged; the others are (partial)",
       runOf(r.runId).status === "partial" && failedShot?.error_code === "safety_refused" && charges().length === 2 && db().wallet.balance === 186
-      && w.imageCalls.filter((c) => c.references.length === 1).length === 2, { st: runOf(r.runId).status, err: failedShot?.error_code, ch: charges().length });
+      && w.imageCalls.filter((c) => c.prompt.includes("Detal 3")).length === 2, { st: runOf(r.runId).status, err: failedShot?.error_code, ch: charges().length });
   }
   {
     const w = await lsWorld({ photos: 3, image: (i) => (i === 0 ? "crash" : "ok") });
@@ -2106,6 +2109,18 @@ async function partL() {
       runOf(rg.runId).status === "ok" && w.stageCalls.length === before.calls && w.imageCalls.length === before.images + 1
       && newImage.prompt === srcPrompt?.text && charges().length === before.charges + 1 && db().wallet.balance === before.balance - 7
       && tableRows("generations").length === 4, { st: runOf(rg.runId).status, e: runOf(rg.runId).error, bal: db().wallet.balance });
+    // ── Etap D: "Wygeneruj ponownie · N kr." on ANY tile of the shot ──
+    const req = "4b6f2a8e-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
+    const fromRegen = await startShotRegen(SUPA, USER, WS, rg.runId, 1, 7, req);
+    const again = await startShotRegen(SUPA, USER, WS, rg.runId, 1, 7, req);
+    check("L37 a tile that is itself a regeneration regenerates the ORIGINAL order's shot (one level, never a chain of regenerations)",
+      fromRegen.ok && ((runOf(fromRegen.runId).input as Row).regen as Row)?.source_run_id === r.runId && ((runOf(fromRegen.runId).input as Row).regen as Row)?.shot === 2, fromRegen);
+    check("L38 one confirmed click = one generation: the same click sent twice is ONE run (no double charge)",
+      fromRegen.ok && again.ok && again.runId === fromRegen.runId && !again.created, again);
+    if (fromRegen.ok) await lsDrive(w, fromRegen.runId);
+    const second = await startShotRegen(SUPA, USER, WS, r.runId, 2, 7, "5c7a3b9f-2d4e-4f60-9bac-1d2e3f4a5b6c");
+    check("L39 …a NEW click is a new separate image (a new run; the earlier images stay)", second.ok && fromRegen.ok && second.runId !== fromRegen.runId, second);
+    if (second.ok) await lsDrive(w, second.runId);
     const w2 = await lsWorld({ photos: 7, image: (i) => (i >= 3 ? "provider_quota" : "ok") });
     const r2 = await lsStart(w2, 7, { shots: 3 });
     if (!r2.ok) return;
@@ -2120,6 +2135,39 @@ async function partL() {
     check("L31 the set uses the chosen version, else the newest; the ZIP names follow the gallery order and the real file type",
       usedVersion(sh(null))?.generationId === "g2" && usedVersion(sh("g1"))?.generationId === "g1"
       && zipName(1, "hero", "x/y.png") === "01_hero.png" && zipName(2, "uzycie", "x/y.jpg") === "02_uzycie.jpg" && zipName(10, null, "x/y.webp") === "10_zdjecie.webp");
+  }
+  {
+    // ── C: no clean photo of the whole product → whole-product shots are BLOCKED, never generated ──
+    const noWhole = () => ({ ...lsCard(3), zdjecia: (lsCard(3).zdjecia as Row[]).map((p) => ({ ...p, rola: p.rola === "calosc" ? "detal" : p.rola })) });
+    const w = await lsWorld({ photos: 3, card: noWhole });
+    const r = await lsStart(w, 3);
+    if (!r.ok) return;
+    const bal0 = db().wallet.balance;
+    const ch0 = charges().length;
+    await lsDrive(w, r.runId);
+    const blocked = stepsOf(r.runId, P.settle).filter((s) => s.error_code === "no_whole_reference");
+    const asm = stepsOf(r.runId, P.write).find((s) => s.item_index === 30);
+    const outShots = ((asm?.output as Row)?.shots ?? []) as Row[];
+    check("L40 no whole-product photo: the hero and the use shot end WITHOUT a call (no_whole_reference, not charged); only the detail is generated",
+      blocked.length === 2 && w.imageCalls.length === 1 && charges().length === ch0 + 1 && db().wallet.balance === bal0 - 7
+      && outShots.filter((x) => x.blocked === "no_whole_reference").length === 2,
+      { blocked: blocked.length, calls: w.imageCalls.length, st: runOf(r.runId).status, e: runOf(r.runId).error });
+  }
+  {
+    // ── C: Google billing (402 / billing quota) → final, no retry, no further shot calls ──
+    const w = await lsWorld({ photos: 7, image: () => "provider_quota" });
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) return;
+    const ch0 = charges().length;
+    await lsDrive(w, r.runId);
+    const settles = stepsOf(r.runId, P.settle);
+    check("L41 Google refuses for billing: no shot is retried, the shots not yet sent are never sent, nothing is charged, every shot ends provider_billing",
+      runOf(r.runId).status === "failed" && w.imageCalls.length <= 2 && charges().length === ch0
+      && settles.length === 3 && settles.every((x) => x.error_code === "provider_billing"),
+      { calls: w.imageCalls.length, st: runOf(r.runId).status, codes: settles.map((x) => x.error_code) });
+    const roundsB = stepsOf(r.runId, P.round);
+    check("L42 …the call is recorded as provider_billing (final class) in the round, for the admin's process view",
+      roundsB.length === w.imageCalls.length && roundsB.every((x) => (x.output as Row)?.error === "provider_billing" && (x.output as Row)?.cls === "final"));
   }
   {
     // PROD 2026-11-07 (nutcracker, 4 shots): answer 1 left one detail shot's KADR empty, the repeat another detail

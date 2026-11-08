@@ -30,7 +30,9 @@ export const KB_FORMAT = {
     footers: "Stopki",
     negative: "Negative bazowy",
   },
-  optional: { directions: "Kierunki kreatywne" },
+  optional: { directions: "Kierunki kreatywne", binding: "Blok wiązania zdjęć" },
+  /** The keys of the binding section ("- klucz: szablon"); {lista}, {n}, {opis} are filled by code. */
+  bindingKeys: ["calosc_1", "calosc_n", "detal", "pomocnicze", "logo", "detal_glowny", "kontekst"] as readonly string[],
   recipePrefix: "Przepis:",
   specialPrefix: "Flaga:",
   footerPrefix: "Stopka:",
@@ -40,7 +42,7 @@ export const KB_FORMAT = {
   placeholders: ["fidelity_rules"] as readonly string[],
   /** "<!-- etapy: plan, sceny -->" under a ## heading; "prompty" = produkt + sceny. */
   stageWords: { karta: ["karta"], plan: ["plan"], produkt: ["produkt", "prompty"], sceny: ["sceny", "prompty"] } as Record<KbStage, string[]>,
-  limits: { direction: 1_500, promptBlock: 1_500, footer: 600, negative: 3_000 },
+  limits: { direction: 1_500, promptBlock: 1_500, footer: 600, negative: 3_000, binding: 600 },
 } as const;
 
 export type KbRecipe = {
@@ -83,6 +85,8 @@ export type KbParsed = {
   peopleTable: PeopleRow[] | null;
   /** Everything that is not a verbatim block, with the steps that read it. */
   sections: KbSection[];
+  /** The image-binding templates (optional section; absent = the engine's own default, recorded as such). */
+  binding?: Record<string, string> | null;
 };
 
 export type KbIssue = { code: string; detail?: string };
@@ -332,6 +336,22 @@ export function parseKb(source: string): KbParseResult {
   const directions = dirSec ? tableRows(dirSec.lines.join("\n")).slice(1).map((r) => r[0]).filter(Boolean) : [];
   if (!dirSec) warnings.push({ code: "directions_missing" });
 
+  // ── the image-binding templates (optional) ──
+  let binding: Record<string, string> | null = null;
+  const bindSec = find(KB_FORMAT.optional.binding);
+  if (bindSec) {
+    binding = {};
+    for (const line of stripComments(bindSec.lines.join("\n")).split("\n")) {
+      const m = /^\s*[-*]\s*([a-z_0-9]+)\s*:\s*(.+)$/.exec(line);
+      if (!m) continue;
+      if (!KB_FORMAT.bindingKeys.includes(m[1])) { warnings.push({ code: "binding_key_unknown", detail: m[1] }); continue; }
+      const text = oneLine(m[2]);
+      if (text.length > KB_FORMAT.limits.binding) errors.push({ code: "block_too_long", detail: `binding.${m[1]}` });
+      binding[m[1]] = text;
+    }
+    for (const k of ["calosc_1", "calosc_n", "detal"]) if (!binding[k]) errors.push({ code: "binding_key_missing", detail: k });
+  }
+
   // ── instruction sections: everything but the verbatim blocks ──
   const sections: KbSection[] = [];
   const titleOf = h1?.title ?? "";
@@ -347,6 +367,8 @@ export function parseKb(source: string): KbParseResult {
       if (negIntro) sections.push({ title: b.title, stages: ["sceny"], text: negIntro });
       continue;
     }
+    // Code fills these templates into the image prompt; no step reads them as instructions.
+    if (n === norm(KB_FORMAT.optional.binding)) continue;
     if (n === norm(KB_FORMAT.required.recipes) || n === norm(KB_FORMAT.required.special)) {
       // Their entries are served per order (the chosen recipe, the set flags); the intro to every reader.
       const t = ownText(b);
@@ -359,6 +381,7 @@ export function parseKb(source: string): KbParseResult {
 
   const kb: KbParsed = {
     format: 1, title: titleOf, recipes, special, footers, negativeBase, negativeItems, planRules, directions, peopleTable, sections,
+    ...(binding ? { binding } : {}),
   };
   if (errors.length > 0) return { ok: false, errors, warnings, kb };
   return { ok: true, kb, warnings };

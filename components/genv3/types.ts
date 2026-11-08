@@ -123,6 +123,8 @@ export type GalleryItem = {
   hasThumb?: boolean;
   /** Trial watermark state of this image; null/absent = an ordinary image. */
   trial?: GalleryTrial | null;
+  /** GrovBase Shot lifestyle shot: its order, shot number and one regeneration's price. */
+  grovshot?: { runId: string; shot: number; price: number | null } | null;
 };
 
 /** Badge tone → Badge component tone. Admin can override per model; the

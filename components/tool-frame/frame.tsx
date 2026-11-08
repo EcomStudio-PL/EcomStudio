@@ -140,12 +140,16 @@ export function HelpPortal({ children }: { children: React.ReactNode }) {
  * the name and the tutorial cost the screen nothing. On a phone the way back
  * is the arrow alone (the catalogue); on a desktop it keeps its words.
  */
-function ToolHeader({ back, title, onSlot, className }: {
+function ToolHeader({ back: given, title, onSlot, className }: {
   back?: { href: string; label: string };
   title: React.ReactNode;
   onSlot: (el: HTMLElement | null) => void;
   className?: string;
 }) {
+  // "← Wszystkie narzędzia" is no longer drawn (08.11.2026): the catalogue is
+  // one click away in the navigation. A way back to anything else (a tool's
+  // category) stays.
+  const back = given && given.href !== "/tools" ? given : undefined;
   return (
     <div data-tool-frame data-tool-header className={cn("mb-3 flex min-w-0 items-center gap-2", className)}>
       {back && (

@@ -28,14 +28,15 @@ import {
   type AdvanceResult, type CoreCtx, type CoreInput, type Drive, type GrovshotDeps, type Mirror, type ShotOutcome, type SlotStore,
 } from "@/lib/server/grovshot-v2/run";
 import { kbInstructions, readKb, type KbParsed } from "@/lib/grovshot-shot/kb";
-import { referenceCheck } from "@/lib/grovshot-shot/diagnostics";
+import { isBillingFailure, referenceCheck } from "@/lib/grovshot-shot/diagnostics";
 import { boundaryRecord, boundarySummary, newSink, observeProviderCalls, settleSink } from "@/lib/server/grovshot-shot/boundary";
 import {
   CARD_SCHEMA, FRAMES, LIGHTS, PLAN_SCHEMA, PRODUCT_SCHEMA, SCENES_SCHEMA, SHOT_ENGINE_VERSION, contractText, wrapData,
 } from "@/lib/grovshot-shot/contract";
 import { checkCard, photoId, validationFeedback, type ProductCard } from "@/lib/grovshot-shot/card";
 import { checkPlan, parseUserPlan, planFeedback, planForPrompt, renderUserPlan, type PlanShot, type UserPlanRow, type Violation } from "@/lib/grovshot-shot/plan";
-import { assemblePrompt, checkProductModules, checkSceneModules, type AssembledPrompt, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
+import { assemblePrompt, checkProductModules, checkSceneModules, PRODUCT_PREFIX, type AssembledPrompt, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
+import { referenceProblem, selectReferences, wholeCandidates, type RefDecision } from "@/lib/grovshot-shot/refs";
 import {
   classifyImageError, nextImageAttempt, parseShotSettings, type ImageErrorClass, type ShotSettings, type ShotStep,
 } from "@/lib/grovshot-shot/settings";
@@ -257,13 +258,17 @@ async function driveLifestyle(ctx: LCtx, state: Awaited<ReturnType<typeof readEn
 
   // ── krok 3 · plan ──
   await setProgress(ctx, { stage: "plan" });
-  const plan = await planStep(ctx, card);
-  if (typeof plan === "string") return plan;
+  const planned = await planStep(ctx, card);
+  if (typeof planned === "string") return planned;
+  // THE REFERENCES ARE DECIDED BY CODE (refs.ts) before any scene is written,
+  // so the scene modules and the binding block both number the FINAL order.
+  const decided = decideReferences(ctx, card, planned);
+  const plan = decided.plan;
   if (ctx.progress.planned !== plan.length) await setProgress(ctx, { planned: plan.length, recipe: card.przepis_stylu });
 
   // ── krok 4 · moduły + składanie ──
   await setProgress(ctx, { stage: "scenes" });
-  const prompts = await promptSteps(ctx, card, plan);
+  const prompts = await promptSteps(ctx, card, plan, decided.decisions);
   if (typeof prompts === "string") return prompts;
 
   if (ctx.test && ctx.input.test_mode === "prompts") {
@@ -572,7 +577,8 @@ function planUser(ctx: LCtx, card: ProductCard, userPlan: UserPlanRow[] | null, 
 
 /* ══ krok 4 · moduły promptu + składanie ══════════════════════════════════*/
 
-type Prompts = Map<number, AssembledPrompt & { sha256: string; references: number[] }>;
+type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null };
+type Prompts = Map<number, ShotPrompt>;
 
 function promptsFrom(o: Record<string, unknown>): Prompts {
   const m: Prompts = new Map();
@@ -581,18 +587,33 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
       m.set(x.numer, {
         text: x.text, sha256: String(x.sha256), modules: (x.modules ?? []) as AssembledPrompt["modules"], footer: String(x.footer ?? ""),
         pattern: x.pattern === "detail" ? "detail" : "full", references: Array.isArray(x.references) ? x.references as number[] : [],
+        blocked: typeof x.blocked === "string" ? x.blocked : null,
       });
     }
   }
   return m;
 }
 
-async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Promise<Prompts | Drive> {
+/** The plan with each shot's references replaced by the code's decision (refs.ts). Deterministic. */
+type ShotRefs = RefDecision & { planned: number[] };
+
+function decideReferences(ctx: LCtx, card: ProductCard, plan: PlanShot[]): { plan: PlanShot[]; decisions: Map<number, ShotRefs> } {
+  const decisions = new Map<number, ShotRefs>();
+  const out = plan.map((shot) => {
+    const d = selectReferences(shot, card, { max: ctx.settings.prompt.max_references });
+    decisions.set(shot.numer, { ...d, planned: shot.referencje });
+    return d.blocked ? shot : { ...shot, referencje: d.refs };
+  });
+  return { plan: out, decisions };
+}
+
+async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decisions: Map<number, ShotRefs>): Promise<Prompts | Drive> {
   const done = stepOf(ctx, POS.assemble, ITEM.assemble);
   if (done?.status === "succeeded") return promptsFrom(outputOf(done));
   // One system text for both calls: the second reads it from the prompt cache.
   const system = `${contractText("prompty", { version: ctx.kbVersion })}\n\n${kbInstructions(ctx.kb, ["produkt", "sceny"], { recipeId: card.przepis_stylu, flags: card.flagi, fidelityRules: ctx.fidelity })}`;
-  const wholes = card.zdjecia.filter((p) => p.rola === "calosc").slice(0, 3).map((p) => p.n);
+  const wholes = wholeCandidates(card).slice(0, 3);
+  const limits = { productWords: ctx.settings.prompt.product_max_words, scaleWords: ctx.settings.prompt.scale_max_words };
   const product = await stageRows<ProductModules>(ctx, {
     pos: POS.write, base: ITEM.product, name: "product", key: "grovshot_shot_product", step: "prompt", timeoutMs: TIMEOUT_MS.product,
     build: async (feedback) => {
@@ -602,7 +623,9 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
         direct: {
           system,
           user: [
-            "Zadanie: napisz moduły PRODUKT i SKALA tego zlecenia (raz na zlecenie). PRODUKT opisuje produkt dokładnie jak na zdjęciach referencyjnych i nie podaje numerów zdjęć.",
+            "Zadanie: napisz moduły PRODUKT i SKALA tego zlecenia (raz na zlecenie). Obraz produktu niosą zdjęcia referencyjne – tekst ma tylko pilnować tego, co łatwo pomylić.",
+            `PRODUKT: zacznij dokładnie od zdania „${PRODUCT_PREFIX}”, potem najwyżej ${limits.productWords} słów: dokładne napisy i logo (gdzie są na produkcie), liczba i układ elementów, charakterystyczne kolory, unikatowe części konstrukcji. Nie opisuj typowego wyglądu kategorii, nie pisz, czym produkt nie jest, nie podawaj numerów zdjęć.`,
+            `SKALA: najwyżej ${limits.scaleWords} słów – wymiary i jedna kotwica skali.`,
             wholes.length ? `Dołączone zdjęcia całości: ${wholes.map(photoId).join(", ")}.` : "",
             `Karta produktu (JSON):\n${JSON.stringify(card)}`,
             wrapData("opis_allegro", ctx.input.description || "(brak opisu)"),
@@ -613,8 +636,8 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
       };
     },
     check: (raw) => {
-      const c = checkProductModules(raw);
-      return c.ok ? { value: c.modules, errors: [] } : { value: null, errors: c.errors };
+      const c = checkProductModules(raw, limits);
+      return { value: c.modules, errors: c.errors };
     },
     feedback: validationFeedback,
   });
@@ -686,12 +709,24 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
   if (b.state !== "run") { await close(ctx, "failed", "prompt_invalid"); return "finished"; }
   const shots: Record<string, Json>[] = [];
   for (const shot of plan) {
+    const d: ShotRefs = decisions.get(shot.numer) ?? { refs: shot.referencje, aux: [], corrections: [], blocked: false, planned: shot.referencje };
+    if (d.blocked) {
+      // No clean photo of the whole product: never generated from a description alone.
+      shots.push({
+        numer: shot.numer, text: "", sha256: "", modules: [], footer: "", pattern: "full", references: [], blocked: "no_whole_reference",
+        corrections: d.corrections as unknown as Json, planned_references: d.planned,
+        kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+      });
+      continue;
+    }
     const m = modules.get(shot.numer);
     if (!m) continue;
-    const a = assemblePrompt({ kb: ctx.kb, card, shot, product: product.value, scene: m });
+    const a = assemblePrompt({ kb: ctx.kb, card, shot, product: product.value, scene: m, refs: d, limits });
     shots.push({
       numer: shot.numer, text: a.text, sha256: sha256(a.text), modules: a.modules as unknown as Json, footer: a.footer, pattern: a.pattern,
-      references: shot.referencje, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+      references: d.refs, aux_references: d.aux, planned_references: d.planned,
+      corrections: [...d.corrections, ...(a.productTrimmed ? [{ code: "product_trimmed", photos: [] }] : [])] as unknown as Json,
+      binding: a.binding, binding_source: a.bindingSource, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
     });
   }
   const out = {
@@ -719,7 +754,8 @@ async function regenerate(ctx: LCtx, r: { source_run_id: string; shot: number })
     if (b.state === "done") prompts = promptsFrom(outputOf({ output: b.output }));
     else if (b.state === "busy") return "busy";
     else if (b.state === "not_owner") return "lost";
-    else if (b.state !== "run" || !one) {
+    // A shot that was blocked (no whole-product photo) or has no text is never regenerated.
+    else if (b.state !== "run" || !one || one.blocked || !one.text.trim()) {
       if (b.state === "run") await finish(ctx, POS.assemble, ITEM.assemble, { status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "source_prompt_missing", durationMs: 0 });
       await close(ctx, "failed", "unavailable");
       return "finished";
@@ -799,7 +835,7 @@ async function ensureMirror(ctx: LCtx, card: ProductCard, plan: PlanShot[], prom
   const rows: Record<string, Json>[] = [];
   for (const shot of plan) {
     const p = prompts.get(shot.numer);
-    if (!p) continue;
+    if (!p || p.blocked || !p.text) continue;
     const sealed = encryptConceptPayload(ctx.ring, p.text, "", { tv: ctx.kbVersion });
     rows.push({
       concept_name: shot.argument.slice(0, 120), customer_title: shot.argument.slice(0, 120), customer_description: shot.opis,
@@ -829,6 +865,9 @@ async function shotsPhase(ctx: LCtx, plan: PlanShot[], prompts: Prompts, mirror:
   const idx = (s: PlanShot) => s.numer - 1;
   const pending = plan.filter((s) => !settled(ctx, idx(s)));
   if (pending.length === 0) return closeRun(ctx, plan.map((s) => ({ index: idx(s) })));
+  // Google refused for billing in an earlier invocation of this order: the
+  // remaining shots end without a call (no retry across invocations either).
+  if (!ctx.stopNew && ctx.steps.some((st) => st.position === P.round && outputOf(st).error === "provider_billing")) ctx.stopNew = "provider_billing";
   await setProgress(ctx, { stage: "images" });
   const results: ShotOutcome[] = [];
   let next = 0;
@@ -858,9 +897,11 @@ const roundOut = (o: Record<string, unknown>, status: string, code: string | nul
   retry_after_ms: typeof o.retry_after_ms === "number" ? o.retry_after_ms : null, at: Number(o.at) || 0,
 });
 
-async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { sha256: string; references: number[] }) | null, mirror: Mirror): Promise<ShotOutcome> {
+async function runShot(ctx: LCtx, shot: PlanShot, prompt: ShotPrompt | null, mirror: Mirror): Promise<ShotOutcome> {
   const n = shot.numer - 1;
-  const core = { index: n, references: shot.referencje };
+  // The FINAL references (refs.ts) — the binding block numbers exactly these.
+  const references = prompt && prompt.references.length ? prompt.references : shot.referencje;
+  const core = { index: n, references };
   for (let guard = 0; guard < 8; guard++) {
     if (settled(ctx, n)) return "settled";
     // A charge an earlier invocation began and did not settle.
@@ -875,6 +916,7 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
       if (r === "busy" || r === "lost") return r;
       if (r === "delivered") return "settled";
     }
+    if (prompt?.blocked) return settle(ctx, n, false, prompt.blocked);
     if (!prompt) return settle(ctx, n, false, "prompt_invalid");
     const rounds = rowsOf(ctx, P.round, n);
     const last = rounds[rounds.length - 1];
@@ -897,7 +939,8 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
     const decision = nextImageAttempt(failures);
     if (!decision.retry) {
       const lastCls = failures[failures.length - 1]?.cls;
-      return settle(ctx, n, false, lastCls === "safety" ? "safety_refused" : "image_failed");
+      const lastErr = last ? roundOut(outputOf(last), last.status, last.error_code).error : null;
+      return settle(ctx, n, false, lastCls === "safety" ? "safety_refused" : lastErr === "provider_billing" ? "provider_billing" : "image_failed");
     }
     if (ctx.stopNew) return settle(ctx, n, false, ctx.stopNew);
     if (ctx.gateUnknown) return "yield";
@@ -924,9 +967,13 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
         const ahead = [...ctx.inFlight].filter((p) => p < place).length;
         if (bal < ctx.input.quote.unit * (ahead + 1)) return "yield";
       }
-      const refs = await photos(ctx, shot.referencje);
+      const refs = await photos(ctx, references);
       if (refs === "changed") { ctx.stopNew = "reference_changed"; return settle(ctx, n, false, "reference_changed"); }
       if (refs === "unreadable") return "busy";
+      // Prepared BEFORE the call and checked: a reference the model cannot read is never paid for.
+      const refsForModel = await Promise.all(refs.map(forImageModel));
+      const invalid = referenceProblem(refsForModel);
+      if (invalid) return settle(ctx, n, false, "reference_invalid");
       const holder = await takeSlot(ctx, "image", `s${n}`, Math.ceil(IMAGE_CALL_MS / 1000) + 30);
       if (!holder) return "busy";
       let image: { bytes: Buffer; mime: string; width: number | null; height: number | null; sha256: string } | null = null;
@@ -940,7 +987,6 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
         if (b.state !== "run") continue;
         await setProgress(ctx, { stage: "images" });
         const t0 = ctx.deps.now();
-        const refsForModel = await Promise.all(refs.map(forImageModel));
         // THE NETWORK BOUNDARY: the request the shared Google adapter really sent.
         const sink = newSink();
         const r = await observeProviderCalls(sink, () => ctx.deps.callImage(ctx.supabase, {
@@ -971,7 +1017,11 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
           const dims = await dimensionsOf(bytes);
           image = { bytes, mime: r.image.mime || "image/png", width: dims.width, height: dims.height, sha256: sha256(bytes) };
         }
-        const error = image ? null : r.ok ? "provider_empty_result" : r.error;
+        // Google answered 402 (prepaid credits used up) or a billing quota: nothing
+        // another call could fix — final, and no further shot of this order calls.
+        const billing = !image && isBillingFailure(sink.requests, r.ok ? { ok: true } : { ok: false, error: r.error });
+        const error = image ? null : billing ? "provider_billing" : r.ok ? "provider_empty_result" : r.error;
+        if (billing) ctx.stopNew = "provider_billing";
         // The image door (lib/server/engine, frozen for Retusz/Miniaturka) does not
         // pass Google's RetryInfo out: the PDF's fixed gaps (10 s, 30 s) apply.
         const retryAfter: number | null = null;
@@ -982,10 +1032,10 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
           prompt: { sha256: prompt.sha256, pattern: prompt.pattern, footer: prompt.footer, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION },
           // THE REFERENCE MANIFEST: what the engine handed the adapter, in send order ("zdjęcie 1" = entry 1).
           references_sent: refs.map((p, i) => ({ n: i + 1, photo: p.number, sha256: p.sha256 })) as unknown as Json,
-          references_planned: shot.referencje as unknown as Json,
+          references_planned: references as unknown as Json,
           references_prepared: prepared as unknown as Json,
           // …and what the network boundary shows was really in the request.
-          reference_check: referenceCheck(shot.referencje, prepared, sink.requests, prompt.text) as unknown as Json,
+          reference_check: referenceCheck(references, prepared, sink.requests, prompt.text) as unknown as Json,
           boundary: boundaryRecord(sink) as unknown as Json, boundary_summary: boundarySummary(sink) as unknown as Json,
           aspect_ratio: ctx.input.aspect_ratio, resolution: ctx.input.resolution, attempt: roundIndex + 1,
         };

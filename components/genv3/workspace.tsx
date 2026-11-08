@@ -36,7 +36,6 @@ import { limitText } from "@/components/inflight/inflight-tile";
 import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
 import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 import { V2Fields, V2Notes, useV2Order } from "@/components/genv3/grovshot-v2";
-import { GrovshotSets } from "@/components/genv3/grovshot-sets";
 
 /** GrovBase Shot's formats and sizes (the five of the spec; 1K is not offered). */
 const V2_RATIOS = ["1:1", "4:5", "3:4", "16:9", "9:16"];
@@ -223,7 +222,6 @@ export function GeneratorWorkspace({
   const v2 = !!managedData?.engineV2 && v2Models.length > 0 && shotScenarios?.lifestyle !== false
     && (shotSingleScenario || grov.sessionType === "lifestyle");
   const shotAdmin = managedData?.engineV2?.admin === true;
-  const [setsTick, setSetsTick] = useState(0);
   const v2order = useV2Order();
 
   // ── the active mode's effective values (snapped to its model) ─────────
@@ -528,9 +526,7 @@ export function GeneratorWorkspace({
             photos: refs.map((r) => r.path).slice(0, MAX_REFS),
             shots: effCount, aspectRatio: effRatio, resolution: effResolution, sessionType: "lifestyle",
             description: (grov.description ?? "").trim(),
-            notes: (grov.notes ?? "").trim(),
-            // The manual plan is an admin's tool (the server refuses it from anyone else).
-            ...(shotAdmin ? { shotBriefs: planToBriefs(grov.plan, effCount, refs) } : {}),
+            // No notes and no manual plan any more (08.11.2026): the engine plans from the photos and the description.
             acknowledge, quotedTotal: total,
           },
         }),
@@ -538,7 +534,6 @@ export function GeneratorWorkspace({
       });
       if (out.ok) {
         v2order.track(out.id);
-        setSetsTick((n) => n + 1);
         gate.flash();
         frame.accepted(clickedAt);
       } else if (out.error === "engine_v1") {
@@ -790,13 +785,12 @@ export function GeneratorWorkspace({
         </PanelSection>
       )}
       {v2 && (
-        <V2Fields description={grov.description ?? ""} onDescription={(v) => setGrov((g) => ({ ...g, description: v }))}
-          notes={grov.notes ?? ""} onNotes={(v) => setGrov((g) => ({ ...g, notes: v }))} />
+        <V2Fields description={grov.description ?? ""} onDescription={(v) => setGrov((g) => ({ ...g, description: v }))} />
       )}
       {formatControl}
       <PanelSection title={t("genv3.countShots")} data="count">
         <Stepper label={t("genv3.countShots")} value={effCount} min={SHOTS_MIN} max={SHOTS_MAX} onChange={(v) => setCfg({ count: v })} data="shots" />
-        {(!v2 || shotAdmin) && (
+        {!v2 && (
           <div className="mt-3">
             <ShotPlan count={effCount} refs={refs} plan={grov.plan}
               onPatch={(i, patch) => setGrov((g) => ({ ...g, plan: patchRow(g.plan, i, patch) }))} />
@@ -871,9 +865,12 @@ export function GeneratorWorkspace({
           />
         )}
         gallery={managedData?.engineV2 && managed ? (
+          // GrovBase Shot: the standard gallery (no set blocks) — each lifestyle
+          // tile carries its own "Wygeneruj ponownie · N kr." (and, for admins,
+          // the process view).
           <div className="flex min-h-0 flex-col gap-4" data-studio-gallery-shot>
-            <GrovshotSets refreshKey={setsTick} balance={balance} admin={shotAdmin} />
             <GenerationGallery
+              shotAdmin={shotAdmin}
               initialItems={initialItems}
               initialCursor={initialCursor}
               freshItems={freshItems}

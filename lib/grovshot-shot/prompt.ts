@@ -14,10 +14,17 @@
  * A detail shot takes the shorter pattern: KIERUNEK, the detail copied 1:1
  * from its reference, KADR, the detail footer, NEGATIVE. Nothing else is
  * ever added — the stored text is exactly what Nano Banana Pro receives. Pure.
+ *
+ * Since 2026-11-08 (the B diagnosis) every prompt OPENS with the image-binding
+ * block (refs.ts, numbered from the final reference order), PRODUKT starts
+ * with "Produkt identyczny jak na zdjęciach referencyjnych." and stays short,
+ * a sentence repeated across modules is said once, and the negative keeps a
+ * bounded list (card risks and scene additions capped).
  */
 import { pickFooter, recipeById, type KbParsed } from "@/lib/grovshot-shot/kb";
 import type { ProductCard } from "@/lib/grovshot-shot/card";
 import type { PlanShot } from "@/lib/grovshot-shot/plan";
+import { bindingBlock, type RefDecision } from "@/lib/grovshot-shot/refs";
 
 export type ProductModules = { produkt: string; skala: string };
 export type SceneModules = {
@@ -28,20 +35,66 @@ export type AssembledPrompt = { text: string; modules: PromptModule[]; footer: s
 
 export const PRODUCT_MAX = 3_000;
 export const MODULE_MAX = 1_500;
+export const PRODUCT_PREFIX = "Produkt identyczny jak na zdjęciach referencyjnych.";
+export type PromptLimits = { productWords: number; scaleWords: number };
+export const DEFAULT_PROMPT_LIMITS: PromptLimits = { productWords: 60, scaleWords: 45 };
+const RISKS_MAX = 5;
+const SCENE_NEGATIVE_MAX = 6;
+const NEGATIVE_ITEM_MAX = 120;
+
+export const wordCount = (t: string) => t.split(/\s+/).filter(Boolean).length;
+/** Words after the fixed first sentence of PRODUKT. */
+const productBodyWords = (t: string) => wordCount(t.startsWith(PRODUCT_PREFIX) ? t.slice(PRODUCT_PREFIX.length) : t);
+const NEGATED = /(^|[\s.,;:])(nie jest|to nie|nie mylić|nie pomylić)\b/i;
+
+/** At most `max` words, cut at the last full sentence that fits (never mid-sentence when one fits). */
+export function trimWords(t: string, max: number): string {
+  if (wordCount(t) <= max) return t;
+  const sentences = t.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [t];
+  let out = "";
+  for (const x of sentences) {
+    const next = `${out} ${x.trim()}`.trim();
+    if (wordCount(next) > max) break;
+    out = next;
+  }
+  return out || t.split(/\s+/).slice(0, max).join(" ");
+}
+
+/** PRODUKT as the image model must get it: the fixed first sentence, then at most N words. */
+export function normalizeProduct(m: ProductModules, limits: PromptLimits = DEFAULT_PROMPT_LIMITS): { modules: ProductModules; trimmed: boolean } {
+  let body = m.produkt.startsWith(PRODUCT_PREFIX) ? m.produkt.slice(PRODUCT_PREFIX.length).trim() : m.produkt;
+  // Sentences that name what the product is NOT invite exactly that object into the picture.
+  body = (body.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [body]).map((x) => x.trim()).filter((x) => x && !NEGATED.test(x)).join(" ");
+  const cut = trimWords(body, limits.productWords);
+  const skala = trimWords(m.skala, limits.scaleWords);
+  return { modules: { produkt: `${PRODUCT_PREFIX} ${cut}`.trim(), skala }, trimmed: cut !== body || skala !== m.skala };
+}
 
 const s = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, " ").trim().slice(0, max + 1) : "");
 const o = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
 
-export function checkProductModules(raw: unknown): { ok: true; modules: ProductModules } | { ok: false; errors: string[] } {
+/**
+ * `errors` make the module unusable (sent back to Claude once). `notes` are
+ * what the code itself fixes at assembly (normalizeProduct: the fixed first
+ * sentence, the word limits, sentences naming what the product is not) —
+ * recorded, never worth a second paid call.
+ */
+export function checkProductModules(raw: unknown, limits: PromptLimits = DEFAULT_PROMPT_LIMITS): { modules: ProductModules | null; errors: string[]; notes: string[] } {
   const r = o(raw);
   const produkt = s(r.produkt, PRODUCT_MAX);
   const skala = s(r.skala, MODULE_MAX);
   const errors: string[] = [];
-  if (!produkt) errors.push("produkt: pusty moduł PRODUKT");
-  if (produkt.length > PRODUCT_MAX) errors.push(`produkt: dłuższy niż ${PRODUCT_MAX} znaków`);
-  if (!skala) errors.push("skala: pusty moduł SKALA");
-  if (skala.length > MODULE_MAX) errors.push(`skala: dłuższa niż ${MODULE_MAX} znaków`);
-  return errors.length ? { ok: false, errors } : { ok: true, modules: { produkt, skala } };
+  const notes: string[] = [];
+  if (!produkt || !skala) {
+    if (!produkt) errors.push("produkt: pusty moduł PRODUKT");
+    if (!skala) errors.push("skala: pusty moduł SKALA");
+    return { modules: null, errors, notes };
+  }
+  if (!produkt.startsWith(PRODUCT_PREFIX)) notes.push("product_prefix_added");
+  if (productBodyWords(produkt) > limits.productWords) notes.push(`product_trimmed:${productBodyWords(produkt)}>${limits.productWords}`);
+  if (NEGATED.test(produkt)) notes.push("product_negation_removed");
+  if (wordCount(skala) > limits.scaleWords) notes.push(`scale_trimmed:${wordCount(skala)}>${limits.scaleWords}`);
+  return { modules: { produkt, skala }, errors, notes };
 }
 
 /** Every planned shot needs its modules; a detail its DETAL, the others MOMENT, KADR, SCENOGRAFIA (POSTAĆ when people are in it). */
@@ -57,7 +110,7 @@ export function checkSceneModules(raw: unknown, shots: PlanShot[]): { modules: M
     byNumber.set(numer, {
       numer, stan_chwyt: s(x.stan_chwyt, MODULE_MAX), moment: s(x.moment, MODULE_MAX), kadr: s(x.kadr, MODULE_MAX),
       postac: s(x.postac, MODULE_MAX), scenografia: s(x.scenografia, MODULE_MAX), detal: s(x.detal, MODULE_MAX),
-      negative_dopiski: Array.isArray(x.negative_dopiski) ? x.negative_dopiski.map((y) => s(y, 120)).filter(Boolean).slice(0, 12) : [],
+      negative_dopiski: Array.isArray(x.negative_dopiski) ? x.negative_dopiski.map((y) => s(y, NEGATIVE_ITEM_MAX)).filter(Boolean).slice(0, SCENE_NEGATIVE_MAX) : [],
     });
   }
   const ok = new Map<number, SceneModules>();
@@ -83,35 +136,64 @@ export function checkSceneModules(raw: unknown, shots: PlanShot[]): { modules: M
   return { modules: ok, errors, missing };
 }
 
+const key = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9ł]+/g, " ").trim();
 const dedupe = (xs: string[]) => {
   const seen = new Set<string>();
   return xs.map((x) => x.trim()).filter((x) => {
-    const k = x.toLowerCase();
-    if (!x || seen.has(k)) return false;
+    const k = key(x);
+    if (!x || !k || seen.has(k)) return false;
     seen.add(k);
     return true;
   });
 };
 
+/** A sentence already said by an earlier module is not said again (later modules lose it). */
+function onceEach(modules: PromptModule[]): PromptModule[] {
+  const said = new Set<string>();
+  return modules.map((m) => {
+    if (m.name === "NEGATIVE" || m.name === "WIĄZANIE ZDJĘĆ") return m;
+    const parts = m.text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [m.text];
+    const kept = parts.filter((p) => {
+      const k = key(p);
+      if (k.length < 12) return true;
+      if (said.has(k)) return false;
+      said.add(k);
+      return true;
+    });
+    return { ...m, text: kept.map((p) => p.trim()).join(" ").trim() };
+  }).filter((m) => m.text);
+}
+
+export type AssembleRefs = Pick<RefDecision, "refs" | "aux">;
+
 /** The final prompt of one shot — exactly what the image model receives. */
 export function assemblePrompt(o2: {
   kb: KbParsed; card: ProductCard; shot: PlanShot; product: ProductModules; scene: SceneModules;
-}): AssembledPrompt {
-  const { kb, card, shot, product, scene } = o2;
+  /** The FINAL references (refs.ts) — the binding block is numbered from them. Absent: the plan's own, as planned. */
+  refs?: AssembleRefs;
+  limits?: PromptLimits;
+}): AssembledPrompt & { binding: string; bindingSource: "kb" | "default"; productTrimmed: boolean } {
+  const { kb, card, shot, scene } = o2;
+  const refs = o2.refs ?? { refs: shot.referencje, aux: [] };
   const recipe = recipeById(kb, card.przepis_stylu);
   if (!recipe) throw new Error("recipe_missing");
   const footer = pickFooter(kb, { type: shot.typ, people: shot.ludzie }, { recipeId: recipe.id, flags: card.flagi });
-  const noCopy = shot.referencje.flatMap((n) => card.zdjecia.find((p) => p.n === n)?.nie_kopiowac ?? []);
+  const noCopy = refs.refs.flatMap((n) => card.zdjecia.find((p) => p.n === n)?.nie_kopiowac ?? []);
   const negative = dedupe([
-    ...kb.negativeItems, ...card.ryzyka, ...recipe.negative, ...noCopy, ...scene.negative_dopiski,
+    ...kb.negativeItems, ...card.ryzyka.slice(0, RISKS_MAX).map((x) => x.slice(0, NEGATIVE_ITEM_MAX)), ...recipe.negative,
+    ...noCopy.map((x) => x.slice(0, NEGATIVE_ITEM_MAX)), ...scene.negative_dopiski.slice(0, SCENE_NEGATIVE_MAX),
   ]);
-  const modules: PromptModule[] = [{ name: "KIERUNEK", source: "kb", text: recipe.direction }];
-  let pattern: AssembledPrompt["pattern"] = "full";
-  if (shot.typ === "detal") {
-    pattern = "detail";
+  const pattern: AssembledPrompt["pattern"] = shot.typ === "detal" ? "detail" : "full";
+  const binding = bindingBlock(kb, card, refs.refs, refs.aux, pattern);
+  const product = normalizeProduct(o2.product, o2.limits);
+  const modules: PromptModule[] = [
+    { name: "WIĄZANIE ZDJĘĆ", source: binding.source === "kb" ? "kb" : "code", text: binding.text },
+    { name: "KIERUNEK", source: "kb", text: recipe.direction },
+  ];
+  if (pattern === "detail") {
     modules.push({ name: "DETAL", source: "model", text: scene.detal }, { name: "KADR", source: "model", text: scene.kadr });
   } else {
-    modules.push({ name: "PRODUKT", source: "model", text: product.produkt }, { name: "SKALA", source: "model", text: product.skala });
+    modules.push({ name: "PRODUKT", source: "model", text: product.modules.produkt }, { name: "SKALA", source: "model", text: product.modules.skala });
     const flags = new Set(card.flagi);
     for (const sp of kb.special) if (flags.has(sp.flag) && sp.block) modules.push({ name: `REGUŁA: ${sp.flag}`, source: "kb", text: sp.block });
     if (scene.stan_chwyt) modules.push({ name: "STAN / CHWYT", source: "model", text: scene.stan_chwyt });
@@ -121,5 +203,9 @@ export function assemblePrompt(o2: {
   }
   modules.push({ name: "STOPKA", source: "kb", text: footer.text });
   modules.push({ name: "NEGATIVE", source: "code", text: `Negative: ${negative.join(", ")}.` });
-  return { text: modules.map((m) => m.text).join("\n\n"), modules, footer: footer.key, pattern };
+  const final = onceEach(modules);
+  return {
+    text: final.map((m) => m.text).join("\n\n"), modules: final, footer: footer.key, pattern,
+    binding: binding.text, bindingSource: binding.source, productTrimmed: pattern === "full" && product.trimmed,
+  };
 }

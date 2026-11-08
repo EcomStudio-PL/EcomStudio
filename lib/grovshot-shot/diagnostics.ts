@@ -81,3 +81,19 @@ export function referenceCheck(
   if (promptMatches === false) issues.push("prompt_mismatch");
   return { observed: true, ok: issues.length === 0, issues, sent, prompt_matches: promptMatches };
 }
+
+/**
+ * Google refused for BILLING: HTTP 402 (prepaid credits used up) seen at the
+ * network boundary, or the adapter's own billing-quota code (a 429 that names
+ * the plan/billing). Nothing another call could fix — the shot fails as
+ * "provider_billing" (final, never retried) and no further shot of the order
+ * calls Google.
+ */
+export function isBillingFailure(
+  requests: { provider?: string; response?: unknown }[], result: { ok: boolean; error?: string | null },
+): boolean {
+  if (result.ok) return false;
+  if (result.error === "provider_quota") return true;
+  return requests.some((q) => q.provider === "google" && Boolean(q.response) && typeof q.response === "object"
+    && (q.response as { status?: unknown }).status === 402);
+}

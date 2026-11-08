@@ -17,6 +17,12 @@ import { PEOPLE, SHOT_TYPES } from "@/lib/grovshot-shot/kb";
 export const SHOT_ENGINE_VERSION = "grovshot-lifestyle-1.0";
 
 export const PHOTO_ROLES = ["calosc", "detal", "uzycie", "opakowanie", "inny_wariant"] as const;
+/** What a photo IS (graphics, collages and photos with other products are never a main reference). */
+export const PHOTO_FORMS = ["zdjecie", "grafika", "kolaz", "inne_produkty"] as const;
+export type PhotoForm = (typeof PHOTO_FORMS)[number];
+/** From where the product is seen (front first, then 3/4, for whole-product shots). */
+export const PHOTO_VIEWS = ["przod", "3_4", "bok", "tyl", "gora", "inne"] as const;
+export type PhotoView = (typeof PHOTO_VIEWS)[number];
 export type PhotoRole = (typeof PHOTO_ROLES)[number];
 export const DIM_SOURCES = ["opis", "zdjecia", "zalozenie"] as const;
 export const FRAMES = ["szeroki", "sredni", "ciasny", "w_dloni", "z_gory", "hero"] as const;
@@ -42,7 +48,7 @@ export const CARD_SCHEMA = obj({
   budowa: obj({ elementy: strs, kolory: strs, materialy: strs, liczby: strs }),
   napisy: strs,
   stany: { type: "ARRAY", items: obj({ stan: str, zdjecia: strs }) },
-  zdjecia: { type: "ARRAY", items: obj({ id: str, rola: en(PHOTO_ROLES), widok: str, stan: str, nie_kopiowac: strs }) },
+  zdjecia: { type: "ARRAY", items: obj({ id: str, rola: en(PHOTO_ROLES), forma: en(PHOTO_FORMS), ujecie: en(PHOTO_VIEWS), widok: str, stan: str, nie_kopiowac: strs }) },
   argumenty: strs,
   zastosowania: strs,
   grupa_docelowa: str,
@@ -84,9 +90,9 @@ export function contractText(stage: ContractStage, kb: { version: number }): str
     "Zwróć wyłącznie JSON zgodny ze schematem odpowiedzi; nie dopisuj pól, nie zostawiaj pól pustych, gdy dane istnieją.",
   ];
   const task: Record<ContractStage, string> = {
-    karta: "Krok 2 silnika GrovBase Shot – KARTA PRODUKTU. Przeczytaj wszystkie zdjęcia i opis z Allegro i zapisz kartę produktu. Niczego nie odrzucaj: każdemu zdjęciu nadaj rolę, widok, stan i listę elementów, których nie wolno kopiować. W „stany” wypisz krótkie nazwy stanów produktu widocznych na zdjęciach (np. „zamknięty”, „otwarty”, „w użyciu”) z identyfikatorami zdjęć; pole „stan” każdego zdjęcia przepisz dosłownie z tej listy, bez dopisków – szczegóły widoku zapisz w „widok”. Wymiary bez źródła w opisie oznacz jako założenie. Przepis stylu i flagi wybierz wyłącznie z katalogów poniżej.",
+    karta: "Krok 2 silnika GrovBase Shot – KARTA PRODUKTU. Przeczytaj wszystkie zdjęcia i opis z Allegro i zapisz kartę produktu. Niczego nie odrzucaj: każdemu zdjęciu nadaj rolę, formę, ujęcie, widok, stan i listę elementów, których nie wolno kopiować. „rola” = calosc tylko wtedy, gdy na zdjęciu widać CAŁY produkt (nie ciasny detal). „forma”: zdjecie (czysta fotografia), grafika (strzałki wymiarów, linie techniczne, napisy dodane na grafice), kolaz (kilka ujęć na jednym obrazie), inne_produkty (porównanie lub inne produkty obok). „ujecie”: przod, 3_4, bok, tyl, gora albo inne. W „stany” wypisz krótkie nazwy stanów produktu widocznych na zdjęciach (np. „zamknięty”, „otwarty”, „w użyciu”) z identyfikatorami zdjęć; pole „stan” każdego zdjęcia przepisz dosłownie z tej listy, bez dopisków – szczegóły widoku zapisz w „widok”. Wymiary bez źródła w opisie oznacz jako założenie. Przepis stylu i flagi wybierz wyłącznie z katalogów poniżej.",
     plan: "Krok 3 silnika GrovBase Shot – PLAN UJĘĆ. Na podstawie karty produktu zaplanuj dokładnie zamówioną liczbę ujęć, w kolejności galerii aukcji. Referencje podawaj jako identyfikatory Z z karty, w kolejności dołączania do generacji. Pozycje ustalone przez administratora są wiążące: przepisz je bez zmian i zaplanuj tylko pozostałe. Konflikty, których przy tej liczbie ujęć nie da się rozwiązać, wpisz do „konflikty” zamiast dokładać ujęć.",
-    prompty: "Krok 4 silnika GrovBase Shot – MODUŁY PROMPTU. Piszesz tylko moduły zależne od produktu i sceny; KIERUNEK, reguły specjalne, stopkę i negative bazowy dokleja kod dosłownie z bazy wiedzy – nie powtarzaj ich. Moduły piszesz po polsku, konkretnie, bez nazw marek innych niż na produkcie.",
+    prompty: "Krok 4 silnika GrovBase Shot – MODUŁY PROMPTU. Piszesz tylko moduły zależne od produktu i sceny; KIERUNEK, reguły specjalne, stopkę i negative bazowy dokleja kod dosłownie z bazy wiedzy – nie powtarzaj ich. Blok wiązania zdjęć (które zdjęcie przedstawia produkt, a które detal) też dokleja kod na początku promptu. Moduły piszesz po polsku, konkretnie, bez nazw marek innych niż na produkcie. Nie pisz, czym produkt nie jest, i nie wymieniaj innych produktów, kategorii ani materiałów, których na produkcie nie ma – każde takie słowo podsuwa modelowi obrazu inny przedmiot.",
   };
   return [task[stage], ...common].join("\n");
 }

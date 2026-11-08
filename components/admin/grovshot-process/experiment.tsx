@@ -90,6 +90,7 @@ export function ExperimentEditor({ data, shot, prompt, refs, onClose, onDone }: 
           </div>
           <div>
             <p className="mb-1 font-semibold">{t("gsp.exp.prompt", { n: text.length })}</p>
+            <p className="mb-1 text-[11.5px] text-muted">{t("gsp.exp.bindingHint")}</p>
             <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={14} className="font-mono text-[11.5px]" />
           </div>
           <label className="flex items-start gap-2 rounded-lg border border-warning/50 bg-[rgb(var(--warning)/0.08)] p-2">

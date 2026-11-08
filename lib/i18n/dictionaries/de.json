@@ -12734,7 +12734,12 @@
         "concurrency_limit": "Du hast bereits viele Generierungen in Arbeit. Versuche es, wenn eine fertig ist.",
         "order_in_progress": "Das Set entsteht noch — erneut generieren kannst du, sobald es fertig ist."
       },
-      "process": "Prozessansicht"
+      "process": "Prozessansicht",
+      "regenCta": "Erneut generieren · {n} Cr.",
+      "regenArm": "Bestätigen · {n} Cr.",
+      "regenArmNoPrice": "Bestätigen",
+      "regenPriceChanged": "Der Preis hat sich geändert — jetzt {n} Cr. Zum Bestätigen erneut klicken.",
+      "regenPrice": "· {n} Cr."
     }
   },
   "gss": {
@@ -13166,6 +13171,25 @@
     "err.price_unknown": "Kein gespeicherter Aufrufpreis.",
     "err.source_is_experiment": "Starte das Experiment am Ursprungsauftrag.",
     "err.not_delivered": "Das Experiment hat kein geliefertes Bild.",
-    "err.no_target": "Keine Kundenaufnahme, zu der das Ergebnis hinzugefügt werden kann."
+    "err.no_target": "Keine Kundenaufnahme, zu der das Ergebnis hinzugefügt werden kann.",
+    "shot.refsDecision": "Referenzen (Entscheidung des Codes)",
+    "shot.refsPlanned": "Aus dem Plan",
+    "shot.refsFinal": "Gesendet (Reihenfolge)",
+    "shot.aux": "Hilfsbild",
+    "shot.corrections": "Korrekturen",
+    "shot.binding": "Bindungsblock",
+    "shot.bindingKb": "aus der Wissensbasis",
+    "shot.bindingDefault": "Standard der Engine (Wissensbasis ohne Abschnitt)",
+    "corr.added_whole": "Gesamtansicht ergänzt",
+    "corr.moved_whole_first": "Gesamtansicht nach vorn",
+    "corr.moved_after_whole": "Detail nach der Gesamtansicht",
+    "corr.aux_graphic": "Grafik als Hilfsbild",
+    "corr.skipped_graphic": "Collage / andere Produkte ausgelassen",
+    "corr.limited": "Bildlimit",
+    "corr.blocked_no_whole": "kein sauberes Foto des ganzen Produkts – Aufnahme nicht generiert",
+    "corr.product_trimmed": "PRODUKT auf das Limit gekürzt",
+    "exp.bindingHint": "Der erste Absatz ist der Bindungsblock: „zdjęcie 1“ = erste Position oben. Nach dem Umsortieren die Nummern im Text anpassen – genau dieser Text wird gesendet.",
+    "exp.before": "Vorher (Auftrag)",
+    "exp.after": "Nachher (Experiment)"
   }
 }

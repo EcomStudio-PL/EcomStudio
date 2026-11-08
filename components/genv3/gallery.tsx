@@ -15,6 +15,7 @@ import type { GalleryItem, GallerySessionType, GenModel } from "@/components/gen
 import { ImageDetails } from "@/components/genv3/image-details";
 import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { RegenerateModal } from "@/components/genv3/regenerate";
+import { ShotProcessLink, ShotRegenButton } from "@/components/genv3/grovshot-regen";
 import { usePathname } from "next/navigation";
 import { guideToolForOperation, guideToolForPath, starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
@@ -73,7 +74,7 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, guideTool, inflight,
+  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, guideTool, inflight, shotAdmin,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
@@ -98,6 +99,8 @@ export function GenerationGallery({
   /** Generacje w toku V2: whose in-progress tiles lead this gallery. Absent:
    *  none (and `pendingCount` keeps its old skeletons). */
   inflight?: InflightScope;
+  /** Admins: a lifestyle tile links to its GrovBase Shot process view. */
+  shotAdmin?: boolean;
   /*
    * `fillEmpty` used to be here: it let the empty state stretch to the
    * column's height and centre itself in it, so a tool page's two columns
@@ -905,6 +908,7 @@ export function GenerationGallery({
               style={grid.itemStyle(assetAspect(item))}
               compact={density <= 1}
               canRegenerate={models.length > 0}
+              shotAdmin={Boolean(shotAdmin)}
               selecting={selecting}
               picked={picked.has(item.assetId)}
               onPick={() => togglePick(item.assetId)}
@@ -1024,9 +1028,11 @@ function RowTrialDays({ item }: { item: GalleryItem }) {
 /* ── One image card ───────────────────────────────────────────────────── */
 
 function GalleryCard({
-  item, compact, canRegenerate, selecting, picked, style, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete, onUnlock,
+  item, compact, canRegenerate, shotAdmin, selecting, picked, style, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete, onUnlock,
 }: {
   item: GalleryItem;
+  /** Admins: the GrovBase Shot process view from a lifestyle tile. */
+  shotAdmin: boolean;
   /** The grid's row span and gutter for this card. */
   style?: React.CSSProperties;
   /** False where no engine can serve a retake (a tool's own gallery) — the
@@ -1100,6 +1106,10 @@ function GalleryCard({
           button, which would overflow the card at the default density. Out
           of the way while picking, like the rail. */}
       {!selecting && <TrialLockChip trial={item.trial} onUnlock={onUnlock} />}
+      {/* GrovBase Shot: a paid retake of THIS shot as a new image (hover on a
+          desktop, always visible on touch), and the admins' process view. */}
+      {!selecting && item.grovshot && <ShotRegenButton item={item} compact={compact} />}
+      {!selecting && item.grovshot && shotAdmin && <ShotProcessLink item={item} />}
       {/* THE ACTION RAIL — a vertical glass column at the top-right instead
           of a kebab that hid every action behind a second click. `card-rail`
           (globals.css) reveals it on hover where hover exists and keeps it
@@ -1118,7 +1128,7 @@ function GalleryCard({
               Nothing is lost: everything lives in the image view a click
               away. No "open" button anywhere — the image is the way in. */}
           {[
-            ...(canRegenerate ? [{ key: "regen", icon: RefreshCw, label: t("genv3.regen"), onClick: onRegenerate }] : []),
+            ...(canRegenerate && !item.grovshot ? [{ key: "regen", icon: RefreshCw, label: t("genv3.regen"), onClick: onRegenerate }] : []),
             // The like is no longer in the rail: it has its own heart in the
             // corner above (always shown once liked).
             { key: "dl", icon: Download, label: t("common.download"), onClick: onDownload },

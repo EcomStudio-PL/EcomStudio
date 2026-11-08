@@ -30,9 +30,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (blocked) return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blocked }, { status: 503 });
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
-  let body: { shot?: unknown; quotedTotal?: unknown } = {};
+  let body: { shot?: unknown; quotedTotal?: unknown; requestId?: unknown } = {};
   try { body = await request.json(); } catch { /* validated below */ }
-  const result = await startShotRegen(supabase, user.id, workspace.id, id, Number(body.shot), body.quotedTotal);
+  const result = await startShotRegen(supabase, user.id, workspace.id, id, Number(body.shot), body.quotedTotal,
+    typeof body.requestId === "string" ? body.requestId : null);
   if (result.ok) driveGrovshotAfterResponse(user.id, workspace.id, result.runId, startedAt, { origin: new URL(request.url).origin });
   const status = result.ok ? 202 : result.error === "insufficient_credits" ? 402 : result.error === "not_found" ? 404
     : result.error === "price_changed" || result.error === "order_in_progress" || result.error === "engine_v1" ? 409

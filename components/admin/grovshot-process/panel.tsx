@@ -274,6 +274,7 @@ function ShotSection({ data, node, t, onExperiment }: { data: ProcessData; node:
   const plan = data.plan.find((s) => s.numer === node.shot);
   const prompt = str(mine?.text);
   const refs = arr(mine?.references).map(Number);
+  const corrections = arr(mine?.corrections).map(obj);
   const copy = (text: string) => ({ text, label: t("gsp.copy"), done: t("gsp.copied") });
   return (
     <div className="space-y-2.5">
@@ -283,6 +284,16 @@ function ShotSection({ data, node, t, onExperiment }: { data: ProcessData; node:
             [t("gsp.shot.type"), t(`gsp.type.${plan.typ || "uzycie"}`)], [t("gsp.shot.scene"), plan.opis],
             [t("gsp.plan.refs"), plan.referencje.map((r) => `Z${r}`).join(", ")], [t("gsp.shot.frame"), `${plan.kadr} · ${plan.ludzie} · ${plan.swiatlo}`],
             [t("gsp.shot.place"), plan.miejsce], [t("gsp.plan.violations"), plan.violations.length ? plan.violations.map((v) => t(`gsp.violation.${v}`)).join(", ") : "—"],
+          ]} />
+        </Block>
+      )}
+      {(corrections.length > 0 || Boolean(mine?.blocked) || Boolean(mine?.binding_source)) && (
+        <Block title={t("gsp.shot.refsDecision")} tone={mine?.blocked ? "danger" : corrections.length ? "warning" : undefined}>
+          <Kv rows={[
+            [t("gsp.shot.refsPlanned"), arr(mine?.planned_references).map((r) => `Z${Number(r)}`).join(", ") || "—"],
+            [t("gsp.shot.refsFinal"), refs.map((r, i) => `${i + 1}: Z${r}${arr(mine?.aux_references).map(Number).includes(r) ? ` (${t("gsp.shot.aux")})` : ""}`).join(", ") || "—"],
+            [t("gsp.shot.corrections"), corrections.length ? corrections.map((c) => `${t(`gsp.corr.${str(c.code)}`)}${arr(c.photos).length ? `: ${arr(c.photos).map((n) => `Z${Number(n)}`).join(", ")}` : ""}`).join(" · ") : "—"],
+            [t("gsp.shot.binding"), mine?.blocked ? t("gsp.corr.blocked_no_whole") : mine?.binding_source === "kb" ? t("gsp.shot.bindingKb") : t("gsp.shot.bindingDefault")],
           ]} />
         </Block>
       )}
@@ -329,7 +340,22 @@ function ExperimentSection({ data, node, t, reload }: { data: ProcessData; node:
         [t("gsp.plan.refs"), e.references.map((r) => `Z${r}`).join(", ")], [t("gsp.f.cost"), usd(e.costMicros)],
         [t("gsp.exp.gallery"), e.published ? t("gsp.exp.inGallery") : t("gsp.exp.notInGallery")],
       ]} />
-      {e.imageUrl && (/* eslint-disable-next-line @next/next/no-img-element */ <img src={e.imageUrl} alt="" className="max-h-72 w-full rounded-lg object-contain" />)}
+      {(() => {
+        // Before / after: the order's own image of this shot next to the experiment's.
+        const before = data.nodes.find((x) => x.kind === "shot" && x.shot === e.shot)?.thumb ?? null;
+        if (!e.imageUrl && !before) return null;
+        return (
+          <div className="grid grid-cols-2 gap-2" data-gsp-compare>
+            {[[t("gsp.exp.before"), before], [t("gsp.exp.after"), e.imageUrl]].map(([label, url]) => (
+              <figure key={String(label)} className="min-w-0 space-y-1">
+                <figcaption className="text-[11px] font-semibold text-muted">{label}</figcaption>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {url ? <img src={String(url)} alt="" className="max-h-64 w-full rounded-lg border border-line object-contain" /> : <div className="flex h-32 items-center justify-center rounded-lg bg-raised text-[11px] text-muted">—</div>}
+              </figure>
+            ))}
+          </div>
+        );
+      })()}
       <div className="flex flex-wrap gap-2">
         <Link href={`/admin/grovshot/${e.id}`} className="inline-flex items-center rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-medium hover:bg-raised">{t("gsp.exp.openProcess")}</Link>
         {canPublish && <Button size="sm" variant="secondary" onClick={() => void publish()} disabled={busy}>{t("gsp.exp.publish")}</Button>}

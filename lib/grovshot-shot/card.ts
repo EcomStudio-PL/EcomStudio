@@ -8,10 +8,14 @@
  * (validationFeedback) and a second failure stops the order (nothing paid
  * for an image). Pure.
  */
-import { DIM_SOURCES, PHOTO_ROLES, type PhotoRole } from "@/lib/grovshot-shot/contract";
+import { DIM_SOURCES, PHOTO_FORMS, PHOTO_ROLES, PHOTO_VIEWS, type PhotoForm, type PhotoRole, type PhotoView } from "@/lib/grovshot-shot/contract";
 import type { KbParsed } from "@/lib/grovshot-shot/kb";
 
-export type CardPhoto = { id: string; n: number; rola: PhotoRole; widok: string; stan: string; nie_kopiowac: string[] };
+export type CardPhoto = {
+  id: string; n: number; rola: PhotoRole; widok: string; stan: string; nie_kopiowac: string[];
+  /** What the picture is and from where (cards written before 2026-11-08 have neither; refs.ts reads their notes). */
+  forma?: PhotoForm; ujecie?: PhotoView;
+};
 export type ProductCard = {
   produkt: { nazwa: string; wariant: string; kategoria: string };
   wymiary: { tekst: string; zrodlo: (typeof DIM_SOURCES)[number]; szerokosc_cm: number | null; glebokosc_cm: number | null; wysokosc_cm: number | null; pewne: boolean };
@@ -70,7 +74,14 @@ export function checkCard(raw: unknown, ctx: { photoCount: number; kb: KbParsed 
     if (seen.has(n)) { errors.push(`zdjecia: Z${n} opisane więcej niż raz`); continue; }
     const rola = (PHOTO_ROLES as readonly string[]).includes(String(x.rola)) ? x.rola as PhotoRole : null;
     if (!rola) { errors.push(`zdjecia.Z${n}.rola: musi być jedną z ${PHOTO_ROLES.join(", ")}`); continue; }
-    seen.set(n, { id: photoId(n), n, rola, widok: s(x.widok, 300), stan: s(x.stan, 120), nie_kopiowac: ss(x.nie_kopiowac, 20, 200) });
+    const forma = (PHOTO_FORMS as readonly string[]).includes(String(x.forma)) ? x.forma as PhotoForm : undefined;
+    const ujecie = (PHOTO_VIEWS as readonly string[]).includes(String(x.ujecie)) ? x.ujecie as PhotoView : undefined;
+    if (x.forma !== undefined && !forma) errors.push(`zdjecia.Z${n}.forma: musi być jedną z ${PHOTO_FORMS.join(", ")}`);
+    if (x.ujecie !== undefined && !ujecie) errors.push(`zdjecia.Z${n}.ujecie: musi być jednym z ${PHOTO_VIEWS.join(", ")}`);
+    seen.set(n, {
+      id: photoId(n), n, rola, widok: s(x.widok, 300), stan: s(x.stan, 120), nie_kopiowac: ss(x.nie_kopiowac, 20, 200),
+      ...(forma ? { forma } : {}), ...(ujecie ? { ujecie } : {}),
+    });
   }
   for (let n = 1; n <= ctx.photoCount; n++) if (!seen.has(n)) errors.push(`zdjecia: brak opisu Z${n}`);
   const zdjecia = [...seen.values()].sort((a, b) => a.n - b.n);

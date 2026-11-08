@@ -30,6 +30,9 @@ export type ShotSettings = {
    *  (then only their summary), and the daily ceiling of an admin's paid
    *  single-shot experiments (USD, every admin together). */
   diagnostics: { retention_days: number; experiment_daily_budget_usd: number };
+  /** The image prompt (B diagnosis, 2026-11-08): PRODUKT words after its fixed
+   *  first sentence, SKALA words, and the images one shot may send. */
+  prompt: { product_max_words: number; scale_max_words: number; max_references: number };
 };
 
 /** The defaults: Sonnet 5.5 for the card, the plan and the prompts (no Opus by default). */
@@ -46,6 +49,7 @@ export const DEFAULT_SHOT_SETTINGS: ShotSettings = {
   description_min_chars: 80,
   scenarios: { lifestyle: true, reklamowa: false },
   diagnostics: { retention_days: 30, experiment_daily_budget_usd: 2 },
+  prompt: { product_max_words: 60, scale_max_words: 45, max_references: 5 },
 };
 
 export const LIMIT_RANGE = { min: 1, max: 20 } as const;
@@ -87,12 +91,24 @@ export function parseShotSettings(raw: unknown): { ok: true; settings: ShotSetti
   if (typeof days !== "number" || !Number.isInteger(days) || days < RETENTION_RANGE.min || days > RETENTION_RANGE.max) errors.push("diagnostics.retention_days");
   const exp = dg.experiment_daily_budget_usd === undefined ? DEFAULT_SHOT_SETTINGS.diagnostics.experiment_daily_budget_usd : dg.experiment_daily_budget_usd;
   if (typeof exp !== "number" || !(exp >= 0 && exp <= 50)) errors.push("diagnostics.experiment_daily_budget_usd");
+  const pr = (r.prompt && typeof r.prompt === "object" ? r.prompt : {}) as Record<string, unknown>;
+  const ranged = (v: unknown, d: number, min: number, max: number, key: string) => {
+    if (v === undefined) return d;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) { errors.push(key); return d; }
+    return v;
+  };
+  const prompt = {
+    product_max_words: ranged(pr.product_max_words, DEFAULT_SHOT_SETTINGS.prompt.product_max_words, 20, 200, "prompt.product_max_words"),
+    scale_max_words: ranged(pr.scale_max_words, DEFAULT_SHOT_SETTINGS.prompt.scale_max_words, 15, 150, "prompt.scale_max_words"),
+    // Nano Banana Pro takes at most 6 reference images.
+    max_references: ranged(pr.max_references, DEFAULT_SHOT_SETTINGS.prompt.max_references, 1, 6, "prompt.max_references"),
+  };
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,
     settings: {
       models, limits, text_budget_usd: budget as number, description_min_chars: minChars as number, scenarios,
-      diagnostics: { retention_days: days as number, experiment_daily_budget_usd: exp as number },
+      diagnostics: { retention_days: days as number, experiment_daily_budget_usd: exp as number }, prompt,
     },
   };
 }

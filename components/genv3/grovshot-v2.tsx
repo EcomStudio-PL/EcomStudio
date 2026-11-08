@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Info } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { Input, Textarea } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/input";
 import { PanelSection } from "@/components/genv3/controls";
 import { cn } from "@/lib/utils";
 import { V2_DESCRIPTION_MAX, type V2Dims } from "@/lib/generator/studio";
@@ -18,31 +18,27 @@ import { GROVSHOT_V2_STOP_CODES } from "@/lib/grovshot-v2/stages";
 /** GrovBase Shot: the Allegro description (required — the engine plans from
  *  it) and the customer's short notes. No dimensions field: the description
  *  carries them. */
-export function V2Fields({ description, onDescription, notes, onNotes }: {
+/**
+ * The order's own text: the Allegro description. „Uwagi” is gone from the
+ * form (08.11.2026) — new orders send no notes; an older order's notes stay
+ * readable where they were stored (the process view shows them as legacy).
+ */
+export function V2Fields({ description, onDescription }: {
   description: string; onDescription: (v: string) => void;
-  notes: string; onNotes: (v: string) => void;
 }) {
   const { t } = useI18n();
   const nearCap = description.length > V2_DESCRIPTION_MAX * 0.9;
   return (
-    <>
-      <PanelSection title={t("gsv2.descLabel")} data="gsv2-description"
-        aside={description.length > 0 ? `${description.length}/${V2_DESCRIPTION_MAX}` : undefined}>
-        <Textarea data-gsv2-description value={description} maxLength={V2_DESCRIPTION_MAX} required
-          onChange={(e) => onDescription(e.target.value)} aria-label={t("gsv2.descLabel")}
-          placeholder={t("gsv2.descPh")} rows={5}
-          className={cn("min-h-[7.5rem] resize-y text-[13px]", nearCap && "border-[rgb(var(--accent2)/0.55)]")} />
-        <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{t("gsv2.descHint")}</p>
-      </PanelSection>
-      <PanelSection title={t("gsv2.notesLabel")} optional data="gsv2-notes">
-        <Input data-gsv2-notes value={notes} maxLength={V2_NOTES_MAX} onChange={(e) => onNotes(e.target.value)}
-          aria-label={t("gsv2.notesLabel")} placeholder={t("gsv2.notesPh")} className="text-[13px]" />
-      </PanelSection>
-    </>
+    <PanelSection title={t("gsv2.descLabel")} data="gsv2-description"
+      aside={description.length > 0 ? `${description.length}/${V2_DESCRIPTION_MAX}` : undefined}>
+      <Textarea data-gsv2-description value={description} maxLength={V2_DESCRIPTION_MAX} required
+        onChange={(e) => onDescription(e.target.value)} aria-label={t("gsv2.descLabel")}
+        placeholder={t("gsv2.descPh")} rows={5}
+        className={cn("min-h-[7.5rem] resize-y text-[13px]", nearCap && "border-[rgb(var(--accent2)/0.55)]")} />
+      <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{t("gsv2.descHint")}</p>
+    </PanelSection>
   );
 }
-
-const V2_NOTES_MAX = 1_000;
 
 /** The dimensions as the order sends them (numbers, a unit), or null. */
 export function dimsForOrder(d: V2Dims | null): { width?: number; depth?: number; height?: number; unit: V2Dims["unit"] } | null {

@@ -1,6 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -119,11 +117,6 @@ function EditorScreen({ t, params, initialImage, balance, editor, cutout }: {
           link and name share one line now; what the editor does is visible in
           the five sections beside it, not in a sentence above it. */}
       <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Link href="/tools"
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-          <ArrowLeft size={14} aria-hidden /> {t("nav.allTools")}
-        </Link>
-        <span aria-hidden className="h-3.5 w-px bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]" />
         <h1 className="font-display text-[17px] font-semibold tracking-tight">{t("editor.title")}</h1>
       </div>
 

@@ -130,15 +130,37 @@ export async function startShotOrder(supabase: Client, userId: string, workspace
  * a new order of one shot on the same ledger path. The earlier image stays;
  * the customer picks the version the set uses.
  */
+type SrcRun = { user_id?: string; workspace_id?: string; run_kind?: string; status?: string; input?: Record<string, unknown> };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function readSrc(supabase: Client, runId: string): Promise<SrcRun | null> {
+  const { data: rows } = await supabase.rpc("ai_engine_run_read", { p_token: dispatchToken() ?? "", p_run_id: runId });
+  return Array.isArray(rows) ? (rows[0] as SrcRun | undefined) ?? null : null;
+}
+
 export async function startShotRegen(
-  supabase: Client, userId: string, workspaceId: string, sourceRunId: string, shot: number, quotedTotal: unknown,
+  supabase: Client, userId: string, workspaceId: string, clickedRunId: string, clickedShot: number, quotedTotal: unknown,
+  requestId?: string | null,
 ): Promise<StartResult> {
-  if (!Number.isInteger(shot) || shot < 1 || shot > 10) return { ok: false, error: "invalid_input" };
-  const { data: rows } = await supabase.rpc("ai_engine_run_read", { p_token: dispatchToken() ?? "", p_run_id: sourceRunId });
-  const src = Array.isArray(rows) ? rows[0] as { user_id?: string; workspace_id?: string; run_kind?: string; status?: string; input?: Record<string, unknown> } | undefined : undefined;
-  const input = src?.input ?? null;
-  if (!src || !input || src.user_id !== userId || src.workspace_id !== workspaceId || src.run_kind !== "grovshot"
-    || input.pipeline !== "lifestyle" || input.regen) return { ok: false, error: "not_found" };
+  if (!Number.isInteger(clickedShot) || clickedShot < 1 || clickedShot > 10) return { ok: false, error: "invalid_input" };
+  const own = (r: SrcRun | null): r is SrcRun & { input: Record<string, unknown> } =>
+    Boolean(r && r.input && r.user_id === userId && r.workspace_id === workspaceId && r.run_kind === "grovshot" && r.input.pipeline === "lifestyle");
+  // A tile that is itself a regeneration regenerates the ORIGINAL order's shot
+  // (one level: a regeneration always points at its order, never at another
+  // regeneration) — same prompt, same references, a new separate image.
+  let sourceRunId = clickedRunId;
+  let shot = clickedShot;
+  let src = await readSrc(supabase, sourceRunId);
+  if (!own(src)) return { ok: false, error: "not_found" };
+  const link = src.input.regen as { source_run_id?: unknown; shot?: unknown } | null | undefined;
+  if (link) {
+    if (typeof link.source_run_id !== "string" || !UUID_RE.test(link.source_run_id) || !Number.isInteger(link.shot)) return { ok: false, error: "not_found" };
+    sourceRunId = link.source_run_id;
+    shot = Number(link.shot);
+    src = await readSrc(supabase, sourceRunId);
+    if (!own(src) || src.input.regen) return { ok: false, error: "not_found" };
+  }
+  const input = src.input;
   if (src.status === "queued" || src.status === "running") return { ok: false, error: "order_in_progress" };
   if (shot > Number(input.shots)) return { ok: false, error: "invalid_input" };
   if (!(await grovshotV2Enabled(supabase, userId, workspaceId, { sessionType: "lifestyle" }))) return { ok: false, error: "engine_v1" };
@@ -158,7 +180,12 @@ export async function startShotRegen(
     budget_cap_usd_micros: IMAGE_MAX_CALLS * (unitPrice + 10_000),
     settings: input.settings, kb: input.kb as ShotInput["kb"], regen: { source_run_id: sourceRunId, shot },
   };
-  const key = `gslsr:${workspaceId}:${Math.floor(Date.now() / 300_000)}:${sha256(`${sourceRunId}:${shot}`).slice(0, 32)}`;
+  // One confirmed click = one generation: the client's request id makes a
+  // double submit of the SAME click land on the same run; a new click is a new
+  // image. Without an id (older clients): one per shot per 5 minutes.
+  const key = requestId && UUID_RE.test(requestId)
+    ? `gslsr:${workspaceId}:${sha256(`${sourceRunId}:${shot}:${requestId}`).slice(0, 40)}`
+    : `gslsr:${workspaceId}:${Math.floor(Date.now() / 300_000)}:${sha256(`${sourceRunId}:${shot}`).slice(0, 32)}`;
   const { data, error } = await supabase.rpc("grovshot_run_create", {
     p_token: dispatchToken() ?? "",
     p_run: {

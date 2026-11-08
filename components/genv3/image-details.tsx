@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { ShotRegenButton } from "@/components/genv3/grovshot-regen";
 import type { GalleryItem } from "@/components/genv3/types";
 import { ratioName } from "@/components/genv3/ratio-options";
 import { fileNameFor, saveBlob } from "@/lib/save-image";
@@ -516,7 +517,8 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
           {item.generationId && item.operation !== "ecommerce_thumbnail" && item.operation !== "image_retouch" && <ResultFeedback key={item.generationId} generationId={item.generationId} />}
 
           {/* The one thing this panel exists to lead to, at full width. */}
-          {canRegenerate && (
+          {/* GrovBase Shot: one more generation of THIS shot, priced on the button (two steps). */}
+          {item.grovshot ? <ShotRegenButton item={item} compact={false} variant="cta" /> : canRegenerate && (
             <button type="button" onClick={() => onRegenerate(item)} data-regen-cta
               className="cta flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold">
               <Sparkles size={15} aria-hidden />

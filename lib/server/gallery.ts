@@ -90,7 +90,29 @@ export type GalleryItem = {
    * what the tile OFFERS; the unlock route judges everything again.
    */
   trial: GalleryTrial | null;
+  /**
+   * GrovBase Shot (lifestyle): the order and shot this image belongs to — from
+   * server-written job/asset rows — and the price of one more generation at
+   * the job's model and quality ("Wygeneruj ponownie · N kr."). The route
+   * re-checks everything (ownership, current price) before anything is paid.
+   */
+  grovshot?: { runId: string; shot: number; price: number | null } | null;
 };
+
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A GrovBase Shot lifestyle image: its order, shot and one regeneration's price. */
+function grovshotOf(
+  meta: { pipeline?: string | null; shot?: number | null } | null,
+  job: { settings?: Record<string, unknown> | null; resolution?: string | null; ai_models?: { pricing?: unknown } | null } | null | undefined,
+): GalleryItem["grovshot"] {
+  if (meta?.pipeline !== "lifestyle") return null;
+  const runId = job?.settings?.run_id;
+  const shot = Number(meta.shot ?? job?.settings?.shot);
+  if (typeof runId !== "string" || !RUN_ID.test(runId) || !Number.isInteger(shot) || shot < 1 || shot > 10) return null;
+  const pricing = job?.ai_models?.pricing;
+  const unit = pricing && typeof pricing === "object" && job?.resolution ? (pricing as Record<string, unknown>)[job.resolution] : null;
+  return { runId, shot, price: typeof unit === "number" && unit > 0 ? unit : null };
+}
 
 export type GalleryPage = { items: GalleryItem[]; nextCursor: string | null };
 
@@ -130,7 +152,7 @@ const SELECT_BASE = `
   generation_jobs!inner(
     aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id, settings,
     quantity, credits_charged, reference_image_ids, latency_ms,
-    ai_models(display_name, name),
+    ai_models(display_name, name, pricing),
     prompt_sessions(session_type),
     generated_prompts!generation_jobs_prompt_id_fkey(customer_description)
   )
@@ -145,7 +167,7 @@ type Row = {
   generation_assets: {
     id: string; storage_path: string; width: number | null; height: number | null;
     asset_type: "image" | "video" | "text";
-    metadata: { thumb?: string | null; preview?: string | null; duration?: number | null } | null;
+    metadata: { thumb?: string | null; preview?: string | null; duration?: number | null; pipeline?: string | null; shot?: number | null } | null;
   }[];
   generation_jobs: {
     aspect_ratio: string | null;
@@ -163,7 +185,7 @@ type Row = {
     credits_charged: number | null;
     reference_image_ids: string[] | null;
     latency_ms: number | null;
-    ai_models: { display_name: string | null; name: string } | null;
+    ai_models: { display_name: string | null; name: string; pricing?: unknown } | null;
     prompt_sessions: { session_type: string | null } | null;
     generated_prompts: { customer_description: string | null } | null;
   } | null;
@@ -321,6 +343,7 @@ export async function listGalleryItems(
         note: r.user_note,
         createdAt: r.created_at,
         trial: null,
+        grovshot: grovshotOf(a.metadata, job),
       });
     }
   }
