@@ -184,6 +184,9 @@ async function main() {
       // GrovBase Shot quality panel (admin only): one reported image per
       // report as evidence, never a customer gallery.
       "lib/server/grovshot-shot/quality.ts",
+      // GrovBase Shot process view (admin only): the order's photos and the
+      // generated images at full size as diagnostic evidence, never a gallery.
+      "lib/server/grovshot-shot/process.ts",
       // Hands over originals on purpose.
       "app/api/library/zip/route.ts",
       // GrovBase Shot's set ZIP: the chosen originals, on purpose.

@@ -7659,6 +7659,18 @@ export type Database = {
         Args: { p_req: Json }
         Returns: Json
       }
+      grovshot_shot_experiment_create: {
+        Args: { p_req: Json }
+        Returns: Json
+      }
+      grovshot_shot_experiment_publish: {
+        Args: { p_run_id: string }
+        Returns: Json
+      }
+      grovshot_diagnostics_purge: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       grovshot_slot_acquire: {
         Args: { p_token: string; p_kind: string; p_limit: number; p_holder: string; p_ttl_seconds: number }
         Returns: number | null

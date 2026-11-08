@@ -152,6 +152,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
       {tab === "shot_kb" && row.key === "prompts" && <GrovshotShotTab supabase={supabase} t={t} view="kb" />}
       {tab === "shot_tests" && row.key === "prompts" && <GrovshotShotTab supabase={supabase} t={t} view="tests" />}
       {tab === "shot_quality" && row.key === "prompts" && <GrovshotShotTab supabase={supabase} t={t} view="quality" />}
+      {tab === "shot_orders" && row.key === "prompts" && <GrovshotShotTab supabase={supabase} t={t} view="orders" />}
       {tab === "guide" && isGuideTool(row.key) && <ToolGuideSection tool={row.key} supabase={supabase} />}
     </div>
   );

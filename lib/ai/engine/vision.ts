@@ -404,7 +404,7 @@ export function anthropicJsonSchema(schema: unknown): Record<string, unknown> {
  *  request. Anything already within both goes byte for byte. */
 const CLAUDE_EDGE = 1568;
 const CLAUDE_BYTES = 3_500_000;
-async function fitForClaude(r: ReferenceImage): Promise<ReferenceImage> {
+export async function fitForClaude(r: ReferenceImage): Promise<ReferenceImage> {
   const bytes = Math.floor((r.base64.length * 3) / 4);
   try {
     const { default: sharp } = await import("sharp");

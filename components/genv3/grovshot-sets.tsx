@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Download, Flag, Loader2, RefreshCw, Check, Archive } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, Flag, Loader2, RefreshCw, Check, Archive, Workflow } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { formatDate, cn } from "@/lib/utils";
@@ -27,7 +28,8 @@ const ratioClass = (r: string) => (r === "1:1" ? "aspect-square" : r === "4:5" ?
 type Reply = { ok: boolean; error?: string; sets?: ShotSet[]; quote?: { unit: number } };
 
 /** `balance` decides only whether "Wygeneruj ponownie" can be confirmed (charged when delivered). */
-export function GrovshotSets({ refreshKey, balance }: { refreshKey: number; balance: number }) {
+/** `admin`: the tile also links to the order's process view (admins only; the view checks again). */
+export function GrovshotSets({ refreshKey, balance, admin = false }: { refreshKey: number; balance: number; admin?: boolean }) {
   const { t } = useI18n();
   const [sets, setSets] = useState<ShotSet[] | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,12 +51,12 @@ export function GrovshotSets({ refreshKey, balance }: { refreshKey: number; bala
   if (!sets || sets.length === 0) return null;
   return (
     <section data-gss-sets className="space-y-4" aria-label={t("gsv2.sets.title")}>
-      {sets.map((s) => <SetCard key={s.id} set={s} onChanged={() => void load()} balance={balance} />)}
+      {sets.map((s) => <SetCard key={s.id} set={s} onChanged={() => void load()} balance={balance} admin={admin} />)}
     </section>
   );
 }
 
-function SetCard({ set, onChanged, balance }: { set: ShotSet; onChanged: () => void; balance: number }) {
+function SetCard({ set, onChanged, balance, admin }: { set: ShotSet; onChanged: () => void; balance: number; admin: boolean }) {
   const { t, locale } = useI18n();
   const running = ACTIVE.has(set.status);
   const delivered = set.shots.filter((x) => x.versions.length > 0).length;
@@ -78,15 +80,15 @@ function SetCard({ set, onChanged, balance }: { set: ShotSet; onChanged: () => v
       </header>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {tiles.map((shot, i) => (
-          <ShotTile key={shot?.n ?? `p${i}`} set={set} shot={shot} n={shot?.n ?? i + 1} common={common} onChanged={onChanged} balance={balance} />
+          <ShotTile key={shot?.n ?? `p${i}`} set={set} shot={shot} n={shot?.n ?? i + 1} common={common} onChanged={onChanged} balance={balance} admin={admin} />
         ))}
       </div>
     </article>
   );
 }
 
-function ShotTile({ set, shot, n, common, onChanged, balance }: {
-  set: ShotSet; shot: SetShot | null; n: number; common: string | null; onChanged: () => void; balance: number;
+function ShotTile({ set, shot, n, common, onChanged, balance, admin }: {
+  set: ShotSet; shot: SetShot | null; n: number; common: string | null; onChanged: () => void; balance: number; admin: boolean;
 }) {
   const { t } = useI18n();
   const versions = shot?.versions ?? [];
@@ -123,7 +125,7 @@ function ShotTile({ set, shot, n, common, onChanged, balance }: {
 
   return (
     <div data-gss-shot={n} data-state={shot?.state ?? "queued"} className="space-y-1.5">
-      <div className={cn("relative overflow-hidden rounded-xl border border-line bg-sunken", ratioClass(set.ratio))}>
+      <div className={cn("group relative overflow-hidden rounded-xl border border-line bg-sunken", ratioClass(set.ratio))}>
         {shown ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={shown.thumbUrl} alt={shot?.title ?? ""} className="size-full object-cover" loading="lazy" />
@@ -140,6 +142,14 @@ function ShotTile({ set, shot, n, common, onChanged, balance }: {
           </div>
         )}
         <span className="absolute left-1.5 top-1.5 rounded bg-black/55 px-1.5 text-[10.5px] font-semibold text-white">{String(n).padStart(2, "0")}</span>
+        {admin && (
+          // Admins only: the process view of the order (or of the regeneration shown). Hover on desktop, always on touch.
+          <Link href={shown?.regenRunId ? `/admin/grovshot/${shown.regenRunId}?shot=1` : `/admin/grovshot/${set.id}?shot=${n}`}
+            data-gsp-tile-link aria-label={t("gsv2.sets.process")} title={t("gsv2.sets.process")}
+            className="absolute right-1.5 top-1.5 rounded-md bg-black/60 p-1.5 text-white opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+            <Workflow size={14} aria-hidden />
+          </Link>
+        )}
         {shown && shot?.regenerating && (
           <span className="absolute inset-x-1.5 bottom-1.5 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[10.5px] text-white">
             <Loader2 size={11} aria-hidden className="animate-spin" />{t("gsv2.sets.state.working")}

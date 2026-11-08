@@ -133,6 +133,7 @@ const admin = [
   "generator",
   "genv3",
   "grovnewsAdm",
+  "gsp",
   "gss",
   "health",
   "history",

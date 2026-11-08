@@ -26,6 +26,10 @@ export type ShotSettings = {
   /** The minimum description length a customer must paste (stage 2 form). */
   description_min_chars: number;
   scenarios: { lifestyle: boolean; reklamowa: boolean };
+  /** Admin diagnostics: days the full network-boundary payloads are kept
+   *  (then only their summary), and the daily ceiling of an admin's paid
+   *  single-shot experiments (USD, every admin together). */
+  diagnostics: { retention_days: number; experiment_daily_budget_usd: number };
 };
 
 /** The defaults: Sonnet 5.5 for the card, the plan and the prompts (no Opus by default). */
@@ -41,9 +45,11 @@ export const DEFAULT_SHOT_SETTINGS: ShotSettings = {
   text_budget_usd: 1.5,
   description_min_chars: 80,
   scenarios: { lifestyle: true, reklamowa: false },
+  diagnostics: { retention_days: 30, experiment_daily_budget_usd: 2 },
 };
 
 export const LIMIT_RANGE = { min: 1, max: 20 } as const;
+export const RETENTION_RANGE = { min: 1, max: 365 } as const;
 
 export function parseShotSettings(raw: unknown): { ok: true; settings: ShotSettings } | { ok: false; errors: string[] } {
   const r = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
@@ -76,8 +82,19 @@ export function parseShotSettings(raw: unknown): { ok: true; settings: ShotSetti
     lifestyle: sc.lifestyle === undefined ? true : sc.lifestyle === true,
     reklamowa: sc.reklamowa === true,
   };
+  const dg = (r.diagnostics && typeof r.diagnostics === "object" ? r.diagnostics : {}) as Record<string, unknown>;
+  const days = dg.retention_days === undefined ? DEFAULT_SHOT_SETTINGS.diagnostics.retention_days : dg.retention_days;
+  if (typeof days !== "number" || !Number.isInteger(days) || days < RETENTION_RANGE.min || days > RETENTION_RANGE.max) errors.push("diagnostics.retention_days");
+  const exp = dg.experiment_daily_budget_usd === undefined ? DEFAULT_SHOT_SETTINGS.diagnostics.experiment_daily_budget_usd : dg.experiment_daily_budget_usd;
+  if (typeof exp !== "number" || !(exp >= 0 && exp <= 50)) errors.push("diagnostics.experiment_daily_budget_usd");
   if (errors.length) return { ok: false, errors };
-  return { ok: true, settings: { models, limits, text_budget_usd: budget as number, description_min_chars: minChars as number, scenarios } };
+  return {
+    ok: true,
+    settings: {
+      models, limits, text_budget_usd: budget as number, description_min_chars: minChars as number, scenarios,
+      diagnostics: { retention_days: days as number, experiment_daily_budget_usd: exp as number },
+    },
+  };
 }
 
 export const SHOT_MODEL_CHOICES = CLAUDE_STAGE_MODELS;

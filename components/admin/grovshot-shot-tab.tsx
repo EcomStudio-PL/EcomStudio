@@ -6,6 +6,8 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { ShotKbPanel, ShotTestsPanel } from "@/components/admin/grovshot-shot-client";
 import { ShotQualityPanel } from "@/components/admin/grovshot-shot-quality";
 import { readQuality } from "@/lib/server/grovshot-shot/quality";
+import { readShotOrders } from "@/lib/server/grovshot-shot/orders";
+import { ShotOrdersList } from "@/components/admin/grovshot-shot-orders";
 
 /**
  * GROVBASE SHOT — the lifestyle engine's admin tabs on the GrovShot tool page:
@@ -22,8 +24,19 @@ import { readQuality } from "@/lib/server/grovshot-shot/quality";
 type T = (key: string, values?: Record<string, string | number>) => string;
 
 export async function GrovshotShotTab({ supabase, t, view }: {
-  supabase: Awaited<ReturnType<typeof createClient>>; t: T; view: "kb" | "tests" | "quality";
+  supabase: Awaited<ReturnType<typeof createClient>>; t: T; view: "kb" | "tests" | "quality" | "orders";
 }) {
+  if (view === "orders") {
+    const rows = await readShotOrders(supabase);
+    return (
+      <div className="space-y-4" data-grovshot-shot-admin="orders">
+        <Card className="p-4 sm:p-5">
+          <CardHeader title={t("gsp.orders.title")} sub={t("gsp.orders.sub")} />
+          <div className="pt-4"><ShotOrdersList rows={rows} /></div>
+        </Card>
+      </div>
+    );
+  }
   if (view === "quality") {
     const data = await readQuality(supabase, 90);
     return (

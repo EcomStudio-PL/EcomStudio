@@ -28,6 +28,8 @@ import {
   type AdvanceResult, type CoreCtx, type CoreInput, type Drive, type GrovshotDeps, type Mirror, type ShotOutcome, type SlotStore,
 } from "@/lib/server/grovshot-v2/run";
 import { kbInstructions, readKb, type KbParsed } from "@/lib/grovshot-shot/kb";
+import { referenceCheck } from "@/lib/grovshot-shot/diagnostics";
+import { boundaryRecord, boundarySummary, newSink, observeProviderCalls, settleSink } from "@/lib/server/grovshot-shot/boundary";
 import {
   CARD_SCHEMA, FRAMES, LIGHTS, PLAN_SCHEMA, PRODUCT_SCHEMA, SCENES_SCHEMA, SHOT_ENGINE_VERSION, contractText, wrapData,
 } from "@/lib/grovshot-shot/contract";
@@ -99,7 +101,22 @@ export type ShotInput = CoreInput & {
   /** A paid regeneration of ONE shot of an earlier order: the same final
    *  prompt and references, a new generation, the order's own versions. */
   regen?: { source_run_id: string; shot: number } | null;
+  /** An admin's EXPERIMENT on one shot of an earlier order (a test run: never
+   *  charged, never in the customer's gallery): the admin's prompt and
+   *  references (photos of that order only), exactly one image call. */
+  experiment?: ShotExperiment | null;
 };
+export type ShotExperiment = { source_run_id: string; shot: number; prompt: string; references: number[]; pattern: "full" | "detail" };
+
+function parseExperiment(raw: unknown, photoCount: number): ShotExperiment | null | "invalid" {
+  if (raw === undefined || raw === null) return null;
+  const e = raw as Partial<ShotExperiment>;
+  const refs = Array.isArray(e.references) ? e.references : [];
+  if (typeof e.source_run_id !== "string" || typeof e.shot !== "number" || typeof e.prompt !== "string"
+    || !e.prompt.trim() || e.prompt.length > 20_000 || refs.length < 1 || refs.length > 6
+    || refs.some((n) => !Number.isInteger(n) || n < 1 || n > photoCount) || new Set(refs).size !== refs.length) return "invalid";
+  return { source_run_id: e.source_run_id, shot: e.shot, prompt: e.prompt, references: refs, pattern: e.pattern === "detail" ? "detail" : "full" };
+}
 
 export function isLifestyleInput(raw: unknown): boolean {
   return Boolean(raw && typeof raw === "object" && (raw as Record<string, unknown>).pipeline === "lifestyle");
@@ -112,7 +129,9 @@ export function parseShotInput(raw: unknown): ShotInput | null {
   if (typeof i.shots !== "number" || !Number.isInteger(i.shots) || i.shots < 1 || i.shots > 10) return null;
   if (!i.model?.id || !i.quote || typeof i.aspect_ratio !== "string" || typeof i.resolution !== "string") return null;
   if (!i.kb?.version_id || typeof i.kb.sha256 !== "string" || typeof i.description !== "string") return null;
-  return { notes: "", user_plan: null, ...i } as ShotInput;
+  const experiment = parseExperiment(i.experiment, i.photos.length);
+  if (experiment === "invalid") return null;
+  return { notes: "", user_plan: null, ...i, experiment } as ShotInput;
 }
 
 /* ══ context ══════════════════════════════════════════════════════════════*/
@@ -225,6 +244,11 @@ async function driveLifestyle(ctx: LCtx, state: Awaited<ReturnType<typeof readEn
   if (typeof pinned === "string") return pinned;
 
   if (ctx.input.regen) return regenerate(ctx, ctx.input.regen);
+  if (ctx.input.experiment) {
+    // Only an admin's test run may carry one (0168 creates it so).
+    if (!ctx.test) { await close(ctx, "failed", "common_error"); return "finished"; }
+    return experiment(ctx, ctx.input.experiment);
+  }
 
   // ── krok 2 · karta ──
   await setProgress(ctx, { stage: "analyze", engine: SHOT_ENGINE_VERSION, kb_version: ctx.kbVersion });
@@ -359,7 +383,8 @@ type StepOk<V> = { value: V; errors: string[]; item: number; out: Record<string,
  */
 async function stageRows<V>(ctx: LCtx, o: {
   pos: number; base: number; name: string; key: ShotStageKey; step: ShotStep; timeoutMs: number;
-  build: (feedback: string | null) => Promise<Omit<StageCall, "key" | "body" | "values" | "timeoutMs" | "deadlineAt" | "backends" | "tokenPrices" | "now"> | "changed" | "unreadable">;
+  /** `imagePhotos`: the order photo (1-based) each attached image was made from, in send order. */
+  build: (feedback: string | null) => Promise<(Omit<StageCall, "key" | "body" | "values" | "timeoutMs" | "deadlineAt" | "backends" | "tokenPrices" | "now"> & { imagePhotos?: number[] }) | "changed" | "unreadable">;
   check: (raw: unknown) => Checked<V>;
   feedback: (errors: string[]) => string;
 }): Promise<StepOk<V> | { failed: string } | Drive> {
@@ -410,24 +435,33 @@ async function stageRows<V>(ctx: LCtx, o: {
       if (b.state === "busy") return "busy";
       if (b.state === "not_owner") return "lost";
       if (b.state !== "run") continue;
-      const built = await o.build(feedback);
-      if (built === "changed" || built === "unreadable") {
-        await finish(ctx, o.pos, item, { status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: built === "changed" ? "reference_changed" : "photo_unreadable", durationMs: 0 });
-        return { failed: built === "changed" ? "reference_changed" : "unavailable" };
+      const builtRaw = await o.build(feedback);
+      if (builtRaw === "changed" || builtRaw === "unreadable") {
+        await finish(ctx, o.pos, item, { status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: builtRaw === "changed" ? "reference_changed" : "photo_unreadable", durationMs: 0 });
+        return { failed: builtRaw === "changed" ? "reference_changed" : "unavailable" };
       }
+      const { imagePhotos, ...built } = builtRaw;
       const t0 = ctx.deps.now();
       const call: StageCall = {
         ...built, key: o.key, body: "", values: {}, timeoutMs: o.timeoutMs, deadlineAt: ctx.deadlineAt,
         backends: await backendsFor(ctx, o.step), tokenPrices: ctx.tokenPrices, now: ctx.deps.now,
       };
-      const res = await ctx.deps.callStage<unknown>(ctx.supabase, call, {
+      // THE NETWORK BOUNDARY: what the SDK really sent (admin-only rows).
+      const sink = newSink();
+      const res = await observeProviderCalls(sink, () => ctx.deps.callStage<unknown>(ctx.supabase, call, {
         consumer: ctx.test ? "workflow_test" : "generation", actorKind: ctx.test ? "admin" : "customer",
         userId: ctx.userId, workspaceId: ctx.workspaceId, runRef: ctx.runId,
-      });
+      }));
+      await settleSink(sink);
+      const system = call.direct?.system ?? "";
       const meta = {
         trace: (res.trace ?? null) as unknown as Json, unknown_calls: res.unknownCalls, feedback: Boolean(feedback),
-        system_chars: call.direct?.system.length ?? 0, user_chars: call.direct?.user.length ?? 0, images: call.images.length,
+        system_chars: system.length, user_chars: call.direct?.user.length ?? 0, images: call.images.length,
         kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+        // Where the engine's contract ends and the knowledge base's text begins.
+        system_kb_from: system.includes("\n\n") ? system.indexOf("\n\n") + 2 : null,
+        image_photos: (imagePhotos ?? []) as unknown as Json,
+        boundary: boundaryRecord(sink) as unknown as Json, boundary_summary: boundarySummary(sink) as unknown as Json,
       };
       if (!res.ok) {
         const retryAfter = Math.max(0, ...(res.trace?.attempts ?? []).map((a) => a.retry_after_ms ?? 0));
@@ -477,7 +511,7 @@ async function cardStep(ctx: LCtx): Promise<ProductCard | Drive> {
             dataBlock(ctx), feedback ?? "",
           ].filter(Boolean).join("\n\n"),
         },
-        images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: CARD_SCHEMA, cacheSystem: true,
+        images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: CARD_SCHEMA, cacheSystem: true, imagePhotos: all,
       };
     },
     check: (raw) => {
@@ -575,7 +609,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
             feedback ?? "",
           ].filter(Boolean).join("\n\n"),
         },
-        images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: PRODUCT_SCHEMA, cacheSystem: true,
+        images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: PRODUCT_SCHEMA, cacheSystem: true, imagePhotos: wholes,
       };
     },
     check: (raw) => {
@@ -611,7 +645,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[]): Prom
             feedback ?? "",
           ].filter(Boolean).join("\n\n"),
         },
-        images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: SCENES_SCHEMA, cacheSystem: true,
+        images: await Promise.all(ph.map((p) => forVision(p.bytes))), schema: SCENES_SCHEMA, cacheSystem: true, imagePhotos: detailRefs,
       };
     },
     check: (raw) => {
@@ -710,6 +744,37 @@ async function regenerate(ctx: LCtx, r: { source_run_id: string; shot: number })
     kadr: "sredni", ludzie: "brak", stan: "", caly_produkt: false, referencje: p.references, opis: "", skala_cm: null, fixed: true,
   };
   return shotsPhase(ctx, [shot], prompts, mirror);
+}
+
+/* ══ an admin's experiment: one shot, the admin's prompt and references ══*/
+
+async function experiment(ctx: LCtx, e: ShotExperiment): Promise<Drive> {
+  let prompts: Prompts;
+  const done = stepOf(ctx, POS.assemble, ITEM.assemble);
+  if (done?.status === "succeeded") prompts = promptsFrom(outputOf(done));
+  else {
+    const b = await begin(ctx, POS.assemble, ITEM.assemble, "assemble", "tool");
+    if (b.state === "done") prompts = promptsFrom(outputOf({ output: b.output }));
+    else if (b.state === "busy") return "busy";
+    else if (b.state === "not_owner") return "lost";
+    else if (b.state !== "run") { await close(ctx, "failed", "unavailable"); return "finished"; }
+    else {
+      const out = {
+        shots: [{ numer: 1, text: e.prompt, sha256: sha256(e.prompt), modules: [], footer: "", pattern: e.pattern, references: e.references }],
+        experiment_of: e.source_run_id, experiment_shot: e.shot, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+      };
+      await finish(ctx, POS.assemble, ITEM.assemble, { status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: out as unknown as Json, durationMs: 0 });
+      prompts = promptsFrom(out);
+    }
+  }
+  const p = prompts.get(1);
+  if (!p) { await close(ctx, "failed", "unavailable"); return "finished"; }
+  if (ctx.progress.planned !== 1) await setProgress(ctx, { planned: 1, experiment_of: e.source_run_id, experiment_shot: e.shot });
+  const shot: PlanShot = {
+    numer: 1, argument: "", typ: p.pattern === "detail" ? "detal" : "uzycie", kierunek: "", miejsce: "", swiatlo: "", swiatlo_typ: "inne",
+    kadr: "sredni", ludzie: "brak", stan: "", caly_produkt: false, referencje: p.references, opis: "", skala_cm: null, fixed: true,
+  };
+  return shotsPhase(ctx, [shot], prompts, { sessionId: null, concepts: {} });
 }
 
 /* ══ the customer-visible mirror ══════════════════════════════════════════*/
@@ -827,6 +892,8 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
     // Each finished call that brought no delivered image is one failure.
     const failures = rounds.map((r) => roundOut(outputOf(r), r.status, r.error_code))
       .map((o) => ({ cls: (o.ok ? "transient" : o.cls ?? "final") as ImageErrorClass, retryAfterMs: o.retry_after_ms, at: o.at }));
+    // An admin's experiment is ONE paid call, confirmed at that price: never retried.
+    if (ctx.input.experiment && failures.length > 0) return settle(ctx, n, false, "image_failed");
     const decision = nextImageAttempt(failures);
     if (!decision.retry) {
       const lastCls = failures[failures.length - 1]?.cls;
@@ -874,12 +941,20 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
         await setProgress(ctx, { stage: "images" });
         const t0 = ctx.deps.now();
         const refsForModel = await Promise.all(refs.map(forImageModel));
-        const r = await ctx.deps.callImage(ctx.supabase, {
+        // THE NETWORK BOUNDARY: the request the shared Google adapter really sent.
+        const sink = newSink();
+        const r = await observeProviderCalls(sink, () => ctx.deps.callImage(ctx.supabase, {
           candidateModelIds: [ctx.input.model.id], prompt: prompt.text, references: refsForModel,
           aspectRatio: ctx.input.aspect_ratio as AspectRatio, resolution: ctx.input.resolution as Resolution,
           maxAttempts: 1, deadlineAt: Math.min(ctx.hardEndAt - DELIVER_RESERVE_MS, ctx.deps.now() + IMAGE_CALL_MS),
           unitPrices: ctx.unitPrices, tokenPrices: ctx.tokenPrices,
-        });
+        }));
+        await settleSink(sink);
+        const prepared = refs.map((p, i) => ({
+          n: i + 1, photo: p.number, path: p.path, source_sha256: p.sha256, sent_sha256: refsForModel[i].sha256,
+          transform: refsForModel[i].transform, mime: refsForModel[i].mime, bytes: refsForModel[i].bytes,
+          width: refsForModel[i].width, height: refsForModel[i].height,
+        }));
         let cost = 0;
         let unknown = 0;
         for (const a of r.attempts) { if (a.cost.basis === "unknown") unknown++; else cost += a.cost.usdMicros; }
@@ -905,8 +980,13 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: (AssembledPrompt & { s
           ms: ctx.deps.now() - t0, sha256: image?.sha256 ?? null, width: image?.width ?? null, height: image?.height ?? null, mime: image?.mime ?? null,
           bytes: image?.bytes.length ?? null, cost_usd_micros: cost, unknown_calls: unknown,
           prompt: { sha256: prompt.sha256, pattern: prompt.pattern, footer: prompt.footer, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION },
-          // THE REFERENCE MANIFEST: what Nano Banana Pro received, in send order ("zdjęcie 1" = entry 1).
+          // THE REFERENCE MANIFEST: what the engine handed the adapter, in send order ("zdjęcie 1" = entry 1).
           references_sent: refs.map((p, i) => ({ n: i + 1, photo: p.number, sha256: p.sha256 })) as unknown as Json,
+          references_planned: shot.referencje as unknown as Json,
+          references_prepared: prepared as unknown as Json,
+          // …and what the network boundary shows was really in the request.
+          reference_check: referenceCheck(shot.referencje, prepared, sink.requests, prompt.text) as unknown as Json,
+          boundary: boundaryRecord(sink) as unknown as Json, boundary_summary: boundarySummary(sink) as unknown as Json,
           aspect_ratio: ctx.input.aspect_ratio, resolution: ctx.input.resolution, attempt: roundIndex + 1,
         };
         const ok = await finish(ctx, P.round, item, {

@@ -872,7 +872,7 @@ export function GeneratorWorkspace({
         )}
         gallery={managedData?.engineV2 && managed ? (
           <div className="flex min-h-0 flex-col gap-4" data-studio-gallery-shot>
-            <GrovshotSets refreshKey={setsTick} balance={balance} />
+            <GrovshotSets refreshKey={setsTick} balance={balance} admin={shotAdmin} />
             <GenerationGallery
               initialItems={initialItems}
               initialCursor={initialCursor}

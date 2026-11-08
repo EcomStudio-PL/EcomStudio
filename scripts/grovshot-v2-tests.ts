@@ -2143,6 +2143,52 @@ async function partL() {
       && runOf(r.runId).status === "ok" && delivered(r.runId) === 5,
       { shots: ((out.shots ?? []) as Row[]).length, missing: out.missing, src: out.scene_source, st: runOf(r.runId).status, d: delivered(r.runId) });
   }
+  {
+    // An admin's experiment on one shot, created as 0168's grovshot_shot_experiment_create creates it.
+    const w = await lsWorld({ photos: 7, image: (_i, input) => (input.prompt === "EKSPERYMENT FAIL" ? "provider_timeout" : "ok") });
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) return;
+    await lsDrive(w, r.runId);
+    const src = runOf(r.runId);
+    const pin = (stepsOf(r.runId, P.validate).find((s) => s.item_index === -1)?.output ?? {}) as Row;
+    const before = { calls: w.imageCalls.length, stage: w.stageCalls.length, charges: charges().length, gens: tableRows("generations").length, bal: db().wallet.balance };
+    const experimentRun = (prompt: string) => {
+      const runId = id("run");
+      db().runs.set(runId, {
+        id: runId, tool_key: "prompts", workspace_id: WS, user_id: USER, mode: "grovbase", status: "queued", run_kind: "grovshot_test",
+        idempotency_key: `gsexp:${runId}`, outputs: [], progress: { stage: "images" }, expected_outputs: 1, credits: 0, error: null, created_at: iso(db().now),
+        finished_at: null, locked_until: null, lease_owner: null, invocations: 0,
+        input: {
+          ...(src.input as Row), test: true, test_mode: "full", shots: 1, notes: "", user_plan: null, regen: null,
+          photo_shas: pin.photo_shas, unit_price_usd_micros: pin.unit_price_usd_micros, budget_cap_usd_micros: Number(pin.unit_price_usd_micros) + 10_000,
+          quote: { unit: 0, total: 0 },
+          experiment: { source_run_id: r.runId, shot: 2, prompt, references: [3, 1], pattern: "full" },
+        },
+      });
+      return runId;
+    };
+    const ok = experimentRun("EKSPERYMENT X");
+    await lsDrive(w, ok);
+    const call = w.imageCalls[w.imageCalls.length - 1];
+    const round = (stepsOf(ok, P.round)[0]?.output ?? {}) as Row;
+    check("L33 an experiment: ONE Nano Banana Pro call with the admin's prompt and references in the admin's order — no Claude call, nothing charged, not in the library",
+      runOf(ok).status === "ok" && w.imageCalls.length === before.calls + 1 && call.prompt === "EKSPERYMENT X" && call.references.length === 2
+      && ((round.references_prepared ?? []) as Row[]).map((x) => x.photo).join() === "3,1" && w.stageCalls.length === before.stage
+      && charges().length === before.charges && db().wallet.balance === before.bal && tableRows("generations").length === before.gens,
+      { st: runOf(ok).status, e: runOf(ok).error, calls: w.imageCalls.length - before.calls, prep: round.references_prepared });
+    check("L34 …its round records the reference manifest and the network-boundary fields (a fake provider: nothing observed, never called matching)",
+      Array.isArray(round.references_planned) && (round.reference_check as Row)?.observed === false && (round.boundary_summary as Row)?.requests === 0);
+    const bad = experimentRun("EKSPERYMENT FAIL");
+    const n0 = w.imageCalls.length;
+    await lsDrive(w, bad);
+    check("L35 a failed experiment call is NOT retried (one confirmed paid call) and nothing is charged",
+      runOf(bad).status === "failed" && w.imageCalls.length === n0 + 1 && charges().length === before.charges, { st: runOf(bad).status, calls: w.imageCalls.length - n0 });
+    const customer = experimentRun("EKSPERYMENT X");
+    (db().runs.get(customer) as Row).run_kind = "grovshot";
+    const n1 = w.imageCalls.length;
+    await lsDrive(w, customer);
+    check("L36 an experiment input on a CUSTOMER run is refused before any call", runOf(customer).status === "failed" && w.imageCalls.length === n1);
+  }
 }
 
 partE().then(partL).then(() => {

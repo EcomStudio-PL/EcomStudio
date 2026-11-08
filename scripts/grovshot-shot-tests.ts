@@ -27,6 +27,8 @@ import {
   DEFAULT_SHOT_SETTINGS, IMAGE_MAX_CALLS, classifyImageError, nextImageAttempt, orderStatus, parseShotSettings,
 } from "@/lib/grovshot-shot/settings";
 import { anthropicJsonSchema } from "@/lib/ai/engine/vision";
+import { referenceCheck } from "@/lib/grovshot-shot/diagnostics";
+import { boundarySummary, newSink, observeProviderCalls, settleSink } from "@/lib/server/grovshot-shot/boundary";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 
 let failures = 0;
@@ -252,5 +254,78 @@ check("R8 default settings: Sonnet 5.5 for card, plan and prompts (no Opus), lif
   Object.values(DEFAULT_SHOT_SETTINGS.models).every((m) => m.model === "claude-sonnet-5-5") && DEFAULT_SHOT_SETTINGS.scenarios.lifestyle && !DEFAULT_SHOT_SETTINGS.scenarios.reklamowa);
 check("R9 settings out of range are refused, not clamped", !parseShotSettings({ limits: { image_concurrency: 0 } }).ok && !parseShotSettings({ models: { card: { provider: "openai", model: "gpt-5" } } }).ok);
 
-console.log(`\n${passed} passed, ${failures} failed`);
-if (failures > 0) process.exit(1);
+check("R10 diagnostics settings: 30-day retention and a $2 daily experiment ceiling by default; out of range refused",
+  DEFAULT_SHOT_SETTINGS.diagnostics.retention_days === 30 && DEFAULT_SHOT_SETTINGS.diagnostics.experiment_daily_budget_usd === 2
+  && parseShotSettings({ diagnostics: { retention_days: 7 } }).ok && !parseShotSettings({ diagnostics: { retention_days: 0 } }).ok
+  && !parseShotSettings({ diagnostics: { experiment_daily_budget_usd: 99 } }).ok);
+
+/* ══ D · the network boundary and the reference check ═══════════════════*/
+async function partD() {
+  section("D. THE NETWORK BOUNDARY — observed at fetch, nothing changed, nothing secret kept");
+  const png = (await (await import("sharp")).default({ create: { width: 40, height: 30, channels: 3, background: "#c00" } }).png().toBuffer());
+  const b64 = png.toString("base64");
+  const realFetch = globalThis.fetch;
+  const seen: { input: unknown; init: unknown }[] = [];
+  const answer = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json", "request-id": "req_1" } });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push({ input, init });
+    const url = String(input);
+    if (url.includes("googleapis")) return answer({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: b64 } }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 900 } });
+    return answer({ content: [{ type: "text", text: "{\"ok\":true}" }], usage: { input_tokens: 10 } });
+  }) as typeof fetch;
+  try {
+    const gBody = JSON.stringify({ contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/png", data: b64 } }, { text: "PROMPT 1" }] }], generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1", imageSize: "2K" } } });
+    const gInit: RequestInit = { method: "POST", headers: { "Content-Type": "application/json" }, body: gBody };
+    const sink = newSink();
+    const res = await observeProviderCalls(sink, () => fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent?key=SECRET123", gInit));
+    await settleSink(sink);
+    const json = (await res.json()) as { candidates?: unknown[] };
+    const r = sink.requests[0];
+    const last = seen[seen.length - 1];
+    check("D1 passthrough: the provider got the very same arguments, the caller the full response", last.init === gInit && String(last.input).includes("key=SECRET123") && Array.isArray(json.candidates));
+    check("D2 the key never reaches the record (URL redacted, no header values but the safe ones)",
+      !JSON.stringify(sink).includes("SECRET123") && r.url.includes("key=%5Bredacted%5D") && r.headers["content-type"] === "application/json", r?.url);
+    const img = r.images[0];
+    check("D3 an inline image is replaced by {$image:n}; its bytes, sha256 and pixel size are measured",
+      JSON.stringify(r.body).includes('"$image":1') && !JSON.stringify(r.body).includes(b64.slice(0, 60))
+      && img?.bytes === png.length && img.sha256 === createHash("sha256").update(png).digest("hex") && img.width === 40 && img.height === 30, img);
+    check("D4 the body hash is the hash of the exact string handed to fetch", r.body_sha256 === createHash("sha256").update(gBody).digest("hex") && r.observable);
+    const resp = r.response as { status?: number; request_id?: string; images?: unknown[]; body?: unknown };
+    check("D5 the response is kept without its image data (status, request id, image measured)",
+      resp?.status === 200 && resp.request_id === "req_1" && (resp.images ?? []).length === 1 && !JSON.stringify(resp.body).includes(b64.slice(0, 60)));
+    const prepared = [{ n: 1, photo: 2, source_sha256: img.sha256, sent_sha256: img.sha256 }];
+    const ok = referenceCheck([2], prepared, sink.requests, "PROMPT 1");
+    check("D6 the reference check: plan = prepared = sent, prompt identical → ok", ok.observed && ok.ok && ok.sent[0]?.photo === 2 && ok.prompt_matches === true, ok);
+    const swapped = referenceCheck([3], prepared, sink.requests, "PROMPT 2");
+    check("D7 …a plan/prepared difference and a different prompt are issues", !swapped.ok && swapped.issues.includes("plan_prepared_mismatch") && swapped.issues.includes("prompt_mismatch"), swapped);
+    const two = referenceCheck([2, 4], [...prepared, { n: 2, photo: 4, source_sha256: "x", sent_sha256: "y" }], sink.requests, "PROMPT 1");
+    check("D8 …an image the adapter did not send is a count mismatch", !two.ok && two.issues.includes("count_mismatch"), two);
+    check("D9 nothing observed is never reported as matching", !referenceCheck([2], prepared, [], "PROMPT 1").ok && referenceCheck([2], prepared, [], null).issues.includes("no_request"));
+
+    const outside = newSink();
+    await fetch("https://api.anthropic.com/v1/messages", { method: "POST", body: "{}" });
+    check("D10 a request outside the observed scope (any other tool) is not recorded", outside.requests.length === 0 && seen.length === 2);
+
+    const aSink = newSink();
+    const aBody = JSON.stringify({ model: "claude-sonnet-5-5", system: [{ type: "text", text: "SYS" }], messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: b64 } }, { type: "text", text: "USER" }] }] });
+    await observeProviderCalls(aSink, () => fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": "sk-ant-SECRET", "anthropic-version": "2023-06-01" }, body: aBody }));
+    await settleSink(aSink);
+    const ar = aSink.requests[0];
+    check("D11 Claude: the API key header is listed by name only, the version kept; the answer text kept",
+      ar.header_names.includes("x-api-key") && !JSON.stringify(aSink).includes("sk-ant-SECRET") && ar.headers["anthropic-version"] === "2023-06-01"
+      && (ar.response as { text?: string } | null)?.text === "{\"ok\":true}" && ar.images.length === 1 && ar.provider === "anthropic");
+
+    const sSink = newSink();
+    await observeProviderCalls(sSink, () => fetch(new Request("https://generativelanguage.googleapis.com/x", { method: "POST", body: gBody })));
+    await settleSink(sSink);
+    check("D12 a body the observer cannot read without consuming it is recorded as NOT observable", sSink.requests[0]?.observable === false && sSink.requests[0]?.body === null);
+    check("D13 the summary kept after the retention purge holds no text", !JSON.stringify(boundarySummary(aSink)).includes("SYS") && boundarySummary(aSink).images === 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+partD().then(() => {
+  console.log(`\n${passed} passed, ${failures} failed`);
+  if (failures > 0) process.exit(1);
+}).catch((e) => { console.error(e); process.exit(1); });
