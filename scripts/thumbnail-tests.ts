@@ -1422,7 +1422,7 @@ async function sectionH() {
   // percentage; the panel itself shows no stage list of its own.
   const tile = readFileSync("components/inflight/inflight-tile.tsx", "utf8");
   check("H7 the run in progress is the shared tile (real stage, server clock), no fake percentage anywhere",
-    /inflight=\{\{ tools: \["ecommerce_thumbnail"\] \}\}/.test(ui) && !/data-thumbnail-working/.test(ui)
+    /inflight=\{\{ tools: galleryModes\(THUMBNAIL_TOOL_KEY\) \}\}/.test(ui) && !/data-thumbnail-working/.test(ui)
     && /inflight\.stage\.\$\{tile\.stage\}/.test(tile)
     && !/%\s*<|progress=|percent/i.test((ui + tile).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")));
   check("H7 the Retusz toggle keeps its cost notice; the price summary stays",

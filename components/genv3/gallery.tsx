@@ -16,6 +16,7 @@ import { ImageDetails } from "@/components/genv3/image-details";
 import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { RegenerateModal } from "@/components/genv3/regenerate";
 import { ShotProcessLink, ShotRegenButton } from "@/components/genv3/grovshot-regen";
+import type { GalleryToolId } from "@/lib/gallery-tools";
 import { usePathname } from "next/navigation";
 import { guideToolForOperation, guideToolForPath, starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
@@ -74,7 +75,7 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, guideTool, inflight, shotAdmin,
+  models, balance, onBalance, onAbsorb, operation, tool, emptyTitle, emptyBody, guideTool, inflight, shotAdmin,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
@@ -89,6 +90,9 @@ export function GenerationGallery({
   /** Feature whose results this gallery lists ("image_retouch"). Absent = the
    *  workspace's generations, unfiltered. */
   operation?: string;
+  /** The TOOL whose gallery this is (lib/gallery-tools.ts): the server lists
+   *  only the results of its modes — every tab of the tool together. */
+  tool?: GalleryToolId;
   /** Copy for the empty state, so a tool can say what IT is waiting for. */
   emptyTitle?: string;
   emptyBody?: string;
@@ -190,14 +194,15 @@ export function GenerationGallery({
     let alive = true;
     const id = window.setTimeout(() => {
       const p = new URLSearchParams({ count: "1" });
-      if (operation) p.set("op", operation);
+      if (tool) p.set("tool", tool);
+      else if (operation) p.set("op", operation);
       fetch(`/api/generations?${p.toString()}`, { cache: "no-store" })
         .then((r) => r.json() as Promise<{ ok: boolean; total?: number | null }>)
         .then((json) => { if (alive) setResults(json.ok && typeof json.total === "number" ? json.total : null); })
         .catch(() => undefined);
     }, freshItems.length + deletions === 0 ? 0 : 600);
     return () => { alive = false; window.clearTimeout(id); };
-  }, [setResults, guest, operation, freshItems.length, deletions]);
+  }, [setResults, guest, operation, tool, freshItems.length, deletions]);
 
   // ── the phone's filter bar: one row, a sheet for the rest ─────────────
   const [searchOpen, setSearchOpen] = useState(false);
@@ -211,10 +216,11 @@ export function GenerationGallery({
     if (f.q.trim()) p.set("q", f.q.trim());
     if (f.order === "asc") p.set("order", "asc");
     if (cur) p.set("cursor", cur);
-    if (operation) p.set("op", operation);
+    if (tool) p.set("tool", tool);
+    else if (operation) p.set("op", operation);
     p.set("limit", String(GALLERY_PAGE_SIZE));
     return `/api/generations?${p.toString()}`;
-  }, [operation]);
+  }, [operation, tool]);
 
   const refetch = useCallback(async (f: Filter) => {
     const seq = ++fetchSeq.current;

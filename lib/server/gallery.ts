@@ -1,4 +1,5 @@
 import "server-only";
+import { galleryModes, galleryToolForOperation, isGalleryTool, type GalleryToolId } from "@/lib/gallery-tools";
 import { QUALITIES } from "@/lib/ai/types";
 import { GALLERY_PAGE_MAX, GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import type { Client } from "@/lib/services/workspace";
@@ -114,6 +115,13 @@ function grovshotOf(
   return { runId, shot, price: typeof unit === "number" && unit > 0 ? unit : null };
 }
 
+/** The modes a gallery request is limited to: its tool's (named, or found by
+ *  its legacy operation) — null for the Library. Never a list from a caller. */
+export function galleryScope(filter: { tool?: GalleryToolId | null; operation?: string | null }): string[] | null {
+  const tool = filter.tool && isGalleryTool(filter.tool) ? filter.tool : galleryToolForOperation(filter.operation);
+  return tool ? galleryModes(tool) : null;
+}
+
 export type GalleryPage = { items: GalleryItem[]; nextCursor: string | null };
 
 export type GalleryFilter = {
@@ -125,9 +133,12 @@ export type GalleryFilter = {
   q?: string | null;
   /** "desc" = newest first (default), "asc" = oldest first. */
   order?: "desc" | "asc";
-  /** Feature that produced the job ("image_retouch"). A tool passes its own
-   *  operation to list only its results; "none" excludes every tool job from
-   *  the plain generator's gallery. */
+  /** A TOOL's gallery (lib/gallery-tools.ts): only the results of its modes
+   *  (`generation_jobs.tool_mode`, 0169), filtered in the query. Absent (and
+   *  no tool operation): every result of the workspace — the Library. */
+  tool?: GalleryToolId | null;
+  /** Legacy: a tool's operation ("image_retouch") — resolved to its tool
+   *  through the same mapping; "none" excludes every tool job. */
   operation?: string | null;
   /**
    * "image" or "video" — the library's two shelves.
@@ -218,13 +229,14 @@ export async function listGalleryItems(
     .order("created_at", { ascending: asc })
     .limit(limit + 1);
   if (bySession) query = query.eq("generation_jobs.prompt_sessions.session_type", filter.sessionType!);
-  // Tool jobs and generator jobs live in one table; each surface asks for its
-  // own. "none" is the generator: everything that no feature claimed.
-  if (filter.operation && filter.operation !== "none") {
-    query = query.eq("generation_jobs.settings->>operation", filter.operation);
-  } else if (filter.operation === "none") {
-    query = query.is("generation_jobs.settings->>operation", null);
-  }
+  // GALLERY PER TOOL. Every tool's jobs live in one table; a tool's gallery
+  // asks for ITS modes (all of its tabs together) and the database filters,
+  // so the page, the cursor and the counts never leave the tool. No tool:
+  // the Library — everything. "none" (legacy): nothing a feature claimed.
+  const modes = galleryScope(filter);
+  if (modes) query = query.in("generation_jobs.tool_mode", modes);
+  else if (filter.operation === "none") query = query.is("generation_jobs.settings->>operation", null);
+  else if (filter.operation) query = query.eq("generation_jobs.settings->>operation", filter.operation);
   if (filter.favorite) query = query.eq("favorite", true);
   if (filter.jobIds) query = query.in("job_id", filter.jobIds.slice(0, 30));
   // KEYSET, ON THE KEY THE INDEX WAS BUILT FOR. `generations_ws_created_idx`
@@ -395,7 +407,7 @@ export async function countFavoriteAssets(
  * switch then shows no number rather than a wrong one.
  */
 export async function countGalleryResults(
-  supabase: Client, workspaceId: string, operation: string | null,
+  supabase: Client, workspaceId: string, operation: string | null, tool: GalleryToolId | null = null,
 ): Promise<number | null> {
   let query = supabase
     .from("generation_assets")
@@ -403,8 +415,11 @@ export async function countGalleryResults(
     .in("asset_type", ["image", "video"])
     .eq("generations.workspace_id", workspaceId)
     .eq("generations.generation_jobs.status", "completed");
-  if (operation && operation !== "none") query = query.eq("generations.generation_jobs.settings->>operation", operation);
+  // The same scope as the gallery's own pages (one rule, galleryScope).
+  const modes = galleryScope({ tool, operation });
+  if (modes) query = query.in("generations.generation_jobs.tool_mode", modes);
   else if (operation === "none") query = query.is("generations.generation_jobs.settings->>operation", null);
+  else if (operation) query = query.eq("generations.generation_jobs.settings->>operation", operation);
   const { count, error } = await query;
   return error ? null : count ?? 0;
 }

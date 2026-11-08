@@ -140,7 +140,8 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
     managedData(supabase),
     customModelsFor(supabase),
     getWallet(supabase, workspace.id),
-    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE }),
+    // The studio's own results (both tabs) — never another tool's (lib/gallery-tools.ts).
+    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, tool: "grovbase_shot" }),
     // Inteligentny prompt: the catalogue price and whether it may be offered.
     readSmartPromptOffer(supabase),
   ]);

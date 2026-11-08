@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
+import { galleryModes } from "@/lib/gallery-tools";
 import { InfoHint } from "@/components/ui/hint";
 import { ratioName } from "@/components/genv3/ratio-options";
 import { Segmented } from "@/components/ui/segmented";
@@ -239,7 +240,7 @@ export function FashionToolWorkspace({
   const absorb = useCallback(async (expect: number) => {
     try {
       const res = await fetch(
-        `/api/generations?op=${encodeURIComponent(config.operation)}&limit=${Math.min(expect + 2, 24)}`,
+        `/api/generations?tool=${encodeURIComponent(config.toolKey)}&limit=${Math.min(expect + 2, 24)}`,
         { cache: "no-store" });
       const json = await res.json() as { ok: boolean; items?: GalleryItem[] };
       if (!json.ok || !json.items) return;
@@ -492,7 +493,8 @@ export function FashionToolWorkspace({
             onBalance={setBalance}
             onAbsorb={absorb}
             operation={config.operation}
-            inflight={{ tools: [config.toolKey] }}
+            tool={config.toolKey}
+            inflight={{ tools: galleryModes(config.toolKey) }}
             emptyTitle={t("fashion.emptyTitle")}
             emptyBody={t(`wf.moda.${config.key}.empty`)}
           />

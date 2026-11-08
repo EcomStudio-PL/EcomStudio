@@ -1290,6 +1290,22 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
   box-shadow: 0 1px 2px rgb(10 10 14 / 0.05);
 }
 .dark .workspace .panel { box-shadow: 0 1px 2px rgb(0 0 0 / 0.35); }
+/* THE SETTINGS CARD WHILE IT HAS MORE BELOW (ToolColumns, lg+): an inset
+   shadow along its bottom edge. A box's inset shadow is painted beneath its
+   content and does not scroll with it, so it marks the edge without covering
+   a control or a caption and without taking a click — unlike the sticky
+   surface-coloured gradient it replaced, which lay over the last lines of the
+   form as a white band. Theme-matched; nothing at all below lg. */
+@media (min-width: 1024px) {
+  .panel.tool-panel-more,
+  .workspace .panel.tool-panel-more {
+    box-shadow: 0 1px 2px rgb(10 10 14 / 0.05), inset 0 -14px 12px -12px rgb(10 10 14 / 0.12);
+  }
+  .dark .panel.tool-panel-more,
+  .dark .workspace .panel.tool-panel-more {
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 -14px 12px -12px rgb(0 0 0 / 0.55);
+  }
+}
 /* `:where()` keeps this at the specificity of a bare `.plate`, so it still
    beats the base rule by order but never outranks a component's own
    `hover:border-…` / focus utility — those affordances stay alive. */
@@ -1493,6 +1509,12 @@ body:has(.workspace-page)::after { display: none; }
   @media (max-width: 1023.98px) {
     .app-shell:has([data-gen-dock]) > main {
       padding-bottom: var(--gen-dock-room, var(--gen-page-bottom));
+    }
+    /* A field the browser scrolls to (focus, the keyboard, scrollIntoView)
+       stops ABOVE the docked bar, not under it — the same room, as scroll
+       padding of the page. */
+    html:has([data-gen-dock]) {
+      scroll-padding-bottom: var(--gen-dock-room, var(--gen-page-bottom));
     }
   }
 }

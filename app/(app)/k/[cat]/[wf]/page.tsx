@@ -169,7 +169,8 @@ export default async function WorkflowPage({ params }: {
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
     conceptModelOptions(supabase),
-    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE }),
+    // The studio's own results (both tabs) — never another tool's (lib/gallery-tools.ts).
+    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, tool: "grovbase_shot" }),
     getSessionPreviews(supabase),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);

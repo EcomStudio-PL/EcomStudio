@@ -236,21 +236,17 @@ export function ToolColumns({ cols, panel, bar, gallery, overlay, attrs }: {
     )}>
       {overlay}
       <div data-tool-create className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+        {/* "There is more below" is a soft INSET shadow on the card's own
+            bottom edge (tool-panel-more, globals.css) — painted under the
+            content, so it never covers a control or a caption and takes no
+            click. It replaced a sticky white gradient that lay over the last
+            40px of the form (format tiles and their labels) while scrolling. */}
         <div ref={panelRef} data-tool-panel className={cn(
           "panel thin-scroll relative min-h-0 space-y-6 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:flex-initial lg:pb-6",
+          fade && "tool-panel-more",
           view === "results" && "max-lg:hidden",
-        )}>
+        )} data-tool-more={fade || undefined}>
           {panel}
-          {/* The fade over the last visible line while there is more below.
-              In the flow (with a matching negative margin) so it adds no
-              height, sticky so it rides the bottom edge of the card. */}
-          <div aria-hidden data-tool-fade={fade || undefined}
-            className={cn(
-              // `!` beats the card's own `space-y` rhythm, which would
-              // otherwise push this 24px down and add a gap of its own.
-              "pointer-events-none sticky bottom-0 z-10 -mx-5 !-mt-10 hidden h-10 bg-gradient-to-t from-[rgb(var(--surface))] to-transparent transition-opacity duration-200 lg:block",
-              fade ? "opacity-100" : "opacity-0",
-            )} />
         </div>
         {bar}
       </div>

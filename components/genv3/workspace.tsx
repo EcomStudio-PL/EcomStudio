@@ -36,10 +36,15 @@ import { limitText } from "@/components/inflight/inflight-tile";
 import { ToolColumns, ToolFrame, useToolFrameController } from "@/components/tool-frame/frame";
 import { GenerateBar, useBarLine } from "@/components/generate/generate-bar";
 import { V2Fields, V2Notes, useV2Order } from "@/components/genv3/grovshot-v2";
+import { galleryModes } from "@/lib/gallery-tools";
 
 /** GrovBase Shot's formats and sizes (the five of the spec; 1K is not offered). */
 const V2_RATIOS = ["1:1", "4:5", "3:4", "16:9", "9:16"];
 const V2_RESOLUTIONS = ["2K", "4K"];
+
+/** The studio's gallery is GrovBase Shot's: both tabs (modes) together. */
+const STUDIO_GALLERY_TOOL = "grovbase_shot" as const;
+const STUDIO_MODES: string[] = galleryModes(STUDIO_GALLERY_TOOL);
 import {
   SHOTS_DEFAULT, SHOTS_MAX, SHOTS_MIN, STUDIO_MAX_REFS, customPhotoBudget, dropPhoto, parseTab, patchRow,
   planToBriefs, readStudioDraft, remapPhotos,
@@ -420,7 +425,8 @@ export function GeneratorWorkspace({
 
   const absorbLatest = useCallback(async (expect: number) => {
     try {
-      const res = await fetch(`/api/generations?limit=${Math.min(Math.max(expect, 1) + 2, 24)}`, { cache: "no-store" });
+      // Only this tool's newest results: never another tool's image arriving here.
+      const res = await fetch(`/api/generations?tool=${STUDIO_GALLERY_TOOL}&limit=${Math.min(Math.max(expect, 1) + 2, 24)}`, { cache: "no-store" });
       const json = await res.json() as { ok: boolean; items?: GalleryItem[] };
       if (!json.ok || !json.items) return;
       const fresh = json.items.filter((i) => !knownAssets.current.has(i.assetId));
@@ -837,7 +843,7 @@ export function GeneratorWorkspace({
   );
 
   return (
-    <ToolFrame frame={frame} tools={both ? ["prompts", "generator"] : ["prompts"]} back={back} title={tabs}>
+    <ToolFrame frame={frame} tools={STUDIO_MODES} back={back} title={tabs}>
       <ToolColumns
         cols="lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)]"
         attrs={{ "data-studio": tab }}
@@ -864,12 +870,15 @@ export function GeneratorWorkspace({
             ctaAttrs={{ "data-generate-cta": true }}
           />
         )}
-        gallery={managedData?.engineV2 && managed ? (
-          // GrovBase Shot: the standard gallery (no set blocks) — each lifestyle
-          // tile carries its own "Wygeneruj ponownie · N kr." (and, for admins,
-          // the process view).
-          <div className="flex min-h-0 flex-col gap-4" data-studio-gallery-shot>
+        gallery={(
+          // ONE gallery for the tool, whichever tab is open: GrovBase Shot 1.0
+          // and Stwórz zdjęcie are two modes of one tool (lib/gallery-tools.ts),
+          // so their results sit together — and only theirs (the server
+          // filters by the tool's modes). A GrovBase Shot lifestyle tile
+          // carries its own "Wygeneruj ponownie · N kr." (admins: the process view).
+          <div className="flex min-h-0 flex-col gap-4" data-studio-gallery-shot={(managedData?.engineV2 && managed) || undefined}>
             <GenerationGallery
+              tool={STUDIO_GALLERY_TOOL}
               shotAdmin={shotAdmin}
               initialItems={initialItems}
               initialCursor={initialCursor}
@@ -877,7 +886,7 @@ export function GeneratorWorkspace({
               onFresh={setFreshItems}
               pendingCount={0}
               pendingRatio={effRatio}
-              inflight={{ tools: both ? ["prompts", "generator"] : ["prompts"] }}
+              inflight={{ tools: STUDIO_MODES }}
               models={galleryModels}
               balance={balance}
               onBalance={setBalance}
@@ -885,21 +894,6 @@ export function GeneratorWorkspace({
               guideTool={toolKey}
             />
           </div>
-        ) : (
-          <GenerationGallery
-            initialItems={initialItems}
-            initialCursor={initialCursor}
-            freshItems={freshItems}
-            onFresh={setFreshItems}
-            pendingCount={0}
-            pendingRatio={effRatio}
-            inflight={{ tools: both ? ["prompts", "generator"] : ["prompts"] }}
-            models={galleryModels}
-            balance={balance}
-            onBalance={setBalance}
-            onAbsorb={absorbLatest}
-            guideTool={toolKey}
-          />
         )}
       />
     </ToolFrame>

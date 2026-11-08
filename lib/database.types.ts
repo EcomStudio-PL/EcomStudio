@@ -2571,6 +2571,7 @@ export type Database = {
           status: Database["public"]["Enums"]["job_status"]
           user_id: string
           workspace_id: string
+          tool_mode: string | null
         }
         Insert: {
           aspect_ratio?: string
@@ -2600,6 +2601,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           user_id: string
           workspace_id: string
+          tool_mode?: never
         }
         Update: {
           aspect_ratio?: string
@@ -2629,6 +2631,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_status"]
           user_id?: string
           workspace_id?: string
+          tool_mode?: never
         }
         Relationships: [
           {

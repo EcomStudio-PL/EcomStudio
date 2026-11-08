@@ -9,10 +9,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useHomeHandoff } from "@/lib/home-handoff";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
+import { galleryModes } from "@/lib/gallery-tools";
 import { Switch } from "@/components/ui/record";
 import { cn } from "@/lib/utils";
 import { humanizeKey } from "@/lib/i18n/t";
-import { THUMBNAIL_OPERATION, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/lib/thumbnail/config";
+import { THUMBNAIL_OPERATION, THUMBNAIL_TOOL_KEY, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/lib/thumbnail/config";
 import type { ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 import { refSource, useToolSession } from "@/components/public-tools/use-tool-session";
@@ -145,7 +146,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
   // ── results into the gallery the moment they exist ─────────────────────
   const absorb = useCallback(async (expect: number) => {
     try {
-      const res = await fetch(`/api/generations?op=${THUMBNAIL_OPERATION}&limit=${Math.min(expect + 2, 24)}`, { cache: "no-store" });
+      const res = await fetch(`/api/generations?tool=${THUMBNAIL_TOOL_KEY}&limit=${Math.min(expect + 2, 24)}`, { cache: "no-store" });
       const json = await res.json() as { ok: boolean; items?: GalleryItem[] };
       if (!json.ok || !json.items) return;
       const fresh = json.items.filter((i) => !knownAssets.current.has(i.assetId));
@@ -317,7 +318,8 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
             onBalance={setBalance}
             onAbsorb={absorb}
             operation={THUMBNAIL_OPERATION}
-            inflight={{ tools: ["ecommerce_thumbnail"] }}
+            tool={THUMBNAIL_TOOL_KEY}
+            inflight={{ tools: galleryModes(THUMBNAIL_TOOL_KEY) }}
             emptyTitle={t("thumb.emptyTitle")}
             emptyBody={t("thumb.emptyBody")}
           />
