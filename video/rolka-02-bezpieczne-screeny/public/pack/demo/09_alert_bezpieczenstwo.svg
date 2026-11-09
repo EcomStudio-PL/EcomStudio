@@ -1,0 +1,22 @@
+<svg width="1200" height="1600" viewBox="0 0 1200 1600" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="bg" cx="58%" cy="30%" r="68%"><stop stop-color="#241033"/><stop offset="0.45" stop-color="#111424"/><stop offset="1" stop-color="#060811"/></radialGradient>
+  <linearGradient id="pink" x1="0%" x2="100%"><stop stop-color="#D628CF"/><stop offset="1" stop-color="#F950E1"/></linearGradient>
+  <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="32"/></filter>
+  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#252B43" stop-opacity="0.94"/><stop offset="1" stop-color="#111522" stop-opacity="0.98"/></linearGradient>
+</defs>
+<rect width="1200" height="1600" fill="url(#bg)"/>
+<circle cx="990" cy="255" r="310" fill="#FF5287" opacity=".14" filter="url(#shadow)"/>
+<circle cx="90" cy="1280" r="250" fill="#7634FF" opacity=".13" filter="url(#shadow)"/>
+<path d="M0 130 L1200 130 M0 1480 L1200 1480" stroke="#FFF" stroke-opacity=".055" stroke-width="2"/>
+<rect x="56" y="55" width="16" height="16" rx="8" fill="url(#pink)"/>
+<text x="85" y="76" fill="#FAF7FC" font-family="DejaVu Sans,Arial,sans-serif" font-size="24" font-weight="700" text-anchor="start" opacity="1">GROVBASE  /  BEZPIECZEŃSTWO</text>
+<text x="58" y="150" fill="#FAF7FC" font-family="DejaVu Sans,Arial,sans-serif" font-size="34" font-weight="700" text-anchor="start" opacity="1">ZAMAZANE ≠ BEZPIECZNE</text>
+<g transform="translate(600 745)">
+ <circle cx="0" cy="0" r="320" fill="#F94586" opacity=".14"/>
+ <circle cx="0" cy="0" r="262" fill="none" stroke="#F950E1" opacity=".52" stroke-width="5"/>
+ <circle cx="0" cy="0" r="200" fill="#2B152A" stroke="#F950E1" stroke-width="7"/>
+ <path d="M0 -132 L-127 102 Q-134 117 -112 117 H112 Q134 117 127 102 Z" fill="#FFDCED"/>
+ <rect x="-11" y="-45" width="22" height="87" rx="11" fill="#5D1740"/><circle cy="74" r="13" fill="#5D1740"/>
+ </g><text x="600" y="1225" fill="#FFB9D4" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="700" text-anchor="middle" opacity="1">PÓŁPRZEZROCZYSTY MARKER</text><text x="600" y="1279" fill="#FFB9D4" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="700" text-anchor="middle" opacity="1">MOŻE UJAWNIĆ DANE</text>
+</svg>

@@ -1,0 +1,41 @@
+<svg width="1200" height="1600" viewBox="0 0 1200 1600" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="bg" cx="58%" cy="30%" r="68%"><stop stop-color="#241033"/><stop offset="0.45" stop-color="#111424"/><stop offset="1" stop-color="#060811"/></radialGradient>
+  <linearGradient id="pink" x1="0%" x2="100%"><stop stop-color="#D628CF"/><stop offset="1" stop-color="#F950E1"/></linearGradient>
+  <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="32"/></filter>
+  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#252B43" stop-opacity="0.94"/><stop offset="1" stop-color="#111522" stop-opacity="0.98"/></linearGradient>
+</defs>
+<rect width="1200" height="1600" fill="url(#bg)"/>
+<circle cx="990" cy="255" r="310" fill="#EA2873" opacity=".14" filter="url(#shadow)"/>
+<circle cx="90" cy="1280" r="250" fill="#7634FF" opacity=".13" filter="url(#shadow)"/>
+<path d="M0 130 L1200 130 M0 1480 L1200 1480" stroke="#FFF" stroke-opacity=".055" stroke-width="2"/>
+<rect x="56" y="55" width="16" height="16" rx="8" fill="url(#pink)"/>
+<text x="85" y="76" fill="#FAF7FC" font-family="DejaVu Sans,Arial,sans-serif" font-size="24" font-weight="700" text-anchor="start" opacity="1">GROVBASE  /  BEZPIECZEŃSTWO</text>
+<text x="58" y="150" fill="#FAF7FC" font-family="DejaVu Sans,Arial,sans-serif" font-size="34" font-weight="700" text-anchor="start" opacity="1">Uwaga: tekst nadal może prześwitywać</text>
+<rect x="172" y="249" width="875" height="1200" rx="74" fill="#05060D" opacity="0.62" filter="url(#shadow)"/>
+<rect x="154" y="225" width="900" height="1210" rx="82" fill="url(#glass)" stroke="#525475" stroke-width="5"/>
+<rect x="177" y="283" width="854" height="1085" rx="47" fill="#F4F6FA"/>
+<rect x="474" y="243" width="258" height="32" rx="16" fill="#02030B"/>
+<rect x="177" y="283" width="854" height="120" rx="47" fill="#fff"/>
+<rect x="177" y="366" width="854" height="38" fill="#fff"/>
+<circle cx="245" cy="344" r="35" fill="#F1DEFA"/>
+<text x="244" y="359" fill="#9B3E9A" font-family="DejaVu Sans,Arial,sans-serif" font-size="35" font-weight="700" text-anchor="middle" opacity="1">K</text>
+<text x="304" y="336" fill="#202332" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="700" text-anchor="start" opacity="1">Klient testowy</text>
+<text x="304" y="370" fill="#848B99" font-family="DejaVu Sans,Arial,sans-serif" font-size="19" font-weight="500" text-anchor="start" opacity="1">Przykład edukacyjny</text>
+<path d="M177 402 H1031" stroke="#DDE1E9"/>
+<rect x="228" y="485" width="675" height="145" rx="24" fill="#E7E9F3"/>
+<text x="259" y="537" fill="#35384C" font-family="DejaVu Sans,Arial,sans-serif" font-size="28" font-weight="500" text-anchor="start" opacity="1">Hej! Prześlij proszę</text>
+<text x="259" y="577" fill="#35384C" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="500" text-anchor="start" opacity="1">potwierdzenie zamówienia.</text>
+<rect x="399" y="680" width="567" height="100" rx="26" fill="#CFF8EA"/>
+<text x="430" y="741" fill="#1D554A" font-family="DejaVu Sans,Arial,sans-serif" font-size="27" font-weight="500" text-anchor="start" opacity="1">Jasne, już wysyłam!</text>
+<rect x="228" y="848" width="707" height="225" rx="25" fill="#E7E9F3"/>
+<text x="259" y="907" fill="#383B4D" font-family="DejaVu Sans,Arial,sans-serif" font-size="28" font-weight="500" text-anchor="start" opacity="1">Mój numer telefonu:</text>
+<rect x="252" y="937" width="590" height="91" rx="13" fill="#fff"/>
+<text x="284" y="996" fill="#1F2434" font-family="DejaVu Sans,Arial,sans-serif" font-size="39" font-weight="700" text-anchor="start" opacity="1">000 000 000</text>
+<rect x="229" y="1165" width="715" height="105" rx="22" fill="#E9ECF4"/>
+<text x="258" y="1229" fill="#444A58" font-family="DejaVu Sans,Arial,sans-serif" font-size="26" font-weight="500" text-anchor="start" opacity="1">Dziękuję! Miłego dnia.</text>
+<path d="M268 989 C454 963 614 1000 839 978" fill="none" stroke="#0E1420" stroke-width="83" stroke-linecap="round" opacity=".65"/>
+<path d="M258 1010 C436 1000 622 1035 854 1007" fill="none" stroke="#101B34" stroke-width="47" stroke-linecap="round" opacity=".57"/>
+<rect x="259" y="932" width="601" height="116" rx="15" fill="none" stroke="#F950E1" stroke-width="5"/>
+<text x="574" y="1095" fill="#DE2774" font-family="DejaVu Sans,Arial,sans-serif" font-size="18" font-weight="700" text-anchor="middle" opacity="1">DEMO: TEKST NADAL W PIKSELACH</text><rect x="210" y="1435" width="785" height="109" rx="29" fill="#23182D" stroke="#E84C89" stroke-width="2"/><text x="602" y="1482" fill="#FF99C1" font-family="DejaVu Sans,Arial,sans-serif" font-size="30" font-weight="700" text-anchor="middle" opacity="1">JASNOŚĆ  +   KONTRAST</text><text x="602" y="1523" fill="#DDC6D4" font-family="DejaVu Sans,Arial,sans-serif" font-size="19" font-weight="500" text-anchor="middle" opacity="1">Demonstracja, nie odzyskiwanie danych</text>
+</svg>

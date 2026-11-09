@@ -1,0 +1,27 @@
+{
+  "name": "grovbase-rolka-02-bezpieczne-screeny",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GrovBase — Rolka #2: Bezpieczne screeny (Remotion, 1080x1920, 30 FPS)",
+  "scripts": {
+    "studio": "remotion studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.542",
+    "@remotion/fonts": "^4.0.542",
+    "@remotion/media": "^4.0.542",
+    "@remotion/motion-blur": "^4.0.542",
+    "@remotion/noise": "^4.0.542",
+    "@remotion/paths": "^4.0.542",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.542"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter-tight": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@types/react": "^19.1.8",
+    "typescript": "^5.6.3"
+  }
+}

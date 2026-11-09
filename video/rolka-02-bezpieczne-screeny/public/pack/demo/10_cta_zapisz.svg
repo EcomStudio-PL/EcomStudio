@@ -1,0 +1,20 @@
+<svg width="1200" height="1600" viewBox="0 0 1200 1600" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="bg" cx="58%" cy="30%" r="68%"><stop stop-color="#241033"/><stop offset="0.45" stop-color="#111424"/><stop offset="1" stop-color="#060811"/></radialGradient>
+  <linearGradient id="pink" x1="0%" x2="100%"><stop stop-color="#D628CF"/><stop offset="1" stop-color="#F950E1"/></linearGradient>
+  <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="32"/></filter>
+  <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#252B43" stop-opacity="0.94"/><stop offset="1" stop-color="#111522" stop-opacity="0.98"/></linearGradient>
+</defs>
+<rect width="1200" height="1600" fill="url(#bg)"/>
+<circle cx="990" cy="255" r="310" fill="#F950E1" opacity=".14" filter="url(#shadow)"/>
+<circle cx="90" cy="1280" r="250" fill="#7634FF" opacity=".13" filter="url(#shadow)"/>
+<path d="M0 130 L1200 130 M0 1480 L1200 1480" stroke="#FFF" stroke-opacity=".055" stroke-width="2"/>
+<rect x="56" y="55" width="16" height="16" rx="8" fill="url(#pink)"/>
+<text x="85" y="76" fill="#FAF7FC" font-family="DejaVu Sans,Arial,sans-serif" font-size="24" font-weight="700" text-anchor="start" opacity="1">GROVBASE  /  BEZPIECZEŃSTWO</text>
+<text x="58" y="150" fill="#FAF7FC" font-family="DejaVu Sans,Arial,sans-serif" font-size="34" font-weight="700" text-anchor="start" opacity="1">OSTATNIA KONTROLA PRZED WYSYŁKĄ</text>
+<g>
+<rect x="185" y="460" width="830" height="670" rx="75" fill="#22132D" stroke="#A645B6" stroke-width="3"/>
+<circle cx="600" cy="625" r="104" fill="#51234F"/>
+<path d="M525 624 l55 58 103 -114" stroke="#FF7CEE" stroke-width="29" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="600" y="860" fill="#FFFFFF" font-family="DejaVu Sans,Arial,sans-serif" font-size="49" font-weight="700" text-anchor="middle" opacity="1">ZAPISZ TĘ ROLKĘ</text><text x="600" y="930" fill="#F78BE9" font-family="DejaVu Sans,Arial,sans-serif" font-size="37" font-weight="700" text-anchor="middle" opacity="1">I CHROŃ SWOJE DANE</text><text x="600" y="1217" fill="#D6CCE0" font-family="DejaVu Sans,Arial,sans-serif" font-size="25" font-weight="500" text-anchor="middle" opacity="1">A TY? JAK ZAKRYWASZ DANE?</text>
+</svg>
