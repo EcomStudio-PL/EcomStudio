@@ -39,6 +39,7 @@ import { SellerHomeView } from "@/components/seller-home/seller-home";
 import { ToolCarousel } from "@/components/seller-home/tool-carousel";
 import { gridTiles, pairCards, toolTiles } from "@/components/seller-home/home-view";
 import { MediaSlot } from "@/components/seller-home/media-slot";
+import { SQUARE_BREAKPOINTS, fadeMask, masonryCut, squareRows } from "@/components/seller-home/grid-window";
 import { homePage, icePageFor, slotSpec } from "@/lib/ice/registry";
 import { groupPairs, groupRefs, refSuffix } from "@/lib/ice/pairs";
 import { planBulk } from "@/components/ice/editor/bulk-panel";
@@ -286,6 +287,36 @@ section("D. PHOTO GRIDS AND PRODUCT PHOTOS");
     /onClickCapture=\{onClickCapture\}/.test(swap) && /if \(!swallow\.current\) return;/.test(swap) && /-webkit-touch-callout: none/.test(css));
   check("D11 the product photo is never written over the result: its own slot (`.ref`), its own crop", refSlotKey("homeMedia.thumbnails.1") === "homeMedia.thumbnails.1.ref"
     && /ratio/.test(JSON.stringify(slotSpec("homeMedia.thumbnails.1.ref"))));
+}
+
+/* ── D2: the grids measured from what is shown ─────────────────────────── */
+
+section("D2. PHOTO GRIDS — ROWS, FADE AND BUTTON FROM THE VISIBLE PHOTOS ONLY");
+{
+  const rows = (n: number) => SQUARE_BREAKPOINTS.map((b) => squareRows(n, b.cols, b.max)).join();
+  check("D2a all 20 Miniaturki: 3 / 3 / 4 rows (the page as it was)", rows(20) === "3,3,4");
+  check("D2b 10 shown: 3 / 3 / 2 rows — no empty rows on a desktop", rows(10) === "3,3,2");
+  check("D2c 5 shown: 3 / 2 / 1; one shown: 1 / 1 / 1; none: 0", rows(5) === "3,2,1" && rows(1) === "1,1,1" && rows(0) === "0,0,0");
+  check("D2d the fade starts on the last shown row; one row has none", fadeMask(2).startsWith("linear-gradient(to bottom,black 50%") && fadeMask(1) === "none");
+  const half = D({ layout: defaultHomeLayout().thumbnails.slice(10).reduce((l, e) => setEntryHidden(l, "thumbnails", e.id, true), defaultHomeLayout()) });
+  const html10 = html(createElement(SellerHomeView, { data: half, t: T, locale: "pl" }));
+  const gallery = /<div[^>]*data-square-gallery[^>]*>/.exec(html10)?.[0] ?? "";
+  check("D2e the page: 10 of 20 hidden → 10 tiles, the window set for 2 desktop rows, the 2-row fade there",
+    (html10.match(/data-square-tile/g) ?? []).length === 10 && /--sq-r-lg:2/.test(gallery) && /--sq-mask-lg:linear-gradient\(to bottom,black 50%/.test(gallery));
+  const one = D({ layout: defaultHomeLayout().thumbnails.slice(3).reduce((l, e) => setEntryHidden(l, "thumbnails", e.id, true), defaultHomeLayout()) });
+  const html3 = html(createElement(SellerHomeView, { data: one, t: T, locale: "pl" }));
+  check("D2f 3 shown (one desktop row): no fade on a desktop and the button under the photos, not over them",
+    /--sq-mask-lg:none/.test(html3) && /lg:relative lg:inset-auto lg:mt-3/.test(html3));
+  const none = D({ layout: defaultHomeLayout().thumbnails.reduce((l, e) => setEntryHidden(l, "thumbnails", e.id, true), defaultHomeLayout()) });
+  const html0 = html(createElement(SellerHomeView, { data: none, t: T, locale: "pl" }));
+  check("D2g none shown: no grid, no fade, no empty box — the section keeps its heading and its button",
+    !/data-square-gallery/.test(html0) && /data-square-cta/.test(html0) && /data-seller-thumbnails/.test(html0));
+  const sess = D({ layout: defaultHomeLayout().sessions.slice(2).reduce((l, e) => setEntryHidden(l, "sessions", e.id, true), defaultHomeLayout()) });
+  const htmlS = html(createElement(SellerHomeView, { data: sess, t: T, locale: "pl" }));
+  check("D2h Sesje with 2 photos: a window only as tall as they are (max-height, not a fixed box), no first-paint fade",
+    /data-fade-gallery/.test(htmlS) && /max-h-\[var\(--fw-h\)\]/.test(htmlS) && !/data-cut/.test(htmlS.slice(htmlS.indexOf("data-seller-sessions")))
+    && (htmlS.match(/data-home-item="sessions:/g) ?? []).length === 2 && !masonryCut(SESSIONS.tiles.slice(0, 2).map((x) => x.media), 4, [4, 2.75]),
+    JSON.stringify({ fg: /data-fade-gallery/.test(htmlS), mh: /max-h-\[var\(--fw-h\)\]/.test(htmlS), n: (htmlS.match(/data-home-item="sessions:/g) ?? []).length }));
 }
 
 /* ── E ─────────────────────────────────────────────────────────────────── */

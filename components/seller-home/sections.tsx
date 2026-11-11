@@ -16,6 +16,8 @@ import { MediaSlot } from "./media-slot";
 import { Rail } from "./rail";
 import { GalleryCta, SectionHead, StatusBadge, ToolLink, TryLink } from "./parts";
 import { EditFlags, flagged, gridTiles, pairCards, toolTiles, type GridTile } from "./home-view";
+import { FadeWindow } from "./fade-window";
+import { SQUARE_BREAKPOINTS, fadeMask, masonryCut, squareRows, type WindowRatio } from "./grid-window";
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -207,14 +209,16 @@ export function PromoBanner({ def, items, t, home, item }: {
  * mask, and one button can sit centred on that fade. CSS columns keep every
  * tile in its own shape — nothing is stretched or cropped to fit a grid.
  */
-function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset = 0, home, t }: {
+function FadeGallery({ tiles, label, cols, colCounts, window: frame, cta, sizes, toneOffset = 0, home, t }: {
   tiles: readonly GridTile[];
   /** Name of a tile in the empty state ("Miniaturka", "Sesja"). */
   label: string;
-  /** column-count per breakpoint. */
+  /** column-count per breakpoint (classes)… */
   cols: string;
-  /** aspect-ratio of the visible window per breakpoint. */
-  window: string;
+  /** …and the same as numbers (the server's first guess of a cut). */
+  colCounts: { base: number; sm: number; lg: number };
+  /** The most the window shows, width:height per breakpoint. */
+  window: { base: WindowRatio; sm: WindowRatio; lg: WindowRatio };
   cta?: React.ReactNode;
   sizes: string;
   toneOffset?: number;
@@ -222,22 +226,26 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
   home?: HomeSlots;
   t: T;
 }) {
+  // Nothing to show (every photo hidden): no window, no fade — the button alone.
+  if (tiles.length === 0) return cta ? <div className="flex justify-center py-2" data-fade-cta>{cta}</div> : null;
+  const h = (r: WindowRatio) => `calc(100cqw * ${r[1]} / ${r[0]})`;
+  const style = { "--fw-h": h(frame.base), "--fw-h-sm": h(frame.sm), "--fw-h-lg": h(frame.lg) } as CSSProperties;
+  const media = tiles.map((x) => x.media);
+  const initialCut = masonryCut(media, colCounts.base, frame.base) || masonryCut(media, colCounts.sm, frame.sm) || masonryCut(media, colCounts.lg, frame.lg);
   return (
-    <div className="relative">
-      <div className={cn("relative overflow-hidden [mask-image:linear-gradient(to_bottom,black_72%,transparent_99%)]", frame)} data-fade-gallery>
-        <div className={cn("absolute inset-x-0 top-0 gap-2 sm:gap-2.5", cols)}>
-          {tiles.map((tile, i) => (
-            <div key={tile.id} className={cn("relative mb-2 break-inside-avoid overflow-hidden rounded-xl sm:mb-2.5", flagged(tile.flags))}
-              data-home-item={tile.id}>
-              <MediaSlot media={tile.media} tone={i + toneOffset} sizes={sizes} home={home} refKey={tile.refKey}
-                label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
-              <EditFlags flags={tile.flags} t={t} />
-            </div>
-          ))}
-        </div>
+    <FadeWindow initialCut={initialCut} style={style} cta={cta}
+      frameClassName="max-h-[var(--fw-h)] sm:max-h-[var(--fw-h-sm)] lg:max-h-[var(--fw-h-lg)]">
+      <div className={cn("gap-2 sm:gap-2.5", cols)}>
+        {tiles.map((tile, i) => (
+          <div key={tile.id} className={cn("relative mb-2 break-inside-avoid overflow-hidden rounded-xl sm:mb-2.5", flagged(tile.flags))}
+            data-home-item={tile.id}>
+            <MediaSlot media={tile.media} tone={i + toneOffset} sizes={sizes} home={home} refKey={tile.refKey}
+              label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
+            <EditFlags flags={tile.flags} t={t} />
+          </div>
+        ))}
       </div>
-      {cta && <div className="absolute inset-x-0 bottom-[5%] flex justify-center">{cta}</div>}
-    </div>
+    </FadeWindow>
   );
 }
 
@@ -264,7 +272,7 @@ export function Showcase({ data, t, home }: { data: SellerHomeData; t: T; home?:
           <StatusBadge status={state.status} t={t} className="absolute left-3 top-3" />
         </div>
         <FadeGallery tiles={tag(gridTiles("showcase", data), "showcase")} label={t("sellerHome.slot.result")}
-          cols="columns-2 sm:columns-3" window="aspect-[2/2.4] sm:aspect-[3/2.7]"
+          cols="columns-2 sm:columns-3" colCounts={{ base: 2, sm: 3, lg: 3 }} window={{ base: [2, 2.4], sm: [3, 2.7], lg: [3, 2.7] }}
           sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw" toneOffset={3} home={home} t={t}
           cta={<GalleryCta state={state} label={t(SHOWCASE.ctaKey)} />} />
       </div>
@@ -292,15 +300,31 @@ function SquareGallery({ tiles, label, cta, home, t }: {
   home?: HomeSlots;
   t: T;
 }) {
+  // Every photo hidden: no grid, no fade, no empty box — the button alone.
+  if (tiles.length === 0) return <div className="flex justify-center py-2" data-square-cta>{cta}</div>;
+  // Rows and fade from the tiles this viewer gets, per breakpoint (2 / 3 / 5
+  // columns, at most 3 / 3 / 4 rows): the window ends with the last row
+  // there is, the fade lies on the last shown row, one row has none.
+  const [r, rSm, rLg] = SQUARE_BREAKPOINTS.map((b) => squareRows(tiles.length, b.cols, b.max));
+  const style = {
+    "--sq-r": r, "--sq-r-sm": rSm, "--sq-r-lg": rLg,
+    "--sq-mask": fadeMask(r), "--sq-mask-sm": fadeMask(rSm), "--sq-mask-lg": fadeMask(rLg),
+  } as CSSProperties;
+  // With a fade the button lies over it, as always; without one (a single
+  // row) it sits under the photos with an ordinary gap.
+  const ctaAt = cn(
+    r >= 2 ? "absolute inset-x-0 bottom-[5%] mt-0" : "relative inset-auto mt-3",
+    rSm >= 2 ? "sm:absolute sm:inset-x-0 sm:bottom-[5%] sm:mt-0" : "sm:relative sm:inset-auto sm:mt-3",
+    rLg >= 2 ? "lg:absolute lg:inset-x-0 lg:bottom-[5%] lg:mt-0" : "lg:relative lg:inset-auto lg:mt-3",
+  );
   return (
     <div className="relative [container-type:inline-size]">
-      <div data-square-gallery
+      <div data-square-gallery style={style}
         className={cn(
-          "relative overflow-hidden [--sq-cols:2] [--sq-gap:8px] [--sq-rows:3] sm:[--sq-cols:3] sm:[--sq-gap:10px] lg:[--sq-cols:5] lg:[--sq-rows:4]",
+          "relative overflow-hidden [--sq-cols:2] [--sq-gap:8px] [--sq-rows:var(--sq-r)] sm:[--sq-cols:3] sm:[--sq-gap:10px] sm:[--sq-rows:var(--sq-r-sm)] lg:[--sq-cols:5] lg:[--sq-rows:var(--sq-r-lg)]",
           "h-[calc(var(--sq-rows)_*_((100cqw_-_(var(--sq-cols)_-_1)_*_var(--sq-gap))_/_var(--sq-cols))_+_(var(--sq-rows)_-_1)_*_var(--sq-gap))]",
-          // The fade starts where the last row does (3 rows: ~67.5%, 4: ~75.5%).
-          "[mask-image:linear-gradient(to_bottom,black_67%,rgb(0_0_0/0.8)_76%,rgb(0_0_0/0.4)_88%,transparent_99%)]",
-          "lg:[mask-image:linear-gradient(to_bottom,black_75%,rgb(0_0_0/0.8)_82%,rgb(0_0_0/0.4)_91%,transparent_99%)]",
+          // The fade starts where the last shown row does (grid-window.ts).
+          "[mask-image:var(--sq-mask)] sm:[mask-image:var(--sq-mask-sm)] lg:[mask-image:var(--sq-mask-lg)]",
         )}>
         <div className="grid grid-cols-[repeat(var(--sq-cols),minmax(0,1fr))] gap-[var(--sq-gap)]">
           {tiles.map((tile, i) => (
@@ -313,7 +337,7 @@ function SquareGallery({ tiles, label, cta, home, t }: {
           ))}
         </div>
       </div>
-      <div className="absolute inset-x-0 bottom-[5%] z-[1] flex justify-center">{cta}</div>
+      <div className={cn("z-[1] flex justify-center", ctaAt)} data-square-cta>{cta}</div>
     </div>
   );
 }
@@ -384,7 +408,7 @@ export function SessionsSection({ data, t, home }: { data: SellerHomeData; t: T;
       </div>
       <div className="relative">
         <FadeGallery tiles={tag(gridTiles("sessions", data), "sessions")} label={t("sellerHome.slot.session")}
-          cols="columns-2 sm:columns-3 lg:columns-4" window="aspect-[2/2.9] sm:aspect-[3/3] lg:aspect-[4/2.75]"
+          cols="columns-2 sm:columns-3 lg:columns-4" colCounts={{ base: 2, sm: 3, lg: 4 }} window={{ base: [2, 2.9], sm: [3, 3], lg: [4, 2.75] }}
           sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 24vw" toneOffset={1} home={home} t={t} />
       </div>
     </section>

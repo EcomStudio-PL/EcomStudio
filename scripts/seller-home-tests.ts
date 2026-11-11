@@ -42,6 +42,7 @@ import { BeforeAfterRow, PromoBanner, SessionsSection, Showcase, ThumbnailsSecti
 import type { HomeSlots } from "@/components/seller-home/ice-slot-image";
 import { ToolCarousel } from "@/components/seller-home/tool-carousel";
 import { defaultHomeLayout, gridMedia, layoutSlotKeys } from "@/lib/home-layout";
+import { SQUARE_BREAKPOINTS, fadeMask, masonryCut, squareRows } from "@/components/seller-home/grid-window";
 import type { SellerHomeData } from "@/lib/server/seller-home";
 
 /** A viewer's /home facts from its item states alone (the default layout, not editing). */
@@ -601,7 +602,9 @@ check("showcase: ~40/60 split, 12 results 3 × 4 fading into the panel, one butt
   && Boolean(catalogItem(SHOWCASE.item)));
 check("Miniaturki: 20 square tiles in an even grid — 5 / 3 / 2 columns, 4 rows on a desktop, one button to the thumbnail tool",
   THUMBNAILS.tiles.length === 20 && /\[--sq-cols:2\]/.test(sections) && /sm:\[--sq-cols:3\]/.test(sections) && /lg:\[--sq-cols:5\]/.test(sections)
-  && /lg:\[--sq-rows:4\]/.test(sections) && /grid-cols-\[repeat\(var\(--sq-cols\),minmax\(0,1fr\)\)\] gap-\[var\(--sq-gap\)\]/.test(sections)
+  // Rows come from the tiles shown (grid-window.ts): 20 → 3 / 3 / 4 rows, exactly the old window.
+  && SQUARE_BREAKPOINTS.map((b) => squareRows(20, b.cols, b.max)).join() === "3,3,4" && /lg:\[--sq-rows:var\(--sq-r-lg\)\]/.test(sections)
+  && /grid-cols-\[repeat\(var\(--sq-cols\),minmax\(0,1fr\)\)\] gap-\[var\(--sq-gap\)\]/.test(sections)
   && THUMBNAILS.item === "ecommerce.thumbnail" && /<SquareGallery tiles=\{tag\(gridTiles\("thumbnails", data\), "thumbnails"\)\}/.test(sections)
   && defaultHomeLayout().thumbnails.map((x) => gridMedia("thumbnails", x.n).configKey).join() === THUMBNAILS.tiles.map((x) => x.media.configKey).join() && !/columns-2 sm:columns-3 lg:columns-5/.test(sections));
 check("…every slot is 1:1, recommended 1200×1200; keys 1–20 unchanged, nothing filled in, nothing else in the list",
@@ -611,7 +614,10 @@ check("…every slot is 1:1, recommended 1200×1200; keys 1–20 unchanged, noth
 check("…the window is whole rows tall from its own width (no layout shift); the rows past it stay in the page",
   /\[container-type:inline-size\]/.test(sections) && /h-\[calc\(var\(--sq-rows\)_\*_\(\(100cqw_-_\(var\(--sq-cols\)_-_1\)_\*_var\(--sq-gap\)\)_\/_var\(--sq-cols\)\)_\+_\(var\(--sq-rows\)_-_1\)_\*_var\(--sq-gap\)\)\]/.test(sections));
 check("…the last row melts into the page — a mask (the real background in either theme), never a painted white",
-  /\[mask-image:linear-gradient\(to_bottom,black_67%,[^\]]*transparent_99%\)\]/.test(sections) && /lg:\[mask-image:linear-gradient\(to_bottom,black_75%,[^\]]*transparent_99%\)\]/.test(sections)
+  // The fade lies on the last SHOWN row: 3 rows and 4 rows keep the old stops; one row has none.
+  fadeMask(3) === "linear-gradient(to bottom,black 67%,rgb(0 0 0/0.8) 76%,rgb(0 0 0/0.4) 88%,transparent 99%)"
+  && fadeMask(4) === "linear-gradient(to bottom,black 75%,rgb(0 0 0/0.8) 82%,rgb(0 0 0/0.4) 91%,transparent 99%)"
+  && fadeMask(1) === "none" && fadeMask(0) === "none" && /lg:\[mask-image:var\(--sq-mask-lg\)\]/.test(sections)
   && !/function SquareGallery[\s\S]*?(bg-white|from-white|#fff)[\s\S]*?\n}\n/.test(sections));
 {
   const thumbs = html(createElement(ThumbnailsSection, { data: D({ "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }), t: T }));
@@ -620,7 +626,7 @@ check("…the last row melts into the page — a mask (the real background in ei
     frames.length === 20 && frames.every((f) => /aspect-ratio:1\/1/.test(f)) && (thumbs.match(/sellerHome\.slot\.size\(1200,1200\)/g) ?? []).length === 20);
   check("…the heading, its line and „Wypróbuj” unchanged; the button sits on the fade, above it",
     /id="seller-thumbs-title"[^>]*>sellerHome\.thumbs\.title</.test(thumbs) && />sellerHome\.thumbs\.sub</.test(thumbs) && /sellerHome\.thumbs\.try/.test(thumbs)
-    && /absolute inset-x-0 bottom-\[5%\] z-\[1\] flex justify-center[^>]*>[\s\S]*sellerHome\.thumbs\.cta/.test(thumbs));
+    && /z-\[1\] flex justify-center absolute inset-x-0 bottom-\[5%\] mt-0 sm:absolute[^"]*lg:absolute[^>]*>[\s\S]*sellerHome\.thumbs\.cta/.test(thumbs));
 }
 // Re-scoped by the inline-editor task: PRZED/PO became 1:1 (BEFORE_AFTER_SIZE
 // = SQUARE, 1080×1080) — the one intended format change. The pin itself is
@@ -638,8 +644,10 @@ check("…the last row melts into the page — a mask (the real background in ei
       .map((r) => [r.section, r.media.configKey, r.media.kind, ...undo(r)]))).digest("hex")
       === "cfb689940af98baa584c3234ef80c7fa1d5bdec89dc4661aba02901956eb68ca");
 }
-check("fading galleries: a fixed window (no layout shift) and a mask, CSS columns (nothing stretched)",
-  /\[mask-image:linear-gradient\(to_bottom,black_72%,transparent_99%\)\]/.test(sections) && /break-inside-avoid/.test(sections));
+check("fading galleries: a window at most the old size, only as tall as its photos; the mask only when photos go on past it; CSS columns (nothing stretched)",
+  /group-data-\[cut\]\/fade:\[mask-image:linear-gradient\(to_bottom,black_72%,transparent_99%\)\]/.test(code("components/seller-home/fade-window.tsx"))
+  && /max-h-\[var\(--fw-h\)\] sm:max-h-\[var\(--fw-h-sm\)\] lg:max-h-\[var\(--fw-h-lg\)\]/.test(sections) && /break-inside-avoid/.test(sections)
+  && masonryCut(SESSIONS.tiles.map((x) => x.media), 4, [4, 2.75]) && !masonryCut(SESSIONS.tiles.slice(0, 2).map((x) => x.media), 4, [4, 2.75]));
 const shapes = new Set(SESSIONS.tiles.map((t) => `${t.media.width}/${t.media.height}`));
 check("Sesje produktowe: 16 slots across 1:1, 16:9, 4:5, 3:4, 9:16; studio → Grovshot, plener → „Sesja zewnątrz”",
   SESSIONS.tiles.length === 16 && ["1080/1080", "1920/1080", "1080/1350", "1080/1440", "1080/1920"].every((s) => shapes.has(s))
