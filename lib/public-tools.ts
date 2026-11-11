@@ -1,3 +1,4 @@
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 /**
  * PUBLIC TOOLS V1 — what a visitor may open, and what a viewer of a tool panel
  * may do next. Pure: no server import, no browser API — the middleware, the
@@ -51,7 +52,7 @@ export type PublicTool = {
 export const PUBLIC_TOOLS: readonly PublicTool[] = [
   { key: "generator", path: "/prompts", panel: "managed" },
   { key: "custom", path: "/generator", panel: "custom" },
-  { key: "retouch", path: "/retusz", panel: "retouch" },
+  { key: "retouch", path: PACKSHOT_PATH, panel: "retouch" },
   { key: "remove_bg", path: "/tools/remove_bg", panel: "photo" },
   { key: "background", path: "/tools/white_bg", panel: "photo" },
   { key: "ai_background", path: "/tools/ai_background", panel: "photo" },

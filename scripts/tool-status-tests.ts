@@ -463,7 +463,7 @@ async function main() {
   console.log("\nJ. RETUSZ — not one byte changed");
   {
     const paths = [
-      "app/(app)/retusz", "app/api/retouch", "components/retouch", "lib/server/retouch-delivery.ts",
+      "app/(app)/retusz", "app/(app)/narzedzia/packshot", "app/api/retouch", "components/retouch", "lib/server/retouch-delivery.ts",
       "lib/ai/providers", "lib/ai/product-lock.ts", "lib/server/generation.ts", "lib/server/ai-engine.ts",
       "lib/server/engine", "scripts/retouch-baseline.ts",
     ];
@@ -487,7 +487,11 @@ async function main() {
       // Moved again to 6ebae96 by Generator UX V3: the Retusz workspace took
       // the shared frame and Generate bar; the request is byte-identical
       // (test:retouchforensic).
-      diff = execSync(`git diff --name-only 6ebae96 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" }).trim();
+      // Premiera moved the page, byte for byte, to /narzedzia/packshot (the
+      // tool's new public address): a rename with identical content (R100) is
+      // not a change; anything else still is.
+      diff = execSync(`git diff --name-status -M100% 6ebae96 -- ${paths.map((p) => `'${p}'`).join(" ")}`, { encoding: "utf8" })
+        .split("\n").filter((l) => l && !/^R100\t/.test(l)).join("\n").trim();
     } catch (e) { diff = `git failed: ${String(e)}`; }
     check("no Retusz / provider / generation file differs from the release before this fix", diff === "", diff);
     check("no network request was made by this suite", fetches === 0, fetches);

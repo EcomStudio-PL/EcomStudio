@@ -69,8 +69,11 @@ const CASES: [UsageCount, FeatureKey | null, string][] = [
     "remove-bg is a section of the editor, not a screen"],
   [row({ service_slug: "tool_ai_background", tool: "ai_background", uses: 1 }), "editor",
     "the generative edits are editor sections — asked of the tool registry, not re-listed"],
-  [row({ service_slug: "tool_ghost_mannequin", tool: "ghost_mannequin", uses: 1 }), "editor",
-    "an edit-capability tool with no screen of its own falls to the editor"],
+  // Premiera gave the generic tool screens (/tools/relight, beautify, uncrop,
+  // ghost_mannequin) switches of their own, so each can be closed by URL —
+  // their usage now ranks under that switch.
+  [row({ service_slug: "tool_ghost_mannequin", tool: "ghost_mannequin", uses: 1 }), "tool_ghost_mannequin",
+    "an edit-capability tool with a screen of its own ranks under its own switch"],
   [row({ service_slug: "something_else", uses: 1 }), null, "an unknown service ranks nothing"],
   [row({ service_slug: "image_generation", operation: "not_a_feature", uses: 1 }), "generator",
     "an operation tag from a build that no longer exists falls back to the service"],

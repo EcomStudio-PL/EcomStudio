@@ -186,7 +186,14 @@ const nextConfig = {
   // CMS draft, so a 404 today) answers 308 there — permanent, method-keeping,
   // and before the middleware, so it cannot be shadowed by a CMS row.
   async redirects() {
-    return [{ source: "/cennik", destination: "/plany", permanent: true }];
+    return [
+      { source: "/cennik", destination: "/plany", permanent: true },
+      // PACKSHOT (formerly Retusz zdjęć) moved to /narzedzia/packshot: the old
+      // address answers 301 (Moved Permanently, as the premiere asks), with
+      // its query string, before the middleware — so a bookmark, a link in an
+      // e-mail or a search result lands on the same tool.
+      { source: "/retusz", destination: "/narzedzia/packshot", statusCode: 301 },
+    ];
   },
 };
 export default nextConfig;

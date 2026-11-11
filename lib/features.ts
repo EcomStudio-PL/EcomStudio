@@ -1,3 +1,4 @@
+import { LEGACY_RETOUCH_PATH, PACKSHOT_PATH } from "@/lib/tool-routes";
 /**
  * FEATURE AVAILABILITY — the central registry (one list, not fifty ifs).
  *
@@ -31,6 +32,12 @@ export const FEATURE_KEYS = [
   // Miniaturka — the e-commerce tool with its own pipeline (Retusz →
   // Sunburst → 2560×2560), its own prompt, price and switch.
   "ecommerce_thumbnail",
+  // The other e-commerce workflows, each switchable on its own (premiere:
+  // only Miniaturka is offered, the category itself must stay open for it).
+  "ecommerce_packshot",
+  "ecommerce_context",
+  "ecommerce_set",
+  "ecommerce_scale",
   "image_social",
   "image_mailing",
   "image_inne",
@@ -61,6 +68,15 @@ export const FEATURE_KEYS = [
   "tool_white_bg",
   "tool_ai_background",
   "tool_ai_shadow",
+  // The photo tools that answered only to the hub's switch (`tools`) — each
+  // its own now, so one can be closed without closing the catalogue.
+  "tool_relight",
+  "tool_beautify",
+  "tool_uncrop",
+  "tool_ghost_mannequin",
+  // The image preview's smart actions (Zmień format, Zmień rozmiar, Usuń
+  // tło, Usuń wybrane): one switch for the section and its runs.
+  "preview_actions",
   // Wideo
   "video",
   // Konto i zasoby
@@ -148,6 +164,11 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   // price set, OpenAI key) is a separate, honest "unavailable" state on the
   // screen itself, never a button that fails.
   { key: "ecommerce_thumbnail", nameKey: "wf.ecommerce.thumbnail.name", path: "/k/ecommerce/thumbnail", group: "image" },
+  // ACTIVE by default — exactly what they were under image_ecommerce alone.
+  { key: "ecommerce_packshot", nameKey: "wf.ecommerce.packshot.name", path: "/k/ecommerce/packshot", group: "image" },
+  { key: "ecommerce_context", nameKey: "wf.ecommerce.context.name", path: "/k/ecommerce/context", group: "image" },
+  { key: "ecommerce_set", nameKey: "wf.ecommerce.set.name", path: "/k/ecommerce/set", group: "image" },
+  { key: "ecommerce_scale", nameKey: "wf.ecommerce.scale.name", path: "/k/ecommerce/scale", group: "image" },
   // COMING_SOON in the registry because that is what they are. The operator
   // row in feature_availability already says so and wins whenever it is read —
   // so this changes nothing in normal operation. It changes the ONE case that
@@ -166,7 +187,9 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "prompts", nameKey: "mega.engine", path: "/prompts", group: "create" },
   { key: "generator", nameKey: "mega.custom", path: "/generator", group: "create" },
   // ── EDYTUJ ───────────────────────────────────────────────────────────────
-  { key: "retouch", nameKey: "tools.retouch.name", path: "/retusz", group: "edit" },
+  // Packshot (formerly „Retusz zdjęć”): the old address answers 301 to the new
+  // one, and still names this switch wherever a stored link carries it.
+  { key: "retouch", nameKey: "tools.retouch.name", path: PACKSHOT_PATH, group: "edit", extraPaths: [LEGACY_RETOUCH_PATH] },
   { key: "editor", nameKey: "nav.editor", path: "/tools/editor", group: "edit" },
   { key: "resize", nameKey: "nav.resize", path: "/tools/resize", group: "edit" },
   { key: "compress", nameKey: "tools.compress.name", path: "/tools/compress", group: "edit" },
@@ -187,6 +210,17 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "tool_white_bg", nameKey: "hub.name.background", path: "/tools/white_bg", group: "edit", defaultStatus: "COMING_SOON" },
   { key: "tool_ai_background", nameKey: "hub.name.ai_background", path: "/tools/ai_background", group: "edit", defaultStatus: "COMING_SOON" },
   { key: "tool_ai_shadow", nameKey: "hub.name.shadow", path: "/tools/ai_shadow", group: "edit", defaultStatus: "COMING_SOON" },
+  // ACTIVE by default — what the hub's switch gave them before.
+  { key: "tool_relight", nameKey: "tools.relight.name", path: "/tools/relight", group: "edit" },
+  { key: "tool_beautify", nameKey: "tools.beautify.name", path: "/tools/beautify", group: "edit" },
+  { key: "tool_uncrop", nameKey: "tools.uncrop.name", path: "/tools/uncrop", group: "edit" },
+  { key: "tool_ghost_mannequin", nameKey: "tools.ghost_mannequin.name", path: "/tools/ghost_mannequin", group: "edit" },
+  // No screen of its own: its path is the endpoint the preview asks
+  // (/api/preview/actions); /api/tools/run|save check it for a run started
+  // from the preview. A SWITCH, NOT A TOOL: group "account" keeps it out of
+  // the tool search, the ranking and the public tool list (they list tools);
+  // the admin panel shows it under its other modules.
+  { key: "preview_actions", nameKey: "nav.previewActions", path: "/api/preview/actions", group: "account" },
   // ── WIDEO ────────────────────────────────────────────────────────────────
   { key: "video", nameKey: "video.title", path: "/wideo", group: "video", defaultStatus: "COMING_SOON" },
   // ── KONTO I ZASOBY ───────────────────────────────────────────────────────
@@ -267,6 +301,10 @@ export function featureForToolSlug(slug: string): FeatureKey {
     case "upscale": return "tool_upscale";
     case "expand": return "tool_expand";
     case "watermark": return "tool_watermark";
+    case "relight": return "tool_relight";
+    case "beautify": return "tool_beautify";
+    case "uncrop": return "tool_uncrop";
+    case "ghost_mannequin": return "tool_ghost_mannequin";
     // The batch run endpoint (/api/tools/run) still serves the EDITOR's own
     // cutout and colour steps, so for that endpoint remove_bg / white_bg /
     // shadow stay the editor's: switching a photo tool's screen off must not

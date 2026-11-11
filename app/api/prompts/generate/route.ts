@@ -50,5 +50,10 @@ export async function POST(request: Request) {
     shotBriefs: plan.briefs,
     referencePaths,
   });
-  return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  if (!result.ok) return NextResponse.json(result, { status: 400 });
+  // The session's concept ids in priority order — read here, on the server:
+  // the browser cannot read generated_prompts itself (0171).
+  const { data: concepts } = await supabase.from("generated_prompts").select("id, priority")
+    .eq("session_id", result.sessionId).eq("workspace_id", workspace.id).order("priority", { ascending: true });
+  return NextResponse.json({ ...result, conceptIds: (concepts ?? []).map((c) => c.id) }, { status: 200 });
 }

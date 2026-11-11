@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import { absoluteUrl } from "@/lib/site";
 import { publicToolSitemapPaths } from "@/lib/server/public-tool-meta";
 
@@ -17,7 +18,7 @@ const PRIVATE = [
   // /profile only forwards to /settings?tab=profile — the page and its subtree,
   // not every public slug that merely starts "profile".
   "/profile$", "/profile/",
-  "/tools", "/inspirations", "/support", "/retusz", "/wideo", "/k/",
+  "/tools", "/inspirations", "/support", "/retusz", PACKSHOT_PATH, "/wideo", "/k/",
   "/reset-password",
   // The double opt-in landing. Its token lives in the fragment and never in
   // an indexable URL, and the page itself is noindex — but a crawler has no

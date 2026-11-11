@@ -14,6 +14,7 @@ import { Diamond } from "./credits-control";
 import { MenuVeil } from "./menu-veil";
 import { Flag } from "./flag";
 import { GUEST_PREVIEW_ROUTE } from "@/lib/public-tools";
+import { HELP_HREF } from "@/lib/tool-routes";
 
 /**
  * ACCOUNT POPOVER — a 340px panel anchored under the avatar, not a modal.
@@ -225,7 +226,7 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName, gro
                     its own. */}
                 <Item href="/settings" icon={Settings} label={t("account.settings")} />
                 <Item href="/plan" icon={CreditCard} label={t("nav.plan")} />
-                <Item href="/support" icon={LifeBuoy} label={t("account.help")} />
+                <Item href={HELP_HREF} icon={LifeBuoy} label={t("account.help")} />
                 {isAdmin && <Item href="/admin" icon={Shield} label={t("account.admin")} tone="accent2" />}
                 {isAdmin && <GuestPreviewItem label={t("publicTools.preview.start")} />}
               </div>

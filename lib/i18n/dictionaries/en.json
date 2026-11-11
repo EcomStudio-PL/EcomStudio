@@ -37,7 +37,8 @@
     "editor": "Image editing",
     "resize": "Resize",
     "allTools": "All tools",
-    "plans": "Plans"
+    "plans": "Plans",
+    "previewActions": "Image preview actions"
   },
   "common": {
     "save": "Save",
@@ -708,7 +709,7 @@
       "security": "Security",
       "features": "Feature flags",
       "generator_ui": "Generator panel",
-      "retouch": "Photo retouch"
+      "retouch": "Packshot (formerly Photo retouch)"
     },
     "lastTest": "Last test",
     "configure": "Configure API",
@@ -3005,7 +3006,7 @@
       },
       "done": {
         "ecommerce_thumbnail": "Thumbnail ready",
-        "retouch": "Retouch ready",
+        "retouch": "Packshot ready",
         "prompts": "Image ready",
         "generator": "Image ready",
         "named": "{tool} — result ready",
@@ -3013,7 +3014,7 @@
       },
       "failed": {
         "ecommerce_thumbnail": "Could not generate the thumbnail",
-        "retouch": "Could not retouch the photo",
+        "retouch": "The packshot could not be made",
         "prompts": "Could not generate the image",
         "generator": "Could not generate the image",
         "named": "{tool} — did not work",
@@ -3524,7 +3525,7 @@
       "suffix": "marked"
     },
     "retouch": {
-      "name": "Photo retouch",
+      "name": "Packshot",
       "body": "Turn an ordinary photo into a premium packshot on white.",
       "suffix": "retouch"
     },
@@ -3931,8 +3932,9 @@
     "allTools": "All tools",
     "videoSoon": "Video generation is in the works — the architecture is already waiting for it.",
     "customSub": "Describe the image in your own words",
-    "createImage": "Generator Grovshot",
-    "sub.retouch": "Turn a photo into a packshot on white",
+    "createImage": "Generator GrovShot",
+    "createPhoto": "Create a photo",
+    "sub.retouch": "Improve and prepare your product photo for sale",
     "sub.editor": "Crop, background, shadow and colour in one window",
     "sub.resize": "Rescale a whole shoot at once",
     "sub.compress": "Cut the weight, keep the quality",
@@ -3940,7 +3942,11 @@
     "promoTag": "New",
     "promoTitle": "A new photo workshop",
     "promoBody": "Resize and Compression now share one batch gallery: previews, filters and real file sizes.",
-    "promoCta": "See the tools"
+    "promoCta": "See the tools",
+    "hidden": "Hidden",
+    "sub.generator": "A product shoot designed by GrovBase",
+    "sub.thumbnail": "An eye-catching first photo for your listing",
+    "sub.custom": "Describe the scene in your own words — your own prompt"
   },
   "cats": {
     "moda": "Fashion",
@@ -4037,7 +4043,7 @@
     },
     "ecommerce": {
       "packshot": {
-        "name": "Packshot",
+        "name": "Packshot — plain background (legacy)",
         "sub": "Clean product on a plain background.",
         "style": "Product packshot on a plain bright background, even light, no cast shadows, full sharpness"
       },
@@ -4980,10 +4986,21 @@
     "clearFilters": "Clear",
     "showResults": "Show results",
     "searchOpen": "Search",
-    "searchClose": "Close search"
+    "searchClose": "Close search",
+    "back": "Back",
+    "closeEsc": "Close (Esc)",
+    "favoriteShort": "Favourite",
+    "downloadShort": "Download",
+    "copyFailed": "Could not copy — the browser did not allow access to the clipboard.",
+    "inputPhotos": "Input photos",
+    "retouched": {
+      "title": "Retouched photos",
+      "open": "Retouched photo {n}",
+      "use": "Use for a new thumbnail"
+    }
   },
   "retouch": {
-    "title": "Photo retouch",
+    "title": "Packshot",
     "sub": "Professional product retouch on a clean white background.",
     "photos": "Add photos (max. {n})",
     "formatOriginal": "Original",
@@ -6289,7 +6306,7 @@
     "alerts.errThresholds": "The critical threshold must be higher than the warning one.",
     "toolName.prompts": "Guided generator",
     "toolName.generator": "Custom prompt",
-    "toolName.retouch": "Photo retouch",
+    "toolName.retouch": "Packshot (formerly Photo retouch)",
     "toolName.editor": "Image editor",
     "toolName.resize": "Resize",
     "toolName.compress": "Compression",
@@ -6949,7 +6966,7 @@
     "wf2.default.image_edit": "Image edit",
     "wf2.default.image_generation": "Image generation",
     "wf2.default.tool": "Tool",
-    "wf2.tool.retouch": "Photo retouch",
+    "wf2.tool.retouch": "Packshot (formerly Photo retouch)",
     "wf2.tool.remove_bg": "Background removal",
     "wf2.tool.upscale": "Upscale",
     "wf2.tool.expand": "Expand canvas",
@@ -8092,7 +8109,7 @@
     },
     "retouch": {
       "desc": "Cleans up and improves a product photo in one click.",
-      "words": "retouch, retouching, cleanup, fix photo, improve, enhance"
+      "words": "packshot, retouch, improve, clean up, correct, enhance photo"
     },
     "editor": {
       "desc": "Background, shadow, crop and colour in one editor.",
@@ -8141,6 +8158,38 @@
     "ecommerce_thumbnail": {
       "desc": "A 1:1 listing thumbnail from your product photos — a ready 2560×2560 px file.",
       "words": "thumbnail, listing, marketplace, main image, composition, 1:1, square, 2560, white background, e-commerce"
+    },
+    "ecommerce_packshot": {
+      "desc": "Legacy packshot: a clean product on a plain background.",
+      "words": "packshot, plain background, clean background, product shot, e-commerce, legacy"
+    },
+    "ecommerce_context": {
+      "desc": "The product in a natural setting.",
+      "words": "context, setting, scene, lifestyle, arrangement, e-commerce"
+    },
+    "ecommerce_set": {
+      "desc": "A full set of shots for one listing.",
+      "words": "set, series, photo set, listing, shots, e-commerce"
+    },
+    "ecommerce_scale": {
+      "desc": "Shots that convey the product's real size.",
+      "words": "scale, size, dimensions, comparison, measurements, e-commerce"
+    },
+    "tool_relight": {
+      "desc": "Evens out the light without shifting the product's colours.",
+      "words": "relight, light, lighting, shadows, brightness, exposure"
+    },
+    "tool_beautify": {
+      "desc": "One-click pack-shot clean-up.",
+      "words": "beautify, clean-up, retouch, polish, food, packshot"
+    },
+    "tool_uncrop": {
+      "desc": "Paints back what the crop cut off.",
+      "words": "uncrop, extend, restore frame, outpaint, crop, cut off"
+    },
+    "tool_ghost_mannequin": {
+      "desc": "Clothing without the mannequin — removed and closed up inside.",
+      "words": "ghost mannequin, invisible mannequin, clothing, apparel, fashion, mannequin"
     }
   },
   "newsletter": {
@@ -10453,7 +10502,7 @@
         "desc": "A frame for the listing's first photo."
       },
       "packshot": {
-        "name": "Packshot",
+        "name": "Packshot — plain background (legacy)",
         "desc": "A clean product on a plain background."
       },
       "whiteBg": {
@@ -10489,7 +10538,7 @@
         "desc": "Tools for clothing and accessories."
       },
       "retouch": {
-        "name": "Photo retouch",
+        "name": "Packshot",
         "desc": "An ordinary photo at premium packshot quality."
       }
     },
@@ -10518,7 +10567,7 @@
       "disabled": "Disabled"
     },
     "pill": {
-      "retouch": "Photo retouch",
+      "retouch": "Packshot",
       "thumbnail": "Thumbnail",
       "outdoor": "Outdoor session"
     },
@@ -10549,7 +10598,7 @@
       }
     },
     "showcase": {
-      "label": "Photo retouch — results",
+      "label": "Packshot — results",
       "cta": "Try the tool"
     },
     "thumbs": {
@@ -10590,17 +10639,17 @@
     "photos": "Product photos (max {n})",
     "dropTitle": "Drop your product photos",
     "dropSub": "They go into the thumbnail in this order.",
-    "retouchTitle": "Improve the photos before creating the thumbnail — AI Retouch",
+    "retouchTitle": "Improve photos before creating the thumbnail (Packshot AI)",
     "retouchBody": "AI improves each uploaded photo separately before the composition is prepared. This option increases the generation cost.",
     "retouchPrice": "+{n} cr. per photo",
-    "retouchUnavailable": "AI Retouch is unavailable right now.",
+    "retouchUnavailable": "Packshot AI is unavailable right now.",
     "summary": {
       "title": "Summary",
       "photos": "Photos",
-      "retouch": "AI Retouch",
+      "retouch": "Packshot AI",
       "on": "On",
       "off": "Off",
-      "retouchCost": "Retouch cost ({n} × {unit} cr.)",
+      "retouchCost": "Packshot AI cost ({n} × {unit} cr.)",
       "thumbnailCost": "Thumbnail cost",
       "total": "Total"
     },
@@ -10640,13 +10689,13 @@
     "emptyTitle": "Your thumbnails will appear here",
     "emptyBody": "Add product photos and click “Create thumbnail”.",
     "err": {
-      "retouch_failed": "AI Retouch failed for one of the photos — its cost was returned. The other retouched photos are kept.",
-      "retouch_interrupted": "AI Retouch was interrupted. Please try again.",
+      "retouch_failed": "Packshot AI failed for one of the photos — its cost was returned. The other improved photos are kept.",
+      "retouch_interrupted": "Packshot AI was interrupted. Please try again.",
       "retouch_reuse_missing": "A previously retouched photo has been deleted from the library.",
-      "retouch_workflow_on": "AI Retouch is running in a different mode right now — try without Retouch.",
-      "retouch_output_missing": "The AI Retouch result could not be found.",
+      "retouch_workflow_on": "Packshot AI runs in another mode right now — try without Packshot AI.",
+      "retouch_output_missing": "The Packshot AI result was not found.",
       "retouch_output_mismatch": "The retouched photos could not be confirmed. Nothing was charged for the thumbnail — please try again.",
-      "retouch_error": "AI Retouch did not respond. Please try again.",
+      "retouch_error": "Packshot AI did not respond. Please try again.",
       "prompt_changed": "The tool was updated meanwhile. Please try again — nothing was charged for the composition.",
       "prompt_unavailable": "Thumbnail is temporarily unavailable.",
       "provider_unavailable": "Creating the composition is temporarily unavailable. Nothing was charged for the composition.",
@@ -10665,7 +10714,7 @@
       "source_unavailable": "One of the photos could not be read. Nothing was charged for the composition — try again.",
       "storage_failed": "The thumbnail could not be saved. The cost of the composition was returned.",
       "insufficient_credits": "Not enough credits for the composition. Nothing was charged for the composition.",
-      "price_changed": "The AI Retouch price changed in the meantime. The remaining photos were not retouched — check the current cost and try again.",
+      "price_changed": "The Packshot AI price changed meanwhile. The remaining photos were not improved — check the current cost and try again.",
       "source_unsupported": "One of the photos has an unsupported format.",
       "source_too_large": "One of the photos is too large.",
       "thumbnail_request_contract_failed": "The request failed the consistency check — nothing was sent or charged.",
@@ -10674,7 +10723,7 @@
       "invocation_limit": "The attempt limit for this thumbnail was exceeded.",
       "too_many_runs": "You already have two thumbnails in progress. Please wait until they finish.",
       "too_many_photos": "Too many photos for one thumbnail.",
-      "retouch_unavailable": "AI Retouch is unavailable right now.",
+      "retouch_unavailable": "Packshot AI is unavailable right now.",
       "tool_unavailable": "Thumbnail is temporarily unavailable.",
       "feature_unavailable": "Thumbnail is temporarily unavailable.",
       "job_create_failed": "Could not start — please try again.",
@@ -10682,6 +10731,11 @@
       "trial_check_failed": "Your plan could not be checked just now. Nothing was charged for the composition — please try again.",
       "source_locked": "One of the retouched photos still has a watermark. Remove the watermark in the library and try again — nothing was charged for the composition.",
       "watermark_failed": "The thumbnail could not be prepared. The composition cost was returned."
+    },
+    "reuse": {
+      "done": "These photos are already retouched – you will not pay for the retouch again.",
+      "already": "These retouched photos are already in the form.",
+      "skipped": "{n} photo(s) not added — Miniaturka takes at most {max} photos."
     }
   },
   "ice": {
@@ -11888,7 +11942,7 @@
     },
     "retouch": {
       "tutorial": {
-        "title": "How Photo retouch works",
+        "title": "How Packshot works",
         "body": "The AI improves lighting, cleanliness, materials and presentation while keeping the product's real look. Each photo is retouched separately.",
         "steps": {
           "s1": {
@@ -11924,8 +11978,8 @@
             "body": "Click “Import” and add 1 to 10 product photos. They go into the thumbnail in this order — change it with the arrows on the photo previews."
           },
           "s2": {
-            "title": "AI Retouch (optional)",
-            "body": "Turn on “AI Retouch” if the AI should first improve each photo separately. The surcharge per photo is shown next to the switch and in the summary."
+            "title": "Packshot AI (optional)",
+            "body": "Turn on “Packshot AI” if the AI should first improve each photo on its own. The surcharge per photo is shown next to the switch and in the summary."
           },
           "s3": {
             "title": "Create the thumbnail",
@@ -12589,7 +12643,7 @@
       "lead": "Describe the scene in your own words and add product photos as a reference. You choose the model, format, resolution and number of images, and see the price before generating."
     },
     "retouch": {
-      "headline": "AI product photo retouching",
+      "headline": "Packshot — professional AI product photos",
       "lead": "Turn an ordinary product photo into a clean packshot on a white background. Choose 2K or 4K quality and the file format — no manual editing."
     },
     "remove_bg": {
@@ -12644,7 +12698,7 @@
     "queued": "Queued",
     "stage": {
       "generate": "Generating…",
-      "retouch": "Retouching photos",
+      "retouch": "Packshot",
       "compose": "Composing",
       "finish": "Final render",
       "analyze": "Analysing the product",
@@ -12710,7 +12764,7 @@
     "images": "Images: {n} × {p} cr.",
     "photos": "Photos: {n} × {p} cr.",
     "thumb": "Thumbnail: {p} cr.",
-    "retouch": "AI retouch: {n} × {p} cr.",
+    "retouch": "Packshot AI: {n} × {p} cr.",
     "uploading": "Uploading your photos…",
     "rewriting": "Rewriting your prompt…"
   },

@@ -305,7 +305,7 @@ export default async function AppLayout({ children, searchParams }: {
           <SiteFooter global={footerGlobal} nav={footerNav} site={footerSite} locale={appLocale} t={t0} />
         </HomeFooter>
         <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
-        <CustomerDrawer name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} menuItems={menuItems} />
         {bonusView?.status === "ELIGIBLE" && (
           <WelcomeBonusMount
             offer={bonusView}

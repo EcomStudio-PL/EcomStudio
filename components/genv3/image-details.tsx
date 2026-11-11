@@ -2,9 +2,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/notify";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Crop, Download,
-  Eraser, Expand, FileText, Link2, Loader2, Maximize2, Minus, Plus, Ruler, Save, Scaling,
+  ArrowLeft, Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Crop, Download,
+  Eraser, Expand, FileText, Heart, Link2, Loader2, Maximize2, Minus, MoreHorizontal, Plus, Ruler, Save, Scaling,
   Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -20,6 +21,8 @@ import { ResultFeedback } from "@/components/genv3/result-feedback";
 import { TrialMarkedHint, TrialNotice } from "@/components/trial-watermark/lock";
 import { isMarked } from "@/components/trial-watermark/model";
 import { FavoriteButton } from "@/components/media/favorite-button";
+import { offerRetouched, type RetouchedPhoto } from "@/lib/thumbnail/reuse";
+import { THUMBNAIL_PATH } from "@/lib/thumbnail/config";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -32,10 +35,28 @@ import { FavoriteButton } from "@/components/media/favorite-button";
  * without ever leaving GrovBase for the storage host. Unsupported operations
  * are visibly "Wkrótce" — never dead buttons pretending.
  *
- * The prompt shown is customer-safe by construction: their own prompt for
- * custom generations, the concept's seller-facing description for managed
- * ones. The hidden GrovBase prompt never reaches this component.
+ * The prompt shown is customer-safe by construction: the customer's OWN
+ * prompt („Stwórz zdjęcie”) or nothing — then „Ujęcie zaprojektowane przez
+ * GrovBase.”, with no copy and no expand. The server never sends an engine's
+ * prompt or description here (lib/generation-prompt.ts).
+ *
+ * PHONES (< sm) get their own frame around the same content: a top bar
+ * („← Wróć”, the format), a bar of actions stuck to the bottom (Ulubione,
+ * Pobierz, Wygeneruj ponownie where the tool has it, „⋯” with Usuń / Kopiuj
+ * obraz / Kopiuj URL) and a pull-down that closes the sheet — only from the
+ * top of the sheet, only when the move is clearly downwards, never while
+ * zoomed. Both bars clear the notch and the home indicator (safe areas).
  */
+/** The preview's smart actions are on for this viewer? (the server's
+ *  `preview_actions` switch — asked once per page, hidden until it answers). */
+let actionsAnswer: Promise<boolean> | null = null;
+function previewActionsEnabled(): Promise<boolean> {
+  actionsAnswer ??= fetch("/api/preview/actions", { cache: "no-store" })
+    .then((r) => r.json() as Promise<{ enabled?: boolean }>)
+    .then((j) => j.enabled === true)
+    .catch(() => false);
+  return actionsAnswer;
+}
 export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = true, onRegenerate, onFavorite, onDelete, onNote, onUnlock }: {
   items: GalleryItem[];
   index: number;
@@ -68,6 +89,11 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
   const [toolBusy, setToolBusy] = useState<string | null>(null);
   const [expandPick, setExpandPick] = useState(false);
   const noteDirty = note.trim() !== (item.note ?? "").trim();
+  const [actionsOn, setActionsOn] = useState(false);
+  useEffect(() => { let alive = true; void previewActionsEnabled().then((on) => { if (alive) setActionsOn(on); }); return () => { alive = false; }; }, []);
+  /** The phone's „⋯” menu. */
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => { setMoreOpen(false); }, [item.assetId]);
 
   // THIS PREFETCH WENT WITH "PRZED / PO". It existed to have the job's first
   // reference photo signed and ready for the comparison; the reference strip
@@ -133,23 +159,23 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
     } catch { return null; }
   }, [item.url]);
 
+  /** Copies text; says "copied" only when the browser really took it. */
+  async function copyText(text: string, okKey: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(t(okKey));
+    } catch { toast.error(t("genv3.copyFailed")); }
+  }
   async function copyPrompt() {
-    if (!item.prompt) return;
-    await navigator.clipboard.writeText(item.prompt).catch(() => null);
-    toast.success(t("genv3.copied"));
+    // Only ever the customer's own words: the server sends nothing else.
+    if (!item.prompt || item.origin !== "custom") return;
+    await copyText(item.prompt, "genv3.copied");
   }
-  async function copyId() {
-    await navigator.clipboard.writeText(item.assetId).catch(() => null);
-    toast.success(t("genv3.copied"));
-  }
-  async function copyUrl() {
-    await navigator.clipboard.writeText(item.url).catch(() => null);
-    toast.success(t("genv3.copiedUrl"));
-  }
+  async function copyId() { await copyText(item.assetId, "genv3.copied"); }
+  async function copyUrl() { await copyText(item.url, "genv3.copiedUrl"); }
   async function copyNote() {
     if (!note.trim()) return;
-    await navigator.clipboard.writeText(note.trim()).catch(() => null);
-    toast.success(t("genv3.copied"));
+    await copyText(note.trim(), "genv3.copied");
   }
   async function copyImage() {
     const blob = await fetchBlob();
@@ -204,6 +230,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       fd.set("tool", slug);
       fd.set("file", new File([blob], "image", { type: blob.type || "image/png" }));
       fd.set("settings", JSON.stringify(settings));
+      fd.set("origin", "preview");
       const res = await fetch("/api/tools/run", { method: "POST", body: fd });
       if (!res.ok) {
         const json = await res.json().catch(() => null) as { error?: string } | null;
@@ -222,6 +249,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       const save = new FormData();
       save.set("tool", slug);
       save.set("file", new File([out], "result", { type: out.type || "image/png" }));
+      save.set("origin", "preview");
       // THE RUN IS ALREADY CHARGED AND ITS BYTES LIVE ONLY IN THAT RESPONSE.
       // This save is the only thing that persists them, so an unread answer
       // meant a seller was billed, told "Gotowe · N kredytów", and given
@@ -240,6 +268,50 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       toast.error(t("genv3.toolFailed"));
     } finally { setToolBusy(null); }
   }
+
+  /*
+    PULL DOWN TO CLOSE (phones). Taken only from the very top of the sheet,
+    only for a move that is clearly downwards (more than 1.5× its sideways
+    part — a sideways swipe, a scroll back up or a pinch never counts), never
+    while the picture is zoomed (the pan owns the finger then), never from a
+    field or the „⋯” menu. Past 110px the sheet closes; short of it, it slides
+    back. The sheet's overscroll is contained, so the browser's own
+    pull-to-refresh never fires instead.
+  */
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const pull = useRef<{ x: number; y: number; dy: number; on: boolean } | null>(null);
+  const phone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 639.98px)").matches;
+  const onSheetTouchStart = (e: React.TouchEvent) => {
+    const el = sheetRef.current;
+    const target = e.target as HTMLElement | null;
+    if (!el || !phone() || zoom > 100 || fullscreen || moreOpen || e.touches.length !== 1 || el.scrollTop > 0) { pull.current = null; return; }
+    if (target?.closest("textarea, input, select, [data-no-pull]")) { pull.current = null; return; }
+    pull.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, on: false };
+  };
+  const onSheetTouchMove = (e: React.TouchEvent) => {
+    const p = pull.current;
+    const el = sheetRef.current;
+    if (!p || !el) return;
+    const dx = e.touches[0].clientX - p.x;
+    const dy = e.touches[0].clientY - p.y;
+    if (!p.on) {
+      if (dy > 12 && dy > Math.abs(dx) * 1.5 && el.scrollTop <= 0) p.on = true;
+      else if (Math.abs(dx) > 12 || dy < -8) { pull.current = null; return; }
+      else return;
+    }
+    p.dy = Math.max(0, dy);
+    el.style.transition = "none";
+    el.style.transform = `translateY(${p.dy}px)`;
+  };
+  const onSheetTouchEnd = () => {
+    const p = pull.current;
+    const el = sheetRef.current;
+    pull.current = null;
+    if (!p?.on || !el) return;
+    el.style.transition = "transform 180ms ease";
+    if (p.dy > 110) { el.style.transform = "translateY(100%)"; window.setTimeout(onClose, 150); return; }
+    el.style.transform = "";
+  };
 
   async function saveNote() {
     setSavingNote(true);
@@ -265,15 +337,33 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
           what stops a wide monitor from padding the sidebar instead of
           enlarging the photo — at 2560 the image gets ~1450px rather than the
           ~1130 a proportional split would have handed it. */}
-      <div data-details-modal
-        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:max-w-[1920px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(380px,400px)] lg:overflow-hidden xl:grid-cols-[minmax(0,1fr)_440px]">
+      <div data-details-modal ref={sheetRef}
+        onTouchStart={onSheetTouchStart} onTouchMove={onSheetTouchMove} onTouchEnd={onSheetTouchEnd} onTouchCancel={onSheetTouchEnd}
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto overscroll-y-contain rounded-none sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:max-w-[1920px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(380px,400px)] lg:overflow-hidden xl:grid-cols-[minmax(0,1fr)_440px]">
+        {/* PHONE: the way back and the format, clear of the notch. */}
+        <div data-details-topbar
+          className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-[rgb(var(--surface)/0.92)] px-2 pb-1.5 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur sm:hidden">
+          <button type="button" onClick={onClose} data-details-back
+            className="flex min-h-[44px] items-center gap-1.5 rounded-xl px-2.5 text-[14px] font-semibold text-ink active:bg-raised">
+            <ArrowLeft size={18} aria-hidden />{t("genv3.back")}
+          </button>
+          {item.ratio && (
+            <span data-details-ratio className="rounded-lg bg-sunken px-2.5 py-1 text-[12px] font-bold tabular-nums text-ink">{item.ratio}</span>
+          )}
+        </div>
+        {/* DESKTOP / TABLET: closing is the window's own corner — not beside
+            the source photos, where it read as "delete this photo". */}
+        <button type="button" onClick={onClose} data-details-close aria-label={t("genv3.closeEsc")} title={t("genv3.closeEsc")}
+          className="absolute right-3 top-3 z-30 hidden h-9 w-9 items-center justify-center rounded-full border border-line bg-[rgb(var(--surface)/0.92)] text-ink shadow-sm backdrop-blur transition-colors hover:bg-raised sm:flex">
+          <X size={18} aria-hidden />
+        </button>
         {/* ── IMAGE SIDE ─────────────────────────────────────────────────── */}
         <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[calc(100dvh-3rem)]">
           <div className="relative flex min-h-[46dvh] flex-1 items-center justify-center overflow-hidden rounded-2xl bg-[rgb(var(--bg))] lg:min-h-0">
             {item.ratio && (
-              <span className="absolute left-2.5 top-2.5 z-10 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur">{item.ratio}</span>
+              <span className="absolute left-2.5 top-2.5 z-10 hidden rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur sm:inline-block">{item.ratio}</span>
             )}
-            <div className="absolute right-2.5 top-2.5 z-10 flex gap-1.5">
+            <div className="absolute right-2.5 top-2.5 z-10 hidden gap-1.5 sm:top-12 sm:flex lg:top-2.5">
               {/* Ulubione V2: the larger, labelled heart (shortcut F). */}
               <FavoriteButton variant="wide" active={item.favorite} onToggle={() => onFavorite(item)} />
               <button type="button" aria-label={t("common.delete")} onClick={() => onDelete(item)}
@@ -339,19 +429,19 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
         </div>
 
         {/* ── INFO SIDE ──────────────────────────────────────────────────── */}
-        <div className="thin-scroll min-w-0 space-y-5 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 lg:max-h-[calc(100dvh-4rem)] lg:overflow-y-auto">
+        <div className="thin-scroll min-w-0 space-y-5 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:p-5 sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:max-h-[calc(100dvh-4rem)] lg:overflow-y-auto lg:pt-14">
           {/* ZDJĘCIA REFERENCYJNE lead the panel: "what was this made from"
               is the first question a seller asks of their own image, and it
               used to sit below a wall of settings. Keyed by generation — the
               view stays mounted across prev/next, and a reused instance
               painted the previous image's thumbnails under the new one. */}
-          <div className="flex items-start justify-between gap-3">
-            <SourcesSection key={item.generationId} item={item} />
-            <button type="button" aria-label={t("common.close")} onClick={onClose}
-              className="-mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
-              <X size={16} aria-hidden />
-            </button>
-          </div>
+          <SourcesSection key={item.generationId} item={item} />
+
+          {/* MINIATURKA made with Packshot AI: the photos after the retouch,
+              ready to go into a new Miniaturka without paying for it again. */}
+          {item.operation === "ecommerce_thumbnail" && (
+            <RetouchedSection key={`r-${item.generationId}`} item={item} onClose={onClose} />
+          )}
 
           <PromptBox text={item.prompt} onCopy={copyPrompt} />
 
@@ -420,7 +510,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               "Wkrótce". "Usuń wybrane" keeps its honest Wkrótce badge because
               the tile is in the reference; it is visibly unavailable, never a
               button that pretends to work. */}
-          <div>
+          {actionsOn && <div data-preview-actions>
             <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
               <EditTile icon={Expand} busy={toolBusy === "expand"} disabled={marked} title={t("genv3.editFormat")} sub={t("genv3.editFormatSub")}
                 onClick={() => setExpandPick(!expandPick)} />
@@ -456,7 +546,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
             ) : (
               <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{t("genv3.editNote")}</p>
             )}
-          </div>
+          </div>}
 
           {/* NOTATKA — one line, no heading. The placeholder says what it is.
               The trailing button SAVES while there is something unsaved and
@@ -491,7 +581,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
           <TrialNotice trial={item.trial} onUnlock={unlock} />
 
           {/* AKCJE — three of equal weight, no heading. */}
-          <div className="grid grid-cols-3 gap-2 [&>*]:min-w-0">
+          <div className="hidden grid-cols-3 gap-2 sm:grid [&>*]:min-w-0">
             <button type="button" onClick={copyImage} title={t("genv3.copyImage")}
               className="plate flex h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
               <Copy size={13} aria-hidden className="shrink-0 text-muted" />
@@ -518,13 +608,64 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
 
           {/* The one thing this panel exists to lead to, at full width. */}
           {/* GrovBase Shot: one more generation of THIS shot, priced on the button (two steps). */}
-          {item.grovshot ? <ShotRegenButton item={item} compact={false} variant="cta" /> : canRegenerate && (
-            <button type="button" onClick={() => onRegenerate(item)} data-regen-cta
-              className="cta flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold">
-              <Sparkles size={15} aria-hidden />
-              {t("genv3.regen")}
+          <div className="hidden sm:block">
+            {item.grovshot ? <ShotRegenButton item={item} compact={false} variant="cta" /> : canRegenerate && (
+              <button type="button" onClick={() => onRegenerate(item)} data-regen-cta
+                className="cta flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold">
+                <Sparkles size={15} aria-hidden />
+                {t("genv3.regen")}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* PHONE: the actions, stuck to the bottom, over the home indicator. */}
+      <div data-details-bottombar data-no-pull
+        className="fixed inset-x-0 bottom-0 z-[65] border-t border-line bg-[rgb(var(--surface)/0.96)] px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:hidden">
+        {moreOpen && (
+          <>
+            <button type="button" aria-label={t("common.close")} onClick={() => setMoreOpen(false)} className="fixed inset-0 -z-10 cursor-default" />
+            <div role="menu" data-details-more-menu
+              className="absolute bottom-full right-2 mb-2 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-1 shadow-xl">
+              <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); onDelete(item); }}
+                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 text-[14px] font-semibold text-danger active:bg-raised">
+                <Trash2 size={16} aria-hidden />{t("common.delete")}
+              </button>
+              <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); void copyImage(); }}
+                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 text-[14px] font-semibold text-ink active:bg-raised">
+                <Copy size={16} aria-hidden />{t("genv3.copyImage")}
+              </button>
+              <button type="button" role="menuitem" onClick={() => { setMoreOpen(false); void copyUrl(); }}
+                className="flex min-h-[44px] w-full items-center gap-2.5 rounded-xl px-3 text-[14px] font-semibold text-ink active:bg-raised">
+                <Link2 size={16} aria-hidden />{t("genv3.copyUrl")}
+              </button>
+            </div>
+          </>
+        )}
+        <div className="flex items-stretch gap-1.5">
+          <button type="button" onClick={() => onFavorite(item)} aria-pressed={item.favorite} data-bar-favorite
+            className={cn("flex min-h-[48px] min-w-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-semibold active:bg-raised",
+              item.favorite ? "text-accent" : "text-ink")}>
+            <Heart size={18} aria-hidden fill={item.favorite ? "currentColor" : "none"} />{t("genv3.favoriteShort")}
+          </button>
+          <button type="button" onClick={downloadOriginal} disabled={toolBusy === "download"} data-bar-download
+            className="flex min-h-[48px] min-w-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-semibold text-ink active:bg-raised disabled:opacity-60">
+            {toolBusy === "download" ? <Loader2 size={18} className="animate-spin" aria-hidden /> : <Download size={18} aria-hidden />}
+            {t("genv3.downloadShort")}
+          </button>
+          {item.grovshot ? (
+            <div className="flex min-w-0 flex-[1.4] items-center justify-center"><ShotRegenButton item={item} compact variant="cta" /></div>
+          ) : canRegenerate ? (
+            <button type="button" onClick={() => onRegenerate(item)} data-bar-regen
+              className="flex min-h-[48px] min-w-[48px] flex-[1.4] flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-semibold text-ink active:bg-raised">
+              <Sparkles size={18} aria-hidden />{t("genv3.regen")}
             </button>
-          )}
+          ) : null}
+          <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} aria-haspopup="menu" aria-label={t("genv3.more")} data-bar-more
+            className="flex min-h-[48px] min-w-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-semibold text-ink active:bg-raised">
+            <MoreHorizontal size={18} aria-hidden />{t("genv3.more")}
+          </button>
         </div>
       </div>
 
@@ -547,8 +688,11 @@ function qualityLabel(q: string, t: (key: string) => string): string {
 
 /* ── Użyte zdjęcia ────────────────────────────────────────────────────── */
 
+type Retouched = RetouchedPhoto & { thumbUrl: string };
 type Sources = {
   references: string[]; inspirations: string[]; marked: string | null;
+  /** Miniaturka with Packshot AI: its photos after the retouch. */
+  retouched: Retouched[];
   /** False when the job predates reference bookkeeping and nothing could be
    *  recovered — "we did not record this" is not "there was nothing". */
   known: boolean;
@@ -582,7 +726,7 @@ function loadSources(generationId: string): Promise<Sources | null> {
       if (!json.ok) return null;
       const data: Sources = {
         references: json.references ?? [], inspirations: json.inspirations ?? [], marked: json.marked ?? null,
-        known: json.known ?? false,
+        known: json.known ?? false, retouched: Array.isArray(json.retouched) ? json.retouched : [],
       };
       // Cached even when the viewer has already moved on — the answer is
       // still right for that generation, and paging back must not re-sign.
@@ -657,6 +801,9 @@ function SourcesSection({ item }: { item: GalleryItem }) {
 
   return (
     <div data-sources data-sources-status={state.status} data-sources-gen={item.generationId} className="min-w-0 flex-1">
+      {/* What the image was made from — named, so the row of photos is never
+          mistaken for something to delete. */}
+      <p data-sources-label className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-faint">{t("genv3.inputPhotos")}</p>
       {/* NO HEADING. A row of photographs at the top of a panel about an
           image is self-evident, and the reference leads with the pictures
           themselves. The explanatory hint goes with it: every tile already
@@ -721,6 +868,94 @@ function SourcesSection({ item }: { item: GalleryItem }) {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * „ZDJĘCIA PO RETUSZU” — a Miniaturka made with Packshot AI keeps the photos
+ * it retouched (each a Retusz job in the library). Here they are in the
+ * order the Miniaturka had them: open one, save one, or „Użyj do nowej
+ * miniaturki” — they go into the Miniaturka form (in place of their
+ * originals, the retouch switched off: not paid for twice), with the preview
+ * closed and no reload. Nothing for a Miniaturka without them; a record that
+ * lost them since says nothing either (no section, no error).
+ */
+function RetouchedSection({ item, onClose }: { item: GalleryItem; onClose: () => void }) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [list, setList] = useState<Retouched[] | null>(() => cachedSources(item.generationId)?.retouched ?? null);
+  const [open, setOpen] = useState<Retouched | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void loadSources(item.generationId).then((d) => { if (alive) setList(d?.retouched ?? []); });
+    return () => { alive = false; };
+  }, [item.generationId]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(null); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open]);
+  if (!list || list.length === 0) return null;
+
+  const use = () => {
+    offerRetouched(list.map((r) => ({ ref: r.ref, original: r.original, url: r.thumbUrl })));
+    onClose();
+    // Already on the Miniaturka: the form takes them from the event. Else go
+    // there — client-side, the offer waits for the form to mount.
+    if (pathname !== THUMBNAIL_PATH) router.push(THUMBNAIL_PATH);
+  };
+  const save = async (r: Retouched, n: number) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(r.url);
+      if (!res.ok) throw new Error("fetch");
+      const blob = await res.blob();
+      await saveBlob(blob, fileNameFor(`${item.product ?? "packshot"}-${n}`, blob.type || "image/png"));
+    } catch { toast.error(t("genv3.downloadFailed")); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div data-retouched className="space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-faint">{t("genv3.retouched.title")}</p>
+      <div className="grid grid-cols-4 gap-2">
+        {list.map((r, i) => (
+          <button key={r.ref} type="button" data-retouched-thumb onClick={() => setOpen(r)}
+            aria-label={t("genv3.retouched.open", { n: i + 1 })}
+            className="aspect-square overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] transition-all hover:ring-[rgb(var(--accent)/0.6)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={r.thumbUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+          </button>
+        ))}
+      </div>
+      <button type="button" onClick={use} data-retouched-use
+        className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-[rgb(var(--accent)/0.5)] px-3 text-[13px] font-semibold text-accent-strong transition-colors hover:bg-[rgb(var(--accent)/0.08)] dark:text-accent">
+        <Sparkles size={14} aria-hidden />{t("genv3.retouched.use")}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" data-no-pull>
+          <button type="button" aria-label={t("common.close")} onClick={() => setOpen(null)} className="absolute inset-0 cursor-zoom-out" />
+          <div className="relative flex max-h-full max-w-4xl flex-col items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={open.url} alt="" className="max-h-[78dvh] max-w-full rounded-xl object-contain" />
+            <div className="flex gap-2">
+              <button type="button" disabled={saving} onClick={() => void save(open, list.indexOf(open) + 1)} data-retouched-download
+                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white px-4 text-[13px] font-semibold text-black disabled:opacity-60">
+                {saving ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}{t("genv3.downloadShort")}
+              </button>
+              <button type="button" onClick={() => setOpen(null)}
+                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-white/15 px-4 text-[13px] font-semibold text-white">
+                <X size={15} aria-hidden />{t("common.close")}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -237,7 +237,7 @@ async function main() {
     && /options=\{\[\s*\{ value: "original"/.test(ui)
     && /useState\(\(\) => \(resolutions\.includes\("2K"\) \? "2K"/.test(ui)
     && /useState\("original"\)/.test(ui) && !/data-retouch-settings-locked|settingsLocked/.test(ui));
-  const page = read("app/(app)/retusz/page.tsx");
+  const page = read("app/(app)/narzedzia/packshot/page.tsx");
   check("the page offers retouchSizes (2K/4K, no 1K) and retouchRatios, priced per size",
     /resolutions=\{model \? \(model\.workflowEnabled \? \[retouchWorkflowSize\(model\)\] : retouchSizes\(model\)\)/.test(page)
     && /ratios=\{model && !model\.workflowEnabled \? retouchRatios\(model\)/.test(page) && /retouchPrice\(model, r\)/.test(page));

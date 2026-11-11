@@ -1,3 +1,4 @@
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import {
   BANNER_FRAME, BEFORE_AFTER_SIZE, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE,
   THUMBNAILS, TOOL_TILE, UPLOAD_TOOLS, ratioOf, type MediaSrc,
@@ -689,7 +690,7 @@ export const LAUNCH_TEXT_FIELDS: readonly string[] = [
 
 export const ICE_UNSUPPORTED: readonly { path: string; reason: string }[] = [
   { path: "/k/…", reason: "workflow" },
-  { path: "/retusz", reason: "frozen" },
+  { path: PACKSHOT_PATH, reason: "frozen" },
   { path: "/checkout, /credits", reason: "money" },
   { path: "/library, /settings, /support", reason: "userData" },
   { path: "/blog, /grovnews", reason: "ownEditor" },

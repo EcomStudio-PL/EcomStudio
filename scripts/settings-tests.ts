@@ -65,10 +65,11 @@ const actions = code(read(ACTIONS));
 
 /* ── SET1 ─────────────────────────────────────────────────────────────── */
 section("SET1. THE DROPDOWN: NO SEPARATE „PROFIL”, ONE ROW PER DESTINATION");
-const rows = [...menu.matchAll(/<Item href="([^"]+)"/g)].map((m) => m[1]);
+// `href={HELP_HREF}` is „Pomoc” → /kontakt (Premiera), read as that path.
+const rows = [...menu.matchAll(/<Item href=(?:"([^"]+)"|\{HELP_HREF\})/g)].map((m) => m[1] ?? "/kontakt");
 check("SET1a no row is labelled account.profile", !/account\.profile/.test(menu));
 check("SET1b the rows are GrovNews, Ustawienia, Plan, Pomoc, Admin — in that order",
-  rows.join(",") === "/grovnews,/settings,/plan,/support,/admin", rows.join(","));
+  rows.join(",") === "/grovnews,/settings,/plan,/kontakt,/admin", rows.join(","));
 check("SET1c no destination appears twice", new Set(rows).size === rows.length, rows.join(","));
 check("SET1d Ustawienia keeps its label and icon", /<Item href="\/settings" icon=\{Settings\} label=\{t\("account\.settings"\)\} \/>/.test(menu));
 check("SET1e GrovNews and Admin keep their gates",

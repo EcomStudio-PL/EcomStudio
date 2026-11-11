@@ -6,9 +6,7 @@ import {
   type AvailabilityMap, type FeatureDescriptor, type FeatureKey, type FeatureStatus, type MenuBadge,
   type MenuGate,
 } from "./features";
-import {
-  IMAGE_CREATE, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editEntriesFor, entryGate, menuShowsGenerator,
-} from "./topnav";
+import { ALL_TOOLS_ENTRY, VIDEO_CREATE, VIDEO_EDIT, entryGate, imageMenuEntries } from "./topnav";
 import { DOCK_SLOTS } from "./bottom-nav";
 import { DEFAULT_LAYOUT, hubSectionsFor, menuItemKeys, type ToolsLayout } from "./tool-layout";
 import { isAiToolKey } from "./services/ai-tools";
@@ -239,27 +237,21 @@ type MenuEntry = { gate: MenuGate; soon: boolean; kind: "module" | "item" };
 
 /**
  * EVERY MENU ENTRY — read from the lists the menus are drawn from
- * (lib/topnav.ts: the mega panel and the drawer; lib/bottom-nav.ts: the dock).
- * Module and category entries answer to the switchboard, as they always have;
- * the tool column and the generator button are the layout's "menu" switches
- * (`editEntriesFor`, `menuShowsGenerator`), so an item switched out of the menu
- * is simply not in this list. A link the menus draw unconditionally (Pomoc,
- * Kredyty, the drawer's Start tile) is not here: no switch hides it.
+ * (lib/topnav.ts: the „Obrazy” list, its hub link and the video menu;
+ * lib/bottom-nav.ts: the dock). The „Obrazy” rows are the layout's "menu"
+ * switches (`imageMenuEntries`), so an item switched out of the menu is simply
+ * not in this list. A link the menus draw unconditionally (Pomoc, Kredyty, the
+ * drawer's Start tile) is not here: no switch hides it.
  */
 function menuEntries(layout: ToolsLayout): MenuEntry[] {
   const items = menuItemKeys(layout);
   return [
-    ...IMAGE_CREATE.map((e): MenuEntry => ({ gate: entryGate(e), soon: Boolean(e.soon), kind: "module" })),
-    ...IMAGE_MODES
-      .filter((e) => e.key !== "engine" || menuShowsGenerator(items))
-      .map((e): MenuEntry => ({ gate: entryGate(e), soon: false, kind: e.key === "engine" ? "item" : "module" })),
-    ...editEntriesFor(items)
-      .map((e): MenuEntry => ({ gate: entryGate(e), soon: Boolean(e.soon), kind: e.key === "allTools" ? "module" : "item" })),
+    ...imageMenuEntries(items).map((e): MenuEntry => ({ gate: entryGate(e), soon: Boolean(e.soon), kind: "item" })),
+    { gate: ALL_TOOLS_ENTRY.href, soon: false, kind: "module" },
     ...VIDEO_CREATE.map((e): MenuEntry => ({ gate: entryGate(e), soon: true, kind: "module" })),
     ...VIDEO_EDIT.map((e): MenuEntry => ({ gate: entryGate(e), soon: true, kind: "module" })),
-    // The drawer's and the mega panel's own gated rows.
+    // The drawer's own gated rows.
     { gate: "/library", soon: false, kind: "module" },
-    { gate: "/inspirations", soon: false, kind: "module" },
     { gate: "/wideo", soon: true, kind: "module" },
     ...DOCK_SLOTS.map((d): MenuEntry => ({ gate: d.href, soon: false, kind: "module" })),
   ];

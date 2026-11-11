@@ -1,15 +1,14 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Images, Menu, Sparkles } from "lucide-react";
+import { ChevronDown, Images, Menu } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  IMAGE_CREATE, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editEntriesFor, editLabelKey, entryGate, menuShowsGenerator,
-  type MegaEntry,
+  ALL_TOOLS_ENTRY, VIDEO_CREATE, VIDEO_EDIT, entryGate, imageMenuRows, type MegaEntry,
 } from "@/lib/topnav";
 import {
-  allDefaults, menuBadge, menuVisible, routeReachable, type AvailabilityMap, type FeatureKey, type MenuBadge,
+  allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey, type MenuBadge,
 } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
 import { cn } from "@/lib/utils";
@@ -118,6 +117,12 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
     closeTimer.current = setTimeout(close, 200);
   };
 
+  // THE VIDEO MENU EXISTS WHILE THE SWITCHBOARD SHOWS IT. At launch every
+  // video tool is switched off, so a customer has no "Wideo" at all; the
+  // moment an admin opens it again (Admin → Narzędzia, the `video` switch) it
+  // comes back on its own — no code decides "never". Admins keep it, badged.
+  const triggers: readonly ("image" | "video")[] = menuVisible(avail, "/wideo", seesRestricted) ? ["image", "video"] : ["image"];
+
   const navBtn = (active: boolean) => cn(
     "inline-flex h-9 items-center gap-1 rounded-xl px-3 text-sm font-semibold transition-colors duration-200",
     active ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
@@ -188,7 +193,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
             height makes `top-full` mean "under the bar", and it widens the
             hover bridge to the whole strip between the two at the same time. */}
         <nav className="relative ml-2 hidden items-center gap-0.5 self-stretch lg:flex" aria-label={t("topnav.primary")}>
-          {(["image", "video"] as const).map((which) => (
+          {triggers.map((which) => (
             <div key={which} onMouseEnter={() => hoverOpen(which)} onMouseLeave={hoverLeave}
               className="relative flex h-full items-center">
               <button
@@ -199,6 +204,11 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
                 className={navBtn(menu === which)}
               >
                 {t(`topnav.${which}`)}
+                {/* An admin sees the video menu while customers do not —
+                    and is told so, so the two are never confused. */}
+                {which === "video" && seesRestricted && !menuVisible(avail, "/wideo", false) && (
+                  <span className="rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">{t("mega.hidden")}</span>
+                )}
                 <ChevronDown size={13} aria-hidden className={cn("transition-transform duration-200", menu === which && "rotate-180")} />
               </button>
 
@@ -286,7 +296,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
                 line inside the popover anyway. */}
             <div className="hidden lg:block">
               <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin}
-                grovnews={menuVisible(avail, "/grovnews", seesRestricted)} />
+                // GrovNews is listed for staff only at launch; the module and
+                // its own entitlement check are unchanged.
+                grovnews={seesRestricted && menuVisible(avail, "/grovnews", seesRestricted)} />
             </div>
           </>
         )}
@@ -298,19 +310,25 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
   );
 }
 
-/** The panel body: TWÓRZ (categories, each in its own accent) and EDYTUJ
- *  (the toolbox), plus a footer of secondary destinations. */
+/**
+ * The panel body. „Obrazy” is a COMPACT LIST: one row per tool switched into
+ * the menu (lib/topnav.ts `imageMenuEntries`, ordered by MENU_ORDER in
+ * lib/tool-layout.ts) — icon, name, one line of what it does — and exactly one
+ * link under it, „Wszystkie narzędzia”. No categories, no second column, no
+ * promo: the panel is as wide as its words. „Wideo” keeps its two columns
+ * (it is only drawn while the switchboard shows it — see `triggers`).
+ */
 function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false, menuItems }: {
   which: "image" | "video";
-  /** The items the tool column lists — see MegaTopbar. */
+  /** The items the list shows — see MegaTopbar. */
   menuItems?: readonly string[];
   t: (k: string, v?: Record<string, string | number>) => string;
   avail: AvailabilityMap;
   isAdmin: boolean;
   /** Close the panel once one of its links is followed. The bar also closes
-   *  it when the path changes, but a category link can keep the path — Moda
-   *  and E-commerce are two sections of the same /tools — and the panel must
-   *  not stay open over the section it just opened. */
+   *  it when the path changes, but a link can keep the path (a ?tryb= mode of
+   *  the generator, a section of /tools) and the panel must not stay open over
+   *  the screen it just opened. */
   onNavigate: () => void;
   /** The signed-out bar (the public Home). Every entry here is a tool behind
    *  sign-in, so a visitor's press opens the existing sign-in dialog IN PLACE,
@@ -322,41 +340,7 @@ function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false, menuIt
   guest?: boolean;
 }) {
   const auth = useOptionalAuthDialog();
-  // Availability first: a DISABLED (or menu-hidden) module simply is not
-  // listed for customers; admins keep every entry, badged. A category entry is
-  // asked about through `entryGate` — its hub AND the category itself.
-  const create = (which === "image" ? IMAGE_CREATE : VIDEO_CREATE)
-    .filter((e) => menuVisible(avail, entryGate(e), isAdmin));
-  // The image list is five entries now, and the last of them IS the hub, so
-  // nothing is trimmed and no separate "all tools" link is needed underneath.
-  //
-  // The tool column is the items whose "menu" switch is on (the layout); the
-  // status still decides whether one may be shown — a DISABLED module is gone
-  // for customers, "Wkrótce" stays badged. The hub row answers to its own
-  // switch, as every module entry does.
-  const listed = (e: MegaEntry) => e.key === "allTools"
-    ? menuVisible(avail, e.href, isAdmin)
-    : routeReachable(avail, entryGate(e), isAdmin);
-  const edit = which === "image"
-    ? editEntriesFor(menuItems).filter(listed)
-    : VIDEO_EDIT.filter((e) => menuVisible(avail, e.href, isAdmin));
-  // The generator's button follows its item's "menu" switch; the hub button
-  // its module's.
-  const modes = IMAGE_MODES.filter((e) => e.key === "engine"
-    ? menuShowsGenerator(menuItems) && routeReachable(avail, e.href, isAdmin)
-    : menuVisible(avail, e.href, isAdmin));
-  // An entry that is not a category names itself; the categories keep taking
-  // their label and one-liner from the category dictionary.
-  const label = (e: MegaEntry) =>
-    e.labelKey ? t(e.labelKey) : which === "image" ? t(`cats.${e.key}`) : t(`video.wf.${e.key}.name`);
-  const sub = (e: MegaEntry) =>
-    e.subKey ? t(e.subKey) : which === "image" ? t(`cats.${e.key}Sub`) : t(`video.wf.${e.key}.sub`);
-
-  /** The panel's third column: one card, and only on the image menu — the
-   *  video menu has nothing shipped to advertise. */
-  const promo = which === "image" && menuVisible(avail, PROMO_HREF, isAdmin);
-
-  return (
+  const shell = (body: ReactNode, wide: boolean) => (
     <div role="menu"
       onClick={(e) => { if (e.target instanceof Element && e.target.closest("a[href]")) onNavigate(); }}
       // CAPTURE, so it runs before next/link's own handler starts a navigation
@@ -372,116 +356,71 @@ function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false, menuIt
         auth.open("login", href);
       }}
       className={cn(
-      "overlay animate-pop rounded-2xl p-5 shadow-e4",
-      promo ? "w-[min(66rem,calc(100vw-3rem))]" : "w-[min(56rem,calc(100vw-3rem))]",
-    )}>
-      <div className={cn("grid gap-6",
-        promo ? "md:grid-cols-[1.25fr_1fr_0.8fr]" : "md:grid-cols-[1.4fr_1fr]")}>
+        "overlay animate-pop rounded-2xl shadow-e4",
+        wide ? "w-[min(56rem,calc(100vw-3rem))] p-5" : "w-[min(23rem,calc(100vw-2rem))] p-2",
+      )}>
+      {body}
+    </div>
+  );
+
+  if (which === "image") {
+    const rows = imageMenuRows(avail, isAdmin, menuItems);
+    const hub = menuVisible(avail, ALL_TOOLS_ENTRY.href, isAdmin);
+    return shell(
+      <>
+        <div className="grid gap-0.5">
+          {rows.map(({ entry, badge }) => (
+            <MegaLink key={entry.key} entry={entry} label={t(entry.labelKey ?? entry.key)} sub={entry.subKey ? t(entry.subKey) : undefined}
+              soonLabel={t("common.soon")} dynBadge={badge === "hidden" ? t("mega.hidden") : dynBadgeLabel(badge, t)} oneLine />
+          ))}
+        </div>
+        {hub && (
+          <div className={cn(rows.length > 0 && "mt-1.5 border-t border-line pt-1.5")}>
+            <Link role="menuitem" href={ALL_TOOLS_ENTRY.href}
+              className="flex min-h-[44px] items-center justify-between gap-2 rounded-xl px-2.5 text-[13px] font-semibold text-muted transition-colors duration-200 hover:bg-[rgb(var(--accent)/0.09)] hover:text-ink">
+              {t(ALL_TOOLS_ENTRY.labelKey!)}
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
+        )}
+      </>,
+      false,
+    );
+  }
+
+  const create = VIDEO_CREATE.filter((e) => menuVisible(avail, entryGate(e), isAdmin));
+  const edit = VIDEO_EDIT.filter((e) => menuVisible(avail, e.href, isAdmin));
+  return shell(
+    <>
+      <div className="grid gap-6 md:grid-cols-[1.4fr_1fr]">
         <section>
-          {/* No "TWÓRZ" heading. The column IS the creating half of the panel,
-              the tiles say what they make, and a word above them was one more
-              line between the pointer and the thing it came for. "EDYTUJ"
-              stays: it is what separates the two halves. */}
           <div className="grid grid-cols-2 gap-1">
             {create.map((e) => (
-              <MegaLink key={e.key} entry={e} label={label(e)} sub={sub(e)} soonLabel={t("common.soon")}
+              <MegaLink key={e.key} entry={e} label={t(`video.wf.${e.key}.name`)} sub={t(`video.wf.${e.key}.sub`)} soonLabel={t("common.soon")}
                 dynBadge={dynBadgeLabel(menuBadge(avail, entryGate(e)), t)} />
             ))}
           </div>
-          {which === "image" && modes.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-1.5 border-t border-line pt-3.5">
-              {modes.map((e) => (
-                <Link key={e.key} href={e.href}
-                  className={cn(
-                    "inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-[13px] font-semibold transition-colors duration-200",
-                    e.key === "engine" ? "cta" : "snake plate text-ink hover:border-[rgb(var(--accent)/0.4)]",
-                  )}>
-                  <e.icon size={14} aria-hidden />
-                  {e.labelKey ? t(e.labelKey) : t(`mega.${e.key}`)}
-                  <DynBadge kind={menuBadge(avail, e.href)} t={t} onCta={e.key === "engine"} />
-                </Link>
-              ))}
-            </div>
-          )}
         </section>
-
         <section className="border-line md:border-l md:pl-6">
           <p className="overline mb-2.5">{t("mega.edit")}</p>
           <div className="grid gap-0.5">
             {edit.map((e) => (
-              <MegaLink key={e.key} entry={e}
-                label={which === "image" ? t(editLabelKey(e)) : t(`video.wf.${e.key}.name`)}
-                // The right column names what each destination DOES, the same
-                // way the left one does. Four bare labels in a panel this size
-                // read as a list of settings, not as places to go.
-                sub={which === "image" ? (e.subKey ? t(e.subKey) : undefined) : t(`video.wf.${e.key}.sub`)}
-                soonLabel={t("common.soon")}
-                dynBadge={dynBadgeLabel(menuBadge(avail, entryGate(e)), t)} />
+              <MegaLink key={e.key} entry={e} label={t(`video.wf.${e.key}.name`)} sub={t(`video.wf.${e.key}.sub`)}
+                soonLabel={t("common.soon")} dynBadge={dynBadgeLabel(menuBadge(avail, entryGate(e)), t)} />
             ))}
-            {which === "video" && (
-              <p className="mt-3 text-[12px] leading-relaxed text-faint">{t("mega.videoSoon")}</p>
-            )}
+            <p className="mt-3 text-[12px] leading-relaxed text-faint">{t("mega.videoSoon")}</p>
           </div>
         </section>
-
-        {promo && <PromoCard t={t} />}
       </div>
-
-      <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
-        {menuVisible(avail, which === "image" ? "/inspirations" : "/wideo", isAdmin) ? (
-          <Link href={which === "image" ? "/inspirations" : "/wideo"}
-            className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
-            {which === "image" ? t("nav.inspirations") : t("video.title")} →
+      {menuVisible(avail, "/wideo", isAdmin) && (
+        <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
+          <Link href="/wideo" className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
+            {t("video.title")} →
           </Link>
-        ) : <span />}
-      </div>
-    </div>
-  );
-}
-
-/**
- * THE "NOWOŚĆ" CARD — one tile in the panel's third column.
- *
- * It is a PRESENTATION component and nothing else: no feed, no CMS row, no
- * flag. What it points at is a page that already exists, and what it says is
- * something that already shipped — the batch workshop the resize and
- * compression screens now share. When the next thing ships, the two lines of
- * copy live in `mega.promo*` in the three dictionaries and the destination is
- * the constant below; there is no third place to look.
- *
- * It is NOT rendered when the hub it links to is switched off in the feature
- * registry — advertising a door an admin has closed is worse than silence.
- */
-const PROMO_HREF = "/tools";
-
-function PromoCard({ t }: { t: (k: string) => string }) {
-  return (
-    <section className="hidden md:block">
-      <Link href={PROMO_HREF}
-        className="snake group flex h-full flex-col rounded-2xl border border-line bg-[rgb(var(--ink)/0.035)] p-4 transition-colors duration-200 hover:bg-[rgb(var(--accent)/0.09)]">
-        {/* Decorative plate, not a screenshot: a promise made of brand light
-            rather than a picture of a screen that will change next week. */}
-        <span aria-hidden
-          className="mb-3.5 flex h-24 items-center justify-center rounded-xl"
-          style={{
-            background:
-              "radial-gradient(14rem 8rem at 30% 0%, rgb(var(--accent) / 0.30), transparent 70%),"
-              + "radial-gradient(12rem 8rem at 100% 100%, rgb(var(--violet) / 0.26), transparent 70%),"
-              + "rgb(var(--ink) / 0.05)",
-          }}>
-          <Sparkles size={26} className="text-accent transition-transform duration-300 group-hover:scale-110" />
-        </span>
-        <span className="mb-1.5 inline-flex w-fit rounded-full bg-accent-soft px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-accent">
-          {t("mega.promoTag")}
-        </span>
-        <span className="text-sm font-semibold text-ink">{t("mega.promoTitle")}</span>
-        <span className="mt-1 text-[11.5px] leading-relaxed text-faint">{t("mega.promoBody")}</span>
-        <span className="mt-3 inline-flex h-8 w-fit items-center gap-1.5 rounded-lg bg-[rgb(var(--ink)/0.07)] px-3 text-[12px] font-semibold text-ink transition-colors duration-200 group-hover:bg-[rgb(var(--accent)/0.16)] group-hover:text-accent">
-          <Sparkles size={13} aria-hidden />
-          {t("mega.promoCta")}
-        </span>
-      </Link>
-    </section>
+        </div>
+      )}
+    </>,
+    true,
   );
 }
 
@@ -512,9 +451,11 @@ function DynBadge({ kind, t, onCta }: { kind: MenuBadge; t: (k: string) => strin
  *  one-liner. Disabled with a "Wkrótce" badge when there is no backend; a
  *  feature-availability badge (dynBadge) keeps the link alive — the target
  *  page renders the coming-soon / maintenance screen itself. */
-function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
+function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge, oneLine }: {
   entry: MegaEntry; label: string; sub?: string; soonLabel: string; compact?: boolean;
   dynBadge?: string | null;
+  /** The one-liner stays ONE line (the compact „Obrazy” list). */
+  oneLine?: boolean;
 }) {
   const Icon = entry.icon;
   const accented = Boolean(entry.accent) && !entry.soon;
@@ -551,7 +492,7 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
             column width "Zdjęcia modeli, przedmiotów i s…" stops describing
             the tile it belongs to. Two lines is the cap — past that it is not
             a one-liner any more. */}
-        {sub && <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-faint">{sub}</span>}
+        {sub && <span className={cn("mt-0.5 text-[11px] leading-snug text-faint", oneLine ? "block truncate" : "line-clamp-2")}>{sub}</span>}
       </span>
     </>
   );

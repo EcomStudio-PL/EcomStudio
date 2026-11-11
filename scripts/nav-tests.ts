@@ -30,6 +30,7 @@ import { isNavActive, sectionOwnsRoute, navPath, NAV_REGISTRY } from "@/lib/nav-
 import { ADMIN_NAV, CLIENT_NAV } from "@/lib/navigation";
 import { IMAGE_EDIT, IMAGE_MODES, IMAGE_EDIT_MORE } from "@/lib/topnav";
 import { CATEGORIES, categoryHref, categoryPath } from "@/lib/categories";
+import { HELP_HREF, PACKSHOT_PATH } from "@/lib/tool-routes";
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -55,7 +56,7 @@ const EDIT_ROWS = IMAGE_EDIT.filter((e) => !e.soon).map((e) => e.href);
 /** The generator entry of the header panel — never a row of the tool column. */
 const CREATE_ROWS = IMAGE_MODES.map((e) => e.href).filter((h) => !EDIT_ROWS.includes(h));
 
-const DRAWER_ROWS: readonly string[] = ["/library", "/grovnews", "/support", "/settings", "/admin"];
+const DRAWER_ROWS: readonly string[] = ["/library", "/grovnews", HELP_HREF, "/settings", "/admin"];
 /** The header panel's TWÓRZ column: each category, matched on its path. */
 const CAT_ROWS: readonly string[] = CATEGORIES.map(categoryPath);
 /** Groups whose rows must never light twice: the drawer and the header column. */
@@ -120,12 +121,12 @@ check("/tools/resize lights ONLY „Zmiana rozmiaru”",
   litRows("/tools/resize").join() === "/tools/resize",
   `got: ${litRows("/tools/resize").join(" + ") || "nothing"}`);
 check("…and „Wszystkie narzędzia” is dark there", !isNavActive("/tools/resize", "/tools"));
-check("…and „Retusz zdjęć” is dark there", !isNavActive("/tools/resize", "/retusz"));
+check("…and „Packshot” is dark there", !isNavActive("/tools/resize", PACKSHOT_PATH));
 
-check("/retusz lights ONLY „Retusz zdjęć”",
-  litRows("/retusz").join() === "/retusz",
-  `got: ${litRows("/retusz").join(" + ") || "nothing"}`);
-check("…and „Wszystkie narzędzia” is dark there", !isNavActive("/retusz", "/tools"));
+check("/narzedzia/packshot lights ONLY „Packshot”",
+  litRows(PACKSHOT_PATH).join() === PACKSHOT_PATH,
+  `got: ${litRows(PACKSHOT_PATH).join(" + ") || "nothing"}`);
+check("…and „Wszystkie narzędzia” is dark there", !isNavActive(PACKSHOT_PATH, "/tools"));
 
 check("/tools lights ONLY „Wszystkie narzędzia”",
   litRows("/tools").join() === "/tools",
@@ -159,11 +160,13 @@ const DRAWER_CODE = DRAWER_SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\{\/\*[
 
 check("no accordion is left: no Section, no expand state, no chevron-down",
   !/function Section|<Section|useState|aria-expanded|ChevronDown/.test(DRAWER_CODE));
-check("no GŁÓWNE / OBRAZY / NARZĘDZIA / WIDEO heading",
-  !/nav\.groups\.main|topnav\.image|nav\.groups\.tools|topnav\.video/.test(DRAWER_CODE));
+check("no GŁÓWNE / NARZĘDZIA / WIDEO heading",
+  !/nav\.groups\.main|nav\.groups\.tools|topnav\.video/.test(DRAWER_CODE));
+check("one „Obrazy” list — the header menu's own rows (imageMenuRows) and its one hub link (premiera)",
+  /topnav\.image/.test(DRAWER_CODE) && (DRAWER_CODE.match(/imageMenuRows\(/g) ?? []).length === 1 && /ALL_TOOLS_ENTRY\.href/.test(DRAWER_CODE));
 check("no category, tool or video rows in the drawer",
   !/CATEGORIES|categoryHref|editEntriesFor|toolEntries|"\/wideo"|"\/home"/.test(DRAWER_CODE));
-const order = ['href="/library"', 'href="/grovnews"', 'href="/support"', 'href="/settings"', 'href="/admin"'].map((h) => DRAWER_CODE.indexOf(h));
+const order = ['href="/library"', 'href="/grovnews"', "href={HELP_HREF}", 'href="/settings"', 'href="/admin"'].map((h) => DRAWER_CODE.indexOf(h));
 check("Biblioteka → GrovNews → Pomoc → Ustawienia → Panel admina, in that order",
   order.every((i) => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]!), order.join(","));
 check("no „Pulpit” row", !/nav\.pulpit/.test(DRAWER_CODE));
@@ -171,8 +174,9 @@ check("„Panel admina” is shown only for the real admin role",
   /\{isAdmin && \(\s*<Tile href="\/admin"/.test(DRAWER_CODE));
 check("„Biblioteka” keeps its availability gate and badge",
   /show\("\/library"\) && \(\s*<Tile href="\/library"[^>]*badge=\{badge\("\/library"\)\}/.test(DRAWER_CODE));
-check("„GrovNews” is gated by the switchboard and carries its badge (access itself is the page's server check)",
-  /show\("\/grovnews"\) && \(\s*<Tile href="\/grovnews"[^>]*badge=\{badge\("\/grovnews"\)\}/.test(DRAWER_CODE));
+check("„GrovNews” is listed for staff only (premiera), still gated by the switchboard, with its badge",
+  /seesRestricted && show\("\/grovnews"\) && \(\s*<Tile href="\/grovnews"[^>]*badge=\{badge\("\/grovnews"\)\}/.test(DRAWER_CODE));
+check("„Pomoc” is the contact page with its form", HELP_HREF === "/kontakt" && !/href="\/support"/.test(DRAWER_CODE));
 check("the wallet card keeps „Ulepsz plan” (/plan) and „Doładuj kredyty” (/credits)",
   /href="\/plan"/.test(DRAWER_CODE) && /href="\/credits"/.test(DRAWER_CODE));
 check("the account card still links to the profile (/settings) and the back arrow closes",
@@ -185,7 +189,8 @@ check("the footer is unchanged: sign-out, language, theme — in that order",
     return a > 0 && a < b && b < c && /footer=\{/.test(DRAWER_CODE);
   })());
 check("every row closes the drawer as it navigates",
-  (DRAWER_CODE.match(/<Tile [^>]*onNavigate=\{closeNav\}/g) ?? []).length === 5);
+  (DRAWER_CODE.match(/<Tile [^>]*onNavigate=\{closeNav\}/g) ?? []).length === 7
+  && (DRAWER_CODE.match(/<Tile /g) ?? []).length === 7);
 
 // `sectionOwnsRoute` itself stays correct for anything that may use it:
 // it must never claim a group that does not hold the lit row.

@@ -1,5 +1,8 @@
 import { ADMIN_NAV, CLIENT_NAV } from "./navigation";
-import { IMAGE_EDIT, IMAGE_MODES } from "./topnav";
+import { HELP_HREF, PACKSHOT_PATH } from "@/lib/tool-routes";
+import { IMAGE_EDIT, IMAGE_MODES, imageMenuEntries } from "./topnav";
+import { DEFAULT_LAYOUT, menuItemKeys } from "./tool-layout";
+import { THUMBNAIL_PATH } from "./thumbnail/config";
 import { CATEGORIES, categoryPath } from "./categories";
 
 /**
@@ -62,7 +65,10 @@ export const NAV_REGISTRY: readonly string[] = Array.from(new Set([
   // A category's row links to a section of /tools, but it is the current row
   // on the screens of its workflows — so its PATH is what is registered.
   ...CATEGORIES.map((c) => categoryPath(c)),
-  "/retusz", "/home", "/library", "/settings", "/support", "/inspirations", "/wideo", "/grovnews",
+  PACKSHOT_PATH, "/home", "/library", "/settings", "/support", "/inspirations", "/wideo", "/grovnews",
+  // The header's „Obrazy” rows (the four launch tools and whatever an admin
+  // switches in) and „Pomoc” → the contact page.
+  ...imageMenuEntries(menuItemKeys(DEFAULT_LAYOUT)).map((e) => e.href), THUMBNAIL_PATH, "/generator", HELP_HREF,
 ].map(navPath)));
 
 /**

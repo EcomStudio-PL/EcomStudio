@@ -472,15 +472,12 @@ export function GeneratorWorkspace({
           referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
         }),
       });
-      const prepJson = await prep.json() as { ok: boolean; sessionId?: string; error?: string };
+      const prepJson = await prep.json() as { ok: boolean; sessionId?: string; conceptIds?: string[]; error?: string };
       if (!prepJson.ok || !prepJson.sessionId) { toast.error(errText(prepJson.error)); return; }
 
-      // Safe columns only: ids in priority order (the prompts are ciphertext).
-      const supabase = createClient();
-      const { data: concepts } = await supabase
-        .from("generated_prompts").select("id, priority")
-        .eq("session_id", prepJson.sessionId).order("priority", { ascending: true });
-      const queue = (concepts ?? []).map((c) => c.id);
+      // The concept ids in priority order, as the server read them (the
+      // browser does not read generated_prompts — 0171).
+      const queue = Array.isArray(prepJson.conceptIds) ? prepJson.conceptIds : [];
       if (queue.length === 0) { toast.error(t("common.error")); return; }
 
       const preview = refs[0]?.url ?? null;

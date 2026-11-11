@@ -34,11 +34,12 @@ import {
 import { CATEGORIES, categoryGates, categoryPath, offeredWorkflows } from "@/lib/categories";
 import { DEFAULT_LAYOUT, hubSectionsFor, type ToolsLayout } from "@/lib/tool-layout";
 import { homeModel } from "@/lib/home-sections";
+import { catalogItem } from "@/lib/tool-cards";
 import {
   AI_TOOL_KEYS, MODEL_PRICED, mergeToolConfig, toolTabs, MODEL_ASSIGNMENT_RUNTIME, type ToolConfigValues,
 } from "@/lib/services/ai-tools";
 import {
-  PANEL_GROUPS, categoryOf, coveredCards, customerExposure, panelGroupOf, panelKind,
+  PANEL_GROUPS, categoryOf, coveredCards, customerExposure, governedItems, panelGroupOf, panelKind,
   parentCategory, staticallySoon, withDraft, type ExposureRow, type Surface,
 } from "@/lib/tool-panel";
 import { ADMIN_NAV } from "@/lib/navigation";
@@ -167,15 +168,18 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
 
   // 5 — active category
   const eco = customerExposure("image_ecommerce", live);
-  check("5 active category: its section on /tools, its cards on Start, its menu entry",
-    row(eco, "tools")?.state === "shown" && row(eco, "home")?.state === "shown" && row(eco, "menu")?.state === "shown",
+  // Premiera: the header menu lists TOOLS (the „Obrazy” rows), no category
+  // entries; and every e-commerce workflow has its own switch (the old
+  // packshot can be hidden alone), so the category no longer owns a card.
+  check("5 active category: its section on /tools; no menu entry or Start card of its own (its tools have their own switches)",
+    row(eco, "tools")?.state === "shown" && row(eco, "home")?.state === "na" && row(eco, "menu")?.state === "na",
     JSON.stringify(eco));
 
   // 6 — hidden category: its navigation switch (menu link) and, separately,
   // its /tools section switch in the layout
   const hc = board({ image_ecommerce: { hiddenFromMenu: true } });
-  check("6 category hidden from navigation: off the menu, its /tools section untouched",
-    state("image_ecommerce", hc, "menu") === "hidden" && state("image_ecommerce", hc, "tools") === "shown");
+  check("6 category hidden from navigation: its /tools section untouched, its tools still in the menu",
+    state("image_ecommerce", hc, "tools") === "shown" && state("ecommerce_thumbnail", hc, "menu") === "shown");
   const hiddenSection = arranged((l) => { l.sections.find((x) => x.key === "ecommerce")!.visible = false; });
   check("6 …its /tools section hidden in the layout: gone from /tools, the items stay placed",
     !hubSectionsFor(live, false, hiddenSection).some((s) => s.key === "ecommerce")
@@ -183,9 +187,12 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
   const eCat = CATEGORIES.find((c) => c.key === "ecommerce")!;
   // Miniaturka answers to its own switch (ecommerce_thumbnail) inside the
   // category, like the Moda tools: the category covers the other presets.
+  // Every workflow now has its own switch (Premiera: the old packshot can be
+  // hidden alone) and still answers to the category through its gates.
   check("6 …and hiding it deleted none of its tools",
-    coveredCards("image_ecommerce").length === eCat.workflows.length - 1
-    && coveredCards("ecommerce_thumbnail").length === 0
+    coveredCards("image_ecommerce").length === 0
+    && eCat.workflows.every((w) => governedItems(featureForHref(`${categoryPath(eCat)}/${w.key}`)!).length === 1)
+    && eCat.workflows.every((w) => catalogItem(`ecommerce.${w.key}`)?.gates?.includes(categoryPath(eCat)))
     && offeredWorkflows(eCat).length > 0);
 
   // + disabled, which must still work exactly as before
@@ -286,14 +293,15 @@ console.log("\nC2. the readout follows the switches the review found it ignoring
   // The menu row reads the menus' real lists.
   check("no menu entry is claimed for Historia, Pomoc or Kredyty",
     (["history", "support", "credits"] as FeatureKey[]).every((k) => state(k, board(), "menu") === "na"));
-  check("Własny prompt is off the menu by default, and its switch puts it there",
-    state("generator", board(), "menu") === "hidden"
-    && state("generator", board(), "menu", arranged((l) => { l.flags.custom.menu = true; })) === "shown");
+  check("„Stwórz zdjęcie” is in the menu by default (Premiera), and its switch takes it out",
+    state("generator", board(), "menu") === "shown"
+    && state("generator", board(), "menu", arranged((l) => { l.flags.custom.menu = false; })) === "hidden");
   check("…while the entries the menus DO gate are read", state("library", board(), "menu") === "shown"
     && state("library", board({ library: { hiddenFromMenu: true } }), "menu") === "hidden"
     && state("compress", board(), "menu") === "shown");
-  check("an ACTIVE Matching still reads 'Wkrótce' in the menu, as customers see it",
-    row(customerExposure("image_matching", board({ image_matching: { status: "ACTIVE" } })), "menu")?.badge === "soon");
+  check("an ACTIVE Matching still reads 'Wkrótce' on /tools, as customers see it (no menu entry of its own)",
+    row(customerExposure("image_matching", board({ image_matching: { status: "ACTIVE" } })), "tools")?.badge === "soon",
+    JSON.stringify(customerExposure("image_matching", board({ image_matching: { status: "ACTIVE" } }))));
   check("…and so does an ACTIVE Wideo",
     row(customerExposure("video", board({ video: { status: "ACTIVE" } })), "menu")?.state === "badged");
   check("the panel flags both as having no engine yet", staticallySoon("image_matching") && staticallySoon("video")

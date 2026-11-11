@@ -337,7 +337,7 @@ for (const [route, expected] of [
   ["/tools", "tools"],
   ["/tools/editor", "tools"],
   ["/tools/editor?tool=remove-background", "tools"],
-  ["/retusz", "tools"],
+  ["/narzedzia/packshot", "tools"],
   ["/settings", "profile"],
   ["/settings#security", "profile"],
 ] as const) {

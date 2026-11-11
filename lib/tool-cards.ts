@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import {
   Contrast, Crop, Gauge, Lightbulb, Maximize2, Palette, PenLine,
   PencilRuler, Scaling, Scissors, Shirt, SlidersHorizontal, Sparkles,
@@ -68,7 +69,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDef[] = [
   {
     key: "edit", icon: PencilRuler, titleKey: "hub.sec.edit", seeAll: "/tools/editor",
     cards: [
-      { key: "retouch", href: "/retusz", icon: WandSparkles, motif: "wipe",
+      { key: "retouch", href: PACKSHOT_PATH, icon: WandSparkles, motif: "wipe",
         titleKey: "tools.retouch.name", bodyKey: "tools.retouch.body" },
       // The four photo tools are screens of their own again (Photoroom behind
       // them, priced per photo). "Białe tło" and "Zmień kolor tła" are one

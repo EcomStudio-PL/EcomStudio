@@ -47,6 +47,13 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
     "video", "inspirations", "credits", "support",
     // GrovNews — its own drawer row, so the switchboard owns it too.
     "grovnews",
+    // Premiera: the e-commerce workflows other than Miniaturka (the old
+    // „Packshot — jednolite tło” among them) and the photo-tool screens that
+    // had no switch of their own — each must be closable by URL on its own.
+    "ecommerce_packshot", "ecommerce_context", "ecommerce_set", "ecommerce_scale",
+    "tool_relight", "tool_beautify", "tool_uncrop", "tool_ghost_mannequin",
+    // The image preview's smart actions — one switch (not a tool).
+    "preview_actions",
   ];
   check(`all ${mustHave.length} real user-facing modules have a key`,
     mustHave.every((k) => (FEATURE_KEYS as readonly string[]).includes(k)),

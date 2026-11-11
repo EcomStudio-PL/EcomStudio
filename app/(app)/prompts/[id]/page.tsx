@@ -91,7 +91,10 @@ export default async function ConceptSessionPage({ params, searchParams }: {
       id: p.id,
       index: i + 1,
       title: p.customer_title || p.concept_name,
-      description: p.customer_description,
+      // The engine's own scene text stays on the server: a customer sees the
+      // concept's title, never the description the engine wrote for it
+      // (lib/generation-prompt.ts — only their own words leave the server).
+      description: origin === "custom" ? p.customer_description : null,
       sceneType: p.scene_type,
       references: (p.reference_indices ?? [])
         .map((n) => ({ image: n, url: paths[n - 1] ? refUrls.get(paths[n - 1]) ?? null : null, primary: n === p.primary_reference }))

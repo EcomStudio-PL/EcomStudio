@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { PenLine, Sparkles } from "lucide-react";
 import { CATEGORIES, VIDEO_ICON, categoryPath, workflowHref, type CategoryAccent } from "./categories";
 import { IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "./topnav";
+import { CATALOG_ITEMS } from "./tool-cards";
 import { TOOLS, isPhotoTool } from "./images/tools";
 import { normalise } from "./search-tags";
 import {
@@ -98,6 +99,9 @@ const VISUAL_SOURCES: readonly { href: string; icon: LucideIcon; accent?: Catego
   { href: "/prompts", icon: Sparkles },
   { href: "/generator", icon: PenLine },
   { href: "/wideo", icon: VIDEO_ICON },
+  // Every other catalogue card (the generic tool screens — relight, beautify,
+  // uncrop, ghost mannequin — have no menu entry to borrow an icon from).
+  ...CATALOG_ITEMS.map((c) => ({ href: c.href, icon: c.icon })),
 ];
 
 const VISUALS: ReadonlyMap<FeatureKey, Visual> = (() => {

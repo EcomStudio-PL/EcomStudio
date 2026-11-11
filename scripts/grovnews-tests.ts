@@ -175,8 +175,11 @@ section("E. NAVIGATION — drawer yes, one desktop entry (Stage 4), bottom bar u
   // only. The bar gets no link of its own; the dock stays as it is.
   const topbar = read("components/layout/mega-topbar.tsx");
   const account = read("components/layout/account-menu.tsx");
-  check("desktop navigation: exactly one GrovNews entry (account popover), gated like the drawer row; none in the bar",
-    !/href="\/grovnews"/.test(topbar) && /grovnews=\{menuVisible\(avail, "\/grovnews", seesRestricted\)\}/.test(topbar)
+  // Premiera: the link is listed for staff only (drawer and popover alike);
+  // the module, its switch and its server-side entitlement are unchanged.
+  check("desktop navigation: exactly one GrovNews entry (account popover), staff-only and gated like the drawer row; none in the bar",
+    !/href="\/grovnews"/.test(topbar) && /grovnews=\{seesRestricted && menuVisible\(avail, "\/grovnews", seesRestricted\)\}/.test(topbar)
+    && /seesRestricted && show\("\/grovnews"\)/.test(drawer)
     && (account.match(/href="\/grovnews"/g) ?? []).length === 1 && /\{grovnews && <Item href="\/grovnews"/.test(account)
     && !/grovnews/i.test(read("components/layout/topbar.tsx")));
   check("not in the tool search (GrovNews is not a tool)", !SEARCH_CARDS.some((c) => c.key === "grovnews"));

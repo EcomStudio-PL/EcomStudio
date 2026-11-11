@@ -1499,15 +1499,28 @@ function sectionG() {
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",
     "lib/server/reference-image.ts", "lib/server/provider-router.ts", "lib/services/usage.ts",
-    "app/api/retouch", "components/retouch", "app/(app)/retusz",
+    "app/api/retouch", "components/retouch", "app/(app)/retusz", "app/(app)/narzedzia/packshot",
     "scripts/retouch-forensic-tests.ts", "scripts/retouch-baseline.ts", "scripts/ai-fidelity-tests.ts",
   ];
   let changed: string[] = [];
   try {
     const { execSync } = require("node:child_process") as typeof import("node:child_process");
     execSync(`git cat-file -e ${BASE}^{commit}`, { stdio: "ignore" });
-    changed = execSync(`git diff --name-only ${BASE} -- ${FROZEN.map((f) => `'${f}'`).join(" ")}`, { encoding: "utf8" })
-      .split("\n").filter(Boolean);
+    // Premiera moved the Retusz page, byte for byte, to /narzedzia/packshot:
+    // an identical-content rename (R100) is not a change.
+    changed = execSync(`git diff --name-status -M100% ${BASE} -- ${FROZEN.map((f) => `'${f}'`).join(" ")}`, { encoding: "utf8" })
+      .split("\n").filter((l) => l && !/^R100\t/.test(l))
+      // …and the forensic suite's one line that reads that page, re-pointed
+      // at its new path — nothing else in it may differ.
+      .filter((l) => {
+        if (l !== "M\tscripts/retouch-forensic-tests.ts") return true;
+        const lines = execSync(`git diff -U0 ${BASE} -- scripts/retouch-forensic-tests.ts`, { encoding: "utf8" })
+          .split("\n").filter((x) => /^[+-]/.test(x) && !/^(\+\+\+|---) /.test(x));
+        return lines.join("\n") !== [
+          '-  const page = read("app/(app)/retusz/page.tsx");',
+          '+  const page = read("app/(app)/narzedzia/packshot/page.tsx");',
+        ].join("\n");
+      });
   } catch {
     console.log(`  · skipped (no git history for ${BASE})`);
     return;

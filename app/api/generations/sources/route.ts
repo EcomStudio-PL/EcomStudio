@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { signImageUrls } from "@/lib/services/images";
+import { retouchedJobId, retouchedRef } from "@/lib/thumbnail/reuse";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,10 @@ export async function GET(request: Request) {
     .maybeSingle();
   const job = (gen as unknown as {
     generation_jobs: {
-      settings: { reference_paths?: unknown; inspiration_paths?: unknown; marked_path?: unknown } | null;
+      settings: {
+        reference_paths?: unknown; inspiration_paths?: unknown; marked_path?: unknown;
+        operation?: unknown; retouch?: unknown; retouched_paths?: unknown;
+      } | null;
       reference_image_ids: string[] | null;
       prompt_id: string | null;
       prompt_session_id: string | null;
@@ -102,8 +106,58 @@ export async function GET(request: Request) {
     }
   }
 
+  /*
+    MINIATURKA — the photos after Retusz („Zdjęcia po retuszu”). A run with
+    Packshot AI ON recorded them as `retouched_paths` (the Retusz jobs' files,
+    in the order of its photos); a run that was GIVEN retouched photos holds
+    them as `retouched:<job>` references among its photos. Either way each is
+    looked up as a Retusz job of THIS workspace with its file in the library —
+    a photo since deleted simply is not listed. Each comes back with the
+    reference the form sends (never a path the browser could change), the
+    original it was retouched from (so the form can put it in that photo's
+    place) and signed pictures.
+  */
+  const isThumbnail = job.settings?.operation === "ecommerce_thumbnail";
+  const rawRefs = Array.isArray(job.settings?.reference_paths) ? job.settings!.reference_paths as unknown[] : [];
+  const carriedIds = isThumbnail ? rawRefs.map(retouchedJobId).filter((x): x is string => !!x) : [];
+  const fromRun = isThumbnail && job.settings?.retouch === true && Array.isArray(job.settings?.retouched_paths)
+    ? (job.settings!.retouched_paths as unknown[]).filter(safe).map((p) => p.split("/")[1] ?? "").filter((id) => /^[0-9a-f-]{36}$/.test(id))
+    : [];
+  const retouchIds = [...new Set([...fromRun, ...carriedIds])].slice(0, 16);
+  type RetouchFile = { jobId: string; original: string | null; path: string; thumb: string | null };
+  const retouchFiles: RetouchFile[] = [];
+  if (retouchIds.length > 0) {
+    const { data: rjobs } = await supabase.from("generation_jobs")
+      .select("id, settings, generations(generation_assets(storage_path, metadata))")
+      .in("id", retouchIds).eq("workspace_id", workspace.id);
+    const byId = new Map((rjobs ?? []).map((r) => [r.id, r as unknown as {
+      id: string; settings: { operation?: unknown; reference_paths?: unknown } | null;
+      generations: { generation_assets: { storage_path: string; metadata: unknown }[] | null }[] | null;
+    }]));
+    for (const id of retouchIds) {
+      const r = byId.get(id);
+      if (!r || r.settings?.operation !== "image_retouch") continue;
+      const asset = (r.generations ?? []).flatMap((g) => g.generation_assets ?? []).find((a) => safe(a.storage_path));
+      if (!asset) continue;
+      const refs = Array.isArray(r.settings?.reference_paths) ? r.settings!.reference_paths as unknown[] : [];
+      const thumb = (asset.metadata as { thumb?: unknown } | null)?.thumb;
+      retouchFiles.push({
+        jobId: id, original: safe(refs[0]) ? refs[0] : null, path: asset.storage_path,
+        thumb: safe(thumb) ? thumb : null,
+      });
+    }
+  }
+  // The photos this run was given that were retouched ones: shown among its
+  // input photos too (signed from the library, where they live).
+  const carriedPaths = carriedIds.map((id) => retouchFiles.find((f) => f.jobId === id)?.path).filter((p): p is string => !!p);
+
   const all = [...new Set([...references, ...inspirations, ...(marked ? [marked] : [])])];
   const signed = all.length > 0 ? await signImageUrls(supabase, all, 3600) : new Map<string, string>();
+  const libraryPaths = [...new Set([...retouchFiles.flatMap((f) => [f.path, ...(f.thumb ? [f.thumb] : [])]), ...carriedPaths])];
+  if (libraryPaths.length > 0) {
+    const { data: s2 } = await supabase.storage.from("generation-assets").createSignedUrls(libraryPaths, 3600);
+    s2?.forEach((x) => { if (x.signedUrl && x.path) signed.set(x.path, x.signedUrl); });
+  }
   const urls = (paths: string[]) => paths.map((p) => signed.get(p)).filter((u): u is string => !!u);
 
   /**
@@ -120,8 +174,12 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: true,
     known,
-    references: urls(references),
+    references: urls([...references, ...carriedPaths]),
     inspirations: urls(inspirations),
     marked: marked ? signed.get(marked) ?? null : null,
+    retouched: retouchFiles.flatMap((f) => {
+      const url = signed.get(f.path);
+      return url ? [{ ref: retouchedRef(f.jobId), original: f.original, url, thumbUrl: (f.thumb && signed.get(f.thumb)) || url }] : [];
+    }),
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

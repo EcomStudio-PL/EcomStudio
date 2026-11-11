@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import { Home, Images, Sparkles, User, Wrench } from "lucide-react";
 import { FEATURE_REGISTRY, type FeatureKey } from "./features";
 
@@ -8,7 +9,7 @@ import { FEATURE_REGISTRY, type FeatureKey } from "./features";
  *
  * Which route is "current" is the part of a bottom bar that quietly breaks:
  * /generator has to light GENERUJ even though the slot points at /prompts,
- * /retusz belongs under NARZĘDZIA although it lives at the root, and /home
+ * Packshot (/narzedzia/packshot) belongs under NARZĘDZIA although it lives at the root, and /home
  * must NOT light up for /home-anything-else. None of that is visible in a
  * screenshot — an inactive slot looks like a design choice — so the rule lives
  * here as a plain function over a string and is tested route by route.
@@ -50,7 +51,7 @@ export const DOCK_SLOTS: readonly DockSlot[] = [
     key: "generate", href: path("prompts", "/prompts"), icon: Sparkles, primary: true,
     owns: [path("generator", "/generator"), "/k/"],
   },
-  { key: "tools", href: path("tools", "/tools"), icon: Wrench, owns: [path("retouch", "/retusz")] },
+  { key: "tools", href: path("tools", "/tools"), icon: Wrench, owns: [path("retouch", PACKSHOT_PATH)] },
   // The account screen. Not a registry feature — see the note above.
   { key: "profile", href: "/settings", icon: User },
 ] as const;

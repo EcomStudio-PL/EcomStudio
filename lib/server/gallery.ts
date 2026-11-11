@@ -1,4 +1,5 @@
 import "server-only";
+import { customerPrompt, promptOrigin } from "@/lib/generation-prompt";
 import { galleryModes, galleryToolForOperation, isGalleryTool, type GalleryToolId } from "@/lib/gallery-tools";
 import { QUALITIES } from "@/lib/ai/types";
 import { GALLERY_PAGE_MAX, GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
@@ -10,12 +11,12 @@ import type { GalleryTrial } from "@/lib/trial-watermark/types";
  * GENERATION GALLERY — the one server-side projection every gallery surface
  * uses. One card per generated IMAGE (asset), newest first, keyset-paginated.
  *
- * PROMPT SAFETY is enforced here by column choice, not by trust downstream:
- * the customer-visible text is generation_jobs.prompt_text (populated ONLY
- * for the customer's own prompts — engine jobs store NULL by design) or the
- * concept's customer_description (seller-facing copy written for their
- * eyes). The encrypted engine prompt never appears in any select this file
- * makes.
+ * PROMPT SAFETY is enforced here, not by trust downstream: the only prompt
+ * text projected is the customer's OWN (lib/generation-prompt.ts — a job
+ * the database marks prompt_origin = 'custom', without the app's "AVOID:"
+ * line). Engine and tool jobs project null (the preview says „Ujęcie
+ * zaprojektowane przez GrovBase.”); the concept's engine-written
+ * description and the encrypted engine prompt are never selected.
  */
 
 export type GallerySessionType = "advertising" | "lifestyle";
@@ -79,7 +80,7 @@ export type GalleryItem = {
   product: string | null;
   sessionType: GallerySessionType | null;
   origin: "engine" | "custom" | null;
-  /** Customer-safe text: their own prompt, or the concept's seller copy. */
+  /** The customer's OWN prompt („Stwórz zdjęcie”), else null — never engine text. */
   prompt: string | null;
   favorite: boolean;
   note: string | null;
@@ -164,8 +165,7 @@ const SELECT_BASE = `
     aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id, settings,
     quantity, credits_charged, reference_image_ids, latency_ms,
     ai_models(display_name, name, pricing),
-    prompt_sessions(session_type),
-    generated_prompts!generation_jobs_prompt_id_fkey(customer_description)
+    prompt_sessions(session_type)
   )
 `;
 
@@ -190,7 +190,7 @@ type Row = {
     model_id: string | null;
     settings: {
       quality?: unknown; reference_paths?: unknown; inspiration_paths?: unknown;
-      inspiration_count?: unknown; operation?: unknown;
+      inspiration_count?: unknown; operation?: unknown; negative?: unknown;
     } | null;
     quantity: number | null;
     credits_charged: number | null;
@@ -198,7 +198,6 @@ type Row = {
     latency_ms: number | null;
     ai_models: { display_name: string | null; name: string; pricing?: unknown } | null;
     prompt_sessions: { session_type: string | null } | null;
-    generated_prompts: { customer_description: string | null } | null;
   } | null;
 };
 
@@ -278,7 +277,7 @@ export async function listGalleryItems(
     rows = rows.filter((r) =>
       (r.products?.name ?? "").toLowerCase().includes(q)
       || (r.generation_jobs?.ai_models?.display_name ?? r.generation_jobs?.ai_models?.name ?? "").toLowerCase().includes(q)
-      || (r.generation_jobs?.prompt_text ?? r.generation_jobs?.generated_prompts?.customer_description ?? "").toLowerCase().includes(q));
+      || (customerPrompt(r.generation_jobs) ?? "").toLowerCase().includes(q));
   }
 
   // ONE batched signing call for everything on the page (originals + thumbs).
@@ -303,12 +302,9 @@ export async function listGalleryItems(
     if (job && job.status !== "completed") continue;
     const model = job?.ai_models ? (job.ai_models.display_name || job.ai_models.name) : null;
     const st = job?.prompt_sessions?.session_type;
-    const origin: GalleryItem["origin"] = job?.prompt_origin === "custom" ? "custom"
-      : job?.prompt_origin === "ecomstudio" ? "engine"
-        : job?.prompt_text ? "custom" : job?.prompt_id ? "engine" : null;
-    const prompt = job?.prompt_text?.trim()
-      || job?.generated_prompts?.customer_description?.trim()
-      || null;
+    // The customer's own words only (lib/generation-prompt.ts).
+    const origin: GalleryItem["origin"] = promptOrigin(job);
+    const prompt = customerPrompt(job);
     const listLen = (v: unknown) => Array.isArray(v) ? v.length : 0;
     // Paths first (every job since the catalogue was dropped), the legacy
     // product-image ids as the fallback for older rows.

@@ -1,4 +1,5 @@
 import "server-only";
+import { RETOUCHED_PREFIX, retouchedJobId } from "@/lib/thumbnail/reuse";
 import { createHash, randomUUID } from "node:crypto";
 import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
@@ -129,6 +130,21 @@ export function validPhotoPath(path: unknown, workspaceId: string): path is stri
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * A PHOTO ALREADY RETOUCHED in an earlier Miniaturka of this workspace,
+ * carried into a new one („Użyj do nowej miniaturki”): `retouched:<the Retusz
+ * job's id>`. Not a path the browser could point anywhere — the server finds
+ * the job's own stored file (this workspace, a Retusz job, its file in the
+ * library) and checks it the way a reused pass is checked. Retusz OFF: that
+ * file is the photo, nothing is retouched or charged again. Retusz ON: the
+ * pass counts as already paid (the reuse rule of a retry).
+ */
+export const CARRIED_PREFIX = RETOUCHED_PREFIX;
+export const carriedJobId = retouchedJobId;
+/** A photo a run may take: a stored upload of this workspace, or a carried Retusz result. */
+export const validInputPhoto = (photo: unknown, workspaceId: string): photo is string =>
+  validPhotoPath(photo, workspaceId) || carriedJobId(photo) !== null;
+
 /** The provider call's own timeout: the operator's setting, within the range
  *  one invocation can hold (RANGES.timeoutMs). */
 const callBudgetMs = (input: StoredInput) => Math.min(input.config.timeout_ms, RANGES.timeoutMs.max);
@@ -157,7 +173,7 @@ export async function startThumbnailRun(
   const quotedTotal = typeof body.quotedTotal === "number" && Number.isInteger(body.quotedTotal) ? body.quotedTotal : null;
   if (!attempt || quotedTotal === null || !Array.isArray(body.photos)) return { ok: false, error: "invalid_input" };
   const photos = body.photos as unknown[];
-  if (photos.length === 0 || !photos.every((p) => validPhotoPath(p, workspaceId))) return { ok: false, error: "invalid_input" };
+  if (photos.length === 0 || !photos.every((p) => validInputPhoto(p, workspaceId))) return { ok: false, error: "invalid_input" };
 
   const state = await readThumbnailState(supabase);
   if (!state.ready || !state.config || !state.prompt || state.thumbnailCredits === null) {
@@ -167,13 +183,21 @@ export async function startThumbnailRun(
   if (photos.length > max) return { ok: false, error: "too_many_photos" };
   if (retouch && !state.retouch.available) return { ok: false, error: "retouch_unavailable" };
 
+  // Carried Retusz results: each must still be a delivered Retusz job of
+  // this workspace with its file in the library — checked before any quote.
+  const carried = await carriedRetouches(supabase, workspaceId, photos as string[]);
+  if (carried === "unknown") return { ok: false, error: "unavailable" };
+  if (carried === "missing") return { ok: false, error: "retouch_reuse_missing" };
+
   const reuseFrom = typeof body.reuseFrom === "string" && UUID.test(body.reuseFrom) ? body.reuseFrom : null;
-  const reuse = retouch && reuseFrom
+  const fromRetry = retouch && reuseFrom
     ? await reusableRetouches(supabase, userId, workspaceId, reuseFrom, photos as string[])
     : (photos as string[]).map(() => null);
   // The earlier run could not be read: not "nothing to reuse" — the
   // customer would be quoted (and charged) for passes already paid.
-  if (!reuse) return { ok: false, error: "unavailable" };
+  if (!fromRetry) return { ok: false, error: "unavailable" };
+  // Retusz ON: a carried photo's pass is one already paid for.
+  const reuse = fromRetry.map((r, i) => (retouch ? carried[i] ?? r : r));
   const quote = quoteTotal({
     photos: photos.length, retouch,
     retouchUnit: state.retouch.available ? state.retouch.unit : null,
@@ -228,6 +252,29 @@ async function freshBalance(supabase: Client, workspaceId: string): Promise<numb
   const { data, error } = await supabase.from("credit_wallets").select("balance").eq("workspace_id", workspaceId).maybeSingle();
   if (error) return null;
   return data?.balance ?? 0;
+}
+
+/**
+ * The carried photos' Retusz results (null for an ordinary photo): "missing"
+ * when one is no longer a delivered Retusz job of this workspace with its
+ * file (deleted from the library), "unknown" when it could not be read.
+ */
+async function carriedRetouches(
+  supabase: Client, workspaceId: string, photos: string[],
+): Promise<({ job_id: string; path: string } | null)[] | "missing" | "unknown"> {
+  const out: ({ job_id: string; path: string } | null)[] = [];
+  for (const photo of photos) {
+    const id = carriedJobId(photo);
+    if (!id) {
+      out.push(null);
+      continue;
+    }
+    const path = await retouchAssetPath({ supabase, workspaceId }, id);
+    if (path === "unknown") return "unknown";
+    if (!path) return "missing";
+    out.push({ job_id: id, path });
+  }
+  return out;
 }
 
 /**
@@ -551,7 +598,7 @@ async function priorRetouchJob(ctx: Ctx, photo: string, exclude: Set<string>):
 /** The stored file of a delivered Retusz job in this workspace ("completed",
  *  or "processing" with its file written), null when there is none,
  *  "unknown" when it could not be read. */
-async function retouchAssetPath(ctx: Ctx, jobId: string): Promise<string | null | "unknown"> {
+async function retouchAssetPath(ctx: Pick<Ctx, "supabase" | "workspaceId">, jobId: string): Promise<string | null | "unknown"> {
   const { data: job, error } = await ctx.supabase.from("generation_jobs")
     .select("id, status, workspace_id, settings").eq("id", jobId).maybeSingle();
   if (error) return "unknown";
@@ -650,7 +697,21 @@ async function inLane(ctx: Ctx, prep: Prepared): Promise<Sent> {
  */
 async function preparePhotos(ctx: Ctx, steps: StepRunRow[], trial: TrialDecision): Promise<Prepared> {
   const { input } = ctx;
+  // Retusz OFF, a carried photo: the Retusz job's own stored file, found
+  // again now (a file deleted from the library since stops the run here,
+  // before anything is charged).
+  const carriedPaths = new Map<number, string | null | "unknown">();
+  if (!input.retouch) {
+    for (let i = 0; i < input.photos.length; i++) {
+      const id = carriedJobId(input.photos[i]);
+      if (id) carriedPaths.set(i, await retouchAssetPath(ctx, id));
+    }
+    if ([...carriedPaths.values()].includes("unknown")) return { error: "source_unavailable" };
+    if ([...carriedPaths.values()].includes(null)) return { error: "retouch_reuse_missing" };
+  }
   const sources: (Source | null)[] = input.photos.map((photo, i) => {
+    const carried = carriedJobId(photo);
+    if (!input.retouch && carried) return { bucket: "generation-assets", path: carriedPaths.get(i) as string, retouchJobId: carried };
     if (!input.retouch) return { bucket: "product-images", path: photo, retouchJobId: null };
     // Retusz ON: exactly the result of THIS photo's Retusz pass — never the
     // original in its place, never a preview derivative.
@@ -682,7 +743,12 @@ async function prepareOne(ctx: Ctx, src: Source, i: number, trialRun: boolean): 
     // photo, and its file must be the one it recorded (read before the bytes).
     const record = src.retouchJobId ? await retouchRecord(ctx, src.retouchJobId) : null;
     if (record === "unknown") return "source_unavailable";
-    if (src.retouchJobId && (!record || record.reference !== ctx.input.photos[i])) return "retouch_output_mismatch";
+    // A carried photo is bound to its Retusz job itself (the job names its
+    // own original); any other pass to THIS run's photo.
+    const carried = carriedJobId(ctx.input.photos[i]);
+    if (src.retouchJobId && (!record || (carried ? carried !== src.retouchJobId : record.reference !== ctx.input.photos[i]))) {
+      return "retouch_output_mismatch";
+    }
     // TRIAL: a Retusz pass made for a trial workspace is stored MARKED, and a
     // mark is never sent to the model. Its clean original is read instead —
     // only by a composition that is itself a trial one (whose own result is
@@ -1286,7 +1352,7 @@ type JobAsset = { id: string | null; path: string; width: number | null; height:
 
 /** The library file of a job in this workspace: null when there is none,
  *  "unknown" when it could not be read. */
-async function jobAsset(ctx: Ctx, jobId: string): Promise<JobAsset | null | "unknown"> {
+async function jobAsset(ctx: Pick<Ctx, "supabase" | "workspaceId">, jobId: string): Promise<JobAsset | null | "unknown"> {
   const { data: gens, error } = await ctx.supabase.from("generations")
     .select("generation_assets(id, storage_path, width, height)").eq("job_id", jobId).limit(5);
   if (error || !gens) return "unknown";

@@ -111,7 +111,7 @@ export async function matchRedirect(pathname: string): Promise<Redirect | null> 
 export const PROTECTED_SOURCES = [
   "/", "/api", "/admin", "/home", "/login", "/register", "/logout",
   "/dashboard", "/settings", "/profile", "/generator", "/library", "/prompts", "/history",
-  "/credits", "/plan", "/plany", "/cennik", "/tools", "/inspirations", "/support", "/retusz",
+  "/credits", "/plan", "/plany", "/cennik", "/tools", "/inspirations", "/support", "/retusz", "/narzedzia/packshot",
   "/wideo", "/k", "/podglad", "/_next", "/favicon.ico", "/sitemap.xml",
   "/robots.txt", "/manifest.webmanifest",
 ];

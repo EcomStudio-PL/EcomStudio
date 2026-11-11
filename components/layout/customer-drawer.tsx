@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, ChevronLeft, ChevronRight, Images, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield,
+  ArrowUpRight, ChevronLeft, ChevronRight, Images, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield, Wrench,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
@@ -11,6 +11,8 @@ import {
   type AvailabilityMap, type MenuBadge, type MenuGate,
 } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
+import { ALL_TOOLS_ENTRY, imageMenuRows } from "@/lib/topnav";
+import { HELP_HREF } from "@/lib/tool-routes";
 import { creditUsage, USAGE_BAR, USAGE_TEXT } from "@/lib/credit-usage";
 import { Drawer } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
@@ -48,7 +50,7 @@ import { cn } from "@/lib/utils";
  * repeats them. The account card on top and the sign-out / language / theme
  * row pinned at the bottom are unchanged.
  */
-export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability }: {
+export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability, menuItems }: {
   name: string; email?: string; credits: number;
   /** The plan's monthly grant — `subscription_plans.monthly_credits` — which
    *  the meter measures the balance against. Null when the plan has none. */
@@ -59,6 +61,9 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    *  role, so the preview is never a trap. */
   navAdmin?: boolean;
   availability?: AvailabilityMap;
+  /** The „Obrazy” list's items (lib/tool-layout.ts `menuItemKeys`) — the
+   *  phone gets the same rows as the header's image menu. */
+  menuItems?: readonly string[];
 }) {
   const { t, locale } = useI18n();
   const { open, setOpen } = useDrawer();
@@ -189,15 +194,40 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </div>
       </div>
 
+      {/* ── OBRAZY ───────────────────────────────────────────────────────────
+          The header's image menu, on a phone: the same rows from the same
+          list (lib/topnav.ts `imageMenuRows`) — icon, name, one line — and
+          the one „Wszystkie narzędzia” link under them. */}
+      {(() => {
+        const rows = imageMenuRows(avail, seesRestricted, menuItems);
+        const hub = show(ALL_TOOLS_ENTRY.href);
+        if (rows.length === 0 && !hub) return null;
+        return (
+          <nav aria-label={t("topnav.image")} className="mt-3">
+            <p className="overline mb-1.5 px-1">{t("topnav.image")}</p>
+            <div className="space-y-1">
+              {rows.map(({ entry, badge: pill }) => (
+                <Tile key={entry.key} href={entry.href} label={t(entry.labelKey ?? entry.key)} sub={entry.subKey ? t(entry.subKey) : undefined}
+                  icon={entry.icon} onNavigate={closeNav} badge={pill === "hidden" ? t("mega.hidden") : badgeLabel(pill, t)} />
+              ))}
+              {hub && <Tile href={ALL_TOOLS_ENTRY.href} label={t(ALL_TOOLS_ENTRY.labelKey!)} icon={Wrench} onNavigate={closeNav} />}
+            </div>
+          </nav>
+        );
+      })()}
+
       {/* ── DIRECT ROWS ──────────────────────────────────────────────────── */}
       <div className="mt-3 space-y-1">
         {show("/library") && (
           <Tile href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} badge={badge("/library")} />
         )}
-        {show("/grovnews") && (
+        {/* GrovNews is listed for staff only at launch (the module, its data
+            and its own server-side entitlement check are unchanged). */}
+        {seesRestricted && show("/grovnews") && (
           <Tile href="/grovnews" label={t("grovnews.title")} icon={Newspaper} onNavigate={closeNav} badge={badge("/grovnews")} />
         )}
-        <Tile href="/support" label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
+        {/* Pomoc is the contact page with its form. */}
+        <Tile href={HELP_HREF} label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
         <Tile href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />
         {/* ADMIN IS A ROLE CHECK, NOT A STYLE. Hiding this tile is the LAST of
             three gates, not the only one: `/admin` has its own server-side
@@ -271,8 +301,10 @@ function badgeLabel(kind: MenuBadge, t: (k: string) => string): string | null {
  * with the icon plate filled. `isNavActive` decides that — the same rule every
  * other menu in the product uses — so at most one tile can ever claim it.
  */
-function Tile({ href, match, scroll, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)", tinted = false }: {
+function Tile({ href, match, scroll, label, sub, icon: Icon, onNavigate, badge, rgb = "var(--accent)", tinted = false }: {
   href: string;
+  /** One line under the label (the „Obrazy” rows say what each tool does). */
+  sub?: string;
   /** The path whose screens make this tile the current one, when `href` is a
    *  view rather than a path — a category's tile opens a section of /tools but
    *  is "here" on the screens of its own workflows. */
@@ -322,11 +354,16 @@ function Tile({ href, match, scroll, label, icon: Icon, onNavigate, badge, rgb =
       )}>
         <Icon size={16} strokeWidth={active ? 2.3 : 2} />
       </span>
-      <span className={cn(
-        "min-w-0 flex-1 truncate text-[13px]",
-        active ? "font-semibold text-ink" : tinted ? "font-semibold text-[rgb(var(--tile))]" : "font-medium text-ink",
-      )}>
-        {label}
+      <span className="min-w-0 flex-1">
+        <span className={cn(
+          "block truncate text-[13px]",
+          active ? "font-semibold text-ink" : tinted ? "font-semibold text-[rgb(var(--tile))]" : "font-medium text-ink",
+        )}>
+          {label}
+        </span>
+        {/* Up to two lines: a phone is narrower than the header's panel, and
+            a one-liner cut mid-word stops saying what the tool does. */}
+        {sub && <span className="line-clamp-2 text-[11px] leading-snug text-faint">{sub}</span>}
       </span>
       {badge && (
         <span className="shrink-0 rounded-full bg-[rgb(var(--ink)/0.08)] px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wide text-faint">

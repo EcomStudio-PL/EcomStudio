@@ -1,4 +1,5 @@
 import "server-only";
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import { getCurrentWorkspace, getProfile, type Client } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
@@ -263,7 +264,7 @@ export async function loadSellerHome(supabase: Client, user: {
     if (layout.flags[key]?.tools === false && !isAdmin) return null;
     const gate = statusOfBadge(itemBadge(availability, item));
     const href = item.href;
-    if (href === "/retusz") {
+    if (href === PACKSHOT_PATH) {
       return { key, href, status: status(gate, Boolean(retouch) && retouchConfigured), credits: retouchCredits };
     }
     if (href === THUMBNAIL_PATH) {

@@ -34,7 +34,10 @@ import {
   menuItemKeys, normalizeLayout, placementsOf, sectionKeyFor, startExtras, unplacedItems,
   type ToolsLayout,
 } from "@/lib/tool-layout";
-import { IMAGE_EDIT, editEntriesFor, menuShowsGenerator } from "@/lib/topnav";
+import { ALL_TOOLS_ENTRY, imageMenuEntries, imageMenuRows } from "@/lib/topnav";
+import { MENU_ORDER } from "@/lib/tool-layout";
+import { THUMBNAIL_PATH } from "@/lib/thumbnail/config";
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import { homeModel } from "@/lib/home-sections";
 import { CHIPS, EFFECTS, RAIL, VIDEO_ROW } from "@/lib/home-picks";
 import pl from "@/lib/i18n/dictionaries/pl.json";
@@ -80,8 +83,10 @@ console.log("A. the sections, in the order the brief set");
 console.log("\nB. what each section holds, in order, under the brief's names");
 {
   const expected: Record<string, string[]> = {
-    generate: ["Generator GrovBase", "Własny prompt"],
-    ecommerce: ["Retusz zdjęć", "Usuń tło", "Zmień kolor tła", "Dodaj tło AI", "Dodaj cień", "Miniaturka", "Matching"],
+    // Premiera: the launch names — „Generator GrovShot”, „Stwórz zdjęcie”
+    // and „Packshot” (formerly „Retusz zdjęć”, the same item and engine).
+    generate: ["Generator GrovShot", "Stwórz zdjęcie"],
+    ecommerce: ["Packshot", "Usuń tło", "Zmień kolor tła", "Dodaj tło AI", "Dodaj cień", "Miniaturka", "Matching"],
     moda: ["Niewidzialny manekin", "Leżący produkt", "Wyprasuj", "Zmiana postaci", "Zmiana twarzy modela", "Sesja zewnątrz", "Matching"],
     prepare: ["Zmiana rozmiaru", "Kompresja", "Rozszerz kadr AI", "Watermark"],
     inne: ["Etykieta", "Opakowanie", "Ulotka", "Piktogramy"],
@@ -203,7 +208,7 @@ console.log("\nF. three independent switches — each moves only its own surface
     const m = homeModel(LIVE, false, l);
     return {
       tools: keysOn(l).has(key),
-      menu: editEntriesFor(menuItemKeys(l)).some((e) => e.key === key) || (key === "generator" && menuShowsGenerator(menuItemKeys(l))),
+      menu: imageMenuEntries(menuItemKeys(l)).some((e) => e.key === key),
       start: [...m.rail, ...m.chips, ...m.effects, ...m.video].some((c) => c.key === key),
     };
   };
@@ -223,8 +228,10 @@ console.log("\nF. three independent switches — each moves only its own surface
   check("an item switched onto Start that no curated row names joins „Wybierz efekt”",
     startExtras(arranged((l) => { l.flags.expand.start = true; })).join() === "expand"
     && homeModel(LIVE, false, arranged((l) => { l.flags.expand.start = true; })).effects.some((c) => c.key === "expand"));
-  check("the menu's tool column never carries the generator (it is the panel's button)",
-    !editEntriesFor(menuItemKeys(DEFAULT_LAYOUT)).some((e) => e.key === "generator"));
+  check("the generator is a row of the „Obrazy” list like the others (no separate button)",
+    imageMenuEntries(menuItemKeys(DEFAULT_LAYOUT)).some((e) => e.key === "generator"));
+  check("the hub is never a row — the menu draws it once, at the bottom",
+    !imageMenuEntries(menuItemKeys(DEFAULT_LAYOUT)).some((e) => e.href === ALL_TOOLS_ENTRY.href));
 }
 
 /* ── G ─────────────────────────────────────────────────────────────────── */
@@ -257,7 +264,9 @@ console.log("\nH. the routes are the ones the tools always had");
 {
   // Every destination the brief names, as it was on the day this shipped.
   const ROUTES: Record<string, string> = {
-    generator: "/prompts", custom: "/generator", retouch: "/retusz",
+    // Premiera moved Retusz (now „Packshot”) to its public address; /retusz
+    // answers 301 there (next.config.mjs).
+    generator: "/prompts", custom: "/generator", retouch: PACKSHOT_PATH,
     // The four photo tools are screens of their own again (Photoroom-backed):
     // "Usuń tło", "Zmień kolor tła", "Dodaj tło AI", "Dodaj cień".
     remove_bg: "/tools/remove_bg", background: "/tools/white_bg",
@@ -286,9 +295,18 @@ console.log("\nH. the routes are the ones the tools always had");
 /* ── I ─────────────────────────────────────────────────────────────────── */
 console.log("\nI. the defaults change nothing outside /tools");
 {
-  check("the menu's tool column is exactly what it was",
-    editEntriesFor(menuItemKeys(DEFAULT_LAYOUT)).map((e) => e.href).join() === IMAGE_EDIT.map((e) => e.href).join());
-  check("…and the generator button is still there", menuShowsGenerator(menuItemKeys(DEFAULT_LAYOUT)));
+  check("the „Obrazy” list follows MENU_ORDER — the one place the order is decided",
+    imageMenuEntries(menuItemKeys(DEFAULT_LAYOUT)).map((e) => e.key).join() === MENU_ORDER.join());
+  {
+    const rows = imageMenuEntries(menuItemKeys(DEFAULT_LAYOUT)).slice(0, 4);
+    check("launch rows: Generator GrovShot → /prompts, Miniaturka, Packshot → /narzedzia/packshot, Stwórz zdjęcie → /generator",
+      rows.map((e) => `${e.key}=${e.href}=${e.labelKey}`).join("|")
+        === `generator=/prompts=mega.createImage|ecommerce.thumbnail=${THUMBNAIL_PATH}=wf.ecommerce.thumbnail.name|retouch=${PACKSHOT_PATH}=tools.retouch.name|custom=/generator=mega.createPhoto`,
+      rows.map((e) => `${e.key}=${e.href}=${e.labelKey}`).join("|"));
+    check("…each with a one-liner", rows.every((e) => !!e.subKey));
+    check("the Packshot row is NOT the old e-commerce packshot workflow",
+      !rows.some((e) => e.href === "/k/ecommerce/packshot" || e.key === "ecommerce.packshot"));
+  }
   check("only the menu's own entries start with their menu switch on",
     CATALOG_ITEMS.filter((c) => DEFAULT_LAYOUT.flags[c.key].menu).map((c) => c.key).sort().join()
       === [...MENU_DEFAULT].filter((k) => catalogItem(k)).sort().join());
@@ -321,8 +339,12 @@ console.log("\nJ. the storage contract");
   check("the raw settings editor cannot write it, nor list it",
     read("app/actions/admin.ts").includes("if (key === TOOLS_LAYOUT_KEY) return")
     && read("app/admin/system/page.tsx").includes("s.key !== TOOLS_LAYOUT_KEY"));
+  // The one exception is DATA, not schema: the launch (0172) switches
+  // „Stwórz zdjęcie” into the menu by setting one flag of the stored row.
   check("no migration was needed: it is a row of app_settings (public read, admin write)",
-    !fs.readdirSync("supabase/migrations").some((f) => read(`supabase/migrations/${f}`).includes("tools_layout")));
+    !fs.readdirSync("supabase/migrations").filter((f) => f !== "0172_launch_tool_visibility.sql")
+      .some((f) => read(`supabase/migrations/${f}`).includes("tools_layout"))
+    && !/\b(create|alter)\s+(table|policy|function)\b/i.test(read("supabase/migrations/0172_launch_tool_visibility.sql").replace(/--[^\n]*/g, "")));
   const surfaces = ["app/(app)/tools/page.tsx", "app/(app)/layout.tsx", "components/home/product-surface.tsx"];
   check("/tools, the app menus and Start all read the one stored layout",
     surfaces.every((f) => /getToolsLayout\(supabase\)/.test(read(f))));

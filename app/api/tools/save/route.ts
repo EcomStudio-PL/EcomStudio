@@ -48,6 +48,14 @@ export async function POST(request: Request) {
   if (blockedFeature) {
     return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
   }
+  // A run started from the image preview's smart actions also answers to
+  // their one switch (preview_actions), on the server.
+  if (String(form.get("origin") ?? "") === "preview") {
+    const blockedActions = await featureBlockedForApi(supabase, "preview_actions");
+    if (blockedActions) {
+      return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedActions }, { status: 503 });
+    }
+  }
   const productId = typeof form.get("productId") === "string" ? String(form.get("productId")) : "";
 
   const mime = file.type || "image/png";

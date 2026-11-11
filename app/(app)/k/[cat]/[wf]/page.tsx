@@ -14,6 +14,7 @@ import { fashionModel, fashionToolAvailable } from "@/lib/server/fashion";
 import { engineOutputsPerRun } from "@/lib/server/engine/tool-run";
 import type { FashionRuntimeData, ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
 import { FeatureGate } from "@/components/feature-gate";
+import { featureForHref } from "@/lib/features";
 import { viewerIsAdmin } from "@/lib/server/feature-availability";
 import { readThumbnailState } from "@/lib/server/thumbnail/settings";
 import { latestOpenThumbnailRun } from "@/lib/server/thumbnail/status";
@@ -143,6 +144,12 @@ export default async function WorkflowPage({ params }: {
   // same code, nothing of an account. Whether it is listed at all (404
   // otherwise) is publicToolAudience's to decide, from the catalogue.
   const isThumbnail = category.key === THUMBNAIL_CATEGORY && workflow.key === THUMBNAIL_WORKFLOW;
+  // A workflow with a switch of its own (Miniaturka, the other e-commerce
+  // workflows, the Moda tools) answers to it here, on the server, besides
+  // its category's switch (the layout's): DISABLED is a 404 for a customer.
+  const own = featureForHref(`/k/${category.slug}/${workflow.key}`);
+  const ownFeature = own && own !== `image_${category.key}` ? own : null;
+  const gated = (node: React.ReactNode) => (ownFeature ? <FeatureGate feature={ownFeature}>{node}</FeatureGate> : node);
   const pub = publicToolForPath(`/k/${category.slug}/${workflow.key}`);
   const audience = pub ? await publicToolAudience(pub.path) : null;
   if (pub && audience?.kind === "guest") {
@@ -156,7 +163,7 @@ export default async function WorkflowPage({ params }: {
         </div>
       </ToolScope>
     );
-    return isThumbnail ? <FeatureGate feature="ecommerce_thumbnail">{guestScreen}</FeatureGate> : guestScreen;
+    return gated(guestScreen);
   }
 
   const supabase = await createClient();
@@ -257,5 +264,5 @@ export default async function WorkflowPage({ params }: {
   // Miniaturka has its own switch (status, "Wkrótce", maintenance) inside the
   // category's: the category layout gates the route, this gates the tool.
   const scoped = pub && audience ? <ToolScope tool={pub} audience={audience}>{screen}</ToolScope> : screen;
-  return isThumbnail ? <FeatureGate feature="ecommerce_thumbnail">{scoped}</FeatureGate> : scoped;
+  return gated(scoped);
 }

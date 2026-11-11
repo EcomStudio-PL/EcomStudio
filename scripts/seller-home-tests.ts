@@ -159,12 +159,16 @@ const FROZEN: readonly [string, string][] = [
   // component) is rendered after <main> — so after „Zgłoś błąd” — inside
   // <HomeFooter>, which shows it on /home only (by the page on screen); its
   // three reads ride the existing batch. Nothing else moved.
-  ["app/(app)/layout.tsx", "797e20586bff35eebb53d49c70b5d1b419e9cba13e11d8ef6e522f8fc0b6ce33"],
+  // Premiera: the phone drawer gets the header's „Obrazy” items (one prop,
+  // menuItems); nothing else moved.
+  ["app/(app)/layout.tsx", "e59bd0d9c63470891e0c8444f2aa0bbb435d4db26cdb7cd2a0e2c05d9ac1bee0"],
   // Public Tools V1 (activation): a visitor's pages wear the same dock; with
   // `guest`, the account slots open the sign-in dialog in place. A member's
   // dock (no `guest`) renders and behaves exactly as before.
   ["components/layout/customer-bottom-nav.tsx", "ff387b6a2c72923921fcd1c06185605a596f471d42cc8c1b14d2f740ee6c8567"],
-  ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
+  // Re-pinned by Premiera: the „Obrazy” list (the header's own rows),
+  // „Pomoc” → /kontakt, GrovNews listed for staff only.
+  ["components/layout/customer-drawer.tsx", "82bd0594fe9a1855cae9726996fa8ed17bc325966e98be47c48c47736e5e5d33"],
   // Kontakt V2: the dialog gained one line — a link to /kontakt?temat=problem
   // (a bug) or ?temat=inne (anything else); the button and the dialog's own
   // flow are unchanged.
@@ -177,7 +181,13 @@ for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync
 // and lights the item on either path. Undo exactly that and the file is
 // byte-identical to the frozen release — no other pixel of the bar moved.
 {
-  const bar = readFileSync("components/layout/mega-topbar.tsx", "utf8");
+  // Premiera rewrote the „Obrazy” panel (the compact four-row list), made
+  // „Wideo” follow its switch and listed GrovNews for staff only: the current
+  // file is pinned below, and the chain before it is still proven on the last
+  // release before Premiera (e696a69).
+  const bar = execFileSync("git", ["show", "e696a69:components/layout/mega-topbar.tsx"], { encoding: "utf8" });
+  check("components/layout/mega-topbar.tsx is the reviewed Premiera version",
+    sha(readFileSync("components/layout/mega-topbar.tsx")) === "1ccd1a3a762609c6ee441a0d2f63228ae1c7f7a167073deaa1224c5f81e1a088");
   const PLANY_NOTE = "          // A visitor goes to the PUBLIC cennik; /plan sits behind the login.\n";
   // Public Tools V1 (guest doors): login outlined, the long signup promise
   // from xl up. Undone here as well, so the frozen digest still holds.
@@ -792,7 +802,10 @@ const ENGINE: readonly [string, string][] = [
   // paths FIRST and checks a shot's chosen photo against them
   // (lib/server/shot-plan.ts → invalid_shot_plan, before any paid call). The
   // engine, its prompts and the request it sends are untouched (test:genv3).
-  ["app/api/prompts/generate/route.ts", "95657fea7aee587f0d80ad9b3effae4ebd98e55a01906a9f7a239e55fda7590d"],
+  // Re-pinned by Premiera (prompt privacy): after the session the route reads
+  // the concept ids on the server and returns them, so the browser no longer
+  // reads generated_prompts itself. The engine and its prompts are untouched.
+  ["app/api/prompts/generate/route.ts", "0d3c456cba6e9481994364ffac06f96cbca28332987b702b22d7e17c56b33138"],
   ["app/api/concepts/generate/route.ts", "7e9b4a0069bfc227e1aaec8f9189e84ef188a063930385dbc849f820fd1c0075"],
   // Re-pinned by the trial-watermark task: the route passes its own start
   // time (routeStartedAt) so the trial-image gate counts the hybrid engine's
@@ -800,7 +813,9 @@ const ENGINE: readonly [string, string][] = [
   ["app/api/generate/route.ts", "5d1d820fad55b6f14913a51ef54fee0609e29124401f8742cce2a36959176c6e"],
   // Re-pinned by the photo-tools task: the white_bg / ai_* screens' own
   // switches also gate this endpoint.
-  ["app/api/tools/run/route.ts", "8bf75acfde6ebcd36b3fbcb70318f3f081559b8c04b80ef434cb22fbe17114c6"],
+  // Re-pinned by Premiera: a run started from the image preview also answers
+  // to the preview_actions switch.
+  ["app/api/tools/run/route.ts", "51dbe8133e0580a42a0dca11305c33b633939ac28eeb33fa5d6a864bd70cc5f9"],
   // Re-pinned by the Miniaturka task: one OPT-IN prop (`onMove`, photo order
   // arrows). No other caller passes it, so every other uploader renders and
   // uploads exactly as before.
@@ -891,7 +906,8 @@ const RETUSZ: readonly [string, string][] = [
   // (the same workspace, priced through the server's own read, no wallet).
   // The member's branch, the route and the request are unchanged — the
   // forensic suite holds the request byte for byte.
-  ["app/(app)/retusz/page.tsx", "7fd6fc379aa05f06ba6472df4eeb27df6288b1b6c3b43b0c889cdcacf3457427"],
+  // Moved byte for byte to the tool's new address by Premiera (same digest).
+  ["app/(app)/narzedzia/packshot/page.tsx", "7fd6fc379aa05f06ba6472df4eeb27df6288b1b6c3b43b0c889cdcacf3457427"],
 ];
 for (const [file, digest] of RETUSZ) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
 check("Retusz is reached only by its route — never prefilled, never imported", !/RetouchWorkspace|components\/retouch|runRetouch|retouchStepConfig/.test(SH + loader));
@@ -901,8 +917,13 @@ check("Retusz is reached only by its route — never prefilled, never imported",
 // (same layout, same switches, prices through the server's read, no banners);
 // pinned to that version. The layout module is untouched.
 check("/tools' own page and layout are untouched (but for the Public Tools V1 visitor branch); the catalogue only by the photo-tools task",
-  sha(readFileSync("app/(app)/tools/page.tsx")) === "e5b9cd62f319853537f4b82c5cff48151a3baca143bf6bf5e48a8d1246a9a05a" && !gitChanged("lib/tool-layout.ts")
-  && sha(readFileSync("lib/tool-cards.ts")) === "1a433b1509141bafab46e7142b3d1d2821ad45b89da16c94b00bc1ffb3b5a2c5");
+  // Premiera re-pinned the catalogue and the layout module: Retusz's card
+  // points at its new address (/narzedzia/packshot), the menu order lives in
+  // MENU_ORDER and the hub names the launch tools („Generator GrovShot”,
+  // „Stwórz zdjęcie”). The /tools page itself is untouched.
+  sha(readFileSync("app/(app)/tools/page.tsx")) === "e5b9cd62f319853537f4b82c5cff48151a3baca143bf6bf5e48a8d1246a9a05a"
+  && sha(readFileSync("lib/tool-layout.ts")) === "ab1d033afb50b6fb59cfd2b6da8f60205f164ecbf93c11b095663aa781268edc"
+  && sha(readFileSync("lib/tool-cards.ts")) === "5ed76b77b4bce0fa7a1f7713fb47b6c5d4e69b27ee2d69de3130285e77396b25");
 
 /* ── 12. handoff ──────────────────────────────────────────────────────────*/
 

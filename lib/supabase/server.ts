@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import type { Database } from "@/lib/database.types";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
 import { fetchWithSkewRetry } from "./skew-retry";
+import { dispatchToken } from "@/lib/server/server-token";
 
 /**
  * One Supabase client per request. The layout and the page it renders both
@@ -21,7 +22,14 @@ export const createClient = cache(async () => {
     cookieOptions: authCookieOptions(persist),
     // A token minted seconds ago is briefly "from the future" for the
     // database node; without this every read right after sign-in fails.
-    global: { fetch: fetchWithSkewRetry() },
+    // The server's own token rides along (0171): it is what lets the
+    // APPLICATION read and write generation_jobs, generated_prompts and
+    // prompt_sessions for the signed-in member — a browser, holding only the
+    // publishable key and the session, cannot (no engine prompt reaches it).
+    global: (() => {
+      const token = dispatchToken();
+      return { fetch: fetchWithSkewRetry(), ...(token ? { headers: { "x-grovbase-server": token } } : {}) };
+    })(),
     cookies: {
       getAll() {
         return cookieStore.getAll();

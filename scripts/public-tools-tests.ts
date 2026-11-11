@@ -13,6 +13,7 @@
  *   H. FAQ: assigning questions to tools
  *   I. source guards: what must never be possible, read from the code itself
  */
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -66,7 +67,7 @@ section("A. WHICH TOOLS ARE PUBLIC");
   check("A4c a category's workflow is a tool keyed like its card, with no public block of its own",
     wf?.key === "moda.flatlay" && wf.panel === "workflow" && wf.seo === false && CATALOG_ITEMS.some((c) => c.key === wf.key)
     && publicToolForPath("/k/ecommerce/thumbnail")?.panel === "thumbnail");
-  check("A5 a trailing slash and a query do not change the answer", isPublicToolPath("/retusz/") && isPublicToolPath("/tools/remove_bg?x=1") && !isPublicToolPath("/retuszx"));
+  check("A5 a trailing slash and a query do not change the answer", isPublicToolPath(`${PACKSHOT_PATH}/`) && isPublicToolPath("/tools/remove_bg?x=1") && !isPublicToolPath(`${PACKSHOT_PATH}x`));
   check("A6 publicToolForPath / publicToolByKey agree", PUBLIC_TOOLS.every((t) => publicToolForPath(t.path)?.key === t.key && publicToolByKey(t.key)?.path === t.path));
   check("A7 the catalogue is not a tool", publicToolForPath(PUBLIC_CATALOGUE_PATH) === null);
 }
@@ -186,8 +187,8 @@ section("G. \"EDYTUJ STRONĘ\"");
   const editable = PUBLIC_TOOLS.filter((t) => t.key !== "retouch" && t.seo !== false);
   const noBlock = editable.filter((t) => !icePageFor(t.path)?.sections.some((s) => s.key === "toolPublic"));
   check("G1 every public tool page but Retusz opens with its public block", noBlock.length === 0, short(noBlock.map((t) => t.path)));
-  check("G2 Retusz stays frozen: not opened, and still listed as such", icePageFor("/retusz") === null
-    && ICE_UNSUPPORTED.some((u) => u.reason === "frozen" && u.path.includes("/retusz")));
+  check("G2 Retusz (Packshot) stays frozen: not opened, and still listed as such", icePageFor(PACKSHOT_PATH) === null
+    && ICE_UNSUPPORTED.some((u) => u.reason === "frozen" && u.path.includes(PACKSHOT_PATH)));
   const badPairs = editable.filter((t) => {
     const page = icePageFor(t.path)!;
     const pairs = page.sections.find((s) => s.key === "toolPublic")!.elements.filter((e) => e.kind === "pair");

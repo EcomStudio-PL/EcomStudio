@@ -6,6 +6,7 @@ import { Wand2 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
+import { RETOUCHED_EVENT, mergeRetouched, retouchedJobId, takeRetouched } from "@/lib/thumbnail/reuse";
 import { useHomeHandoff } from "@/lib/home-handoff";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
@@ -72,9 +73,14 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
   useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
   const retouchOn = retouch && data.retouch.available;
+  // Photos already retouched (carried from an earlier Miniaturka): with
+  // Packshot AI switched back on, their pass counts as paid — the server
+  // prices them the same way (lib/server/thumbnail/run.ts).
+  const carried = photos.filter((p) => retouchedJobId(p.path) !== null).length;
   const quote = useMemo(() => quoteTotal({
     photos: photos.length, retouch: retouchOn, retouchUnit: data.retouch.unit, thumbnailCredits: data.thumbnailCredits ?? 0,
-  }), [photos.length, retouchOn, data.retouch.unit, data.thumbnailCredits]);
+    reused: retouchOn ? carried : 0,
+  }), [photos.length, retouchOn, data.retouch.unit, data.thumbnailCredits, carried]);
   const missing = Math.max(0, quote.total - balance);
 
   /*
@@ -131,6 +137,36 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
 
   // The photo handed over from /home ("Miniaturka" is its default tool).
   useHomeHandoff((file) => { void upload([file]); });
+
+  /*
+    „UŻYJ DO NOWEJ MINIATURKI” — retouched photos offered by an earlier
+    Miniaturka's preview (here, or from the library on another screen). They
+    take their originals' places (by the stored path, never the file name),
+    the rest are appended up to the limit, nothing already here is added
+    twice, and Packshot AI goes OFF: they are retouched already. Nothing
+    starts on its own — the price is recomputed and the customer decides.
+    Only the photo list and that switch change; every other setting stays.
+  */
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+  useEffect(() => {
+    if (session.guest) return;
+    const absorbRetouched = () => {
+      const incoming = takeRetouched();
+      if (!incoming) return;
+      const merged = mergeRetouched(photosRef.current, incoming, data.maxPhotos);
+      photosRef.current = merged.photos;
+      setPhotos(merged.photos);
+      setRetouch(false);
+      if (merged.added + merged.replaced > 0) toast.success(t("thumb.reuse.done"));
+      else if (merged.duplicates > 0) toast.message(t("thumb.reuse.already"));
+      if (merged.skipped > 0) toast.error(t("thumb.reuse.skipped", { n: merged.skipped, max: data.maxPhotos }));
+    };
+    absorbRetouched();
+    window.addEventListener(RETOUCHED_EVENT, absorbRetouched);
+    return () => window.removeEventListener(RETOUCHED_EVENT, absorbRetouched);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.guest, data.maxPhotos]);
 
   const dragging = useFileDrop({
     enabled: true,

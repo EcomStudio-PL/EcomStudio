@@ -1530,7 +1530,7 @@ async function sectionG() {
 /* ══ H. SCOPE ══════════════════════════════════════════════════════════════ */
 
 const FROZEN = [
-  "components/retouch/", "app/(app)/retusz/", "lib/server/retouch", "lib/server/engine/", "lib/ai/", "lib/server/thumbnail/",
+  "components/retouch/", "app/(app)/retusz/", "app/(app)/narzedzia/packshot/", "lib/server/retouch", "lib/server/engine/", "lib/ai/", "lib/server/thumbnail/",
   "components/thumbnail/", "app/api/thumbnail/", "lib/thumbnail/", "app/(app)/layout.tsx", "app/globals.css",
   "components/genv3/workspace.tsx", "lib/server/gallery.ts", "app/api/generations/",
 ];

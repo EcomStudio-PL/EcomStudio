@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { customerPrompt, type PromptOriginRow } from "@/lib/generation-prompt";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
 
@@ -34,8 +35,10 @@ export async function GET(request: Request) {
       .eq("workspace_id", workspace.id).ilike("product_name", like).limit(5),
     supabase.from("generated_prompts").select("id, concept_name, session_id, scene_type")
       .eq("workspace_id", workspace.id).ilike("concept_name", like).limit(5),
-    supabase.from("generation_jobs").select("id, prompt_text, status, created_at")
-      .eq("workspace_id", workspace.id).eq("status", "completed").ilike("prompt_text", like)
+    // Only the customer's OWN prompts are searchable and shown as a title:
+    // a job with any other origin may hold engine text (older rows).
+    supabase.from("generation_jobs").select("id, prompt_text, prompt_origin, settings, status, created_at")
+      .eq("workspace_id", workspace.id).eq("status", "completed").eq("prompt_origin", "custom").ilike("prompt_text", like)
       .order("created_at", { ascending: false }).limit(4),
   ]);
 
@@ -49,7 +52,7 @@ export async function GET(request: Request) {
     })),
     ...(jobs.data ?? []).map((j) => ({
       kind: "generation" as const, id: j.id,
-      title: (j.prompt_text ?? "").split("\n")[0].slice(0, 70) || "—",
+      title: (customerPrompt(j as PromptOriginRow) ?? "").split("\n")[0].slice(0, 70) || "—",
       sub: new Date(j.created_at).toLocaleDateString(), href: "/library",
     })),
   ];

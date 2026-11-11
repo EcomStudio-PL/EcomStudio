@@ -148,7 +148,10 @@ export function sectionDef(key: string): SectionDef | undefined {
  * title (lib/tool-cards.ts).
  */
 const ITEM_LABEL: Readonly<Record<string, string>> = {
-  generator: "hub.name.generator",
+  // The launch names: the generator is „Generator GrovShot” and its
+  // custom-prompt mode „Stwórz zdjęcie”, on the hub as in the header menu.
+  generator: "mega.createImage",
+  custom: "mega.createPhoto",
   background: "hub.name.background",
   ai_background: "hub.name.ai_background",
   shadow: "hub.name.shadow",
@@ -160,18 +163,23 @@ export function itemLabelKey(item: HubCardDef): string {
 }
 
 /**
- * The menu's tool column as it has always been — the four editing
- * destinations — plus the generator, whose menu entry is the panel's primary
- * button. These are the items whose "menu" switch starts ON; every other item
- * starts OFF, so the menu looks exactly as it did until an admin changes it.
+ * THE HEADER MENU, DECIDED IN ONE PLACE.
+ *
+ * `MENU_ORDER` is the order the „Obrazy” list (and the phone drawer's copy of
+ * it) draws its rows in: the four launch tools first — Generator GrovShot,
+ * Miniaturka, Packshot, Stwórz zdjęcie — then the editing destinations the
+ * menu has carried before. Any other item an admin switches into the menu
+ * follows in /tools order. WHETHER a row is in the menu is its "menu" switch
+ * in the stored layout (Admin → Narzędzia); whether a customer may SEE it is
+ * the feature switchboard (lib/features.ts). Nothing else orders or filters
+ * the menu.
+ *
+ * `MENU_DEFAULT` is which switches start ON when no layout is stored yet.
  */
-export const MENU_DEFAULT: readonly string[] = ["retouch", "editor", "resize", "compress", "generator"];
-
-/** The order the menu's tool column has always used for its own entries. */
-const MENU_BASE_ORDER: readonly string[] = ["retouch", "editor", "resize", "compress"];
-
-/** The item whose menu entry is the header panel's primary button. */
-export const MENU_CTA_ITEM = "generator";
+export const MENU_ORDER: readonly string[] = [
+  "generator", "ecommerce.thumbnail", "retouch", "custom", "editor", "resize", "compress",
+];
+export const MENU_DEFAULT: readonly string[] = MENU_ORDER;
 
 function defaultFlags(key: string): LayoutFlags {
   return {
@@ -322,18 +330,15 @@ export function itemFeature(item: HubCardDef): FeatureKey | null {
 /* ── the menu ───────────────────────────────────────────────────────────── */
 
 /**
- * The items the menu lists, in the order it lists them: the tool column's
- * own four first (as they have always been ordered), then any other item an
- * admin switched into the menu, in /tools order, then anything unplaced. The
- * generator is in here too when its switch is on — the menu draws it as the
- * panel's primary button (MENU_CTA_ITEM), not as a row.
+ * The items the menu lists, in the order it lists them: MENU_ORDER first,
+ * then any other item an admin switched into the menu, in /tools order, then
+ * anything unplaced. Every one is a row of the list — the generator included.
  */
 export function menuItemKeys(layout: ToolsLayout = DEFAULT_LAYOUT): string[] {
   const on = (k: string) => layout.flags[k]?.menu === true;
   const out: string[] = [];
   const add = (k: string) => { if (on(k) && !out.includes(k) && ITEM_KEYS.has(k)) out.push(k); };
-  MENU_BASE_ORDER.forEach(add);
-  add(MENU_CTA_ITEM);
+  MENU_ORDER.forEach(add);
   layout.sections.forEach((s) => s.items.forEach(add));
   CATALOG_ITEMS.forEach((i) => add(i.key));
   return out;

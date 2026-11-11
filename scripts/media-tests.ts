@@ -310,7 +310,7 @@ check("entitiesOf lists each entity once",
 check("entitiesOf('tool') matches the catalogue",
   entitiesOf("tool").length === TOOL_CARDS.length);
 check("toolCard finds a card by key",
-  toolCard("retouch")?.href === "/retusz" && toolCard("nope") === undefined);
+  toolCard("retouch")?.href === "/narzedzia/packshot" && toolCard("nope") === undefined);
 
 const adminPage = read("app/admin/media/page.tsx");
 check("the admin screen reads the library once for every tab",

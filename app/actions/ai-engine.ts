@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { PACKSHOT_PATH } from "@/lib/tool-routes";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
@@ -386,7 +387,7 @@ export async function setWorkflowEnabledAction(toolKey: string, enabled: boolean
       entityType: "ai_tool", entityId: toolKey, after: { enabled, reason: reason?.trim().slice(0, 500) || null },
     });
     refresh(toolKey);
-    revalidatePath("/retusz");
+    revalidatePath(PACKSHOT_PATH);
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
