@@ -2941,7 +2941,8 @@
       "feature_unavailable": "To narzędzie jest chwilowo niedostępne.",
       "analysis_refused": "Model AI odmówił analizy tych zdjęć — spróbuj innych zdjęć produktu. Kredyty nie zostały pobrane.",
       "analysis_truncated": "Odpowiedź modelu AI była niepełna — spróbuj ponownie. Kredyty nie zostały pobrane.",
-      "analysis_bad_image": "Jedno ze zdjęć ma nieobsługiwany format — użyj JPG, PNG lub WEBP."
+      "analysis_bad_image": "Jedno ze zdjęć ma nieobsługiwany format — użyj JPG, PNG lub WEBP.",
+      "scenario_unavailable": "Ten rodzaj sesji jest niedostępny — GrovBase Shot tworzy sesję lifestyle."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -11879,23 +11880,23 @@
     "prompts": {
       "tutorial": {
         "title": "Jak stworzyć sesję zdjęć produktu",
-        "body": "Dodaj zdjęcia produktu, wybierz typ sesji i ustawienia, a GrovBase zaprojektuje ujęcia za Ciebie. Każde ujęcie pokazuje Twój produkt w nowej scenerii.",
+        "body": "Dodaj zdjęcia produktu i wklej opis z aukcji — GrovBase zaplanuje sesję lifestyle i zaprojektuje ujęcia za Ciebie. Każde ujęcie pokazuje Twój produkt w naturalnym, codziennym otoczeniu.",
         "steps": {
           "s1": {
             "title": "Dodaj zdjęcia produktu",
-            "body": "Kliknij „Import” i dodaj od 1 do 10 zdjęć produktu albo przeciągnij je na stronę lub wklej (Ctrl/Cmd+V). Jeśli zdjęcia są już dodane, sprawdź je przed generowaniem."
+            "body": "Kliknij „Import” i dodaj od 1 do 10 zdjęć produktu albo przeciągnij je na stronę lub wklej (Ctrl/Cmd+V). Kolejność zdjęć możesz zmienić, przeciągając je."
           },
           "s2": {
-            "title": "Wybierz typ sesji",
-            "body": "„Sesja reklamowa” to profesjonalne ujęcia produktowe w dopracowanej scenerii, a „Sesja lifestyle” to naturalne ujęcia w codziennym otoczeniu."
+            "title": "Wklej opis produktu z Allegro",
+            "body": "W polu „Opis produktu z Allegro” wklej tytuł, opis i specyfikację z aukcji, razem z wymiarami. Silnik wykorzysta cechy, zastosowania i wymiary do zaplanowania zdjęć."
           },
           "s3": {
-            "title": "Ustaw format, rozdzielczość i model",
-            "body": "W „Ustawienia generowania” ustaw: „Format”, „Rozdzielczość”, „Liczba ujęć”. Na niektórych ekranach format i liczba ujęć są już ustawione — możesz je zmienić. Niżej wybierz „Model AI”."
+            "title": "Ustaw format i liczbę zdjęć",
+            "body": "Wybierz „Format” i ustaw, ile zdjęć ma powstać (od 1 do 10). Ujęcia zaplanuje silnik — nie trzeba ich opisywać."
           },
           "s4": {
-            "title": "Opisz ujęcia (opcjonalnie)",
-            "body": "W „Opisz ujęcie” dopisz, co ma się znaleźć na danym ujęciu, i wybierz dla niego zdjęcie referencyjne. „Zachowaj kadr referencyjny” zachowa kadr i kompozycję tego zdjęcia — zmieni się tylko sceneria."
+            "title": "Rozdzielczość (opcjonalnie)",
+            "body": "W „Więcej ustawień” wybierz rozdzielczość: 2K (zalecana) albo 4K. Od niej zależy wielkość pliku i koszt zdjęcia."
           },
           "s5": {
             "title": "Generuj i sprawdź wyniki",
@@ -11905,7 +11906,7 @@
       },
       "starter": {
         "title": "Zobacz, co możesz stworzyć",
-        "body": "Z Twoich zdjęć produktu powstaje seria nowych ujęć: Twój produkt w dopracowanej scenerii albo w codziennym otoczeniu. Dodaj zdjęcia i kliknij „Generuj”."
+        "body": "Z Twoich zdjęć produktu i opisu z aukcji powstaje sesja lifestyle: Twój produkt w naturalnym, codziennym otoczeniu. Dodaj zdjęcia, wklej opis i kliknij „Generuj”."
       }
     },
     "generator": {

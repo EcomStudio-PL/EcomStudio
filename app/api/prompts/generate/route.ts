@@ -6,6 +6,9 @@ import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { clampShots, runPromptSession, type PromptSessionInput } from "@/lib/server/prompt-engine";
 import { resolveShotBriefs } from "@/lib/server/shot-plan";
+import { DEFAULT_SHOT_SETTINGS, parseShotSettings } from "@/lib/grovshot-shot/settings";
+import { checkV1ShotOrder } from "@/lib/grovshot-shot/v1-order";
+import { isAdminUserId } from "@/lib/server/grovshot-v2/flag";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -32,6 +35,18 @@ export async function POST(request: Request) {
   try { body = (await request.json()) as PromptSessionInput; }
   catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }
 
+  // GrovBase Shot's rules, from its one setting (the same the lifestyle
+  // engine's start route reads): a switched-off scenario (the advertising
+  // session) is refused, the Allegro description is required, a manual plan
+  // is an admin-only parameter (lib/grovshot-shot/v1-order.ts).
+  const [{ data: settingsRow }, admin] = await Promise.all([
+    supabase.from("app_settings").select("value").eq("key", "grovshot_shot").maybeSingle(),
+    isAdminUserId(supabase, user.id),
+  ]);
+  const parsedSettings = parseShotSettings(settingsRow?.value ?? null);
+  const order = checkV1ShotOrder(body, parsedSettings.ok ? parsedSettings.settings : DEFAULT_SHOT_SETTINGS, admin);
+  if (!order.ok) return NextResponse.json({ ok: false, error: order.error }, { status: 400 });
+
   const locale = (await cookies()).get("ecs_locale")?.value ?? "pl";
   const referencePaths = (body.referencePaths ?? []).filter(
     (p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)
@@ -45,8 +60,8 @@ export async function POST(request: Request) {
     ...body,
     shots: clampShots(body.shots),
     locale,
-    sessionType: body.sessionType === "advertising" || body.sessionType === "lifestyle"
-      ? body.sessionType : undefined,
+    sessionType: order.sessionType,
+    description: order.description,
     shotBriefs: plan.briefs,
     referencePaths,
   });

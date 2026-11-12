@@ -116,15 +116,20 @@ export type FormatOption = {
  * never offered. Wraps into a grid on a desktop; one row that scrolls sideways
  * on a phone.
  */
-export function FormatTiles({ options, value, onChange, label }: {
+export function FormatTiles({ options, value, onChange, label, oneRow = false }: {
   options: FormatOption[];
   value: string;
   onChange: (v: string) => void;
   label: string;
+  /** All the tiles on ONE row from `sm` up (GrovBase Shot's five formats),
+   *  each an equal column with tighter padding; a phone keeps the sideways
+   *  scroll either way. */
+  oneRow?: boolean;
 }) {
   return (
     <div role="radiogroup" aria-label={label} data-format-tiles
-      className="thin-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(5.75rem,1fr))] sm:overflow-visible sm:px-0 sm:pb-0">
+      className={cn("thin-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:overflow-visible sm:px-0 sm:pb-0",
+        oneRow ? "sm:auto-cols-fr sm:grid-flow-col sm:gap-1.5" : "sm:grid-cols-[repeat(auto-fill,minmax(5.75rem,1fr))]")}>
       {options.map((o) => {
         const on = o.value === value;
         const shape = o.ratio ? RATIO_SHAPE[o.ratio as keyof typeof RATIO_SHAPE] : undefined;
@@ -133,6 +138,7 @@ export function FormatTiles({ options, value, onChange, label }: {
             onClick={() => onChange(o.value)}
             className={cn(
               "flex w-[6.25rem] shrink-0 flex-col items-start gap-1 rounded-xl border px-2.5 py-2 text-left transition-colors duration-150 sm:w-auto",
+              oneRow && "sm:min-w-0 sm:px-2",
               on ? "is-selected" : "border-line hover:bg-raised",
             )}>
             <span className={cn("flex h-6 items-center", on ? "text-accent" : "text-muted")}>
@@ -142,7 +148,7 @@ export function FormatTiles({ options, value, onChange, label }: {
               <span className="truncate text-[13px] font-semibold tabular-nums">{o.label}</span>
               {o.approx && <span className="shrink-0 text-[11px] text-faint" title="≈">≈</span>}
             </span>
-            {o.use && <span className="w-full truncate text-[11px] leading-tight text-muted">{o.use}</span>}
+            {o.use && <span className={cn("w-full truncate text-[11px] leading-tight text-muted", oneRow && "sm:text-[10.5px]")}>{o.use}</span>}
           </button>
         );
       })}

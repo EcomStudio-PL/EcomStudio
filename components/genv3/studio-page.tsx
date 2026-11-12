@@ -41,6 +41,9 @@ async function managedData(supabase: Client) {
     conceptModelOptions(supabase),
     getSessionPreviews(supabase),
   ]);
+  // The shortest Allegro description GrovBase Shot accepts — the same setting
+  // the start routes check — for every viewer, whichever engine runs it.
+  const descriptionMin = await shotDescriptionMin(supabase);
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
   const models: GenModel[] = modelOptions.map((m) => ({
@@ -50,7 +53,13 @@ async function managedData(supabase: Client) {
     maxOutputs: 1, supportsRefs: true,
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
-  return { engineAvailable, models, sessionPreviews };
+  return { engineAvailable, models, sessionPreviews, descriptionMin };
+}
+
+async function shotDescriptionMin(supabase: Client): Promise<number> {
+  const { data } = await supabase.from("app_settings").select("value").eq("key", "grovshot_shot").maybeSingle();
+  const parsed = parseShotSettings(data?.value ?? null);
+  return (parsed.ok ? parsed.settings : DEFAULT_SHOT_SETTINGS).description_min_chars;
 }
 
 /** GrovShot Lifestyle Engine V2 for THIS member: the flag (Admin → System),
@@ -122,7 +131,8 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
         <div className="workspace workspace-page gen-shell pt-1">
           <GeneratorWorkspace
             managed={{ models: managed?.models ?? [], engineAvailable: managed?.engineAvailable ?? false,
-              sessionPreviews: managed?.sessionPreviews, variant, initialStyle }}
+              sessionPreviews: managed?.sessionPreviews, variant, initialStyle,
+              descriptionMin: managed?.descriptionMin ?? DEFAULT_SHOT_SETTINGS.description_min_chars }}
             custom={{ models: custom, initialPrompt: "" }}
             initialTab={initialTab} credits={0} workspaceId=""
             initialItems={[]} initialCursor={null} back={back} />

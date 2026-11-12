@@ -6,9 +6,9 @@ import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { GenerationGallery } from "@/components/genv3/gallery";
-import { InspirationSection, ProductRefsSection, PromptSection, VariantChips } from "@/components/genv3/sections";
+import { InspirationSection, ProductRefsSection, PromptSection } from "@/components/genv3/sections";
 import {
-  FormatTiles, MoreSettings, PanelSection, ScenarioCards, ShotPlan, Stepper, fmtDefault, useDeltaMeta, type FormatOption,
+  FormatTiles, MoreSettings, PanelSection, Stepper, fmtDefault, useDeltaMeta, type FormatOption,
 } from "@/components/genv3/controls";
 import { Segmented } from "@/components/ui/segmented";
 import { ModelSelect } from "@/components/genv3/model-select";
@@ -41,13 +41,19 @@ import { galleryModes } from "@/lib/gallery-tools";
 /** GrovBase Shot's formats and sizes (the five of the spec; 1K is not offered). */
 const V2_RATIOS = ["1:1", "4:5", "3:4", "16:9", "9:16"];
 const V2_RESOLUTIONS = ["2K", "4K"];
+/** GrovBase Shot's own offer, as far as the model supports it (its full list
+ *  only when the two share nothing — a panel never offers nothing). */
+const shotOffer = (offer: readonly string[], supported: readonly string[]) => {
+  const both = offer.filter((v) => supported.includes(v));
+  return both.length > 0 ? both : [...supported];
+};
 
 /** The studio's gallery is GrovBase Shot's: both tabs (modes) together. */
 const STUDIO_GALLERY_TOOL = "grovbase_shot" as const;
 const STUDIO_MODES: string[] = galleryModes(STUDIO_GALLERY_TOOL);
 import {
-  SHOTS_DEFAULT, SHOTS_MAX, SHOTS_MIN, STUDIO_MAX_REFS, customPhotoBudget, dropPhoto, parseTab, patchRow,
-  planToBriefs, readStudioDraft, remapPhotos,
+  SHOTS_DEFAULT, SHOTS_MAX, SHOTS_MIN, STUDIO_MAX_REFS, customPhotoBudget, dropPhoto, parseTab,
+  readStudioDraft, remapPhotos,
   type GrovshotSettings, type StudioDraft, type StudioTab, type StworzSettings,
 } from "@/lib/generator/studio";
 
@@ -69,6 +75,9 @@ export type ManagedModeData = {
   /** GrovShot Lifestyle Engine V2 is on for this member (flag, not a trial):
    *  a lifestyle order runs on it, on this model (Nano Banana Pro). */
   engineV2?: EngineV2Panel | null;
+  /** The shortest Allegro description GrovBase Shot accepts (app_settings
+   *  `grovshot_shot`) — for every viewer, whichever engine runs the order. */
+  descriptionMin?: number;
 };
 
 /** GrovBase Shot (the lifestyle engine) for this member — the panel's shape
@@ -163,11 +172,12 @@ export function GeneratorWorkspace({
   const grovDefaults = useCallback((): GrovshotSettings => {
     const m = managedModels[0];
     return {
-      sessionType: "advertising",
+      // GrovBase Shot is a lifestyle session — the only scenario (no selector).
+      sessionType: "lifestyle",
       choices: Object.fromEntries((variant?.controls ?? []).filter((c) => c.initial).map((c) => [c.key, c.initial!])),
       modelId: m?.id ?? "",
       ratio: managedData?.initialRatio ?? defaultRatio(m?.ratios ?? []),
-      resolution: m?.resolutions[0] ?? "1K",
+      resolution: m?.resolutions.includes("2K") ? "2K" : m?.resolutions[0] ?? "1K",
       quality: "medium",
       count: Math.min(Math.max(managedData?.initialShots ?? SHOTS_DEFAULT, SHOTS_MIN), SHOTS_MAX),
       plan: [],
@@ -219,13 +229,13 @@ export function GeneratorWorkspace({
     const id = managedData?.engineV2?.modelId;
     return id ? managedModels.filter((m) => m.id === id) : [];
   }, [managedData, managedModels]);
-  // GrovBase Shot: lifestyle on (the only scenario today) → no scenario
-  // selector, every order of this member goes to the engine; with two or more
-  // scenarios on, the selector decides.
+  // GrovBase Shot: ONE form for everyone — the photos, the Allegro
+  // description, format, count — and a lifestyle session, the only scenario
+  // (no selector, no manual plan). Whether the order runs on the lifestyle
+  // engine (this member: flag, not a trial) or on the earlier GrovBase Shot
+  // path is the server's decision; the form is the same either way.
   const shotScenarios = managedData?.engineV2?.scenarios ?? null;
-  const shotSingleScenario = !!shotScenarios && [shotScenarios.lifestyle, shotScenarios.reklamowa].filter(Boolean).length < 2;
-  const v2 = !!managedData?.engineV2 && v2Models.length > 0 && shotScenarios?.lifestyle !== false
-    && (shotSingleScenario || grov.sessionType === "lifestyle");
+  const v2 = !!managedData?.engineV2 && v2Models.length > 0 && shotScenarios?.lifestyle !== false;
   const shotAdmin = managedData?.engineV2?.admin === true;
   const v2order = useV2Order();
 
@@ -234,11 +244,12 @@ export function GeneratorWorkspace({
   const cfg = managed ? grov : stw;
   const model = useMemo(() => models.find((m) => m.id === cfg.modelId) ?? models[0], [models, cfg.modelId]);
   // GrovBase Shot offers five formats and 2K / 4K (2K recommended); 1K is not offered.
-  const ratiosOffered = model ? (managed && v2 ? V2_RATIOS.filter((r) => model.ratios.includes(r)) : model.ratios) : [];
-  const resolutionsOffered = model ? (managed && v2 ? V2_RESOLUTIONS.filter((r) => model.resolutions.includes(r)) : model.resolutions) : [];
+  const ratiosOffered = model ? (managed ? shotOffer(V2_RATIOS, model.ratios) : model.ratios) : [];
+  const resolutionsOffered = model ? (managed ? shotOffer(V2_RESOLUTIONS, model.resolutions) : model.resolutions) : [];
   const effRatio = model ? snapRatio(ratiosOffered, cfg.ratio) : cfg.ratio;
   const effResolution = model ? snapTo(resolutionsOffered, cfg.resolution) : cfg.resolution;
-  const effQuality = snapQuality(model, cfg.quality);
+  // GrovBase Shot has no quality control: its default, never a stale draft's.
+  const effQuality = snapQuality(model, managed ? "medium" : cfg.quality);
   const maxCount = managed ? SHOTS_MAX : Math.max(1, model?.maxOutputs ?? 1);
   const effCount = Math.min(Math.max(cfg.count, 1), maxCount);
   const perShot = unitPrice(model, effResolution, managed ? "managed" : "custom", effQuality);
@@ -464,11 +475,10 @@ export function GeneratorWorkspace({
           aspectRatio: effRatio,
           resolution: effResolution,
           shots: effCount,
-          sessionType: grov.sessionType,
-          // Plan ujęć: only what the customer set for a row — its words and,
-          // when picked, its photo (by path; the server checks it and turns it
-          // into the engine's position). An untouched row plans itself.
-          shotBriefs: planToBriefs(grov.plan, effCount, refs),
+          // A lifestyle session planned by the engine from the photos and the
+          // Allegro description — no scenario choice and no manual plan.
+          sessionType: "lifestyle",
+          description: (grov.description ?? "").trim(),
           referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
         }),
       });
@@ -624,7 +634,9 @@ export function GeneratorWorkspace({
   const engineAvailable = managedData?.engineAvailable ?? false;
   const sending = stageLabel !== "" || preparing;
   const promptOk = stw.prompt.trim().length > 2;
-  const descOk = !(managed && v2) || (grov.description ?? "").trim().length >= (managedData?.engineV2?.descriptionMin ?? 0);
+  // The description is required in GrovBase Shot, whichever engine runs it.
+  const descMin = Math.max(1, managedData?.engineV2?.descriptionMin ?? managedData?.descriptionMin ?? 1);
+  const descOk = !managed || (grov.description ?? "").trim().length >= descMin;
   const canGenerate = !!model && !gate.atLimit && !smart.busy && !uploading && refs.length > 0
     && (session.guest || missing === 0)
     && (managed ? engineAvailable && descOk : promptOk);
@@ -633,7 +645,7 @@ export function GeneratorWorkspace({
     invalid: refs.length === 0 ? t("genv3.needPhotos")
       : uploading ? t("bar.uploading")
         : !managed && !promptOk ? t("genv3.needPrompt")
-          : !descOk ? t("gsv2.needDescription", { n: managedData?.engineV2?.descriptionMin ?? 0 })
+          : !descOk ? t("gsv2.needDescription", { n: descMin })
           : smart.busy ? t("bar.rewriting")
             : null,
     limit: gate.atLimit && gate.limit && !session.guest ? gate.limit : null,
@@ -648,7 +660,7 @@ export function GeneratorWorkspace({
   const defaultsNow = managed ? grovDefaults() : stworzDefaults();
   const defaultModel = models.find((m) => m.id === defaultsNow.modelId) ?? models[0];
   const qualityLabel = (q: string) => q === "low" ? t("genv3.qualityLow") : q === "high" ? t("genv3.qualityHigh") : t("genv3.qualityMedium");
-  const recommendedRes = model ? (managed && v2 && resolutionsOffered.includes("2K") ? "2K" : snapTo(resolutionsOffered, defaultsNow.resolution)) : "";
+  const recommendedRes = model ? (managed && resolutionsOffered.includes("2K") ? "2K" : snapTo(resolutionsOffered, defaultsNow.resolution)) : "";
   const basePrice = unitPrice(model, recommendedRes, "custom", effQuality);
   const resolutionControl = model && model.resolutions.length > 0 && (
     <PanelSection title={t("genv3.resolution")} data="resolution">
@@ -679,7 +691,7 @@ export function GeneratorWorkspace({
     }));
   const formatControl = (
     <PanelSection title={t("genv3.format")} data="format">
-      <FormatTiles label={t("genv3.format")} options={formatOptions} value={effRatio} onChange={(v) => setCfg({ ratio: v })} />
+      <FormatTiles label={t("genv3.format")} options={formatOptions} value={effRatio} onChange={(v) => setCfg({ ratio: v })} oneRow={managed} />
     </PanelSection>
   );
   const modelControl = (note?: string) => (
@@ -699,20 +711,26 @@ export function GeneratorWorkspace({
     );
   }
 
+  // GrovBase Shot's settings are the resolution (and, for an admin on the
+  // lifestyle engine, the model) — no model name or quality for a customer.
   const changedMore = managed && !!model && (
-    model.id !== defaultModel?.id || effResolution !== recommendedRes || (!!effQuality && effQuality !== recommendedQuality)
+    effResolution !== recommendedRes || (v2 && shotAdmin && model.id !== defaultModel?.id)
   );
-  const moreSummary = [model?.name, effResolution, effQuality ? qualityLabel(effQuality) : null].filter(Boolean).join(" · ");
+  const moreSummary = managed
+    ? [v2 && shotAdmin ? model?.name : null, effResolution].filter(Boolean).join(" · ")
+    : [model?.name, effResolution, effQuality ? qualityLabel(effQuality) : null].filter(Boolean).join(" · ");
 
   // Per-shot tails on the tabs: each mode at its own default model.
-  const tailOf = (list: GenModel[]) => {
+  const tailOf = (list: GenModel[], shot = false) => {
     const m = list[0];
-    return m ? unitPrice(m, m.resolutions[0] ?? "1K", "custom", snapQuality(m, "medium")) : 0;
+    // GrovBase Shot starts at its own recommended size (2K), not the model's smallest.
+    const res = m ? (shot ? shotOffer(V2_RESOLUTIONS, m.resolutions)[0] : m.resolutions[0]) ?? "1K" : "1K";
+    return m ? unitPrice(m, res, shot ? "managed" : "custom", snapQuality(m, "medium")) : 0;
   };
   const tabs = both ? (
     <div role="tablist" aria-label={t("genv3.modes")} data-studio-tabs
       className="flex w-full items-stretch gap-1 rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.8))] bg-sunken/80 p-1 lg:w-[clamp(420px,29vw,470px)]">
-      {([["grovshot", Sparkles, t("genv3.modeManaged"), tailOf(managedModels)], ["stworz", PenLine, t("genv3.modeCustom"), tailOf(customModels)]] as const).map(([key, Icon, label, cost]) => {
+      {([["grovshot", Sparkles, t("genv3.modeManaged"), tailOf(v2 ? v2Models : managedModels, true)], ["stworz", PenLine, t("genv3.modeCustom"), tailOf(customModels)]] as const).map(([key, Icon, label, cost]) => {
         const on = tab === key;
         return (
           <button key={key} type="button" role="tab" aria-selected={on} data-studio-tab={key}
@@ -776,39 +794,22 @@ export function GeneratorWorkspace({
       <ToolDraftBanner session={session} />
       {photos}
       {v2 && <V2Notes order={v2order.order} busy={sending} onContinue={() => void session.gate(() => generateV2(true))} />}
-      {!(v2 && shotSingleScenario) && (
-        <PanelSection title={t("genv3.scenario")} data="scenario">
-          <ScenarioCards value={grov.sessionType} onChange={(v) => setGrov((g) => ({ ...g, sessionType: v }))} previews={managedData?.sessionPreviews} />
-          {!v2 && variant && variant.controls.length > 0 && (
-            <div className="mt-3">
-              <VariantChips variant={variant} choices={grov.choices}
-                onChoose={(k, v) => setGrov((g) => ({ ...g, choices: { ...g.choices, [k]: v } }))} />
-            </div>
-          )}
-        </PanelSection>
-      )}
-      {v2 && (
-        <V2Fields description={grov.description ?? ""} onDescription={(v) => setGrov((g) => ({ ...g, description: v }))} />
-      )}
+      {/* GrovBase Shot — photos, the Allegro description, format, count. No
+          scenario selector (lifestyle is the only one), no manual shot plan:
+          the engine plans the gallery itself. */}
+      <V2Fields description={grov.description ?? ""} onDescription={(v) => setGrov((g) => ({ ...g, description: v }))} />
       {formatControl}
       <PanelSection title={t("genv3.countShots")} data="count">
         <Stepper label={t("genv3.countShots")} value={effCount} min={SHOTS_MIN} max={SHOTS_MAX} onChange={(v) => setCfg({ count: v })} data="shots" />
-        {!v2 && (
-          <div className="mt-3">
-            <ShotPlan count={effCount} refs={refs} plan={grov.plan}
-              onPatch={(i, patch) => setGrov((g) => ({ ...g, plan: patchRow(g.plan, i, patch) }))} />
-          </div>
-        )}
       </PanelSection>
       <MoreSettings storageKey={`more:${toolKey}`} summary={moreSummary} changed={changedMore}
         onRestore={() => setGrov((g) => {
           const d = grovDefaults();
-          return { ...g, modelId: d.modelId, resolution: v2 ? "2K" : d.resolution, quality: d.quality };
+          return { ...g, modelId: d.modelId, resolution: d.resolution, quality: d.quality };
         })}>
-        {/* GrovBase Shot: the model is fixed (Nano Banana Pro); only an admin sees the choice, with no note under it. */}
-        {(!v2 || shotAdmin) && modelControl(v2 ? undefined : t("genv3.grovshotModelNote"))}
+        {/* The model is fixed; only an admin on the lifestyle engine sees the choice. */}
+        {v2 && shotAdmin && modelControl()}
         {resolutionControl}
-        {!v2 && qualityControl}
       </MoreSettings>
     </>
   ) : (

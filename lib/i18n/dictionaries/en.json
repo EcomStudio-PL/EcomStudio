@@ -2941,7 +2941,8 @@
       "feature_unavailable": "This tool is temporarily unavailable.",
       "analysis_refused": "The AI model declined to analyse these photos — try other product photos. No credits were taken.",
       "analysis_truncated": "The AI model's answer was incomplete — try again. No credits were taken.",
-      "analysis_bad_image": "One of the photos has an unsupported format — use JPG, PNG or WEBP."
+      "analysis_bad_image": "One of the photos has an unsupported format — use JPG, PNG or WEBP.",
+      "scenario_unavailable": "This session type is unavailable — GrovBase Shot creates a lifestyle session."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -11879,33 +11880,33 @@
     "prompts": {
       "tutorial": {
         "title": "How to create a product photo session",
-        "body": "Add product photos, pick a session type and settings, and GrovBase designs the shots for you. Each shot shows your product in new scenery.",
+        "body": "Add your product photos and paste the listing description — GrovBase plans a lifestyle session and designs the shots for you. Each shot shows your product in a natural, everyday setting.",
         "steps": {
           "s1": {
             "title": "Add product photos",
-            "body": "Click “Import” and add 1 to 10 product photos, or drag them onto the page or paste them (Ctrl/Cmd+V). If photos are already added, check them before you generate."
+            "body": "Click “Import” and add 1 to 10 product photos, or drag them onto the page or paste them (Ctrl/Cmd+V). Drag the photos to change their order."
           },
           "s2": {
-            "title": "Pick a session type",
-            "body": "“Advertising session” gives professional product shots in polished scenery; “Lifestyle session” gives natural shots in everyday surroundings."
+            "title": "Paste the Allegro description",
+            "body": "In “Product description from Allegro”, paste the listing's title, description and specification, dimensions included. The engine uses the features, uses and dimensions to plan the photos."
           },
           "s3": {
-            "title": "Set format, resolution and model",
-            "body": "In “Generation settings” set “Format”, “Resolution” and “Number of shots”. On some screens the format and number of shots are preset — you can change them. Below, pick the “AI model”."
+            "title": "Set the format and number of photos",
+            "body": "Choose the “Format” and how many photos to create (1 to 10). The engine plans the shots — there is nothing to describe."
           },
           "s4": {
-            "title": "Describe the shots (optional)",
-            "body": "In “Describe the shot” add what a given shot should show and pick a reference photo for it. “Keep reference framing” keeps that photo's framing and composition — only the scenery changes."
+            "title": "Resolution (optional)",
+            "body": "Under “More settings”, choose the resolution: 2K (recommended) or 4K. It sets the file size and the cost per photo."
           },
           "s5": {
             "title": "Generate and review",
-            "body": "Check the cost in the summary and click “Generate”. Finished photos appear in the gallery marked “NEW” — you can download them, mark them as favourites or use “Generate again”."
+            "body": "Check the cost in the summary and click “Generate”. Finished photos appear in the gallery marked “NEW” — download them, add them to favourites or use “Generate again”."
           }
         }
       },
       "starter": {
         "title": "See what you can create",
-        "body": "Your product photos become a series of new shots: your product in polished scenery or in everyday surroundings. Add photos and click “Generate”."
+        "body": "Your product photos and listing description become a lifestyle session: your product in a natural, everyday setting. Add photos, paste the description and click “Generate”."
       }
     },
     "generator": {

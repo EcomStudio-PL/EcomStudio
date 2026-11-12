@@ -805,7 +805,11 @@ const ENGINE: readonly [string, string][] = [
   // Re-pinned by Premiera (prompt privacy): after the session the route reads
   // the concept ids on the server and returns them, so the browser no longer
   // reads generated_prompts itself. The engine and its prompts are untouched.
-  ["app/api/prompts/generate/route.ts", "0d3c456cba6e9481994364ffac06f96cbca28332987b702b22d7e17c56b33138"],
+  // Re-pinned by the GrovBase Shot P0 fix: the route applies the GrovBase
+  // Shot order rules (lib/grovshot-shot/v1-order.ts — a switched-off
+  // scenario refused, the description required, a manual plan admin-only)
+  // and hands the description to the engine. The engine is untouched.
+  ["app/api/prompts/generate/route.ts", "029e32b45290e8158b965c4c1a8e640073d41279fdde40afbd5034e37fb5e8b1"],
   ["app/api/concepts/generate/route.ts", "7e9b4a0069bfc227e1aaec8f9189e84ef188a063930385dbc849f820fd1c0075"],
   // Re-pinned by the trial-watermark task: the route passes its own start
   // time (routeStartedAt) so the trial-image gate counts the hybrid engine's

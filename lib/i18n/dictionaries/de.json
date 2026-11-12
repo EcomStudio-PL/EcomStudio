@@ -2941,7 +2941,8 @@
       "feature_unavailable": "Dieses Tool ist vorübergehend nicht verfügbar.",
       "analysis_refused": "Das KI-Modell hat die Analyse dieser Fotos abgelehnt — versuche andere Produktfotos. Es wurden keine Credits abgebucht.",
       "analysis_truncated": "Die Antwort des KI-Modells war unvollständig — versuche es erneut. Es wurden keine Credits abgebucht.",
-      "analysis_bad_image": "Eines der Fotos hat ein nicht unterstütztes Format — verwende JPG, PNG oder WEBP."
+      "analysis_bad_image": "Eines der Fotos hat ein nicht unterstütztes Format — verwende JPG, PNG oder WEBP.",
+      "scenario_unavailable": "Diese Sitzungsart ist nicht verfügbar — GrovBase Shot erstellt eine Lifestyle-Sitzung."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -11879,33 +11880,33 @@
     "prompts": {
       "tutorial": {
         "title": "So erstellst du ein Produkt-Fotoshooting",
-        "body": "Füge Produktfotos hinzu, wähle Sessiontyp und Einstellungen, und GrovBase entwirft die Aufnahmen für dich. Jede Aufnahme zeigt dein Produkt in einer neuen Szenerie.",
+        "body": "Füge Produktfotos hinzu und die Angebotsbeschreibung ein — GrovBase plant eine Lifestyle-Sitzung und gestaltet die Aufnahmen für dich. Jede Aufnahme zeigt dein Produkt in einer natürlichen Alltagsumgebung.",
         "steps": {
           "s1": {
             "title": "Produktfotos hinzufügen",
-            "body": "Klicke auf „Import“ und füge 1 bis 10 Produktfotos hinzu, oder ziehe sie auf die Seite bzw. füge sie ein (Strg/Cmd+V). Sind schon Fotos hinzugefügt, prüfe sie vor dem Generieren."
+            "body": "Klicke auf „Import“ und füge 1 bis 10 Produktfotos hinzu, oder ziehe sie auf die Seite bzw. füge sie ein (Strg/Cmd+V). Die Reihenfolge änderst du per Ziehen."
           },
           "s2": {
-            "title": "Sessiontyp wählen",
-            "body": "„Werbesession“ liefert professionelle Produktaufnahmen in edler Szenerie, „Lifestyle-Session“ natürliche Aufnahmen im Alltagsumfeld."
+            "title": "Allegro-Beschreibung einfügen",
+            "body": "Füge im Feld „Produktbeschreibung von Allegro“ Titel, Beschreibung und Spezifikation des Angebots samt Maßen ein. Die Engine nutzt Merkmale, Einsatzzwecke und Maße, um die Fotos zu planen."
           },
           "s3": {
-            "title": "Format, Auflösung und Modell",
-            "body": "Lege in „Generierungseinstellungen“ „Format“, „Auflösung“ und „Anzahl Aufnahmen“ fest. Auf manchen Seiten sind Format und Anzahl schon voreingestellt — du kannst sie ändern. Wähle darunter das „KI-Modell“."
+            "title": "Format und Anzahl festlegen",
+            "body": "Wähle das „Format“ und wie viele Fotos entstehen sollen (1 bis 10). Die Aufnahmen plant die Engine — du musst nichts beschreiben."
           },
           "s4": {
-            "title": "Aufnahmen beschreiben (optional)",
-            "body": "Schreibe unter „Aufnahme beschreiben“, was eine Aufnahme zeigen soll, und wähle ein Referenzfoto dafür. „Referenzbildausschnitt beibehalten“ behält Ausschnitt und Komposition — nur die Szenerie ändert sich."
+            "title": "Auflösung (optional)",
+            "body": "Wähle unter „Weitere Einstellungen“ die Auflösung: 2K (empfohlen) oder 4K. Davon hängen Dateigröße und Kosten pro Foto ab."
           },
           "s5": {
             "title": "Generieren und prüfen",
-            "body": "Prüfe die Kosten in der Übersicht und klicke auf „Generieren“. Fertige Fotos erscheinen in der Galerie mit „NEU“ — du kannst sie herunterladen, als Favorit markieren oder „Erneut generieren“."
+            "body": "Prüfe die Kosten in der Zusammenfassung und klicke auf „Generieren“. Fertige Fotos erscheinen in der Galerie mit „NEU“ — lade sie herunter, füge sie zu den Favoriten hinzu oder nutze „Erneut generieren“."
           }
         }
       },
       "starter": {
         "title": "Sieh, was du erstellen kannst",
-        "body": "Aus deinen Produktfotos entsteht eine Serie neuer Aufnahmen: dein Produkt in edler Szenerie oder im Alltagsumfeld. Füge Fotos hinzu und klicke auf „Generieren“."
+        "body": "Aus deinen Produktfotos und der Angebotsbeschreibung entsteht eine Lifestyle-Sitzung: dein Produkt in einer natürlichen Alltagsumgebung. Fotos hinzufügen, Beschreibung einfügen und auf „Generieren“ klicken."
       }
     },
     "generator": {

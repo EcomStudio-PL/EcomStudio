@@ -75,8 +75,13 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb, operation, tool, emptyTitle, emptyBody, guideTool, inflight, shotAdmin,
+  models, balance, onBalance, onAbsorb, operation, tool, emptyTitle, emptyBody, guideTool, inflight, shotAdmin, sessionFilter = false,
 }: {
+  /** Offer the session-type filter (Wszystkie / Sesja reklamowa / Sesja
+   *  lifestyle). Off by default: GrovBase Shot makes one scenario (lifestyle),
+   *  so two of those chips would offer a session nobody can order. An
+   *  image's own details still say which session it was made in. */
+  sessionFilter?: boolean;
   initialItems: GalleryItem[];
   initialCursor: string | null;
   freshItems: GalleryItem[];
@@ -526,11 +531,11 @@ export function GenerationGallery({
     }
   }
 
-  const chips: { key: Filter["session"]; label: string; icon?: typeof Megaphone }[] = [
+  const chips: { key: Filter["session"]; label: string; icon?: typeof Megaphone }[] = !operation && sessionFilter ? [
     { key: "all", label: t("genv3.filterAll"), icon: Sparkles },
     { key: "advertising", label: t("genv3.sessionAd"), icon: Megaphone },
     { key: "lifestyle", label: t("genv3.sessionLife"), icon: Sun },
-  ];
+  ] : [];
 
   // What a job in flight will come back as. `pendingRatio` is the job's own
   // label, so this is the honest reservation — and it goes through the same
@@ -564,7 +569,7 @@ export function GenerationGallery({
           {inlineGuide && <span className={operation ? "hidden xl:contents" : "hidden lg:contents"}>{inlineGuide}</span>}
           {/* Session chips belong to the generator: a retouch has no session
               type, so a tool's gallery does not offer two dead filters. */}
-          {!operation && chips.map((c) => {
+          {chips.map((c) => {
             const on = filter.session === c.key;
             return (
               <button key={c.key} type="button" aria-pressed={on}
@@ -729,7 +734,7 @@ export function GenerationGallery({
             </button>
           </div>
         )}
-        {!operation && (
+        {chips.length > 0 && (
           <div className="thin-scroll -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5" data-gallery-pills>
             {chips.map((c) => {
               const on = filter.session === c.key;
@@ -774,7 +779,7 @@ export function GenerationGallery({
               </span>
               <Switch checked={sheet.fav} onChange={(v) => setSheet({ ...sheet, fav: v })} label={t("genv3.onlyFav")} />
             </label>
-            {!operation && (
+            {chips.length > 0 && (
               <section>
                 <p className="mb-2 text-[13px] font-semibold">{t("genv3.categories")}</p>
                 <div className="flex flex-wrap gap-1.5">
