@@ -905,11 +905,16 @@ async function sectionL() {
   let threw = false;
   try { await ensurePrelaunchRewards(session.client as unknown as Client, ws); } catch { threw = true; } finally { console.error = silenced; }
   check("L4 a failure never reaches the render", !threw);
-  const layout = read("app/(app)/layout.tsx");
+  // The app's chrome lives in components/layout/app-chrome.tsx (shared with
+  // the informational pages): resolveAppViewer — the blocked guard — is
+  // defined, and called by app/(app)/layout.tsx, before AppChrome renders.
+  const layout = read("components/layout/app-chrome.tsx");
   const guard = layout.indexOf("if (block.blocked)");
   const offer = layout.indexOf("await ensureOffer(");
   const hook = layout.indexOf("await ensurePrelaunchRewards(supabase, workspace.id)");
-  check("L5 the layout calls it after the blocked guard, right after ensureOffer", guard > 0 && offer > guard && hook > offer && hook - offer < 900);
+  check("L5 the layout calls it after the blocked guard, right after ensureOffer", guard > 0 && offer > guard && hook > offer && hook - offer < 900
+    && /resolveAppViewer\(supabase, user\)[\s\S]*<AppChrome /.test(read("app/(app)/layout.tsx")));
+  check("L6 an informational page pays nothing (only the app screen does)", /page \? 0 : await ensurePrelaunchRewards\(supabase, workspace\.id\)/.test(layout));
 }
 
 /* ── M ─────────────────────────────────────────────────────────────────── */

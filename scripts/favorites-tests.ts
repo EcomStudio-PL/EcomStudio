@@ -129,7 +129,7 @@ async function main() {
     && /\.group:hover \.fav-tile, \.group:focus-within \.fav-tile, \.fav-tile:focus-visible \{ opacity: 1; \}/.test(css));
   check("the ring: 2px inset at 70% (no size change)", /\.fav-ring \{ box-shadow: inset 0 0 0 2px rgb\(var\(--favorite\) \/ 0\.7\); \}/.test(css));
   check("the ring follows the admin switch", /\[data-favorite-ring="off"\] \.fav-ring \{ display: none; \}/.test(css)
-    && /data-favorite-ring=\{favoriteRing \? "on" : "off"\}/.test(read("app/(app)/layout.tsx")));
+    && /data-favorite-ring=\{favoriteRing \? "on" : "off"\}/.test(read("components/layout/app-chrome.tsx")));
   check("the switch defaults ON and is never overwritten",
     /'\{"favorite_ring": true\}'/.test(read("supabase/migrations/0160_notifications_v2.sql"))
     && /where not \(public\.app_settings\.value \? 'favorite_ring'\)/.test(read("supabase/migrations/0160_notifications_v2.sql"))

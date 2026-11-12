@@ -167,9 +167,14 @@ console.log("\nA. TEST 1 — A SESSION DOES NOT CLOSE THE LOGIN DOOR");
     /isProtectedPath\(pathname\)\s*\|\|\s*isAuthPage\(pathname\)[\s\S]{0,120}no-store/.test(mw));
 
   // The gate itself is untouched: both protected layouts still consult it.
-  for (const p of ["app/(app)/layout.tsx", "app/admin/layout.tsx"]) {
+  // The customer layout asks it through resolveAppViewer (components/layout/
+  // app-chrome.tsx, shared with the informational pages) and still redirects.
+  for (const p of ["components/layout/app-chrome.tsx", "app/admin/layout.tsx"]) {
     check(`${p} still calls the gate`, /enforceLoginSecurity\(supabase\)/.test(read(p)));
   }
+  check("app/(app)/layout.tsx still sends a gated device to the check",
+    /resolveAppViewer\(supabase, user\)/.test(read("app/(app)/layout.tsx"))
+    && /if \(viewer\.state === "gate"\) redirect\(viewer\.to\)/.test(read("app/(app)/layout.tsx")));
 
   /*
     THE MIDDLEWARE IS NOT THE ONLY PLACE THAT CAN BOUNCE A SIGNED-IN VISITOR.

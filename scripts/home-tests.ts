@@ -250,7 +250,8 @@ for (const p of ["/home", "/prompts", "/tools", "/tools/ai_shadow", "/k/moda", "
   check(`${p} is still refused to a visitor by the middleware`, isProtectedPath(p));
 }
 check("the (app) layout still sends a visitor to sign in", /if \(!user\) redirect\("\/login"\)/.test(code("app/(app)/layout.tsx")));
-check("the (app) layout still runs the login-security gate", /enforceLoginSecurity\(supabase\)/.test(code("app/(app)/layout.tsx")));
+check("the (app) layout still runs the login-security gate", /resolveAppViewer\(supabase, user\)/.test(code("app/(app)/layout.tsx"))
+  && /enforceLoginSecurity\(supabase\)/.test(code("components/layout/app-chrome.tsx")));
 for (const route of ["app/api/generate/route.ts", "app/api/tools/run/route.ts", "app/api/tools/save/route.ts", "app/api/retouch/route.ts", "app/api/fashion/route.ts", "app/api/prompts/generate/route.ts"]) {
   const src = code(route);
   check(`${route} answers 401 without a session`, /auth\.getUser\(\)/.test(src) && /status: 401/.test(src));

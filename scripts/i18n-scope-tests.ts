@@ -254,6 +254,11 @@ const APP_SCOPED_SUBTREES = [
   join(ROOT, "components/home/product-surface.tsx"),
   // The public cennik (/plany) wears the same bar and speaks the same scope.
   join(ROOT, "components/plan/pricing-surface.tsx"),
+  // THE CUSTOMER APP'S CHROME: app/(app)/layout.tsx renders it for every
+  // customer screen, and the informational pages (O nas, FAQ, Kontakt, the
+  // legal documents) render it around their own content for a signed-in
+  // customer. It requests the `app` scope and wraps itself in <I18nScope>.
+  join(ROOT, "components/layout/app-chrome.tsx"),
 ];
 
 /**
@@ -393,7 +398,8 @@ console.log("\nD. EACH LAYOUT ASKS FOR ITS OWN SCOPE AND WRAPS ITS OWN SUBTREE")
  *  wrapper, compiles cleanly and silently drops a surface to the root scope. */
 const WIRING: Array<[string, string, string]> = [
   ["app/layout.tsx", "root", "I18nProvider"],
-  ["app/(app)/layout.tsx", "app", "I18nScope"],
+  // app/(app)/layout.tsx asks for the `app` scope through its chrome
+  // (components/layout/app-chrome.tsx — in APP_SCOPED_SUBTREES, checked below).
   ["app/admin/layout.tsx", "admin", "I18nScope"],
   // THE OTHER HALF OF APP_SCOPED_SUBTREES. The accounting above stops the root
   // walk at this file on the strength of a promise that it serves the `app`

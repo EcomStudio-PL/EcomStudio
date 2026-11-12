@@ -186,7 +186,7 @@ console.log("G. a temporary block is a pause, enforced where it counts");
   const sql = read("supabase/migrations/0072_temporary_account_block.sql");
   const guard = read("lib/server/account-block.ts");
   const actions = read("app/actions/admin-crm.ts");
-  const layout = read("app/(app)/layout.tsx");
+  const layout = read("app/(app)/layout.tsx") + read("components/layout/app-chrome.tsx");
 
   // The maths, at the boundary and past it.
   const now = new Date("2026-09-08T12:00:00Z");

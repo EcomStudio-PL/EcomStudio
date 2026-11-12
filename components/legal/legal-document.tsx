@@ -99,12 +99,13 @@ function LanguageRow({ doc, slug, shown, visitor, t }: {
   );
 }
 
-function BackLink({ t }: { t: T }) {
+function BackLink({ t, href = "/" }: { t: T; href?: string }) {
   // A PLAIN LINK HOME — never an auth dialog. These documents are usually
   // opened with target="_blank" from a consent line, where there is nothing
   // to go back to, so history.back() would send a reader off the site.
+  // Inside the app (a signed-in customer) "home" is the app's own start.
   return (
-    <Link href="/" data-legal-back
+    <Link href={href} data-legal-back
       className={cn("tap inline-flex text-sm font-medium underline-offset-2 hover:underline", ACCENT_TEXT)}>
       ← {t("legal.back")}
     </Link>
@@ -118,8 +119,10 @@ export type LegalDocView = {
 };
 
 /** DOC MODE: the text in a language that has one. */
-export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, publishedAt }: {
+export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, publishedAt, homeHref = "/" }: {
   slug: string;
+  /** Where „Wróć” leads: the site's start for a visitor, /home inside the app. */
+  homeHref?: string;
   t: T;
   /** The interface language of the visitor. */
   visitor: string;
@@ -236,7 +239,7 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
           <div data-legal-bottom
             className="mt-12 flex flex-col-reverse gap-5 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col items-start gap-2">
-              <BackLink t={t} />
+              <BackLink t={t} href={homeHref} />
               {publishedAt && (
                 // A moment, not a calendar date: shown in Warsaw time, which a
                 // UTC server would otherwise move back by one or two hours —
@@ -261,8 +264,10 @@ export function LegalDocument({ slug, t, visitor, doc, view, outline, pdfTag, pu
  * `polishTag` is null when there is no Polish text either; then the page says
  * the document is being finalised, as it did before any text existed.
  */
-export function LegalSoon({ slug, titleKey, t, visitor, doc, shown, polishTag }: {
+export function LegalSoon({ slug, titleKey, t, visitor, doc, shown, polishTag, homeHref = "/" }: {
   slug: string;
+  /** Where „Wróć” leads (see LegalDocument). */
+  homeHref?: string;
   titleKey: string;
   t: T;
   visitor: string;
@@ -308,7 +313,7 @@ export function LegalSoon({ slug, titleKey, t, visitor, doc, shown, polishTag }:
         </section>
 
         <div className="mt-10">
-          <BackLink t={t} />
+          <BackLink t={t} href={homeHref} />
         </div>
       </div>
     </div>

@@ -126,7 +126,12 @@ const FROZEN: readonly [string, string][] = [
   // Public Tools V1 (one catalogue): while the app catalogue is a visitor's
   // page (switch on, or an admin's guest preview), /narzedzia answers 307 to
   // /tools and names it canonical; otherwise its CMS page renders as before.
-  ["app/[slug]/page.tsx", "f05fa787574cd42284a0240c3ba8a6cfd33fbaf860fe551cf1c4df8417dc61d8"],
+  // Podstrony informacyjne w aplikacji: a page of the „O firmie / Pomoc /
+  // Prawne” groups (lib/info-pages.ts), read by a signed-in customer who may
+  // open the app, renders the SAME BlockRenderer content inside AppChrome
+  // (variant "page") instead of the public header; a visitor's page is the
+  // same markup as before (the content is only hoisted into a constant).
+  ["app/[slug]/page.tsx", "1dbfa9d2d6415f6bbb6a6b32b557d93b93bb5ab6b9e08acfe1b62e9139c53050"],
   ["lib/home-sections.ts", "d2a57f246d437d09545d3020943b613183e5c77668ebb4fd7122f612ad68cdb9"],
   ["lib/home-picks.ts", "c01b282598d0c5bff6768dee3bbf2f43429ba72ecf1ea3f040df41d274910fc6"],
   ["components/home/card-art.tsx", "b7c8b8bba3317e7fe64e9b9f29acfb11c7d91756a957416b4846a10a3b1b2faa"],
@@ -161,7 +166,12 @@ const FROZEN: readonly [string, string][] = [
   // three reads ride the existing batch. Nothing else moved.
   // Premiera: the phone drawer gets the header's „Obrazy” items (one prop,
   // menuItems); nothing else moved.
-  ["app/(app)/layout.tsx", "e59bd0d9c63470891e0c8444f2aa0bbb435d4db26cdb7cd2a0e2c05d9ac1bee0"],
+  // Podstrony informacyjne w aplikacji: the chrome (header, bell, drawer,
+  // dock, footer, bonus) moved VERBATIM into components/layout/app-chrome.tsx
+  // and the gate/records/block checks into its resolveAppViewer, so the
+  // informational pages wear the one implementation; this layout keeps the
+  // visitor branch, the redirects and the two single-message screens.
+  ["app/(app)/layout.tsx", "d7ac8c1dc62e334770ca871b57856b5252f2d3e2a037f541b3717a73670361d7"],
   // Public Tools V1 (activation): a visitor's pages wear the same dock; with
   // `guest`, the account slots open the sign-in dialog in place. A member's
   // dock (no `guest`) renders and behaves exactly as before.

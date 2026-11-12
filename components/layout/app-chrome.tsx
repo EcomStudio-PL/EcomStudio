@@ -1,0 +1,338 @@
+import type { User } from "@supabase/supabase-js";
+import {
+  getCurrentWorkspace, getCurrentWorkspaceFresh, getProfile, getProfileFresh, type Client,
+} from "@/lib/services/workspace";
+import { getWallet } from "@/lib/services/credits";
+import { enforceLoginSecurity } from "@/lib/server/login-security";
+import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import { getToolsLayout } from "@/lib/server/tool-layout";
+import { menuItemKeys } from "@/lib/tool-layout";
+import { readToolPopularity } from "@/lib/server/tool-popularity";
+import {
+  copyFor, ensureBonusNotification, ensureOffer, getBonusConfig, getCampaignStart, toView,
+} from "@/lib/server/welcome-bonus";
+import { renderPlaceholders } from "@/lib/welcome-bonus";
+import { ensurePrelaunchRewards, walletAfterGrant } from "@/lib/server/prelaunch/rewards";
+import { WelcomeBonusMount } from "@/components/onboarding/welcome-bonus-mount";
+import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/provider";
+import { blockStateOf } from "@/lib/server/account-block";
+import { makeT } from "@/lib/i18n/t";
+import { MegaTopbar } from "@/components/layout/mega-topbar";
+import { readToolSearchTags } from "@/lib/server/tool-search-tags";
+import { CustomerDrawer } from "@/components/layout/customer-drawer";
+import { CustomerBottomNav } from "@/components/layout/customer-bottom-nav";
+import { DrawerProvider } from "@/components/layout/shell-context";
+import { FeedbackCTA } from "@/components/feedback/feedback-cta";
+import { GuestPreviewBar } from "@/components/public-tools/preview-bar";
+import { DraftResume } from "@/components/public-tools/draft-resume";
+import { guestPreviewActive } from "@/lib/server/public-tools-flag";
+import { PUBLIC_TOOLS } from "@/lib/public-tools";
+import { CATALOG_ITEMS, catalogItem } from "@/lib/tool-cards";
+import { itemLabelKey } from "@/lib/tool-layout";
+import { readBell } from "@/lib/server/user-notifications";
+import { favoriteRingEnabled } from "@/lib/server/appearance";
+import { ImportantBanner } from "@/components/layout/important-banner";
+import { GenerationToast } from "@/components/layout/generation-toast";
+import { InflightTitle } from "@/components/inflight/inflight-section";
+import { SiteFooter } from "@/components/cms/site-shell";
+import { getGlobalSections, getNavPages, getPublicSite } from "@/lib/server/public-site";
+import { HomeFooter } from "@/components/seller-home/home-footer";
+
+/**
+ * THE SIGNED-IN CUSTOMER APP'S CHROME — the top bar, the bell, the drawer,
+ * the phone's bottom navigation and the account's own data around a page.
+ *
+ * ONE implementation, two wearers:
+ *   · app/(app)/layout.tsx — every customer screen (variant "app"), exactly
+ *     as that layout always rendered it;
+ *   · the informational pages a signed-in customer opens from the app (O nas,
+ *     FAQ, Kontakt, the legal documents — variant "page"): the SAME content
+ *     component a visitor gets, inside the app instead of the public header.
+ *     Their content is full-width as on the public site (no app padding), the
+ *     page's own footer sits under it, and nothing is written for the account
+ *     there (no welcome-bonus stamp, no pre-launch payout — the next app
+ *     screen does that), so reading a document never changes anything.
+ *
+ * Who may wear it is `resolveAppViewer` — the server's verified session
+ * (Supabase Auth), never a browser flag.
+ */
+
+export type AppProfile = NonNullable<Awaited<ReturnType<typeof getProfile>>>;
+export type AppWorkspace = NonNullable<Awaited<ReturnType<typeof getCurrentWorkspace>>>;
+
+export type AppViewerState =
+  | { state: "gate"; to: string }
+  | { state: "blocked"; until: string | null; profile: Awaited<ReturnType<typeof getProfile>> }
+  | { state: "missing"; profile: Awaited<ReturnType<typeof getProfile>>; workspace: Awaited<ReturnType<typeof getCurrentWorkspace>> }
+  | { state: "ok"; profile: AppProfile; workspace: AppWorkspace };
+
+/**
+ * May this signed-in user open the app right now, and as whom? The login
+ * security check (an unrecognised device must confirm a code first), the
+ * account's records (self-healed once, as on the first request after
+ * sign-in) and a block in force — in that order, as the app layout always
+ * asked them.
+ */
+export async function resolveAppViewer(supabase: Client, user: User): Promise<AppViewerState> {
+  // App-level login security: an unrecognised device (or new IP, or one stale
+  // past the admin's window) must confirm an emailed code before any protected
+  // page renders. This is the real gate — typing /dashboard cannot skip it.
+  const gate = await enforceLoginSecurity(supabase);
+  if (gate) return { state: "gate", to: gate };
+  let [profile, workspace] = await Promise.all([
+    getProfile(supabase, user.id),
+    getCurrentWorkspace(supabase, user.id),
+  ]);
+  if (!profile || !workspace) {
+    // Recovery: the user exists in auth but application records are missing
+    // (account created outside the normal signup flow), OR this is the very
+    // first request after sign-in and the read raced the fresh session.
+    // Self-heal idempotently, then read again — the second read is what
+    // usually succeeds, so a real account never lands on the error screen
+    // just because it arrived a few hundred milliseconds early.
+    const { error: bootstrapError } = await supabase.rpc("bootstrap_current_user");
+    if (bootstrapError) console.error("bootstrap", bootstrapError.code, bootstrapError.message);
+    for (let attempt = 0; attempt < 2 && (!profile || !workspace); attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 350));
+      // The Fresh readers bypass the per-request memo: this loop exists to
+      // observe rows the bootstrap RPC just created, and the cached getters
+      // would replay the pre-bootstrap null.
+      [profile, workspace] = await Promise.all([
+        getProfileFresh(supabase, user.id),
+        getCurrentWorkspaceFresh(supabase, user.id),
+      ]);
+    }
+  }
+  // A block is `blocked` AND still in force: one that ended at 15:30 stops
+  // applying at 15:30, whether or not the tidy-up sweep has run.
+  const block = blockStateOf({ blocked: profile?.blocked ?? false, blocked_until: profile?.blocked_until });
+  if (block.blocked) return { state: "blocked", until: block.until ?? null, profile };
+  if (!profile || !workspace) return { state: "missing", profile, workspace };
+  return { state: "ok", profile, workspace };
+}
+
+/**
+ * An informational page's viewer: the app's chrome only for a signed-in
+ * customer who may open the app right now. A visitor, an admin looking
+ * through „Podgląd jako gość”, an account that must first confirm its device
+ * or is paused → null, and the page renders exactly as the public site always
+ * showed it (a document is never behind a sign-in or a lock screen).
+ */
+export async function infoPageViewer(supabase: Client, user: User | null): Promise<{ user: User; profile: AppProfile; workspace: AppWorkspace } | null> {
+  if (!user || (await guestPreviewActive())) return null;
+  const viewer = await resolveAppViewer(supabase, user).catch(() => null);
+  return viewer?.state === "ok" ? { user, profile: viewer.profile, workspace: viewer.workspace } : null;
+}
+
+export async function AppChrome({
+  supabase, user, profile, workspace, children, preview = false, askedForBonus = false, variant = "app", footer = null,
+}: {
+  supabase: Client;
+  user: User;
+  profile: AppProfile;
+  workspace: AppWorkspace;
+  children: React.ReactNode;
+  /** An admin previewing the app as a visitor opened a page a visitor cannot see. */
+  preview?: boolean;
+  /** `?bonus=1` — the welcome-bonus dialog was asked for. */
+  askedForBonus?: boolean;
+  /** "app": a customer screen. "page": an informational page (see above). */
+  variant?: "app" | "page";
+  /** variant "page": the page's own footer (its CMS setting), under the content. */
+  footer?: React.ReactNode;
+}) {
+  const page = variant === "page";
+  // ONE ROUND TRIP, NOT FOUR. The functions run in fra1 and the database in
+  // eu-central-1, so each await here is a real network hop — and the dictionary,
+  // the bonus config and the campaign start were three MORE of them, queued
+  // behind this batch for no reason: none of the three depends on any of the
+  // others, or on anything in it. Joining them costs nothing and removes three
+  // serial hops from every full page load.
+  //
+  // getCampaignStart is fetched even when the campaign is off. That is one
+  // cheap settings read riding along in a batch that was going to wait for the
+  // slowest member anyway — measurably free, and it keeps the bonus branch
+  // below from re-introducing a serial await.
+  const [
+    { dict: appDict, locale: appLocale }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, bell,
+    availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout, searchTags, favoriteRing,
+    footerGlobal, footerNav, footerSite,
+  ] = await Promise.all([
+    getDictionary(),
+    // The customer app's own namespaces, on top of what the root layout already
+    // sent the public surface. Only this subtree receives them, and it rides in
+    // this batch rather than adding a serial await — see lib/i18n/scopes.ts.
+    getScopedDictionary("app"),
+    getWallet(supabase, workspace.id),
+    // The plan's own monthly grant rides along with its name: the mobile menu's
+    // credit meter measures the wallet against THIS number, so a Pro account is
+    // never scored against a Free allowance — and no constant stands in for it.
+    supabase.from("subscriptions").select("subscription_plans(name, monthly_credits)")
+      .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
+    // A workspace with no active subscription is on Free, and Free's allowance
+    // is a row like any other. Fetched in the same batch rather than after the
+    // branch, so it costs nothing: this Promise.all was already waiting for its
+    // slowest member.
+    supabase.from("subscription_plans").select("monthly_credits").eq("slug", "free").maybeSingle(),
+    // The bell's whole state (both tabs, the important-only badge, the bar)
+    // in one RPC — Powiadomienia V2, 0160.
+    readBell(supabase),
+    getAvailabilityMap(supabase),
+    // What the NAV should treat as admin: the real role unless this admin
+    // asked to look at the app as a customer.
+    viewerIsAdmin(supabase),
+    getBonusConfig(supabase),
+    getCampaignStart(supabase),
+    // The weekly tool ranking the global search opens with. One settings row,
+    // joined to a batch that was already waiting on its slowest member, so the
+    // search costs nothing to open and nothing extra to render the page.
+    readToolPopularity(supabase),
+    // The catalogue layout decides which tools the menu lists. Same settings
+    // table, same batch; an unreadable row is the shipped default.
+    getToolsLayout(supabase),
+    // Admin search tags for the global search (search metadata only). Same
+    // batch; any error is "no tags" and the search behaves as before.
+    readToolSearchTags(supabase),
+    // Ulubione V2: the ring around a liked tile (admin switch, default ON).
+    favoriteRingEnabled(supabase),
+    // The public site's footer, shown under /home (components/seller-home/
+    // home-footer.tsx): the same two cached reads and one settings row every
+    // public page makes, in this batch rather than after it.
+    getGlobalSections(),
+    getNavPages(),
+    getPublicSite(supabase),
+  ]);
+  const menuItems = menuItemKeys(toolsLayout);
+  const t0 = makeT(appDict);
+
+  /**
+   * WELCOME BONUS. A verified account created after the campaign started gets
+   * an offer the first time it lands here; the 72-hour window runs from the
+   * VERIFICATION timestamp and is stamped once, server-side, so nothing the
+   * browser does can extend or reset it.
+   *
+   * Everything below degrades to "no offer" rather than throwing: a promotion
+   * is never worth taking the application down for. An informational page
+   * writes nothing for the account (see the file's note).
+   */
+  const bonusOffer = !page && bonusConfig.active
+    ? await ensureOffer(
+        supabase,
+        { id: user.id, email_confirmed_at: user.email_confirmed_at, created_at: user.created_at },
+        bonusConfig,
+        campaignStart,
+      )
+    : null;
+  const bonusView = bonusOffer ? toView(bonusOffer) : null;
+  // PRE-LAUNCH REWARDS: what a confirmed waitlist signup (and its confirmed
+  // referrals) earned, paid the first time the verified account with that
+  // address opens the app. A no-op while rewards are off; never throws. The
+  // wallet above was read before the grant: when this call paid something,
+  // the balance is read again — uncached, the per-request memo would replay
+  // the pre-grant row — so the first page already shows it.
+  const prelaunchGranted = page ? 0 : await ensurePrelaunchRewards(supabase, workspace.id);
+  const shownWallet = prelaunchGranted > 0 ? await walletAfterGrant(supabase, workspace.id) : wallet;
+  const bonusCopy = copyFor(bonusConfig, false);
+  if (bonusView?.status === "ELIGIBLE") {
+    const values = { credits: bonusView.amount, hours: Math.ceil(bonusView.secondsLeft / 3600) };
+    await ensureBonusNotification(
+      supabase,
+      user.id,
+      renderPlaceholders(bonusCopy.notificationTitle || t0("bonus.notifTitle", values), values),
+      renderPlaceholders(bonusCopy.notificationBody || t0("bonus.notifBody", values), values),
+    );
+  }
+  const planName = sub?.subscription_plans?.name ?? "Free";
+  // Null rather than a guess when neither row can be read — the meter then
+  // shows the balance with a neutral bar instead of inventing a limit.
+  const planCredits = sub?.subscription_plans?.monthly_credits ?? freePlan?.monthly_credits ?? null;
+  const isAdmin = profile.role === "admin";
+  const displayName = profile.full_name ?? profile.email;
+  const toolLabels = Object.fromEntries([
+    ...PUBLIC_TOOLS.map((tool) => {
+      const item = catalogItem(tool.key);
+      return [tool.key, item ? t0(itemLabelKey(item)) : tool.key];
+    }),
+    // A category's workflows, keyed as their tool pages key a draft.
+    ...CATALOG_ITEMS.filter((item) => item.workflow).map((item) => [item.key, t0(itemLabelKey(item))]),
+  ]);
+  return (
+    <I18nScope dict={clientDict}>
+    <DrawerProvider>
+      {/* Horizontal-navigation shell per the UX spec: no permanent left
+          sidebar — the full width belongs to the work. */}
+      {/* `app-shell` is a hook, not a style: a work-surface page (the
+          generator) turns this frame into a viewport-height box so the page
+          itself stops scrolling. Every other page keeps min-h-dvh and
+          scrolls normally. */}
+      <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col" data-favorite-ring={favoriteRing ? "on" : "off"}
+        data-app-page={page ? "info" : undefined}>
+        {/* The admin is previewing as a visitor but opened a page a visitor
+            cannot see: their own app, with the way out of the preview. */}
+        {preview && <GuestPreviewBar />}
+        <MegaTopbar name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} bell={bell} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
+        {/* An admin message marked „Ważny”: one thin row in the flow, under
+            the header — never over it, the dock or a tool's panel. */}
+        <ImportantBanner initial={bell} />
+        <GenerationToast initial={bell} />
+        <InflightTitle />
+        {page ? (
+          // AN INFORMATIONAL PAGE: its own content, full-width exactly as on
+          // the public site (its sections carry their own widths and
+          // backgrounds), then its own footer. The footer clears the phone
+          // navigation through the same rule /home's footer uses
+          // (globals.css `[data-home-footer]`); without one, the content does.
+          <>
+            <main className={footer ? "w-full min-w-0 flex-1" : "w-full min-w-0 flex-1 pb-[var(--page-bottom)] lg:pb-0"}>
+              {children}
+            </main>
+            {footer && <div data-home-footer="">{footer}</div>}
+          </>
+        ) : (
+          <>
+            {/* Full-width work surface. The bottom padding is DERIVED from the
+                chrome tokens, so the fixed navigation can never cover the last
+                element on the page — the defect that showed up on every phone
+                screenshot. */}
+            <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
+              {/* A tool prepared before signing in (or before a checkout), one
+                  click away from wherever the account landed. */}
+              <DraftResume viewerKey={user.id} labels={toolLabels} />
+              {children}
+              {/* MOUNTED ONCE, FOR THE WHOLE CUSTOMER APP. Every screen a customer
+                  can reach lives under this <main>, so "report a bug / suggest a
+                  change" is at the end of all of them without a single page having
+                  to wire it up — and cannot drift out of one of them later.
+                  It inherits this element's own `--page-bottom`, which is derived
+                  from the dock height plus the safe area, so the fixed bottom
+                  navigation can never cover it. Sign-in, the security check and
+                  the admin panel are separate layouts and deliberately do not get
+                  it. */}
+              <FeedbackCTA />
+            </main>
+            {/* /home only: the public site's footer, after „Zgłoś błąd” — the
+                one shared component, not a copy. */}
+            <HomeFooter>
+              <SiteFooter global={footerGlobal} nav={footerNav} site={footerSite} locale={appLocale} t={t0} />
+            </HomeFooter>
+          </>
+        )}
+        <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={shownWallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} menuItems={menuItems} />
+        {bonusView?.status === "ELIGIBLE" && (
+          <WelcomeBonusMount
+            offer={bonusView}
+            questions={bonusConfig.questions}
+            copy={bonusCopy}
+            badge={bonusConfig.badge}
+            icon={bonusConfig.icon}
+            firstName={profile.full_name?.split(" ")[0] ?? ""}
+            requested={askedForBonus}
+          />
+        )}
+      </div>
+    </DrawerProvider>
+    </I18nScope>
+  );
+}

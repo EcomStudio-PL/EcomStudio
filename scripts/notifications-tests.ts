@@ -192,7 +192,8 @@ check("every generation producer goes through the shared helper",
 const helper = read("lib/server/user-notifications.ts");
 check("a refund is claimed only from the ledger", /status === "refunded" && ev\.refund_tx_id/.test(helper));
 check("each generation notice is deduplicated per job", /generation_done:\$\{input\.jobId\}/.test(helper) && /generation_failed:\$\{input\.jobId\}/.test(helper));
-const layout = read("app/(app)/layout.tsx");
+// The app's chrome: app/(app)/layout.tsx + components/layout/app-chrome.tsx.
+const layout = read("app/(app)/layout.tsx") + read("components/layout/app-chrome.tsx");
 check("the app layout reads the bell through the RPC", /readBell\(supabase\)/.test(layout) && !/from\("notifications"\)/.test(layout));
 const bell = read("components/layout/notifications-bell.tsx");
 check("the badge is the important count", /bell\.unread > 9 \? "9\+" : String\(bell\.unread\)/.test(bell));

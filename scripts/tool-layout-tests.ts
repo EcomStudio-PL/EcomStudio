@@ -345,7 +345,7 @@ console.log("\nJ. the storage contract");
     !fs.readdirSync("supabase/migrations").filter((f) => f !== "0172_launch_tool_visibility.sql")
       .some((f) => read(`supabase/migrations/${f}`).includes("tools_layout"))
     && !/\b(create|alter)\s+(table|policy|function)\b/i.test(read("supabase/migrations/0172_launch_tool_visibility.sql").replace(/--[^\n]*/g, "")));
-  const surfaces = ["app/(app)/tools/page.tsx", "app/(app)/layout.tsx", "components/home/product-surface.tsx"];
+  const surfaces = ["app/(app)/tools/page.tsx", "components/layout/app-chrome.tsx", "components/home/product-surface.tsx"];
   check("/tools, the app menus and Start all read the one stored layout",
     surfaces.every((f) => /getToolsLayout\(supabase\)/.test(read(f))));
   check("no component keeps a list of tools of its own for /tools",

@@ -311,7 +311,7 @@ section("I. WHAT MUST NEVER BE POSSIBLE (read from the code)");
     /<CustomerBottomNav availability=\{availability\} guest \/>/.test(guestShell)
     && /pt-4 pb-\[var\(--page-bottom\)\] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10/.test(guestShell)
     && /guest && auth && !isPublicToolPath\(s\.href\)/.test(dock) && /auth\.open\("login", s\.href\)/.test(dock)
-    && /<CustomerBottomNav availability=\{availability\} isAdmin=\{navAdmin\} \/>/.test(read("app/(app)/layout.tsx")));
+    && /<CustomerBottomNav availability=\{availability\} isAdmin=\{navAdmin\} \/>/.test(read("components/layout/app-chrome.tsx")));
   check("I20 the visitor's primary door promises free credits only while signup is open",
     /signupOpen=\{signupOpen\(access, new Date\(\)\)\}/.test(guestShell)
     && /t\(signupOpen \? "auth\.signUpFree" : "auth\.signUp"\)/.test(read("components/layout/mega-topbar.tsx")));

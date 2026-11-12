@@ -26,6 +26,8 @@ import { faqTargetsOf, getFaqPages } from "@/lib/server/faq";
 import { faqChannelsOf } from "@/lib/server/faq-page";
 import { PUBLIC_CATALOGUE_ALIAS, PUBLIC_CATALOGUE_PATH } from "@/lib/public-tools";
 import { publicCatalogueOpen } from "@/lib/server/public-tools-flag";
+import { isAppInfoGroup } from "@/lib/info-pages";
+import { AppChrome, infoPageViewer } from "@/components/layout/app-chrome";
 
 /**
  * EVERY OTHER PUBLIC PAGE.
@@ -184,6 +186,31 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
     signedIn: Boolean(user),
   };
 
+  const content = (
+    <BlockRenderer
+      blocks={visible}
+      ctx={renderContext({
+        locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user), slots, start,
+        site: faq ? { ...site, faq: faqTargetsOf(faq) } : site, contact, faq, faqChannels,
+      })}
+    />
+  );
+
+  // AN INFORMATIONAL PAGE, READ BY A SIGNED-IN CUSTOMER: the same content,
+  // inside the app — its header and navigation instead of the public site's
+  // (lib/info-pages.ts decides which pages; the verified session decides who).
+  // The page's own footer setting still applies under the content.
+  const group = nav.find((p) => p.slug === slug)?.navGroup ?? null;
+  const viewer = isAppInfoGroup(group) ? await infoPageViewer(supabase, user) : null;
+  if (viewer) {
+    return (
+      <AppChrome supabase={supabase} user={viewer.user} profile={viewer.profile} workspace={viewer.workspace} variant="page"
+        footer={page.footerMode === "global" ? <SiteFooter {...shell} /> : page.footerMode === "minimal" ? <MinimalFooter t={t} /> : null}>
+        {content}
+      </AppChrome>
+    );
+  }
+
   // WHAT THE PAGE WEARS IS THE PAGE'S OWN SETTING. `global` is the site's
   // chrome, `minimal` is the brand alone, `none` is nothing — and the
   // announcement bar belongs to the site's chrome, so it goes with it.
@@ -192,15 +219,7 @@ export default async function CmsPage({ params, searchParams }: PageProps) {
       {page.headerMode === "global" && <AnnouncementBar global={global} locale={locale} />}
       {page.headerMode === "global" && <SiteHeader {...shell} />}
       {page.headerMode === "minimal" && <MinimalHeader />}
-      <main className="flex-1">
-        <BlockRenderer
-          blocks={visible}
-          ctx={renderContext({
-            locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user), slots, start,
-            site: faq ? { ...site, faq: faqTargetsOf(faq) } : site, contact, faq, faqChannels,
-          })}
-        />
-      </main>
+      <main className="flex-1">{content}</main>
       {page.footerMode === "global" && <SiteFooter {...shell} />}
       {page.footerMode === "minimal" && <MinimalFooter t={t} />}
     </div>

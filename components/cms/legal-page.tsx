@@ -12,6 +12,7 @@ import { legalViewFor } from "@/lib/legal/content";
 import { parseLegalText } from "@/lib/legal/document";
 import { formatInstant } from "@/lib/utils";
 import { TableOfContents } from "./table-of-contents";
+import { AppChrome, infoPageViewer } from "@/components/layout/app-chrome";
 
 /**
  * THE LEGAL DOCUMENTS — the published text when there is one, today's page
@@ -64,9 +65,13 @@ export async function LegalPage({ slug, titleKey, searchParams }: {
   ]);
   const t = makeT(dict);
 
-  const [global, nav, site] = await Promise.all([
-    getGlobalSections(), getNavPages(), getPublicSite(supabase),
+  // A signed-in customer reads the document inside the app (its header and
+  // navigation); a visitor — and anyone who may not open the app right now —
+  // gets the public page as it always was. The document itself is the same.
+  const [global, nav, site, viewer] = await Promise.all([
+    getGlobalSections(), getNavPages(), getPublicSite(supabase), infoPageViewer(supabase, user),
   ]);
+  const homeHref = viewer ? "/home" : "/";
   const shell = {
     global, nav, site, locale, t,
     showAuth: access.showAuthEntry,
@@ -83,16 +88,27 @@ export async function LegalPage({ slug, titleKey, searchParams }: {
         outline={parseLegalText(view.entry.text)}
         pdfTag={legalPdfTag(view.entry, view.locale)}
         publishedAt={page?.publishedAt ?? null}
+        homeHref={homeHref}
       />
     ) : (
       <LegalSoon
         slug={slug} titleKey={titleKey} t={t} visitor={locale} doc={doc}
         shown={view.locale}
         polishTag={view.polish ? legalPdfTag(view.polish, "pl") : null}
+        homeHref={homeHref}
       />
     );
   } else {
-    body = <LegacyLegal page={page} titleKey={titleKey} locale={locale} t={t} signedIn={Boolean(user)} />;
+    body = <LegacyLegal page={page} titleKey={titleKey} locale={locale} t={t} signedIn={Boolean(user)} homeHref={homeHref} />;
+  }
+
+  if (viewer) {
+    return (
+      <AppChrome supabase={supabase} user={viewer.user} profile={viewer.profile} workspace={viewer.workspace} variant="page"
+        footer={<SiteFooter {...shell} />}>
+        {body}
+      </AppChrome>
+    );
   }
 
   return (
@@ -111,7 +127,9 @@ export async function LegalPage({ slug, titleKey, searchParams }: {
  * markup — a sticky column on a desktop, a dropdown above the text on a
  * phone — or, with nothing published, the placeholder.
  */
-function LegacyLegal({ page, titleKey, locale, t, signedIn }: {
+function LegacyLegal({ page, titleKey, locale, t, signedIn, homeHref = "/" }: {
+  /** Where „Wróć” leads: the site's start for a visitor, /home inside the app. */
+  homeHref?: string;
   page: Awaited<ReturnType<typeof getPublishedLegal>>["page"];
   titleKey: string;
   locale: string;
@@ -171,7 +189,7 @@ function LegacyLegal({ page, titleKey, locale, t, signedIn }: {
           usually opened with target="_blank" from the consent line, where
           there is nothing to go back to, so history.back() would send a
           reader off the site entirely. */}
-      <Link href="/" data-legal-back
+      <Link href={homeHref} data-legal-back
         className="tap mt-10 inline-flex text-sm font-medium text-accent-strong underline-offset-2 hover:underline dark:text-accent">
         ← {t("legal.back")}
       </Link>

@@ -365,7 +365,8 @@ section("E. BULK UPLOAD — PHOTO + PRODUCT PHOTO PAIRS");
 
 section("F. THE FOOTER — THE SHARED SiteFooter, /home ONLY, AFTER „ZGŁOŚ BŁĄD”");
 {
-  const layout = read("app/(app)/layout.tsx");
+  // The app's chrome (moved verbatim from app/(app)/layout.tsx).
+  const layout = read("components/layout/app-chrome.tsx");
   const switcher = read("components/seller-home/home-footer.tsx");
   const main = layout.indexOf("<FeedbackCTA />");
   const mainEnd = layout.lastIndexOf("</main>");

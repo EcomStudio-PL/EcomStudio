@@ -96,7 +96,11 @@ check(
 // the latter two by name — "nie trzeba na ekranach jednokomunikatowych" — so
 // the one to find is the one carrying the page-bottom token, and the others
 // must not have it.
-const layout = read("app/(app)/layout.tsx");
+// The customer layout = app/(app)/layout.tsx (the single-message screens) +
+// components/layout/app-chrome.tsx (the work surface). The chrome's other
+// <main> — an informational page's, whose class is an expression — is not a
+// work surface and carries no CTA (asserted below by the single mount).
+const layout = read("app/(app)/layout.tsx") + read("components/layout/app-chrome.tsx");
 const mains = [...layout.matchAll(/<main className="([^"]*)">([\s\S]*?)<\/main>/g)];
 const shell = mains.filter((m) => m[1].includes("pb-[var(--page-bottom)]"));
 check(
