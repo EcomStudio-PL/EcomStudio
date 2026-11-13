@@ -5,17 +5,18 @@ import { Check, Lock, ShieldCheck, Zap } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { CreditCoinStack } from "./credit-coin-stack";
-import { buyCreditsLabel, creditsWord, formatCount, formatMoney, formatPerCredit } from "./pricing-model";
+import { approxPln, buyCreditsLabel, creditsCheckoutHref, creditsWord, formatCount, formatMoney, formatPerCredit } from "./pricing-model";
+import { topupCents, topupMarginalCents } from "@/lib/plans/topup-price";
 import { PRICING_PAGE } from "./pricing-config";
 import type { PricingPackView, PricingPageData, PricingTierView } from "./pricing-types";
 
 /**
- * DOŁADUJ KREDYTY — five packs on the left, a custom amount on the right.
+ * DOŁADUJ KREDYTY — one slider (Cennik V2: 20–5000 credits, step 1).
  *
- * NOTHING HERE PRICES ANYTHING. Every amount arrived from the server, computed
- * by `priceTopup` — the function the checkout charges with — so the card, the
- * quote and the Stripe amount are one number. An amount without an approved
- * price arrives as null and is shown as "soon", with no buy button.
+ * The preview is `topupCents` — the SAME pure function the server charges
+ * with (lib/plans/topup-price.ts), so the figure here, the server's quote and
+ * the Stripe amount are one computation. The server recomputes it, stores it
+ * as an order before any payment, and never reads a price from the browser.
  *
  * THE LOCK IS THE SERVER'S. `viewer.topups` is decided by requireActivePaidPlan
  * on the server, and the checkout refuses on its own without an active paid
@@ -44,13 +45,15 @@ export function TopUps({ data, onChoosePlan, recommendedSlot = null }: {
       <div className="relative mt-8" data-topups-locked={locked ? data.viewer.topups : undefined}>
         <div inert={locked}
           className={cn(
-            "grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-start",
+            data.packs.length > 0 ? "grid gap-5 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)] lg:items-start" : "mx-auto max-w-xl",
             locked && "pointer-events-none select-none opacity-50 blur-[1.5px] saturate-[0.6] motion-safe:transition-[filter,opacity]",
           )}>
-          {/* Packs first in the document (left on wide screens); the custom
-              amount is drawn first on a phone, where it is the headline. */}
-          <PackList packs={data.packs} currency={data.currency} recommendedSlot={recommendedSlot} className="order-2 lg:order-1" />
-          <CustomAmount tiers={data.tiers} currency={data.currency} className="order-1 lg:order-2" />
+          {/* Cennik V2: no packs are on offer — the slider is the top-up. */}
+          {data.packs.length > 0 && (
+            <PackList packs={data.packs} currency={data.currency} recommendedSlot={recommendedSlot} className="order-2 lg:order-1" />
+          )}
+          <CustomAmount spec={data.topup} fx={data.fx} payments={data.paymentsEnabled}
+            initial={recommendedSlot} className="order-1 lg:order-2" />
         </div>
         {locked && <LockOverlay reason={data.viewer.topups} onChoosePlan={onChoosePlan} />}
       </div>
@@ -148,19 +151,27 @@ const BEST_EDGE: CSSProperties = {
 
 /* ── the custom amount ─────────────────────────────────────────────────────*/
 
-function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]; currency: string; className?: string }) {
+function CustomAmount({ spec, fx, payments, initial, className }: {
+  spec: PricingPageData["topup"]; fx: PricingPageData["fx"]; payments: boolean;
+  /** A tool's top-up dialog may open on the amount the image is missing. */
+  initial?: number | null; className?: string;
+}) {
   const { t } = useI18n();
-  const first = Math.max(0, tiers.findIndex((x) => x.amountCents !== null));
-  const [index, setIndex] = useState(first);
-  const tier = tiers[index];
-  const last = tiers.length - 1;
-  const pct = last > 0 ? (index / last) * 100 : 0;
-  // What a screen reader hears on each stop: the amount, then its price — or
-  // that the stop is not on sale yet, so a silent "—" is never the answer.
-  const valueText = useMemo(() => tier
-    ? `${formatCount(tier.credits)} ${creditsWord(tier.credits, t)}, ${tier.amountCents !== null ? formatMoney(tier.amountCents, currency) : t("pricing.topups.tierSoon")}`
-    : "", [tier, t, currency]);
-  if (!tier) return null;
+  const clamp = (n: number) => Math.min(spec.max, Math.max(spec.min, Math.round(n / spec.step) * spec.step));
+  const [credits, setCredits] = useState(() => clamp(initial ?? 100));
+  const [typed, setTyped] = useState<string | null>(null);
+  const amountCents = topupCents(credits);
+  const perCreditCents = amountCents / credits;
+  const pln = approxPln(amountCents, fx?.rate);
+  // The range is on a square-root scale so 20–250 (where the bands change)
+  // gets most of its width; every value it lands on is a whole credit.
+  const toPos = (c: number) => Math.round(Math.sqrt((c - spec.min) / (spec.max - spec.min)) * 1000);
+  const fromPos = (p: number) => clamp(spec.min + ((p / 1000) ** 2) * (spec.max - spec.min));
+  const pos = toPos(credits);
+  const pct = pos / 10;
+  const valueText = useMemo(() => `${formatCount(credits)} ${creditsWord(credits, t)}, ${formatMoney(amountCents, spec.currency)}`,
+    [credits, amountCents, t, spec.currency]);
+  const href = payments && spec.buyable ? creditsCheckoutHref(credits) : null;
 
   return (
     <div data-custom-amount className={cn("rounded-[24px] border border-line bg-surface p-5 sm:p-6", className)}
@@ -170,25 +181,29 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
 
       <div className="mt-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
         <p className="flex items-baseline gap-2">
-          <span data-custom-credits className="font-display text-[2.5rem] font-semibold leading-none tracking-[-0.03em] tabular-nums">
-            {formatCount(tier.credits)}
-          </span>
-          <span className="text-[15px] font-medium text-muted">{creditsWord(tier.credits, t)}</span>
+          <label htmlFor="topup-credits" className="sr-only">{t("pricing.topups.sliderLabel")}</label>
+          <input id="topup-credits" data-custom-credits inputMode="numeric" type="number"
+            min={spec.min} max={spec.max} step={spec.step}
+            value={typed ?? String(credits)}
+            onChange={(e) => {
+              setTyped(e.target.value);
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n >= spec.min && n <= spec.max) setCredits(clamp(n));
+            }}
+            onBlur={() => { setTyped(null); }}
+            className="w-[6.5ch] bg-transparent font-display text-[2.5rem] font-semibold leading-none tracking-[-0.03em] tabular-nums outline-none [appearance:textfield] focus-visible:underline [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+          <span className="text-[15px] font-medium text-muted">{creditsWord(credits, t)}</span>
         </p>
         <p id="topup-tier-unit" className="pb-1 text-[13px] text-muted">
-          {tier.perCreditCents !== null
-            ? t("pricing.topups.perCredit", { price: formatPerCredit(tier.perCreditCents, currency) })
-            : t("pricing.topups.tierSoon")}
+          {t("pricing.topups.perCredit", { price: formatPerCredit(perCreditCents, spec.currency) })}
+          <span className="sr-only"> · {t("pricing.topups.marginal", { price: formatPerCredit(topupMarginalCents(credits), spec.currency) })}</span>
         </p>
       </div>
 
-      {/* TEN STOPS, NOTHING BETWEEN. The range moves over tier INDEXES, so a
-          value outside the list cannot be chosen — and the server refuses one
-          anyway. There is no typed field. */}
       <div className="mt-5">
         <label htmlFor="topup-tier" className="sr-only">{t("pricing.topups.sliderLabel")}</label>
-        <input id="topup-tier" type="range" min={0} max={last} step={1} value={index}
-          onChange={(e) => setIndex(Number(e.target.value))}
+        <input id="topup-tier" type="range" min={0} max={1000} step={1} value={pos}
+          onChange={(e) => { setTyped(null); setCredits(fromPos(Number(e.target.value))); }}
           aria-valuetext={valueText}
           aria-describedby="topup-tier-unit"
           data-tier-slider
@@ -196,14 +211,9 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
           style={{
             background: `linear-gradient(90deg, rgb(var(--accent-strong)) 0%, rgb(var(--accent)) ${pct * 0.6}%, rgb(var(--violet)) ${pct}%, rgb(var(--line-strong)) ${pct}%, rgb(var(--line-strong)) 100%)`,
           }} />
-        <div aria-hidden className="mt-2 flex justify-between px-[3px]">
-          {tiers.map((x, i) => (
-            <span key={x.credits} className={cn("h-1.5 w-1.5 rounded-full", i <= index ? "bg-[rgb(var(--accent))]" : "bg-line-strong")} />
-          ))}
-        </div>
         <div aria-hidden className="mt-1.5 flex justify-between text-[12px] font-medium text-muted tabular-nums">
-          <span>{formatCount(tiers[0].credits)}</span>
-          <span>{formatCount(tiers[last].credits)}</span>
+          <span>{formatCount(spec.min)}</span>
+          <span>{formatCount(spec.max)}</span>
         </div>
       </div>
 
@@ -211,29 +221,30 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{t("pricing.topups.toPay")}</p>
-            {tier.savePct !== null && (
-              <p className="mt-1 text-[12px] font-semibold text-[rgb(var(--accent-strong))] dark:text-[rgb(var(--accent-glow))]">
-                {t("pricing.topups.save", { n: tier.savePct })}
+            {pln && (
+              <p data-custom-pln className="mt-1 text-[12px] text-muted">
+                {t("pricing.fx.approx", { amount: pln })}
               </p>
             )}
           </div>
           <p data-custom-price className="font-display text-[2rem] font-semibold leading-none tracking-[-0.02em] tabular-nums">
-            {tier.amountCents !== null ? formatMoney(tier.amountCents, currency) : "—"}
+            {formatMoney(amountCents, spec.currency)}
           </p>
         </div>
       </div>
 
-      {tier.href ? (
-        <Link href={tier.href} data-custom-buy
+      {href ? (
+        <Link href={href} data-custom-buy
           className="mt-4 flex h-12 w-full items-center justify-center rounded-xl px-4 text-[15px] font-semibold cta [--accent:var(--accent-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--surface))]">
-          {buyCreditsLabel(tier.credits, t)}
+          {buyCreditsLabel(credits, t)}
         </Link>
       ) : (
         <button type="button" disabled data-custom-buy
           className="mt-4 flex h-12 w-full cursor-not-allowed items-center justify-center rounded-xl bg-raised px-4 text-[14px] font-semibold text-muted">
-          {tier.amountCents === null ? t("pricing.topups.tierSoon") : t("packs.unavailable")}
+          {t("packs.unavailable")}
         </button>
       )}
+      {fx && <p className="mt-2 text-center text-[11.5px] text-faint">{t("pricing.fx.note", { date: fx.date })}</p>}
 
       <ul className="mt-4 grid gap-1.5 text-[13px] text-muted sm:grid-cols-3 sm:gap-2">
         <li className="flex items-center gap-1.5"><Zap size={14} aria-hidden className="shrink-0 text-accent" />{t("pricing.topups.check.instant")}</li>

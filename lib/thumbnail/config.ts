@@ -312,7 +312,7 @@ export function quoteTotal(input: {
   photos: number; retouch: boolean; retouchUnit: number | null; thumbnailCredits: number; reused?: number;
 }): ThumbnailQuote {
   const retouchCount = input.retouch ? Math.max(0, input.photos - (input.reused ?? 0)) : 0;
-  const retouchCredits = retouchCount * (input.retouchUnit ?? 0);
+  const retouchCredits = Math.round(retouchCount * (input.retouchUnit ?? 0) * 100) / 100;
   return {
     photos: input.photos,
     retouch: input.retouch,
@@ -320,6 +320,6 @@ export function quoteTotal(input: {
     retouchCount,
     retouchCredits,
     thumbnailCredits: input.thumbnailCredits,
-    total: retouchCredits + input.thumbnailCredits,
+    total: Math.round((retouchCredits + input.thumbnailCredits) * 100) / 100,
   };
 }

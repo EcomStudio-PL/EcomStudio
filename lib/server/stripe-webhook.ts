@@ -1,6 +1,8 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import type { Database } from "@/lib/database.types";
+import { invoiceGrants, lineFacts, type Grant, type PlanForPrice } from "@/lib/billing/invoice-grants";
+import { stripeGet } from "@/lib/stripe/client";
 
 /**
  * WHAT A STRIPE EVENT DOES TO GROVBASE.
@@ -210,7 +212,11 @@ type Purchase = {
   description: string;
   packageId: string | null;
   planId: string | null;
+  /** Cennik V2: the server-approved top-up order (credit_orders). */
+  orderId?: string | null;
 };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The credits a one-off purchase is worth.
@@ -275,17 +281,22 @@ async function purchaseFromMetadata(
   }
 
   if (type === "custom_credits") {
-    const credits = Number(meta.credits);
-    // A metadata value is a string from a JSON body. It must be a whole,
-    // positive, sane number before it becomes a ledger entry.
-    if (!Number.isSafeInteger(credits) || credits <= 0) return null;
+    // CENNIK V2: a top-up is an ORDER the server priced and stored before the
+    // payment existed. The metadata only NAMES the order; its credits, amount
+    // and currency come from the order row, and stripe_settle_v2 grants them
+    // only if Stripe reports exactly that amount for that workspace. A
+    // custom-credits payment without an order is recorded and flagged, never
+    // credited from its metadata.
+    const orderId = meta.grovbase_order_id;
+    if (!orderId || !UUID.test(orderId)) return null;
     return {
       kind: "custom_credits",
-      credits,
+      credits: 0,
       creditType: "topup",
-      description: `Doładowanie: ${credits} kredytów`,
+      description: "Doładowanie",
       packageId: null,
       planId: null,
+      orderId,
     };
   }
 
@@ -322,6 +333,53 @@ async function planForPrice(
   return plan?.id ?? null;
 }
 
+/** A plan and its billing period, for an invoice line's Price (Cennik V2). */
+async function planInfoForPrice(
+  supabase: Client, token: string, priceId: string,
+): Promise<PlanForPrice | null> {
+  const { data, error } = await supabase.rpc("stripe_plan_for_price", { p_token: token, p_price_id: priceId });
+  if (error) throw new Error(`plan_lookup_failed:${error.code ?? "unknown"}`);
+  const row = data as { id?: string; name?: string; credits?: number; period?: string; price_cents?: number } | null;
+  if (!row?.id) return null;
+  return {
+    id: row.id, name: row.name ?? "", credits: Number(row.credits ?? 0),
+    period: row.period === "annual" ? "annual" : "monthly", priceCents: Number(row.price_cents ?? 0),
+  };
+}
+
+/**
+ * WHAT IT COST TO TAKE THE MONEY — Stripe's balance transaction (fee, net,
+ * settlement currency, exchange rate) and the invoice's tax when Stripe
+ * computed one. Best effort and AFTER settlement: a failed lookup leaves the
+ * columns empty ("Brak danych" in the admin), and never fails the webhook.
+ */
+async function recordFees(
+  supabase: Client, token: string, providerPaymentId: string, paymentIntentId: string | null, taxCents: number | null = null,
+): Promise<void> {
+  try {
+    let fee: number | null = null, net: number | null = null, currency: string | null = null, rate: number | null = null;
+    if (paymentIntentId) {
+      const pi = await stripeGet<{ latest_charge?: { balance_transaction?: { fee?: number; net?: number; currency?: string; exchange_rate?: number | null } | string | null } | string | null }>(
+        `/payment_intents/${encodeURIComponent(paymentIntentId)}`, { expand: ["latest_charge.balance_transaction"] });
+      const charge = typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+      const bt = charge && typeof charge.balance_transaction === "object" ? charge.balance_transaction : null;
+      if (bt) {
+        fee = typeof bt.fee === "number" ? bt.fee : null;
+        net = typeof bt.net === "number" ? bt.net : null;
+        currency = bt.currency ?? null;
+        rate = typeof bt.exchange_rate === "number" ? bt.exchange_rate : null;
+      }
+    }
+    if (fee === null && taxCents === null) return;
+    await supabase.rpc("payment_record_fees", {
+      p_token: token, p_provider_payment_id: providerPaymentId, p_fee: fee, p_net: net,
+      p_currency: currency, p_exchange_rate: rate, p_tax_cents: taxCents,
+    });
+  } catch (e) {
+    console.error("stripe.webhook.fees_unavailable", providerPaymentId, e instanceof Error ? e.message : "unknown");
+  }
+}
+
 /* ── the settlement call ───────────────────────────────────────────────────*/
 
 async function settle(
@@ -336,6 +394,30 @@ async function settle(
     metadata: Record<string, unknown>;
   },
 ): Promise<HandleResult> {
+  if (args.purchase?.kind === "custom_credits" && args.purchase.orderId) {
+    const { data, error } = await supabase.rpc("stripe_settle_v2", {
+      p_token: token,
+      p_event_id: args.event.id,
+      p_event_type: args.event.type,
+      p_workspace_id: args.workspaceId,
+      p_provider_payment_id: args.paymentId,
+      p_amount_cents: args.amountCents,
+      p_currency: args.currency,
+      p_kind: "custom_credits",
+      p_plan_id: null,
+      p_stripe_customer_id: args.stripeCustomerId,
+      p_metadata: { ...args.metadata, order_id: args.purchase.orderId } as Json,
+      p_grants: [] as Json,
+      p_order_id: args.purchase.orderId,
+    });
+    if (error) throw new Error(`settle_failed:${error.code ?? "unknown"}`);
+    const status = (data as { status?: string } | null)?.status;
+    if (status === "order_mismatch") {
+      console.error("stripe.webhook.order_mismatch", args.event.id, args.paymentId, args.purchase.orderId);
+    }
+    if (status === "applied") await recordFees(supabase, token, args.paymentId, args.paymentId);
+    return { outcome: status === "order_mismatch" ? "recorded" : ((status as HandledOutcome) ?? "applied"), detail: status };
+  }
   const { data, error } = await supabase.rpc("stripe_settle_payment", {
     p_token: token,
     p_event_id: args.event.id,
@@ -644,25 +726,51 @@ async function onInvoicePaid(
       { customer: idOf(invoice.customer), amount_paid: int(invoice.amount_paid) });
   }
 
-  const parentDetails = (invoice.parent as Record<string, unknown> | undefined)
-    ?.subscription_details as Record<string, unknown> | undefined;
-  const planId = await planForPrice(supabase, token, priceId)
-    ?? metaOf(invoice).grovbase_plan_id
-    ?? (parentDetails ? metaOf(parentDetails).grovbase_plan_id : undefined)
-    ?? null;
-  const purchase = planId ? await purchaseFromPlan(supabase, token, planId) : null;
-
-  const result = await settle(supabase, token, {
-    event, workspaceId,
+  // CENNIK V2: what this invoice grants comes from its LINES — a month, a
+  // year in twelve tranches, an upgrade's share, the unused share of the plan
+  // it replaced (lib/billing/invoice-grants.ts). Each line's Price is mapped
+  // to its plan and period through the mapping columns, never metadata.
+  const plans = new Map<string, PlanForPrice | null>();
+  for (const line of lines as Record<string, unknown>[]) {
+    const id = invoicePriceId(line);
+    if (id && !plans.has(id)) plans.set(id, await planInfoForPrice(supabase, token, id));
+  }
+  const grants: Grant[] = invoiceGrants(
+    (lines as Record<string, unknown>[]).map((l) => lineFacts(l, invoicePriceId(l))),
+    (id) => plans.get(id) ?? null,
+    subscriptionId,
+  );
+  const mainPlan = [...plans.values()].find((p) => p && (grants.some((g) => g.type !== "revert" && g.plan_id === p.id))) ?? null;
+  const paymentIntent = idOf(invoice.payment_intent);
+  const { data: settled, error: settleError } = await supabase.rpc("stripe_settle_v2", {
+    p_token: token,
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_workspace_id: workspaceId,
     // Keyed on the INVOICE. Each renewal is its own invoice, so every period
     // grants once and no period grants twice.
-    paymentId: invoiceId,
-    amountCents: int(invoice.amount_paid) ?? 0,
-    currency: (str(invoice.currency) ?? "pln").toUpperCase(),
-    purchase,
-    stripeCustomerId: idOf(invoice.customer),
-    metadata: { source: "invoice", subscription: subscriptionId },
+    p_provider_payment_id: invoiceId,
+    p_amount_cents: int(invoice.amount_paid) ?? 0,
+    p_currency: (str(invoice.currency) ?? "usd").toUpperCase(),
+    p_kind: "subscription",
+    p_plan_id: mainPlan?.id ?? null,
+    p_stripe_customer_id: idOf(invoice.customer),
+    p_metadata: {
+      source: "invoice", subscription: subscriptionId, billing_reason: str(invoice.billing_reason),
+      billing_period: mainPlan?.period ?? null, payment_intent: paymentIntent,
+      ...(grants.length === 0 && (int(invoice.amount_paid) ?? 0) > 0 ? { anomaly: "no_plan_line", needs_review: true } : {}),
+    } as Json,
+    p_grants: grants as unknown as Json,
+    p_order_id: null,
   });
+  if (settleError) throw new Error(`settle_failed:${settleError.code ?? "unknown"}`);
+  const settledStatus = (settled as { status?: string } | null)?.status;
+  const result: HandleResult = { outcome: (settledStatus as HandledOutcome) ?? "applied" };
+  if (settledStatus === "applied") {
+    const tax = int(invoice.tax);
+    await recordFees(supabase, token, invoiceId, paymentIntent, tax);
+  }
+  const purchase = mainPlan ? { kind: "subscription" as const } : null;
   // After settlement, whatever its outcome — a retry of an event that settled
   // but crashed before this line must still mark the code used.
   const codeId = subscriptionMeta.grovbase_launch_code_id;

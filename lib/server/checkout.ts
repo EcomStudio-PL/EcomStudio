@@ -14,6 +14,7 @@ import { sellable } from "@/lib/server/stripe-pricing";
 import {
   annualOnSale, premiereExpiredFor, premiereMetadata, priceTopup,
 } from "@/lib/server/pricing-offer";
+import { TOPUP_PRICING_VERSION } from "@/lib/plans/topup-price";
 import {
   beginGrovNewsSubscription, grovNewsPaidFor, grovNewsSellable, readGrovNewsBilling, resolveLaunchCode,
   type CodeRefusal, type ResolvedCode,
@@ -258,27 +259,10 @@ async function priceOrder(
   }
 
   if (req.kind === "custom_credits") {
-    // THE RATE CARD IS THE PACKS, and the price is `priceTopup` — the same
-    // function the /plany page renders its tier and pack prices with, so the
-    // figure on the card and the charge are one computation, and only this
-    // side's answer reaches Stripe.
-    const { data: packs } = await supabase
-      .from("credit_packages")
-      .select("credits, bonus_credits, price_cents, currency, stripe_price_cents, stripe_sync_status")
-      .eq("active", true);
-    const rows = packs ?? [];
-    // A rate card built from rows that have not proved they match Stripe is a
-    // rate card built on unverified numbers. Custom credits have no Price of
-    // their own, so the packs ARE the price authority here.
-    if (rows.length === 0 || !rows.every((p) => sellable(p))) {
-      return { ok: false, reason: "price_out_of_sync" };
-    }
-    // Only the OFFERED amounts (the ten tiers, and pack slots without a pack
-    // row): anything else — 250, 1 001, 999 999 — is refused, not rounded.
-    const plan = await topupPlanContext(supabase, gate?.ok ? gate.planId : "");
-    const q = priceTopup(req.credits, {
-      packs: rows, planSlug: plan.slug, planCentsPerCredit: plan.centsPerCredit,
-    });
+    // CENNIK V2: one progressive rate card in USD (lib/plans/topup-price.ts),
+    // the same function the slider previews with. Only whole credits between
+    // the limits are priced; anything else is refused, never rounded.
+    const q = priceTopup(req.credits);
     if (!q.ok) return { ok: false, reason: "invalid_credits" };
 
     return {
@@ -291,13 +275,13 @@ async function priceOrder(
         baseCredits: q.credits,
         bonusCredits: 0,
         amountCents: q.amountCents,
-        currency: (rows[0]?.currency ?? "PLN").toUpperCase(),
+        currency: (q.currency ?? "USD").toUpperCase(),
         period: null,
         recurring: false,
         planId: null,
         packageId: null,
-        // Custom credits are priced from the pack ladder and charged as a bare
-        // amount; there is no Price object to name.
+        // Charged as a bare amount: there is no Price object to name. The
+        // amount and credits are stored as an ORDER before the payment exists.
         stripePriceId: null,
         highlights: [],
       },
@@ -522,7 +506,7 @@ export async function beginCheckout(
     stage = quote.kind === "subscription" ? "subscription" : "payment_intent";
     return quote.kind === "subscription"
       ? await beginSubscription(supabase, workspace, customer, quote, creds.livemode, priced.code)
-      : await beginOneOff(workspace, customer, quote, creds.livemode);
+      : await beginOneOff(supabase, workspace, customer, quote, creds.livemode);
   } catch (e) {
     logFailure(stage, e, { workspaceId: workspace.id, quote });
     if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
@@ -615,14 +599,33 @@ function baseMetadata(workspaceId: string, livemode: boolean): Record<string, st
  * authority — and only because nothing else could be.
  */
 async function beginOneOff(
-  workspace: WorkspaceRef, customer: string, quote: Quote, livemode: boolean,
+  supabase: Client, workspace: WorkspaceRef, customer: string, quote: Quote, livemode: boolean,
 ): Promise<BeginResult> {
+  // CENNIK V2: a top-up is an ORDER first. The server stores what it priced
+  // (credits, amount, currency, rate-card version) and the PaymentIntent only
+  // NAMES that order — the webhook grants the order's credits if, and only
+  // if, Stripe reports exactly the order's amount for this workspace.
+  let orderId: string | null = null;
+  if (quote.kind === "custom_credits") {
+    const token = dispatchToken();
+    if (!token) return { ok: false, reason: "no_server_key" };
+    const { data, error } = await supabase.rpc("credit_order_create", {
+      p_token: token, p_workspace_id: workspace.id, p_credits: quote.credits,
+      p_amount_cents: quote.amountCents, p_currency: quote.currency, p_pricing_version: TOPUP_PRICING_VERSION,
+    });
+    if (error || typeof data !== "string") {
+      console.error("checkout.order_failed", JSON.stringify({ workspace: workspace.id, code: error?.code ?? null }));
+      return { ok: false, reason: "stripe_error" };
+    }
+    orderId = data;
+  }
   const metadata: Record<string, string> = {
     ...baseMetadata(workspace.id, livemode),
     type: quote.kind,
     credits: String(quote.baseCredits),
     bonus_credits: String(quote.bonusCredits),
     ...(quote.packageId ? { grovbase_package_id: quote.packageId } : {}),
+    ...(orderId ? { grovbase_order_id: orderId, pricing_version: TOPUP_PRICING_VERSION } : {}),
   };
 
   const intent = await stripePost<StripePaymentIntent>("/payment_intents", {
@@ -665,6 +668,14 @@ async function beginOneOff(
       intent: intent.id, charged: intent.amount, quoted: quote.amountCents,
     }));
     return { ok: false, reason: "stripe_error" };
+  }
+  if (orderId) {
+    const token = dispatchToken();
+    // The order learns its PaymentIntent: a second intent can never redeem it.
+    const { error } = token
+      ? await supabase.rpc("credit_order_attach", { p_token: token, p_order_id: orderId, p_provider_payment_id: intent.id })
+      : { error: null };
+    if (error) console.error("checkout.order_attach_failed", JSON.stringify({ workspace: workspace.id, intent: intent.id }));
   }
 
   return { ok: true, clientSecret: intent.client_secret, quote, reference: intent.id };

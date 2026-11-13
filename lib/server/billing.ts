@@ -406,27 +406,23 @@ export async function createCustomCreditsCheckout(
   const creds = stripeCredentials();
   if (!creds) return { ok: false, reason: "payments_disabled" };
 
-  const { data: packs } = await supabase
-    .from("credit_packages")
-    .select("credits, bonus_credits, price_cents, currency, stripe_price_cents, stripe_sync_status")
-    .eq("active", true);
-  const rows = packs ?? [];
-  // The packs are the price authority for a custom amount; unverified packs
-  // make an unverified rate card (the same rule as lib/server/checkout.ts).
-  if (rows.length === 0 || !rows.every((p) => sellable(p))) return { ok: false, reason: "price_out_of_sync" };
-
   const gate = await requireActivePaidPlan(supabase, workspace);
   if (!gate.ok) return gate;
-  // ONLY THE OFFERED AMOUNTS, priced by the one function the page uses.
-  const plan = await topupPlanContext(supabase, gate.planId);
-  const quote = priceTopup(creditsRequested, {
-    packs: rows, planSlug: plan.slug, planCentsPerCredit: plan.centsPerCredit,
-  });
+  // CENNIK V2: the one progressive USD rate card (lib/plans/topup-price.ts).
+  const quote = priceTopup(creditsRequested);
   if (!quote.ok) return { ok: false, reason: "invalid_credits" };
   const live = await confirmTopupPlanLive(supabase, workspace, gate);
   if (!live.ok) return live;
 
-  const currency = (rows[0]?.currency ?? "PLN").toLowerCase();
+  const currency = (quote.currency ?? "USD").toLowerCase();
+  // The ORDER first: what the server priced, stored before any payment.
+  const token = dispatchToken();
+  if (!token) return { ok: false, reason: "no_server_key" };
+  const { data: orderId, error: orderError } = await supabase.rpc("credit_order_create", {
+    p_token: token, p_workspace_id: workspace.id, p_credits: quote.credits,
+    p_amount_cents: quote.amountCents, p_currency: currency, p_pricing_version: quote.version ?? "",
+  });
+  if (orderError || typeof orderId !== "string") return { ok: false, reason: "stripe_error" };
 
   try {
     const customer = await resolveStripeCustomer(supabase, workspace, email);
@@ -459,12 +455,14 @@ export async function createCustomCreditsCheckout(
         type: "custom_credits",
         credits: String(quote.credits),
         bonus_credits: "0",
+        grovbase_order_id: orderId,
       },
       payment_intent_data: {
         metadata: {
           ...baseMetadata(workspace.id, creds.livemode),
           type: "custom_credits",
           credits: String(quote.credits),
+          grovbase_order_id: orderId,
         },
       },
     }, `checkout:custom:${workspace.id}:${randomUUID()}`);

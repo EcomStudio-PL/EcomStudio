@@ -101,6 +101,13 @@ export type GenerateInput = {
    *  can only raise the model price, never lower it; the server still
    *  verifies balance and reserves exactly this amount. */
   costOverride?: number;
+  /**
+   * CENNIK V2: a tool's own fixed price for this run (GrovShot: the image
+   * price whatever model renders it). Unlike `costOverride` it may be below
+   * the model's price; it is set only by server-side tool paths, never from a
+   * request body. Hundredths of a credit.
+   */
+  fixedCost?: number;
   /** Set by routes serving customer model choices: a model the admin hid
    *  from the custom generator cannot be requested by id. */
   requireCustomVisible?: boolean;
@@ -345,9 +352,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   // Wallet + server-side cost (per-resolution, per-quality price from the
   // model config — the client's figure is never trusted)
-  const baseCost = priceFor(model, resolution ?? "1K", quality) * quantity;
-  const cost = typeof input.costOverride === "number" && input.costOverride >= baseCost
-    ? Math.trunc(input.costOverride) : baseCost;
+  // Hundredths of a credit (Cennik V2: 0.5, 0.75, 1.25, 1.75 per image).
+  const baseCost = Math.round(priceFor(model, resolution ?? "1K", quality) * quantity * 100) / 100;
+  const cost = typeof input.fixedCost === "number" && Number.isFinite(input.fixedCost) && input.fixedCost >= 0
+    ? Math.round(input.fixedCost * 100) / 100
+    : typeof input.costOverride === "number" && input.costOverride >= baseCost
+      ? Math.round(input.costOverride * 100) / 100 : baseCost;
   const { data: wallet } = await supabase
     .from("credit_wallets").select("id, balance").eq("workspace_id", workspaceId).maybeSingle();
   if (!wallet) return { ok: false, error: "no_wallet" };
@@ -1276,17 +1286,19 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // PARTIAL DELIVERY: a batch that stored fewer images than were paid for
   // hands the undelivered share back before the event closes. Definer RPC,
   // once per event, never below zero — see 0041_partial_refund.sql.
-  const perImage = quantity > 0 ? Math.floor(cost / quantity) : 0;
+  // The per-image share in hundredths, rounded down (the refund never exceeds
+  // what one image cost).
+  const perImage = quantity > 0 ? Math.floor((cost * 100) / quantity) / 100 : 0;
   const shortfall = quantity - stored.length;
   let refunded = 0;
   if (shortfall > 0 && perImage > 0) {
     const { data: refundTx } = await supabase.rpc("usage_event_refund_partial", {
       p_token: dispatchToken(),
-      p_event_id: usage.eventId, p_amount: shortfall * perImage,
+      p_event_id: usage.eventId, p_amount: Math.round(shortfall * perImage * 100) / 100,
     });
-    if (refundTx) refunded = shortfall * perImage;
+    if (refundTx) refunded = Math.round(shortfall * perImage * 100) / 100;
   }
-  const charged = cost - refunded;
+  const charged = Math.round((cost - refunded) * 100) / 100;
 
   // PROVIDER COST of this run (provider_cost_usd, kept apart from the
   // credits charged): the sum of every call actually sent — the official

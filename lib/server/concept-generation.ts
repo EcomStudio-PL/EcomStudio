@@ -1,5 +1,6 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
+import { grovshotImagePrice, grovshotPrices } from "@/lib/server/tool-prices";
 import { getUsableModels, type UsableModel } from "@/lib/ai/router";
 import { effectiveQuality, modelQualities, priceFor, priceForResolution, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 import { runGeneration, type GenerationTrack } from "@/lib/server/generation";
@@ -106,19 +107,23 @@ export type ConceptModelOption = {
 };
 
 export async function conceptModelOptions(supabase: Client): Promise<ConceptModelOption[]> {
-  const chain = await resolveConceptModels(supabase);
+  const [chain, shot] = await Promise.all([resolveConceptModels(supabase), grovshotPrices(supabase)]);
+  // CENNIK V2: a GrovShot image is priced by GrovShot's own table (2K 1, 4K
+  // 1.25), not by the model that renders it — so the preview of every engine
+  // in this list quotes that price, the one generateFromConcept charges.
+  const shotPrice = (r: string, fallback: number) => grovshotImagePrice(shot, r) ?? fallback;
   return chain
     // Admin decides which models the MANAGED generator offers; the routing
     // chain itself stays complete so fallbacks are unaffected.
     .filter((m) => (m as { visible_managed?: boolean }).visible_managed !== false)
     .map((m) => {
       const pricing: Record<string, number> = {};
-      for (const r of m.supported_resolutions ?? []) pricing[r] = priceForResolution(m, r);
+      for (const r of m.supported_resolutions ?? []) pricing[r] = shotPrice(r, priceForResolution(m, r));
       const qualities = modelQualities(m);
       const qualityPricing: Record<string, Record<string, number>> = {};
       for (const q of qualities) {
         const row: Record<string, number> = {};
-        for (const r of m.supported_resolutions ?? []) row[r] = priceFor(m, r, q);
+        for (const r of m.supported_resolutions ?? []) row[r] = shotPrice(r, priceFor(m, r, q));
         qualityPricing[q] = row;
       }
       return {
@@ -127,7 +132,7 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
         badge: m.badge,
         badgeTone: (m as { badge_tone?: string | null }).badge_tone ?? null,
         description: m.description,
-        cost: conceptUnitCost(m),
+        cost: shotPrice((m.supported_resolutions?.[0] ?? "1K"), conceptUnitCost(m)),
         pricing,
         resolutions: m.supported_resolutions ?? [],
         ratios: m.capabilities_ui.ratios,
@@ -274,7 +279,10 @@ export async function generateFromConcept(
       .filter((m) => !quality || modelQualities(m).includes(quality))
       .map((m) => m.id);
 
-  const credits = originCost(model, origin, resolution, quality);
+  // CENNIK V2: the GrovShot image price at this size (one price whatever the
+  // model), else — before the price rows exist — the model's own price.
+  const shotUnit = grovshotImagePrice(await grovshotPrices(supabase), resolution);
+  const credits = shotUnit ?? originCost(model, origin, resolution, quality);
   // The panel's "Próby" for GrovShot: 1 = one paid request per image per model.
   const maxAttempts = await toolMaxAttempts(supabase, "prompts");
   const result = await runGeneration(supabase, userId, workspaceId, {
@@ -295,7 +303,7 @@ export async function generateFromConcept(
     conceptId: concept.id,
     parentJobId: isRetake ? concept.last_job_id ?? undefined : undefined,
     promptOrigin: origin,
-    costOverride: credits,
+    ...(shotUnit !== null ? { fixedCost: credits } : { costOverride: credits }),
     maxAttempts,
     ...(opts?.track ? { slot: { ...opts.track.slot, batch: session.id }, onAccepted: opts.track.onAccepted } : {}),
   });

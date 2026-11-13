@@ -1,4 +1,5 @@
 import "server-only";
+import { credits2, grovshotImagePrice, grovshotPrices } from "@/lib/server/tool-prices";
 import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/server-token";
@@ -45,7 +46,9 @@ export async function startShotOrder(supabase: Client, userId: string, workspace
   if (body.sessionType !== undefined && body.sessionType !== "lifestyle") return { ok: false, error: "engine_v1" };
   const description = typeof body.description === "string" ? body.description.replace(/\r\n/g, "\n").trim() : "";
   if (Array.from(description).length > DESCRIPTION_MAX) return { ok: false, error: "description_too_long" };
-  const quotedTotal = typeof body.quotedTotal === "number" && Number.isInteger(body.quotedTotal) ? body.quotedTotal : null;
+  // Hundredths of a credit (Cennik V2: 2 + 1.25 × N).
+  const quotedTotal = typeof body.quotedTotal === "number" && Number.isFinite(body.quotedTotal)
+    && Math.round(body.quotedTotal * 100) === body.quotedTotal * 100 ? body.quotedTotal : null;
   if (quotedTotal === null) return { ok: false, error: "invalid_input" };
   // The old form's dimensions travel as part of the notes (the description is the source of dimensions).
   const dims = parseDimensions(body.dimensions);
@@ -86,9 +89,14 @@ export async function startShotOrder(supabase: Client, userId: string, workspace
   const ratio = typeof body.aspectRatio === "string" ? body.aspectRatio : "";
   const resolution = typeof body.resolution === "string" ? body.resolution : "";
   if (!state.model.ratios.includes(ratio) || !state.model.resolutions.includes(resolution)) return { ok: false, error: "invalid_input" };
-  const unit = state.model.pricing[resolution];
+  // CENNIK V2: GrovShot's own prices — the image at this size (whatever the
+  // model) and the order's analysis once. Before the rows exist: the model's
+  // price and no analysis, exactly as before.
+  const prices = await grovshotPrices(supabase);
+  const unit = grovshotImagePrice(prices, resolution) ?? state.model.pricing[resolution];
   if (typeof unit !== "number" || unit <= 0) return { ok: false, error: "model_unavailable" };
-  const quote = { unit, total: unit * shots };
+  const analysis = grovshotImagePrice(prices, resolution) !== null ? prices.analysis ?? 0 : 0;
+  const quote = { unit, analysis, total: credits2(analysis + unit * shots) };
   if (quote.total !== quotedTotal) return { ok: false, error: "price_changed", quote };
   const unitPrice = imageUnitPrice(state, resolution);
   if (unitPrice === null) return { ok: false, error: "model_unavailable", blockers: ["price_unknown"] };
@@ -166,9 +174,10 @@ export async function startShotRegen(
   if (!(await grovshotV2Enabled(supabase, userId, workspaceId, { sessionType: "lifestyle" }))) return { ok: false, error: "engine_v1" };
   const state = await readEngineState(supabase);
   const resolution = String(input.resolution ?? "");
-  const unit = state.model?.pricing[resolution];
+  // A regenerated shot reuses the order's analysis: the image price only.
+  const unit = grovshotImagePrice(await grovshotPrices(supabase), resolution) ?? state.model?.pricing[resolution];
   if (!state.model || typeof unit !== "number" || unit <= 0) return { ok: false, error: "model_unavailable" };
-  const quote = { unit, total: unit };
+  const quote = { unit, analysis: 0, total: unit };
   if (quotedTotal !== quote.total) return { ok: false, error: "price_changed", quote };
   const unitPrice = imageUnitPrice(state, resolution);
   if (unitPrice === null) return { ok: false, error: "model_unavailable" };

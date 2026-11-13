@@ -278,10 +278,12 @@ async function main() {
     check("a plan with no annual price falls back to its monthly price, not a discount",
       annualMonthlyCents({ priceCents: 14900, annualPriceCents: 0 }) === 14900);
 
-    // Ten-for-twelve is 16.67% -> 17 on every one of these, but the badge must
+    // Ten-for-twelve is 16.67% on every one of these (two decimals — Cennik
+    // V2: "16,67%", never a rounded-up 17), but the badge must
     // be derived, not asserted: a catalogue with uneven savings shows the
     // smallest, because one badge sits above all four columns.
-    check("the badge quotes the real saving", annualSavingPct(decided) === 17);
+    check("the badge quotes the real saving: 16.67", annualSavingPct(decided) === 16.67,
+      String(annualSavingPct(decided)));
     const uneven = [
       { priceCents: 4900, annualPriceCents: 58800 },   // 0% — twelve months exactly
       { priceCents: 14900, annualPriceCents: 149000 }, // 17%

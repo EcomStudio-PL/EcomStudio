@@ -48,10 +48,22 @@ export function resolveKey(dict: Dict, key: string): string {
   return lookup(dict, key) ?? humanizeKey(key);
 }
 
+/**
+ * A number interpolated into a sentence. Whole numbers as before; a fraction
+ * (Cennik V2 prices: 0,5 · 1,25 · 3,25 kr.) with at most two decimals and the
+ * language's own decimal separator (`common.decimalSep`: "," in PL/DE, "."
+ * in EN) — never JavaScript's "1.25" inside a Polish sentence.
+ */
+function interpolated(v: string | number, sep: string): string {
+  if (typeof v !== "number" || !Number.isFinite(v) || Number.isInteger(v)) return String(v);
+  return String(Math.round(v * 100) / 100).replace(".", sep);
+}
+
 export function makeT(dict: Dict) {
+  const sep = lookup(dict, "common.decimalSep") ?? ",";
   return (key: string, vars?: Record<string, string | number>) => {
     let s = lookup(dict, key) ?? humanizeKey(key);
-    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v));
+    if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, interpolated(v, sep));
     return s;
   };
 }

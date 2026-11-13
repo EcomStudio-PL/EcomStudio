@@ -7,10 +7,11 @@ import { paymentsEnabled } from "@/lib/stripe/config";
 import { sellable } from "@/lib/server/stripe-pricing";
 import { requireActivePaidPlan, topupPlanContext, type TopupGate } from "@/lib/server/billing";
 import {
-  PACK_SLOTS, PRICING_OFFER, TOPUP_TIERS, annualOnSale, premiereExpiredFor, premiereState, priceTopup,
+  PRICING_OFFER, annualOnSale, premiereExpiredFor, premiereState,
   type PricingOffer,
 } from "@/lib/server/pricing-offer";
-import { creditsCheckoutHref, packCheckoutHref } from "@/components/plan/pricing-model";
+import { TOPUP_CURRENCY, TOPUP_LIMITS } from "@/lib/plans/topup-price";
+import { usdPlnRate, type FxRate } from "@/lib/server/fx";
 import { PRICING_PAGE } from "@/components/plan/pricing-config";
 import type {
   PricingPackView, PricingPageData, PricingPlanView, PricingTierView, PricingViewer,
@@ -63,7 +64,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
   const { data: { user } } = await supabase.auth.getUser();
   const workspace = user ? await getCurrentWorkspace(supabase, user.id) : null;
 
-  const [{ data: planRows, error: planError }, { data: packRows, error: packError }, liveSub, gate, costRow] = await Promise.all([
+  const [{ data: planRows, error: planError }, { data: packRows, error: packError }, liveSub, gate, costRow, fx] = await Promise.all([
     supabase.from("subscription_plans").select(PLAN_COLUMNS).eq("active", true).order("sort_order"),
     supabase.from("credit_packages").select(PACK_COLUMNS).eq("active", true).order("sort_order"),
     workspace
@@ -77,6 +78,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
       ? supabase.from("ai_models").select("display_name, pricing")
         .eq("model_identifier", PRICING_PAGE.costReferenceModel).eq("active", true).limit(1)
       : Promise.resolve({ data: null }),
+    usdPlnRate(supabase).catch(() => null),
   ]);
   // An unreadable catalogue is an outage, not an empty offer: a page of "not
   // on sale" cards would be a false statement. The route's error boundary
@@ -96,6 +98,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
     },
     now,
     payments: paymentsEnabled(),
+    fx,
   });
 }
 
@@ -122,6 +125,7 @@ export function buildPricingPage(input: {
   now: number;
   payments: boolean;
   offer?: PricingOffer;
+  fx?: FxRate | null;
 }): PricingPageData {
   const { now, payments, viewer: facts } = input;
   const offer = input.offer ?? PRICING_OFFER;
@@ -166,68 +170,13 @@ export function buildPricingPage(input: {
       : "no_plan",
   };
 
-  /* ── top-ups, priced by the till's own function ─────────────────────── */
+  /* ── top-ups: one slider, one progressive rate card (Cennik V2) ─────── */
 
-  const rows = input.packs;
-  const currency = (rows[0]?.currency ?? paid[0]?.currency ?? "PLN").toUpperCase();
-  // The same precondition priceOrder applies to every custom amount: the rate
-  // card must be made of packs that proved they match Stripe.
-  const ladderSellable = rows.length > 0 && rows.every((r) => sellable(r));
-  const custom = (credits: number) => (ladderSellable
-    ? priceTopup(credits, {
-      packs: rows, planSlug: facts.plan.slug, planCentsPerCredit: facts.plan.centsPerCredit, offer,
-    })
-    : null);
-
-  const bySize = [...PACK_SLOTS].sort((a, b) => a - b);
-  const packs: PricingPackView[] = PACK_SLOTS.map((slot) => {
-    const row = rows.find((r) => r.credits === slot);
-    const level = bySize.indexOf(slot) + 1;
-    if (row) {
-      const ok = sellable(row) && Boolean(row.stripe_price_id);
-      return {
-        slot, bonusCredits: row.bonus_credits, level, best: false, savePct: null,
-        amountCents: ok ? row.price_cents : null,
-        href: ok && payments ? packCheckoutHref(row.id) : null,
-        perCreditCents: ok ? row.price_cents / (slot + row.bonus_credits) : null,
-      };
-    }
-    const q = custom(slot);
-    const amount = q?.ok ? q.amountCents : null;
-    return {
-      slot, bonusCredits: 0, level, best: false, savePct: null,
-      amountCents: amount,
-      href: amount !== null && payments ? creditsCheckoutHref(slot) : null,
-      perCreditCents: amount !== null ? amount / slot : null,
-    };
-  });
-
-  // SAVINGS ARE A COMPARISON OF TWO REAL PRICES: this card's price per credit
-  // against the smallest pack's. No "regular price" exists to strike through,
-  // so none is shown — only this, labelled as what it is.
-  const reference = packs.find((p) => p.slot === Math.min(...PACK_SLOTS))?.perCreditCents ?? null;
-  const pct = (unit: number | null) => (reference && unit !== null && unit < reference
-    ? Math.round((1 - unit / reference) * 100) : null);
-  for (const p of packs) p.savePct = pct(p.perCreditCents);
-  const priced = packs.filter((p) => p.perCreditCents !== null);
-  if (priced.length > 1) {
-    const min = Math.min(...priced.map((p) => p.perCreditCents as number));
-    const best = priced.filter((p) => p.perCreditCents === min);
-    if (best.length === 1) best[0].best = true;
-  }
-
-  const tiers: PricingTierView[] = TOPUP_TIERS.map((credits) => {
-    const q = custom(credits);
-    const amount = q?.ok ? q.amountCents : null;
-    const unit = amount !== null ? amount / credits : null;
-    return {
-      credits,
-      amountCents: amount,
-      perCreditCents: unit,
-      savePct: pct(unit),
-      href: amount !== null && payments ? creditsCheckoutHref(credits) : null,
-    };
-  });
+  // The packs are out of the offer; the slider is the only way to top up.
+  const packs: PricingPackView[] = [];
+  const tiers: PricingTierView[] = [];
+  const currency = (paid[0]?.currency ?? TOPUP_CURRENCY).toUpperCase();
+  void input.packs;
 
   /* ── offer state, decided on server time ────────────────────────────── */
 
@@ -254,6 +203,8 @@ export function buildPricingPage(input: {
     packs,
     tiers,
     currency,
+    topup: { min: TOPUP_LIMITS.min, max: TOPUP_LIMITS.max, step: TOPUP_LIMITS.step, currency: TOPUP_CURRENCY, buyable: payments },
+    fx: input.fx ? { rate: input.fx.rate, date: input.fx.date, stale: input.fx.stale } : null,
     imageCost: facts.cost && (credit("2K") !== null || credit("4K") !== null)
       ? { model: facts.cost.display_name ?? PRICING_PAGE.costReferenceModel, k2: credit("2K"), k4: credit("4K") }
       : null,

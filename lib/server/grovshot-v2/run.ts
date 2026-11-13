@@ -172,7 +172,7 @@ type Ctx = {
  *  store, delivery, the ledger, closing). */
 export type CoreInput = {
   photos: string[]; photo_shas: string[] | null; shots: number; aspect_ratio: string; resolution: string;
-  quote: { unit: number; total: number }; model: { id: string; identifier: string; provider: string };
+  quote: { unit: number; total: number; analysis?: number }; model: { id: string; identifier: string; provider: string };
 };
 /** The part of an order's context the shared helpers need — the V2 driver's
  *  Ctx and the lifestyle driver's context are both one. */
@@ -1410,7 +1410,7 @@ async function patchCredits(ctx: CoreCtx) {
   if (ctx.test) return;
   await ctx.writer;
   const delivered = ctx.steps.filter((s) => s.position === P.settle && s.status === "succeeded").length;
-  await patchRun(ctx.supabase, ctx.runId, ctx.owner, { credits: delivered * ctx.input.quote.unit });
+  await patchRun(ctx.supabase, ctx.runId, ctx.owner, { credits: orderCredits(ctx.input.quote, delivered) });
 }
 
 /**
@@ -1503,7 +1503,7 @@ export async function close(ctx: CoreCtx, status: "failed" | "blocked" | "ok" | 
 
 export async function closeRun(ctx: CoreCtx, shots: Pick<Shot, "index">[]): Promise<Drive> {
   const delivered = shots.map((s) => stepOf(ctx, P.settle, s.index)).filter((s) => s?.status === "succeeded");
-  const credits = ctx.test ? 0 : delivered.length * ctx.input.quote.unit;
+  const credits = ctx.test ? 0 : orderCredits(ctx.input.quote, delivered.length);
   const known = ctx.steps.reduce((sum, s) => sum + (s.cost_basis !== "unknown" && s.cost_usd_micros !== null ? s.cost_usd_micros : 0), 0);
   const unknown = ctx.steps.reduce((sum, s) => sum + (Number(outputOf(s).unknown_calls) || 0) + (s.cost_basis === "unknown" && s.position <= P.round ? 1 : 0), 0);
   const status = delivered.length === 0 ? "failed" : delivered.length === ctx.input.shots ? "ok" : "partial";
@@ -1524,4 +1524,11 @@ export async function closeRun(ctx: CoreCtx, shots: Pick<Shot, "index">[]): Prom
     outputs: outputs as unknown as Json,
   });
   return "finished";
+}
+
+/** What an order charged: each delivered image + its analysis once (only when
+ *  something was delivered — the analysis rides on the first charged shot). */
+function orderCredits(quote: { unit: number; analysis?: number }, delivered: number): number {
+  if (delivered <= 0) return 0;
+  return Math.round(((quote.analysis ?? 0) + quote.unit * delivered) * 100) / 100;
 }

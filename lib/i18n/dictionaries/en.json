@@ -90,7 +90,8 @@
     "seeMore": "See more",
     "pageOf": "Page {a} of {b}",
     "next": "Next",
-    "seeAll": "See all"
+    "seeAll": "See all",
+    "decimalSep": "."
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -564,7 +565,8 @@
       "aiTools": "Tools and engines",
       "aiModels": "Models, API and costs",
       "globalSections": "Global sections",
-      "newsletter": "Newsletter"
+      "newsletter": "Newsletter",
+      "financeView": "Finance & margin"
     },
     "engine": {
       "title": "AI Engine — Knowledge base",
@@ -1376,6 +1378,106 @@
         "signupClosed": "The launch date is approved, but registration is switched off. Nobody can create an account on launch day until you switch it on.",
         "signupDiffers": "Registration opens ({when}) more than an hour away from the launch date.",
         "signupOpenNow": "Registration is already open, although the launch is still ahead."
+      }
+    },
+    "finance": {
+      "sub": "Cash in, revenue from credits used, API costs, Stripe fees and deferred revenue. Amounts in USD (what Stripe charges); “≈ zł” at the NBP rate is informational.",
+      "period": {
+        "today": "Today",
+        "7d": "7 days",
+        "30d": "30 days",
+        "month": "This month",
+        "all": "All time",
+        "custom": "Custom range"
+      },
+      "showing": "Period: {from} – {to}",
+      "fx": "NBP USD/PLN rate {rate} of {date}",
+      "fxStale": "rate is stale",
+      "fxMissing": "no NBP rate — USD only",
+      "allCustomers": "all customers",
+      "unavailable": "No data — the finance functions did not respond (migration 0176).",
+      "cashTitle": "Cash in (Stripe payments)",
+      "cashSub": "Money taken in the period, before the credits are used.",
+      "gross": "Gross cash in",
+      "net": "Net (excl. VAT)",
+      "payments": "payments: {n}",
+      "vatStripe": "VAT from Stripe",
+      "vatEstimated": "VAT estimated at {vat}%",
+      "subMonthly": "Monthly subscriptions",
+      "subAnnual": "Annual subscriptions",
+      "annualCash": "paid upfront, revenue deferred",
+      "topups": "Top-ups",
+      "fees": "Stripe fees",
+      "feesUnknown": "no data for {n} payments",
+      "refunded": "Refunds",
+      "internalPayments": "Internal accounts",
+      "internalHint": "incl. admin/test account payments",
+      "otherCurrency": "{n} payments in a currency other than USD — not added to the amounts above.",
+      "usageTitle": "Recognised revenue & margin",
+      "usageSub": "Credits used in the period, valued at the price the customer bought them for (plan, annual plan, top-up). Free and test credits are worth 0.",
+      "creditsUsed": "Credits used",
+      "paidFree": "paid {paid} · free {free}",
+      "revenueGross": "Gross revenue",
+      "revenueNet": "Net revenue",
+      "feeAttributed": "Attributed fee",
+      "apiPaying": "API cost — customers",
+      "apiInternal": "API cost — internal accounts",
+      "runs": "runs: {n}",
+      "apiUnknown": "Calls without a cost",
+      "apiUnknownHint": "cost unknown — not counted as 0",
+      "margin": "Contribution margin",
+      "marginHint": "net − API − fee; before income tax and fixed costs",
+      "marginIncomplete": "incomplete — some calls have no cost",
+      "deferredTitle": "Deferred revenue",
+      "deferredSub": "What customers have paid for and not used yet (as of now).",
+      "pendingTranches": "Annual tranches to grant",
+      "tranches": "tranches: {n} · net {value}",
+      "unusedPaid": "Unused paid credits",
+      "netValue": "net value {value}",
+      "creditsTitle": "Credit movement in the period",
+      "creditsSub": "Granted, used, refunded and expired.",
+      "grantedSub": "From subscriptions",
+      "grantedTopup": "From top-ups",
+      "grantedBonus": "Bonuses & adjustments",
+      "notSales": "not sales",
+      "used": "Used",
+      "creditsRefunded": "Refunded",
+      "expired": "Expired",
+      "toolsTitle": "Tools",
+      "toolsSub": "Runs in the period, success and credits.",
+      "eventsTitle": "Generations — details",
+      "eventsSub": "Last 100 runs in the period: model, resolution, tokens, API cost and revenue. * = VAT estimated.",
+      "internal": "internal",
+      "freeCredits": "free credits",
+      "refundedN": "refund {n}",
+      "calls": "API calls: {n}",
+      "callTokens": "tokens in {in} / out {out} / thinking {thought}",
+      "note": "Net amounts use the tax Stripe reported, or, when there is none, an estimate at {vat}% VAT (Stripe Tax is not enabled, so VAT is not computed per country). API cost comes from the provider's price list and the usage reported in the response; a call without data is not counted as 0. The margin excludes income tax, social security, accounting and fixed costs — it is not a tax calculation.",
+      "customerTitle": "Customer finance",
+      "customerSub": "Credit pools, payments and the result on this customer, all time.",
+      "pools": "Credit pools",
+      "pool": {
+        "subscription": "Subscription",
+        "topup": "Top-ups",
+        "bonus": "Bonus",
+        "legacy": "Balance before pricing V2"
+      },
+      "poolExpires": "expires {date}",
+      "poolLocked": "locked without an active plan",
+      "openFull": "Full customer analytics",
+      "col": {
+        "tool": "Tool",
+        "runs": "Runs",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "outputs": "Images",
+        "credits": "Credits",
+        "internalRuns": "Internal",
+        "customer": "Customer",
+        "tokens": "Tokens in / out",
+        "apiCost": "API cost",
+        "revenueNet": "Net revenue",
+        "details": "Details"
       }
     }
   },
@@ -4327,7 +4429,7 @@
     "topUpSub": "More credits = a lower price per credit",
     "save": "-{n}%",
     "bestValue": "BEST VALUE",
-    "noExpiry": "Credits never expire and are available right after purchase.",
+    "noExpiry": "Top-up credits never expire and work while you have an active plan.",
     "customTitle": "Custom credit amount",
     "customSub": "The more you pick, the less you pay per credit.",
     "customCredits": "credits",
@@ -4395,13 +4497,15 @@
         "starter": "For sellers who are just starting",
         "pro": "For shops that publish regularly",
         "business": "For teams, agencies and large catalogues",
-        "default": "GrovBase subscription plan"
+        "default": "GrovBase subscription plan",
+        "mini": "For your first images and small catalogues"
       },
       "badge": {
         "starter": "To start",
         "pro": "Most popular",
         "business": "For teams",
-        "default": "Plan"
+        "default": "Plan",
+        "mini": "To try"
       },
       "perMonth": "/ mo",
       "approx2k": "≈ {n} product photos in 2K",
@@ -4429,7 +4533,7 @@
     "feat": {
       "creditsMonthly": "Credits every month",
       "creditPrice": "Price of 1 credit on the plan",
-      "noExpiry": "Credits never expire",
+      "noExpiry": "Top-up credits never expire",
       "topups": "Credit top-ups any time",
       "allTools": "All image tools",
       "customPrompts": "Your own prompts",
@@ -4473,7 +4577,7 @@
       "best": "Best value",
       "buy": "Buy",
       "soonPrice": "Price coming soon",
-      "noExpiry": "Credits never expire and reach your account as soon as the payment is confirmed.",
+      "noExpiry": "Top-up credits never expire — you use them while you have an active plan. They reach your account as soon as the payment is confirmed.",
       "paymentsOff": "Payments are not enabled yet.",
       "customTitle": "Custom amount of credits",
       "customSub": "The more you choose, the less you pay per credit.",
@@ -4493,7 +4597,8 @@
         "inactiveTitle": "Your plan is not active right now",
         "inactiveSub": "Top-ups return once your subscription is active and paid again. Check its status in settings.",
         "inactiveCta": "Manage subscription"
-      }
+      },
+      "marginal": "further credits at {price}"
     },
     "notice": {
       "planRequired": "Credit top-ups are available with an active paid plan. Choose a plan to add credits.",
@@ -4504,7 +4609,13 @@
     "faq": {
       "overline": "Frequently asked questions",
       "title": "Frequently asked questions about plans and payments"
-    }
+    },
+    "fx": {
+      "approx": "≈ {amount}",
+      "perYear": "per year",
+      "note": "PLN amounts are approximate (NBP rate of {date}). You are charged in USD."
+    },
+    "creditsRule": "Plan credits are valid until the end of the paid month (annual plan: 12 monthly allocations). Top-ups never expire and work while you have an active plan. Prices in USD, gross."
   },
   "mobilenav": {
     "home": "Home",

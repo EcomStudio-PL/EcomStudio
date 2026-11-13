@@ -75,6 +75,17 @@ console.log("\nB. the lifestyle engine's start route (unchanged by this fix)");
   let changed = "";
   try { changed = execFileSync("git", ["diff", "--name-only", "dfcd622", "--", "lib/server/grovshot-v2", "lib/grovshot-v2", "app/api/grovshot", "lib/server/prompt-engine.ts"], { encoding: "utf8" }).trim(); }
   catch (e) { changed = `git: ${String(e)}`; }
+  // CENNIK V2 (13.11.2026) changed three of them ON PURPOSE — the GrovShot
+  // quote (analysis 2 + 1 / 1.25 per image, in hundredths) — and nothing else
+  // in them. Pinned, so any further change is a decision again.
+  const CENNIK_V2: Record<string, string> = {
+    "lib/server/grovshot-v2/run.ts": "cac4a128d009fc1ca2b7f950fa8164dd9d5b8ab96282b0c5ea90d21719bf7758",
+    "lib/server/grovshot-v2/start-shot.ts": "0d911dadf6cfd6ca5f62366d2aa18d238f3bbf88edbbe8a98cee531482f59192",
+    "lib/server/grovshot-v2/start.ts": "eabfc587b8cc77af09ae1a9f64ca1aa5e033be0d425f36def2090027e19de01f",
+  };
+  const { createHash } = require("node:crypto") as typeof import("node:crypto");
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  changed = changed.split("\n").filter((f) => f && !(CENNIK_V2[f] && createHash("sha256").update(readFileSync(f)).digest("hex") === CENNIK_V2[f])).join("\n");
   check("no engine file changed (V2 stages, start, drive, knowledge, the V1 engine)", changed === "", changed);
 }
 
@@ -96,7 +107,7 @@ console.log("\nC. the form — one for everyone");
   check("the format tiles stay on one row in GrovBase Shot only", /oneRow=\{managed\}/.test(ws) && /oneRow \? "sm:auto-cols-fr sm:grid-flow-col/.test(read("components/genv3/controls.tsx")));
   check("the minimum comes from the server's setting for every viewer (a visitor too)",
     /descriptionMin: managed\?\.descriptionMin \?\? DEFAULT_SHOT_SETTINGS\.description_min_chars/.test(read("components/genv3/studio-page.tsx"))
-    && /const descriptionMin = await shotDescriptionMin\(supabase\)/.test(read("components/genv3/studio-page.tsx")));
+    && /const (descriptionMin|\[descriptionMin, shotPrices\]) = await (shotDescriptionMin\(supabase\)|Promise\.all\(\[shotDescriptionMin\(supabase\), grovshotPrices\(supabase\)\]\))/.test(read("components/genv3/studio-page.tsx")));
   const v2fields = read("components/genv3/grovshot-v2.tsx");
   check("the field: a required textarea, the spec's hint, the 20 000 cap", /<Textarea data-gsv2-description[^>]*required/.test(v2fields)
     && (pl as { gsv2: { descHint: string; descLabel: string } }).gsv2.descHint === "Wklej tytuł, opis i specyfikację z aukcji, razem z wymiarami. Silnik wykorzysta cechy, zastosowania i wymiary do zaplanowania zdjęć."

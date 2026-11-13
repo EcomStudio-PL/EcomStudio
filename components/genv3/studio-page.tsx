@@ -8,6 +8,7 @@ import { listGalleryItems } from "@/lib/server/gallery";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
+import { grovshotPrices } from "@/lib/server/tool-prices";
 import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { readSmartPromptOffer } from "@/lib/server/smart-prompt";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
@@ -43,7 +44,7 @@ async function managedData(supabase: Client) {
   ]);
   // The shortest Allegro description GrovBase Shot accepts — the same setting
   // the start routes check — for every viewer, whichever engine runs it.
-  const descriptionMin = await shotDescriptionMin(supabase);
+  const [descriptionMin, shotPrices] = await Promise.all([shotDescriptionMin(supabase), grovshotPrices(supabase)]);
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
   const models: GenModel[] = modelOptions.map((m) => ({
@@ -53,7 +54,7 @@ async function managedData(supabase: Client) {
     maxOutputs: 1, supportsRefs: true,
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
-  return { engineAvailable, models, sessionPreviews, descriptionMin };
+  return { engineAvailable, models, sessionPreviews, descriptionMin, analysisCredits: shotPrices.analysis ?? 0 };
 }
 
 async function shotDescriptionMin(supabase: Client): Promise<number> {
@@ -132,7 +133,8 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
           <GeneratorWorkspace
             managed={{ models: managed?.models ?? [], engineAvailable: managed?.engineAvailable ?? false,
               sessionPreviews: managed?.sessionPreviews, variant, initialStyle,
-              descriptionMin: managed?.descriptionMin ?? DEFAULT_SHOT_SETTINGS.description_min_chars }}
+              descriptionMin: managed?.descriptionMin ?? DEFAULT_SHOT_SETTINGS.description_min_chars,
+              analysisCredits: managed?.analysisCredits ?? 0 }}
             custom={{ models: custom, initialPrompt: "" }}
             initialTab={initialTab} credits={0} workspaceId=""
             initialItems={[]} initialCursor={null} back={back} />

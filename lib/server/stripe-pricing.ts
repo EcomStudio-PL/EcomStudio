@@ -107,7 +107,8 @@ export type PriceSyncRequest = {
   /** Ignored for a package, which has exactly one price. */
   period?: PricePeriod;
   amountCents: number;
-  currency: string;
+  /** Omitted: the catalogue row's own currency (USD for plans since Cennik V2). */
+  currency?: string;
   /** The Stripe Product's display name. Kept in step with the catalogue row. */
   productName: string;
 };
@@ -245,6 +246,9 @@ export async function syncPrice(
 
     const params: Record<string, FormValue> = {
       product: productId,
+      // Cennik V2: catalogue prices are GROSS (VAT included). Stripe must not
+      // add tax on top of them if tax collection is ever switched on.
+      tax_behavior: "inclusive",
       unit_amount: req.amountCents,
       currency,
       metadata: {

@@ -75,9 +75,13 @@ type RpcCall = { fn: string; args: Record<string, unknown> };
  */
 function fakeDb(rows: {
   packages?: Record<string, { id: string; name: string; credits: number; bonus_credits: number; stripe_price_id?: string }>;
-  plans?: Record<string, { id: string; name: string; monthly_credits: number; bonus_credits: number }>;
+  plans?: Record<string, { id: string; name: string; monthly_credits: number; bonus_credits: number; price_cents?: number }>;
   priceToPlan?: Record<string, string>;
+  /** Cennik V2: which Prices are annual (default monthly). */
+  annualPrices?: string[];
   customerToWorkspace?: Record<string, string>;
+  /** Cennik V2: server-approved top-up orders. */
+  orders?: Record<string, { workspace: string; credits: number; amount_cents: number; currency: string }>;
 } = {}, catalogueFails = false) {
   const seenEvents = new Set<string>();
   const settledPayments = new Set<string>();
@@ -109,6 +113,50 @@ function fakeDb(rows: {
             ?? { id: rows.priceToPlan[priceId], name: "?", monthly_credits: 0, bonus_credits: 0 }
         : null;
       return { data: { package: pack, plan }, error: null };
+    }
+    if (fn === "stripe_plan_for_price") {
+      const priceId = String(args.p_price_id ?? "");
+      const planId = rows.priceToPlan?.[priceId];
+      const plan = planId ? rows.plans?.[planId] : null;
+      if (!plan) return { data: null, error: null };
+      const annual = (rows.annualPrices ?? []).includes(priceId);
+      return { data: {
+        id: plan.id, name: plan.name, credits: plan.monthly_credits + plan.bonus_credits,
+        period: annual ? "annual" : "monthly", price_cents: (plan.price_cents ?? 29900) * (annual ? 10 : 1),
+      }, error: null };
+    }
+    if (fn === "payment_record_fees") return { data: true, error: null };
+    if (fn === "stripe_settle_v2") {
+      // Mirrors 0174: the same two layers, then the order (top-up) or the
+      // grants (subscription invoice) — nothing from metadata.
+      if (seenEvents.has(eventId)) return { data: { status: "duplicate_event" }, error: null };
+      seenEvents.add(eventId);
+      const paymentId = String(args.p_provider_payment_id ?? "");
+      if (settledPayments.has(paymentId)) return { data: { status: "already_settled" }, error: null };
+      settledPayments.add(paymentId);
+      if (args.p_kind === "custom_credits") {
+        const order = rows.orders?.[String(args.p_order_id ?? "")];
+        if (!order || order.workspace !== args.p_workspace_id || order.amount_cents !== args.p_amount_cents
+            || order.currency.toUpperCase() !== String(args.p_currency).toUpperCase()) {
+          return { data: { status: "order_mismatch" }, error: null };
+        }
+        ledger += order.credits;
+        grants.push({ credits: order.credits, type: "topup", description: `Doładowanie: ${order.credits} kredytów` });
+        return { data: { status: "applied" }, error: null };
+      }
+      for (const g of (args.p_grants ?? []) as { type: string; credits?: number; credits_per_month?: number; description?: string }[]) {
+        if (g.type === "lot" && (g.credits ?? 0) > 0) {
+          ledger += g.credits ?? 0;
+          grants.push({ credits: g.credits ?? 0, type: "subscription", description: g.description ?? "" });
+        } else if (g.type === "annual") {
+          ledger += g.credits_per_month ?? 0; // tranche 1 of 12, granted with the payment
+          grants.push({ credits: g.credits_per_month ?? 0, type: "subscription", description: "annual tranche 1/12" });
+        } else if (g.type === "revert") {
+          ledger -= g.credits ?? 0;
+          grants.push({ credits: -(g.credits ?? 0), type: "expiration", description: "plan change" });
+        }
+      }
+      return { data: { status: "applied" }, error: null };
     }
     if (fn === "stripe_settle_payment") {
       if (seenEvents.has(eventId)) return { data: { status: "duplicate_event" }, error: null };
@@ -292,8 +340,11 @@ async function main() {
     const offer = codeOnly(read("lib/server/pricing-offer.ts"));
     const loader = codeOnly(read("lib/server/pricing-page.ts"));
     const topups = codeOnly(read("components/plan/topups.tsx"));
+    // CENNIK V2: one progressive card (lib/plans/topup-price.ts) — the slider
+    // previews with `topupCents`, the server charges through `priceTopup`,
+    // which is `quoteTopup` over the same bands.
     check("the slider's prices come from the shared rate card, on the server",
-      /validateCustomCredits\(/.test(offer) && /priceTopup\(/.test(loader)
+      /quoteTopup\(/.test(offer) && /TOPUP_LIMITS/.test(loader) && /topupCents\(/.test(topups)
       && !/priceForCredits|validateCustomCredits|creditLadder|function priceFor\(/.test(topups));
     const billing = codeOnly(read("lib/server/billing.ts"));
     check("and so does the server", /priceTopup\(/.test(billing)
@@ -454,14 +505,16 @@ async function main() {
       id: "evt_inv", type: "invoice.paid", data: { object: {
         id: "in_1", customer: "cus_1", amount_paid: 29900, currency: "pln",
         subscription: "sub_1", metadata: { grovbase_workspace_id: WS },
-        lines: { data: [{ price: "price_pro" }] },
+        lines: { data: [{ price: "price_pro", amount: 29900, period: { start: 1794000000, end: 1796592000 } }] },
       } },
     });
     check("a paid invoice grants the PLAN's monthly credits",
       invResult.outcome === "applied" && inv.ledger === 1200);
     check("as a 'subscription' ledger entry", inv.grants[0]?.type === "subscription");
     check("keyed on the INVOICE, so each period grants once",
-      inv.callsTo("stripe_settle_payment")[0].args.p_provider_payment_id === "in_1");
+      inv.callsTo("stripe_settle_v2")[0].args.p_provider_payment_id === "in_1");
+    check("the month's credits expire at the end of the period the invoice paid for",
+      (inv.callsTo("stripe_settle_v2")[0].args.p_grants as { expires_at?: string }[])[0]?.expires_at === new Date(1796592000 * 1000).toISOString());
 
     // THE SHAPE THIS ENDPOINT DOES NOT CHOOSE. A webhook created without an
     // explicit api_version receives the ACCOUNT's default, and that moves when
@@ -476,7 +529,7 @@ async function main() {
         parent: { subscription_details: {
           subscription: "sub_1", metadata: { grovbase_workspace_id: WS },
         } },
-        lines: { data: [{ pricing: { price_details: { price: "price_pro" } } }] },
+        lines: { data: [{ pricing: { price_details: { price: "price_pro" } }, amount: 29900, period: { start: 1794000000, end: 1796592000 } }] },
       } },
     });
     check("a Basil-shaped invoice still finds the workspace and the plan",
@@ -492,7 +545,7 @@ async function main() {
       id: "evt_inv_dash", type: "invoice.paid", data: { object: {
         id: "in_3", customer: "cus_7", amount_paid: 29900, currency: "pln",
         parent: { subscription_details: { subscription: "sub_2" } },
-        lines: { data: [{ pricing: { price_details: { price: "price_pro" } } }] },
+        lines: { data: [{ pricing: { price_details: { price: "price_pro" } }, amount: 29900, period: { start: 1794000000, end: 1796592000 } }] },
       } },
     });
     check("a subscription made in the Stripe dashboard still renews credits",
@@ -657,20 +710,34 @@ async function main() {
       id: "evt_planforge", type: "invoice.paid", data: { object: {
         id: "in_9", customer: "cus_1", amount_paid: 29900, currency: "pln",
         metadata: { grovbase_workspace_id: WS, credits: "999999" },
-        lines: { data: [{ price: "price_pro" }] },
+        lines: { data: [{ price: "price_pro", amount: 29900, period: { start: 1794000000, end: 1796592000 } }] },
       } },
     });
     check("a plan's credits come from subscription_plans, not the invoice",
       plan.ledger === 1200);
 
-    // Custom credits are the ONE case metadata is believed — and only after
-    // the signature proved the event describes a session we created.
-    const custom = fakeDb();
+    // CENNIK V2: a custom amount is an ORDER the server priced and stored;
+    // the metadata only names it. Credits come from the order row, and only
+    // when Stripe reports exactly the order's amount for that workspace.
+    const ORDER = "11111111-2222-4333-8444-555555555555";
+    const custom = fakeDb({ orders: { [ORDER]: { workspace: WS, credits: 100, amount_cents: 5492, currency: "USD" } } });
     await handleStripeEvent(custom.client, "tok", checkoutEvent("evt_custom", {
+      amount_total: 5492, currency: "usd",
+      metadata: { grovbase_workspace_id: WS, type: "custom_credits", credits: "800", grovbase_order_id: ORDER },
+    }));
+    check("a custom amount grants the ORDER's credits, not the metadata's", custom.ledger === 100);
+    check("as a 'topup' ledger entry", custom.grants[0]?.type === "topup");
+    const wrongAmount = fakeDb({ orders: { [ORDER]: { workspace: WS, credits: 100, amount_cents: 5492, currency: "USD" } } });
+    await handleStripeEvent(wrongAmount.client, "tok", checkoutEvent("evt_custom_wrong", {
+      amount_total: 100, currency: "usd",
+      metadata: { grovbase_workspace_id: WS, type: "custom_credits", grovbase_order_id: ORDER },
+    }));
+    check("a payment that is not the order's amount grants nothing", wrongAmount.ledger === 0);
+    const noOrder = fakeDb();
+    await handleStripeEvent(noOrder.client, "tok", checkoutEvent("evt_custom_noorder", {
       metadata: { grovbase_workspace_id: WS, type: "custom_credits", credits: "800" },
     }));
-    check("a custom amount grants what the session recorded", custom.ledger === 800);
-    check("as a 'topup' ledger entry", custom.grants[0]?.type === "topup");
+    check("custom credits without an order grant nothing (metadata is never the authority)", noOrder.ledger === 0);
 
     for (const bad of ["-5", "0", "1.5", "abc", ""]) {
       const c = fakeDb();
@@ -686,8 +753,9 @@ async function main() {
       !/credit_wallets/.test(hook));
     check("the handler never inserts credit_transactions",
       !/from\("credit_transactions"\)/.test(hook));
-    check("the only settle path is stripe_settle_payment",
-      (hook.match(/rpc\("stripe_settle_payment"/g) ?? []).length === 1);
+    check("the settle paths are stripe_settle_payment (packs, legacy) and stripe_settle_v2 (orders, invoices)",
+      (hook.match(/rpc\("stripe_settle_payment"/g) ?? []).length === 1
+      && (hook.match(/rpc\("stripe_settle_v2"/g) ?? []).length === 2);
     check("no PostgREST filter is built by string concatenation",
       !/\.or\(`/.test(hook), "an or() filter is a grammar, not a value slot");
   }

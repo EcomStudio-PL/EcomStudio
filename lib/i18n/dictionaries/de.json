@@ -90,7 +90,8 @@
     "seeMore": "Mehr anzeigen",
     "pageOf": "Seite {a} von {b}",
     "next": "Weiter",
-    "seeAll": "Alle ansehen"
+    "seeAll": "Alle ansehen",
+    "decimalSep": ","
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -564,7 +565,8 @@
       "aiTools": "Werkzeuge und Engines",
       "aiModels": "Modelle, API und Kosten",
       "globalSections": "Global sections",
-      "newsletter": "Newsletter"
+      "newsletter": "Newsletter",
+      "financeView": "Finanzen & Marge"
     },
     "engine": {
       "title": "AI Engine — Wissensbasis",
@@ -1376,6 +1378,106 @@
         "signupClosed": "Der Starttermin ist freigegeben, aber die Registrierung ist ausgeschaltet. Am Starttag kann niemand ein Konto anlegen, bis du sie einschaltest.",
         "signupDiffers": "Die Registrierung öffnet ({when}) mehr als eine Stunde vom Starttermin entfernt.",
         "signupOpenNow": "Die Registrierung ist schon offen, obwohl der Start noch bevorsteht."
+      }
+    },
+    "finance": {
+      "sub": "Einnahmen, Umsatz aus genutzten Credits, API-Kosten, Stripe-Gebühren und abgegrenzter Umsatz. Beträge in USD (wie Stripe abbucht); „≈ zł“ zum NBP-Kurs dient nur zur Information.",
+      "period": {
+        "today": "Heute",
+        "7d": "7 Tage",
+        "30d": "30 Tage",
+        "month": "Aktueller Monat",
+        "all": "Gesamt",
+        "custom": "Eigener Zeitraum"
+      },
+      "showing": "Zeitraum: {from} – {to}",
+      "fx": "NBP-Kurs USD/PLN {rate} vom {date}",
+      "fxStale": "Kurs veraltet",
+      "fxMissing": "kein NBP-Kurs — nur USD",
+      "allCustomers": "alle Kunden",
+      "unavailable": "Keine Daten — die Finanzfunktionen haben nicht geantwortet (Migration 0176).",
+      "cashTitle": "Einnahmen (Stripe-Zahlungen)",
+      "cashSub": "Im Zeitraum eingenommenes Geld, bevor die Credits genutzt werden.",
+      "gross": "Einnahmen brutto",
+      "net": "Netto (ohne MwSt.)",
+      "payments": "Zahlungen: {n}",
+      "vatStripe": "MwSt. von Stripe",
+      "vatEstimated": "MwSt. geschätzt {vat} %",
+      "subMonthly": "Monatsabos",
+      "subAnnual": "Jahresabos",
+      "annualCash": "im Voraus bezahlt, Umsatz abgegrenzt",
+      "topups": "Aufladungen",
+      "fees": "Stripe-Gebühren",
+      "feesUnknown": "keine Daten für {n} Zahlungen",
+      "refunded": "Erstattungen",
+      "internalPayments": "Interne Konten",
+      "internalHint": "inkl. Zahlungen von Admin-/Testkonten",
+      "otherCurrency": "{n} Zahlungen in einer anderen Währung als USD — nicht in den Beträgen oben enthalten.",
+      "usageTitle": "Realisierter Umsatz & Marge",
+      "usageSub": "Im Zeitraum genutzte Credits, bewertet zu dem Preis, zu dem der Kunde sie gekauft hat (Plan, Jahresplan, Aufladung). Kostenlose und Test-Credits sind 0 wert.",
+      "creditsUsed": "Genutzte Credits",
+      "paidFree": "bezahlt {paid} · gratis {free}",
+      "revenueGross": "Umsatz brutto",
+      "revenueNet": "Umsatz netto",
+      "feeAttributed": "Zugeordnete Gebühr",
+      "apiPaying": "API-Kosten — Kunden",
+      "apiInternal": "API-Kosten — interne Konten",
+      "runs": "Läufe: {n}",
+      "apiUnknown": "Aufrufe ohne Kosten",
+      "apiUnknownHint": "Kosten unbekannt — nicht als 0 gezählt",
+      "margin": "Deckungsbeitrag",
+      "marginHint": "netto − API − Gebühr; vor Einkommensteuer und Fixkosten",
+      "marginIncomplete": "unvollständig — einige Aufrufe ohne Kosten",
+      "deferredTitle": "Abgegrenzter Umsatz",
+      "deferredSub": "Was Kunden bezahlt und noch nicht genutzt haben (Stand jetzt).",
+      "pendingTranches": "Offene Jahrestranchen",
+      "tranches": "Tranchen: {n} · netto {value}",
+      "unusedPaid": "Ungenutzte bezahlte Credits",
+      "netValue": "Nettowert {value}",
+      "creditsTitle": "Credit-Bewegungen im Zeitraum",
+      "creditsSub": "Gewährt, genutzt, erstattet und verfallen.",
+      "grantedSub": "Aus Abos",
+      "grantedTopup": "Aus Aufladungen",
+      "grantedBonus": "Boni & Korrekturen",
+      "notSales": "keine Verkäufe",
+      "used": "Genutzt",
+      "creditsRefunded": "Erstattet",
+      "expired": "Verfallen",
+      "toolsTitle": "Werkzeuge",
+      "toolsSub": "Läufe im Zeitraum, Erfolg und Credits.",
+      "eventsTitle": "Generierungen — Details",
+      "eventsSub": "Letzte 100 Läufe im Zeitraum: Modell, Auflösung, Tokens, API-Kosten und Umsatz. * = MwSt. geschätzt.",
+      "internal": "intern",
+      "freeCredits": "Gratis-Credits",
+      "refundedN": "Erstattung {n}",
+      "calls": "API-Aufrufe: {n}",
+      "callTokens": "Tokens ein {in} / aus {out} / Denken {thought}",
+      "note": "Nettobeträge verwenden die von Stripe gemeldete Steuer oder, wenn keine vorliegt, eine Schätzung mit {vat} % MwSt. (Stripe Tax ist nicht aktiv, die MwSt. wird nicht je Land berechnet). API-Kosten stammen aus der Preisliste des Anbieters und dem in der Antwort gemeldeten Verbrauch; ein Aufruf ohne Daten zählt nicht als 0. Die Marge berücksichtigt keine Einkommensteuer, Sozialabgaben, Buchhaltung oder Fixkosten — sie ist keine Steuerberechnung.",
+      "customerTitle": "Kundenfinanzen",
+      "customerSub": "Credit-Pools, Zahlungen und Ergebnis dieses Kunden insgesamt.",
+      "pools": "Credit-Pools",
+      "pool": {
+        "subscription": "Abo",
+        "topup": "Aufladungen",
+        "bonus": "Bonus",
+        "legacy": "Guthaben vor Preismodell V2"
+      },
+      "poolExpires": "verfällt {date}",
+      "poolLocked": "ohne aktiven Plan gesperrt",
+      "openFull": "Vollständige Kundenanalyse",
+      "col": {
+        "tool": "Werkzeug",
+        "runs": "Läufe",
+        "succeeded": "Erfolgreich",
+        "failed": "Fehlgeschlagen",
+        "outputs": "Bilder",
+        "credits": "Credits",
+        "internalRuns": "Intern",
+        "customer": "Kunde",
+        "tokens": "Tokens ein / aus",
+        "apiCost": "API-Kosten",
+        "revenueNet": "Umsatz netto",
+        "details": "Details"
       }
     }
   },
@@ -4327,7 +4429,7 @@
     "topUpSub": "Mehr Credits = niedrigerer Preis pro Credit",
     "save": "-{n}%",
     "bestValue": "BEST VALUE",
-    "noExpiry": "Credits verfallen nicht und sind sofort nach dem Kauf verfügbar.",
+    "noExpiry": "Aufgeladene Credits verfallen nicht und gelten bei aktivem Plan.",
     "customTitle": "Eigene Credit-Menge",
     "customSub": "Je mehr du wählst, desto weniger zahlst du pro Credit.",
     "customCredits": "Credits",
@@ -4395,13 +4497,15 @@
         "starter": "Für Händler, die gerade starten",
         "pro": "Für Shops, die regelmäßig veröffentlichen",
         "business": "Für Teams, Agenturen und große Kataloge",
-        "default": "GrovBase-Abo"
+        "default": "GrovBase-Abo",
+        "mini": "Für die ersten Bilder und kleine Kataloge"
       },
       "badge": {
         "starter": "Für den Start",
         "pro": "Am beliebtesten",
         "business": "Für Teams",
-        "default": "Plan"
+        "default": "Plan",
+        "mini": "Zum Testen"
       },
       "perMonth": "/ Mon.",
       "approx2k": "≈ {n} Produktfotos in 2K",
@@ -4429,7 +4533,7 @@
     "feat": {
       "creditsMonthly": "Credits jeden Monat",
       "creditPrice": "Preis für 1 Credit im Plan",
-      "noExpiry": "Credits verfallen nicht",
+      "noExpiry": "Aufgeladene Credits verfallen nicht",
       "topups": "Credit-Aufladungen jederzeit",
       "allTools": "Alle Bild-Tools",
       "customPrompts": "Eigene Prompts",
@@ -4473,7 +4577,7 @@
       "best": "Best value",
       "buy": "Kaufen",
       "soonPrice": "Preis folgt bald",
-      "noExpiry": "Credits verfallen nicht und landen auf deinem Konto, sobald die Zahlung bestätigt ist.",
+      "noExpiry": "Aufgeladene Credits verfallen nicht — du nutzt sie bei aktivem Plan. Sie werden gutgeschrieben, sobald die Zahlung bestätigt ist.",
       "paymentsOff": "Zahlungen sind noch nicht aktiviert.",
       "customTitle": "Eigene Anzahl Credits",
       "customSub": "Je mehr du wählst, desto weniger zahlst du pro Credit.",
@@ -4493,7 +4597,8 @@
         "inactiveTitle": "Dein Plan ist gerade nicht aktiv",
         "inactiveSub": "Aufladungen sind wieder möglich, sobald dein Abo aktiv und bezahlt ist. Prüfe den Status in den Einstellungen.",
         "inactiveCta": "Abo verwalten"
-      }
+      },
+      "marginal": "weitere Credits zu {price}"
     },
     "notice": {
       "planRequired": "Credit-Aufladungen sind mit einem aktiven bezahlten Plan verfügbar. Wähle einen Plan, um Credits nachzukaufen.",
@@ -4504,7 +4609,13 @@
     "faq": {
       "overline": "Häufige Fragen",
       "title": "Häufige Fragen zu Plänen und Zahlungen"
-    }
+    },
+    "fx": {
+      "approx": "≈ {amount}",
+      "perYear": "pro Jahr",
+      "note": "PLN-Beträge sind Richtwerte (NBP-Kurs vom {date}). Abgerechnet wird in USD."
+    },
+    "creditsRule": "Plan-Credits gelten bis zum Ende des bezahlten Monats (Jahresplan: 12 monatliche Zuteilungen). Aufladungen verfallen nicht und gelten bei aktivem Plan. Preise in USD, brutto."
   },
   "mobilenav": {
     "home": "Start",

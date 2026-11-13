@@ -49,7 +49,7 @@ export function annualMonthlyCents(p: PlanPricing): number {
 }
 
 /**
- * The saving a customer really gets, in whole percent, against twelve monthly
+ * The saving a customer really gets, in percent (two decimals), against twelve monthly
  * payments — and the SMALLEST such saving across the paid plans, because one
  * badge sits above all four columns and a badge that overstates any column is
  * a false price claim. Returns 0 when there is nothing truthful to show, and a
@@ -58,9 +58,12 @@ export function annualMonthlyCents(p: PlanPricing): number {
 export function annualSavingPct(plans: PlanPricing[]): number {
   const paid = plans.filter((p) => isPaid(p) && p.annualPriceCents > 0);
   if (paid.length === 0) return 0;
+  // Two decimals: "12 months for the price of 10" saves 16.67 % (the
+  // approved figure), and a badge rounded to a whole 17 % would claim more
+  // than the customer saves.
   const pcts = paid.map((p) => {
     const twelveMonths = p.priceCents * 12;
-    return Math.round((1 - p.annualPriceCents / twelveMonths) * 100);
+    return Math.round((1 - p.annualPriceCents / twelveMonths) * 10000) / 100;
   });
   return Math.max(0, Math.min(...pcts));
 }

@@ -31,8 +31,10 @@ import { cn } from "@/lib/utils";
  * dragging every usage event ever written into this function to produce them.
  */
 
+// Payments are in USD since Cennik V2 (0175), and so is the API cost — the
+// contribution needs no exchange rate.
 const pln = (cents: number) =>
-  new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(cents / 100);
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 const usd = (micros: number) => `$${(micros / 1e6).toFixed(2)}`;
 const SETTLED = new Set(["succeeded", "paid", "completed"]);
 
@@ -181,7 +183,8 @@ export default async function AdminAnalytics({ searchParams }: {
     ]);
 
   const usdToPln = ((billingRow.data?.value ?? {}) as { usd_to_pln?: number }).usd_to_pln ?? 4.0;
-  const toCents = (micros: number) => Math.round((micros / 1e6) * usdToPln * 100);
+  void usdToPln;
+  const toCents = (micros: number) => Math.round(micros / 10_000);
 
   const pay = (payRange.data ?? []).filter((p) => SETTLED.has(p.status));
   const usage = usageRange.data ?? [];

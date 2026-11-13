@@ -42,6 +42,14 @@ export type PlanPresentation = {
 };
 
 export const PLAN_PRESENTATION: Readonly<Record<string, PlanPresentation>> = {
+  // Cennik V2 (13.11.2026): the entry plan.
+  mini: {
+    taglineKey: "pricing.plan.audience.mini",
+    badgeKey: "pricing.plan.badge.mini",
+    icon: Zap,
+    tone: "neutral",
+    highlights: ["noExpiry", "topups", "allTools"],
+  },
   starter: {
     taglineKey: "pricing.plan.audience.starter",
     badgeKey: "pricing.plan.badge.starter",
@@ -79,8 +87,8 @@ export const planPresentation = (slug: string): PlanPresentation =>
   PLAN_PRESENTATION[slug] ?? FALLBACK_PLAN;
 
 /** The order the cards are drawn in on wide screens, and on phones (PRO first). */
-export const CARD_ORDER: readonly string[] = ["starter", "pro", "agency"];
-export const CARD_ORDER_PHONE: readonly string[] = ["pro", "starter", "agency"];
+export const CARD_ORDER: readonly string[] = ["mini", "starter", "pro", "agency"];
+export const CARD_ORDER_PHONE: readonly string[] = ["pro", "mini", "starter", "agency"];
 
 /**
  * SERVICE LEVELS — what the business promises per plan, as words, because the
@@ -91,6 +99,7 @@ export const CARD_ORDER_PHONE: readonly string[] = ["pro", "starter", "agency"];
 export type ServiceLevel = { supportKey: string; commercialUse: boolean; dedicatedSupport: boolean };
 
 export const SERVICE_LEVELS: Readonly<Record<string, ServiceLevel>> = {
+  mini: { supportKey: "plans.support.standard", commercialUse: true, dedicatedSupport: false },
   starter: { supportKey: "plans.support.standard", commercialUse: true, dedicatedSupport: false },
   pro: { supportKey: "plans.support.standard", commercialUse: true, dedicatedSupport: false },
   agency: { supportKey: "plans.support.dedicated", commercialUse: true, dedicatedSupport: true },

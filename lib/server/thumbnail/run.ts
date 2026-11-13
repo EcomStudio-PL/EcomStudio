@@ -170,7 +170,9 @@ export async function startThumbnailRun(
 ): Promise<StartResult> {
   const attempt = typeof body.attempt === "string" && UUID.test(body.attempt) ? body.attempt : null;
   const retouch = body.retouch === true;
-  const quotedTotal = typeof body.quotedTotal === "number" && Number.isInteger(body.quotedTotal) ? body.quotedTotal : null;
+  // Hundredths of a credit (Cennik V2 prices may be fractional).
+  const quotedTotal = typeof body.quotedTotal === "number" && Number.isFinite(body.quotedTotal)
+    && Math.round(body.quotedTotal * 100) === body.quotedTotal * 100 ? body.quotedTotal : null;
   if (!attempt || quotedTotal === null || !Array.isArray(body.photos)) return { ok: false, error: "invalid_input" };
   const photos = body.photos as unknown[];
   if (photos.length === 0 || !photos.every((p) => validInputPhoto(p, workspaceId))) return { ok: false, error: "invalid_input" };

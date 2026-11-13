@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Gate } from "@/components/home/gate";
 import { Diamond } from "@/components/layout/credits-control";
 import {
-  annualSavingCents, creditsWord, formatCount, formatMoney, formatPerCredit, isFewForm, planCheckoutHref,
+  annualSavingCents, approxPln, creditsWord, formatCount, formatMoney, formatPerCredit, isFewForm, planCheckoutHref,
   planCredits, planMonthlyCents, planPerCreditCents, seatLabel, type BillingPeriod,
 } from "./pricing-model";
 import {
@@ -167,7 +167,7 @@ export function PlanCards({ plans, period, data, order, layout, onChangeHint }: 
   return (
     <div data-plan-cards={layout}
       className={layout === "wide"
-        ? "hidden items-stretch gap-5 lg:grid lg:grid-cols-3 xl:gap-6"
+        ? "hidden items-stretch gap-5 lg:grid lg:grid-cols-4 xl:gap-6"
         : "mx-auto grid max-w-[440px] gap-5 lg:hidden"}>
       {ranked.map((plan) => (
         <PlanCard key={plan.id} plan={plan} period={period} data={data} layout={layout} onChangeHint={onChangeHint} />
@@ -266,6 +266,12 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
           </span>
           <span className={cn("text-[15px] font-medium", theme.sub)}>{t("pricing.plan.perMonth")}</span>
         </p>
+        {data.fx && plan.currency.toUpperCase() === "USD" && (
+          <p data-plan-pln className={cn("mt-1 text-[12.5px]", theme.sub)}>
+            {t("pricing.fx.approx", { amount: approxPln(period === "annual" && plan.annualPriceCents > 0 ? plan.annualPriceCents : monthly, data.fx.rate) ?? "" })}
+            {period === "annual" && plan.annualPriceCents > 0 ? ` ${t("pricing.fx.perYear")}` : ""}
+          </p>
+        )}
         <p className={cn("mt-2 min-h-[1.25rem] text-[13px]", theme.sub)}>
           {period === "annual" && plan.annualPriceCents > 0
             ? t("pricing.plan.billedYearly", { price: formatMoney(plan.annualPriceCents, plan.currency) })

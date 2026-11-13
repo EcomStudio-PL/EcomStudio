@@ -28,7 +28,7 @@ export function PricingPage({ data, notice, faq }: {
   /** The FAQ base's questions for /plany (FAQ V1), resolved on the server. */
   faq: readonly Pick<FaqPublicItem, "slug" | "q" | "a">[];
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [period, setPeriod] = useState<BillingPeriod>(
     () => initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, data.annual.onSale),
   );
@@ -108,7 +108,7 @@ export function PricingPage({ data, notice, faq }: {
                 {t("pricing.period.annual")}
                 {data.annual.onSale && data.annual.savingPct > 0 && (
                   <span className="ml-1.5 rounded-full bg-[rgb(var(--success)/0.14)] px-1.5 py-0.5 text-[11px] font-bold text-[rgb(11_94_52)] dark:text-success">
-                    {t("pricing.period.annualSave", { n: data.annual.savingPct })}
+                    {t("pricing.period.annualSave", { n: new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(data.annual.savingPct) })}
                   </span>
                 )}
                 {!data.annual.onSale && (
@@ -140,6 +140,8 @@ export function PricingPage({ data, notice, faq }: {
                 k4: data.imageCost.k4 ?? "—",
               })}</p>
             )}
+            <p data-credits-rule>{t("pricing.creditsRule")}</p>
+            {data.fx && <p data-fx-note>{t("pricing.fx.note", { date: data.fx.date })}</p>}
             {data.free && <p data-free-note>{t("pricing.free", { name: data.free.name })}</p>}
             {!data.paymentsEnabled && <p>{t("plans.soon")}</p>}
           </div>

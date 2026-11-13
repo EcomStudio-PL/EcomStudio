@@ -77,6 +77,14 @@ export type PricingPageData = {
   tiers: PricingTierView[];
   currency: string;
   /**
+   * CENNIK V2 — the top-up slider: whole credits from `min` to `max` in
+   * `step`, priced by the progressive card (lib/plans/topup-price.ts). The
+   * browser previews with that function; the server charges with it.
+   */
+  topup: { min: number; max: number; step: number; currency: string; buyable: boolean };
+  /** NBP USD→PLN for the informational "≈ zł" figures; null = none shown. */
+  fx: { rate: number; date: string; stale: boolean } | null;
+  /**
    * The per-image price the plan cards' "≈ N images" figures are computed
    * from, read from ai_models — only for a signed-in viewer, because that
    * table is not readable anonymously. null: the figures are omitted.

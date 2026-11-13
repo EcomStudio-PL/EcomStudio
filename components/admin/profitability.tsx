@@ -24,7 +24,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
 
   const money = (cents: number) =>
     new Intl.NumberFormat(locale === "pl" ? "pl-PL" : "en-GB", {
-      style: "currency", currency: "PLN", maximumFractionDigits: 2,
+      style: "currency", currency: "USD", maximumFractionDigits: 2,
     }).format(cents / 100);
   const usd = (micros: number) =>
     new Intl.NumberFormat(locale === "pl" ? "pl-PL" : "en-GB", {
@@ -55,7 +55,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
         <div className="grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-4">
           <Tile label={t("econ.revenue")} value={money(s.revenueCents)} />
           <Tile label={t("econ.apiCost")} value={usd(s.apiCostUsdMicros)}
-            sub={money(Math.round((s.apiCostUsdMicros / 1_000_000) * data.usdToPln * 100))} tone="warm" />
+            sub={money(Math.round(s.apiCostUsdMicros / 10_000))} tone="warm" />
           <Tile label={t("econ.contribution")} value={money(s.contributionCents)}
             tone={s.contributionCents >= 0 ? "good" : "bad"} />
           <Tile label={t("econ.margin")} value={`${s.marginPercent}%`} tone={s.marginPercent >= 30 ? "good" : "bad"} />

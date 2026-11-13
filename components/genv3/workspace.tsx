@@ -78,6 +78,9 @@ export type ManagedModeData = {
   /** The shortest Allegro description GrovBase Shot accepts (app_settings
    *  `grovshot_shot`) — for every viewer, whichever engine runs the order. */
   descriptionMin?: number;
+  /** Cennik V2: GrovShot's product analysis, charged once per order
+   *  (service_catalog `prompt_generation`). The bar adds it to the images. */
+  analysisCredits?: number;
 };
 
 /** GrovBase Shot (the lifestyle engine) for this member — the panel's shape
@@ -253,7 +256,9 @@ export function GeneratorWorkspace({
   const maxCount = managed ? SHOTS_MAX : Math.max(1, model?.maxOutputs ?? 1);
   const effCount = Math.min(Math.max(cfg.count, 1), maxCount);
   const perShot = unitPrice(model, effResolution, managed ? "managed" : "custom", effQuality);
-  const total = perShot * effCount;
+  // GrovBase Shot: the order's analysis once + each image; Stwórz zdjęcie:
+  // each image. Hundredths, exactly (1.25 × 3 = 3.75).
+  const total = Math.round(((managed ? managedData?.analysisCredits ?? 0 : 0) + perShot * effCount) * 100) / 100;
   const missing = Math.max(0, total - balance);
   /** How many product photos THIS mode sends (the rest stay, greyed). */
   const usable = managed ? MAX_REFS : customPhotoBudget(model, insp.length);

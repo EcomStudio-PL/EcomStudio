@@ -798,7 +798,9 @@ const ENGINE: readonly [string, string][] = [
   // to runGeneration, and the routes answer 202 once the job is accepted and
   // finish it in after(). No prompt, model, provider or request byte changes —
   // the forensic and parity suites hold the requests.
-  ["lib/server/concept-generation.ts", "afc720c4d54937712b396d1cbfb994d335ef7b71274e86d8e2c41988840d62ec"],
+  // Re-pinned by CENNIK V2 (13.11.2026): GrovShot price table, wallet pools,
+  // USD top-up orders, invoice grants, Mini + "≈ zł" presentation.
+  ["lib/server/concept-generation.ts", "54009af6580cbc565b5ebf988d749aa8cc26d368ca854bface7ce9568bc75de3"],
   ["lib/server/prompt-engine.ts", "5ce9bf1074f34e8852cd06a6440e0c9640a4471049617493d3b1b506e74baf22"],
   // Re-pinned by the photo-tools task (four Photoroom panels: pinned provider,
   // sandbox gating, deliver + alreadyDelivered hooks, presets). Retusz never
@@ -842,7 +844,7 @@ const ENGINE: readonly [string, string][] = [
   ["components/genv3/uploader.tsx", "1ebf12e2d3402c20fd99a2e2e9e742cdf38784d285ad13f7d59185c839809a24"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],
-  ["lib/services/credits.ts", "1a25606a89ca4ebc6f2640542f59b9185da4595ebad973b69be9f82932cb74fb"],
+  ["lib/services/credits.ts", "1c538888688e538af797615b3327c9921c5fc5eacd949f109c868e803e5fc6d7"],
 ];
 for (const [file, digest] of ENGINE) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
 // lib/server/gallery.ts — re-pinned by the trial-watermark task (each item
@@ -895,13 +897,13 @@ check("/home has no generation path: no AI route, no provider, no prompt",
 const PAY: readonly [string, string][] = [
   // Re-pinned by the /plany task (top-up gate, tier contract, offer switches).
   // The old pricing board is gone: /plan and /plany share components/plan/pricing-page.tsx.
-  ["lib/server/checkout.ts", "d8ad102ad3c1dec1b846c0b88cf78d4de01a741c1fd09db0a1f38d8410261210"],
-  ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
+  ["lib/server/checkout.ts", "910d7cda06fa604513452fd77154698d595d021ef4d0285fda14370a60a86c20"],
+  ["lib/server/stripe-webhook.ts", "7e30b173c0ca5c18f3768d429000cc6388995ebf4fdde50a64cc85870ace0f25"],
   ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
-  ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],
+  ["components/plan/pricing-model.ts", "7a9878786e320e08013249d679f587367e9a3488816d6809da22589aeb68fa8e"],
   // FAQ V1: only the FAQ question list left this file (the questions are the
   // FAQ base now); no price, plan, period, pack or Stripe value changed.
-  ["components/plan/pricing-config.ts", "a857b44ac126e1a108659d90e1d02061a870d47d614c938e3a81f9c31e50c89d"],
+  ["components/plan/pricing-config.ts", "ba3ef72ce6978f996e93d4e432c150a2d978c503e97691bd4d3bbb0500c40620"],
   ["components/plan/credit-coin-stack.tsx", "e3dd4c91b1917edd8872c3105633c30f170513a97034ea90f59e102caa00247b"],
   ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],
 ];

@@ -16,9 +16,14 @@ import { CustomerActions } from "@/components/admin/customer-actions";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { formatCredits, formatDate, formatInstantShort } from "@/lib/utils";
 import { blockStateOf } from "@/lib/server/account-block";
+import { getWallet } from "@/lib/services/credits";
+import { financeOverview, financePeriod } from "@/lib/services/finance";
+import { usdPlnRate } from "@/lib/server/fx";
+import { CustomerFinance } from "@/components/admin/finance-figures";
 
+// Payments are in USD since Cennik V2 (0175).
 const pln = (cents: number) =>
-  new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(cents / 100);
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 
 export default async function CrmProfile({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -77,6 +82,15 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
   // Contribution economics: settled payments minus the REAL provider cost
   // recorded on each usage event.
   const economics = workspaceId ? await customerEconomics(supabase, workspaceId) : null;
+
+  // CENNIK V2 (0176): the customer's pools, payments and result, all time.
+  const [finance, walletState, fx] = workspaceId
+    ? await Promise.all([
+        financeOverview(supabase, financePeriod({ p: "all" }), workspaceId),
+        getWallet(supabase, workspaceId),
+        usdPlnRate(supabase),
+      ])
+    : [null, null, null];
 
   const wallet = walletRes.data as { id: string; balance: number } | null;
   const { data: txs } = wallet
@@ -178,6 +192,13 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
         <Stat label={t("crm.creditsUsed")} value={formatCredits(creditStats?.used ?? 0)}
           hint={creditStats?.lastTopup ? `${t("crm.lastTopup")}: ${formatDate(creditStats.lastTopup, locale)}` : undefined} />
       </div>
+
+      {workspaceId && (
+        <div className="mt-5">
+          <CustomerFinance overview={finance} pools={walletState?.pools ?? null} rate={fx?.rate ?? null}
+            t={t} locale={locale} workspaceId={workspaceId} />
+        </div>
+      )}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {/* Dynamic service usage — driven by the service catalog */}

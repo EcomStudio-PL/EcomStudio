@@ -1525,6 +1525,18 @@ function sectionG() {
     console.log(`  · skipped (no git history for ${BASE})`);
     return;
   }
+  // CENNIK V2 (13.11.2026): lib/server/generation.ts changed ON PURPOSE — the
+  // fixed GrovShot price (fixedCost) and costs in hundredths of a credit; no
+  // provider request byte moved (forensic/parity suites). Pinned by digest.
+  {
+    const { createHash } = require("node:crypto") as typeof import("node:crypto");
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const PINNED: Record<string, string> = { "lib/server/generation.ts": "c6490a3e3a2b582943541f7a2c444b67f154e992c2b6d974d85c892c739d0b4a" };
+    changed = changed.filter((l) => {
+      const [status, file] = l.split("\t");
+      return !(status === "M" && PINNED[file] && createHash("sha256").update(readFileSync(file)).digest("hex") === PINNED[file]);
+    });
+  }
   check("G1 no frozen file differs from the rollback point", changed.length === 0, changed.join(", "));
   const src = ["lib/server/thumbnail/run.ts", "lib/server/thumbnail/sunburst.ts", "lib/thumbnail/openai-request.ts"]
     .map((f) => readFileSync(f, "utf8")).join("\n");

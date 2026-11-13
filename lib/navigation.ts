@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
-  Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Wrench,
+  Coins, Landmark, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Wrench,
   ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
   FolderOpen, Lightbulb, MessageSquare, Mail, Send,
   Gift, DoorOpen, ClipboardList,
@@ -78,6 +78,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/support", key: "support", icon: MessageSquare },
   ]},
   { key: "finance", items: [
+    { href: "/admin/finance", key: "financeView", icon: Landmark },
     { href: "/admin/credits", key: "credits", icon: Coins },
     { href: "/admin/plans", key: "plans", icon: Rocket },
     { href: "/admin/services", key: "services", icon: Layers },

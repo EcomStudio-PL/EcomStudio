@@ -212,7 +212,7 @@ async function main() {
     && /maxAttempts,\n\s*\}\)/.test(code("app/api/generate/route.ts")));
   check("custom retake passes the panel's attempts", /toolMaxAttempts\(supabase, "generator"\)/.test(code("app/api/generations/regenerate/route.ts")));
   check("GrovShot passes the panel's attempts", /toolMaxAttempts\(supabase, "prompts"\)/.test(code("lib/server/concept-generation.ts"))
-    && /costOverride: credits,\n\s*maxAttempts,/.test(code("lib/server/concept-generation.ts")));
+    && /(costOverride: credits|\.\.\.\(shotUnit !== null \? \{ fixedCost: credits \} : \{ costOverride: credits \}\)),\n\s*maxAttempts,/.test(code("lib/server/concept-generation.ts")));
   check("Moda keeps passing the panel's attempts", /maxAttempts: engine\.maxAttempts/.test(code("lib/server/engine/tool-run.ts")));
 
   console.log("\nC8. The \"GrovBase surcharge\" is gone");

@@ -224,7 +224,10 @@ export async function savePackageAction(input: {
 
     const sync = await syncPrice(supabase, {
       entity: "package", entityId: id,
-      amountCents: input.price_cents, currency: "PLN", productName: name,
+      amountCents: input.price_cents,
+        // The plan's OWN currency (USD since Cennik V2): never a hardcoded one,
+        // so a price edit cannot mint a Price in another currency.
+        currency: undefined, productName: name,
     });
 
     revalidatePath("/admin/credits");
@@ -335,7 +338,7 @@ export async function updatePlanAction(planId: string, patch: {
       if (price_cents > 0) {
         const sync = await syncPrice(supabase, {
           entity: "plan", entityId: planId, period: "monthly",
-          amountCents: price_cents, currency: "PLN",
+          amountCents: price_cents, currency: undefined,
           productName: patch.name ?? plan?.name ?? "GrovBase",
         });
         if (!sync.ok) {
@@ -516,7 +519,10 @@ export async function savePlanFullAction(input: {
     if (input.price_cents > 0) {
       const monthly = await syncPrice(supabase, {
         entity: "plan", entityId: planId, period: "monthly",
-        amountCents: input.price_cents, currency: "PLN", productName: name,
+        amountCents: input.price_cents,
+        // The plan's OWN currency (USD since Cennik V2): never a hardcoded one,
+        // so a price edit cannot mint a Price in another currency.
+        currency: undefined, productName: name,
       });
       if (!monthly.ok) {
         revalidatePath("/admin/plans");
@@ -525,7 +531,7 @@ export async function savePlanFullAction(input: {
     }
     const annual = await syncPrice(supabase, {
       entity: "plan", entityId: planId, period: "annual",
-      amountCents: input.annual_price_cents, currency: "PLN", productName: name,
+      amountCents: input.annual_price_cents, currency: undefined, productName: name,
     });
 
     revalidatePath("/admin/plans");

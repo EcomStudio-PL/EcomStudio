@@ -1,5 +1,6 @@
 import "server-only";
-import { creditLadder, validateCustomCredits, type PackRow } from "@/lib/plans/credit-price";
+import type { PackRow } from "@/lib/plans/credit-price";
+import { quoteTopup, TOPUP_CURRENCY } from "@/lib/plans/topup-price";
 
 /**
  * THE OFFER — what GrovBase is willing to sell, on what terms, until when.
@@ -104,7 +105,9 @@ export const PRICING_OFFER: PricingOffer = {
     endsAt: "2026-10-31T23:59:59+01:00",
     regularMonthlyCents: { starter: null, pro: null, agency: null },
   },
-  annual: { enabled: false },
+  // CENNIK V2 (13.11.2026): annual is on sale — twelve months for the price of
+  // ten, the credits granted as twelve monthly tranches (migration 0174).
+  annual: { enabled: true },
   topups: {
     requireActivePlan: true,
     existingLadder: true,
@@ -179,10 +182,10 @@ export const annualOnSale = (offer: PricingOffer = PRICING_OFFER) => offer.annua
 
 /* ── top-ups ───────────────────────────────────────────────────────────────*/
 
-export type TopupSource = "approved_plan" | "approved" | "ladder";
+export type TopupSource = "approved_plan" | "approved" | "ladder" | "rate_card";
 export type TopupRefusal = "not_offered" | "unpriced";
 export type TopupPrice =
-  | { ok: true; credits: number; amountCents: number; source: TopupSource }
+  | { ok: true; credits: number; amountCents: number; source: TopupSource; currency?: string; version?: string }
   | { ok: false; reason: TopupRefusal };
 
 /** Margin of `amountCents` for `credits` after provider and payment cost. */
@@ -236,36 +239,18 @@ export function offeredCustomAmounts(packs: Pick<PackRow, "credits">[]): number[
  */
 export function priceTopup(
   requested: unknown,
-  input: {
-    packs: PackRow[];
-    planSlug: string | null;
-    planCentsPerCredit: number | null;
+  _input?: {
+    packs?: PackRow[];
+    planSlug?: string | null;
+    planCentsPerCredit?: number | null;
     offer?: PricingOffer;
   },
 ): TopupPrice {
-  const offer = input.offer ?? PRICING_OFFER;
-  if (typeof requested !== "number" || !Number.isSafeInteger(requested) || requested <= 0) {
-    return { ok: false, reason: "not_offered" };
-  }
-  if (!offeredCustomAmounts(input.packs).includes(requested)) return { ok: false, reason: "not_offered" };
-
-  const perPlan = offer.topups.perPlanCents && input.planSlug
-    ? offer.topups.perPlanCents[input.planSlug as PaidPlanSlug]?.[requested]
-    : undefined;
-  if (typeof perPlan === "number") {
-    return approvedPriceValid(requested, perPlan, input.planCentsPerCredit, offer)
-      ? { ok: true, credits: requested, amountCents: perPlan, source: "approved_plan" }
-      : { ok: false, reason: "unpriced" };
-  }
-  const approved = offer.topups.approvedCents?.[requested];
-  if (typeof approved === "number") {
-    return approvedPriceValid(requested, approved, input.planCentsPerCredit, offer)
-      ? { ok: true, credits: requested, amountCents: approved, source: "approved" }
-      : { ok: false, reason: "unpriced" };
-  }
-  if (!offer.topups.existingLadder) return { ok: false, reason: "unpriced" };
-  const q = validateCustomCredits(requested, creditLadder(input.packs));
+  // CENNIK V2: ONE progressive rate card in USD for every amount from 20 to
+  // 5000 credits (lib/plans/topup-price.ts). The packs no longer price
+  // anything — they are out of the offer.
+  const q = quoteTopup(requested);
   return q.ok
-    ? { ok: true, credits: q.credits, amountCents: q.amountCents, source: "ladder" }
-    : { ok: false, reason: "unpriced" };
+    ? { ok: true, credits: q.credits, amountCents: q.amountCents, source: "rate_card", currency: TOPUP_CURRENCY, version: q.version }
+    : { ok: false, reason: "not_offered" };
 }

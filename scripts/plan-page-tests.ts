@@ -32,6 +32,7 @@
  *
  * Run:  npm run test:planpage
  */
+import { TOPUP_BANDS, topupCents } from "@/lib/plans/topup-price";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -158,7 +159,11 @@ function catalogueDb(plans: Plan[], packs: Pack[], subs: Sub[] = [], opts: { sub
         : name === "subscription_plans" ? plans as unknown as Row[]
           : name === "subscriptions" ? subs as unknown as Row[]
             : []),
-    rpc: async (fn: string) => (fn === "stripe_customer_for" ? { data: "cus_stub", error: null } : { data: null, error: null }),
+    rpc: async (fn: string) => (fn === "stripe_customer_for" ? { data: "cus_stub", error: null }
+      // Cennik V2: a top-up is stored as an order before its payment.
+      : fn === "credit_order_create" ? { data: "11111111-2222-4333-8444-555555555555", error: null }
+      : fn === "credit_order_attach" ? { data: true, error: null }
+      : { data: null, error: null }),
     auth: { getUser: async () => ({ data: { user: null } }) },
   } as never;
 }
@@ -254,11 +259,8 @@ async function main() {
     const FROZEN: [string, string][] = [
       ["app/(app)/checkout/page.tsx", "2fca9f8520c44682ebc3669a497ef31a0a0b3b2957f40284359d14c72f31a8c8"],
       ["lib/plans/credit-price.ts", "c3ebca6452053a0157eee7bf0fd8c1bdc767593f2e082941951ba02b30aff95c"],
-      ["lib/plans/pricing.ts", "6c6ddf4d5784f236eaff740efed5bc23538b2ce44118b92cf9f24b5df2e1c3fa"],
       ["lib/plans/capabilities.ts", "d60ae58bcea9ba6747bb6a3ca978e36a527696b14045b80f33d2930651f19ca6"],
-      ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
       ["app/actions/billing.ts", "f9feeb8aad93a24806a1de1e0fbd9a3ab929c055cce382e3436f9700e4d862c2"],
-      ["lib/server/stripe-pricing.ts", "41573ba733ba26854abed17270fbf310433ae16d9425acc2a176dd0b8c395efe"],
       ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
       ["lib/stripe/client.ts", "76df572faae6b3f032010a538385f4c2fd6e18b0d63e294646bd0ae42e97a9b4"],
       ["lib/stripe/signature.ts", "722af66f1fa0c1c11ced6d49d37d6bb18090e72df249290c8dca08b00b44b0b8"],
@@ -266,7 +268,6 @@ async function main() {
       ["lib/stripe/publishable.ts", "84949ccf2061c66ebeb334e2529b3465a9dc3a7eb85ef18b16f30a6bcf8fa0bd"],
       ["app/api/hooks/stripe/route.ts", "12d6aa79017034b0cd8d50ee60bc946541db2eede3aa60508fbf663dfe1c3362"],
       ["components/plan/billing-portal-button.tsx", "75ba0ace8f08d0f5f3cd9363f253a687338af672f1deb47958912f208ba04005"],
-      ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],
     ];
     for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(file) === digest, `sha256 ${sha(file).slice(0, 16)}…`);
     // Changed ON PURPOSE by the /plany task (top-up gate, tier contract, offer
@@ -275,13 +276,20 @@ async function main() {
     const REPINNED: [string, string][] = [
       // + recheckTopupAction: the pre-confirm re-check (was 9b8ab0ca… before the task).
       ["app/actions/checkout.ts", "86d870410f3cb2dbcaead0f3af84131f3dd3fb0032bed4b434f0e926c10574ea"],
-      ["lib/server/checkout.ts", "d8ad102ad3c1dec1b846c0b88cf78d4de01a741c1fd09db0a1f38d8410261210"],
-      ["lib/server/billing.ts", "836b6f2b9df42c9d5e594622d1dad5f07d776607a4e601338228f3eb5b20e55d"],
-      ["lib/server/pricing-offer.ts", "d9f9a176fee0e4942d1ea65ded19942400e064db5babd7ac60c8dfdcbb64eedf"],
+      ["lib/server/checkout.ts", "910d7cda06fa604513452fd77154698d595d021ef4d0285fda14370a60a86c20"],
+      ["lib/server/billing.ts", "a0c36b4f60cf0fcb13594b697676f845fa1a51c29544361304bd2c0364228010"],
+      ["lib/server/pricing-offer.ts", "cb1ee28baa65c427bcf1c468d0e4e9348e346be54bf1ab58ba0e19aa1eb84dc9"],
       ["lib/server/stripe-migrate.ts", "96eb6003a8409745870ee1ef72df2b7aee3acfcbb154504b1cf6c2286e59e4d7"],
       // + Legal documents V1: the legal line under "Zapłać" links Regulamin and
       //   Polityka prywatności (presentation only; was 9e8b67cd… before).
       ["components/checkout/checkout-view.tsx", "f33bf81712d621b3b057a6d3ab5150933cc09151825d25d7b67d9c76319f3a1a"],
+      // CENNIK V2 (13.11.2026): USD plans + Mini, annual tranches, credit
+      // pools, the top-up slider (server-priced order), invoice-line grants,
+      // fees, "≈ zł". Checkout/billing/offer above were re-pinned by it too.
+      ["lib/plans/pricing.ts", "ea6bb85dc5648e27f71d2e6a9e3e251357028bca0adff23389d46191d71b3a63"],
+      ["lib/server/stripe-webhook.ts", "7e30b173c0ca5c18f3768d429000cc6388995ebf4fdde50a64cc85870ace0f25"],
+      ["lib/server/stripe-pricing.ts", "7f4b0b5c16155649bbce52b87e24a50bf7ea8944922a5fe04179f0527fdc1974"],
+      ["components/plan/pricing-model.ts", "7a9878786e320e08013249d679f587367e9a3488816d6809da22589aeb68fa8e"],
       ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],
     ];
     for (const [file, digest] of REPINNED) check(`${file} is the reviewed version`, sha(file) === digest, `sha256 ${sha(file)}`);
@@ -340,59 +348,47 @@ async function main() {
     const PLAN_PRICES: Record<string, string> = { starter: "99 zł", pro: "299 zł", agency: "999 zł" };
     for (const p of subscriber.plans) check(`${p.slug} card reads ${PLAN_PRICES[p.slug]}`, nb(formatMoney(p.priceCents, p.currency)) === PLAN_PRICES[p.slug]);
 
-    for (const card of subscriber.packs) {
-      if (!card.href) { check(`pack ${card.slot} has no buy link only because it has no price`, card.amountCents === null); continue; }
-      const q = await quote(card.href);
-      check(`pack ${card.slot}: shown ${formatMoney(card.amountCents ?? 0, "PLN")} = quoted (${card.slot + card.bonusCredits} credits)`,
-        q.ok && q.quote.amountCents === card.amountCents && q.quote.credits === card.slot + card.bonusCredits
-        && q.quote.currency === "PLN", JSON.stringify(q));
-    }
-    for (const tier of subscriber.tiers) {
-      const q = await quote(creditsCheckoutHref(tier.credits));
-      if (tier.amountCents === null) {
-        check(`tier ${formatCount(tier.credits)}: no price shown, and the server refuses it`,
-          !q.ok && q.reason === "invalid_credits" && tier.href === null, JSON.stringify(q));
-      } else {
-        check(`tier ${formatCount(tier.credits)}: shown ${formatMoney(tier.amountCents, "PLN")} = quoted`,
-          q.ok && q.quote.amountCents === tier.amountCents && q.quote.credits === tier.credits
-          && q.quote.stripePriceId === null, JSON.stringify(q));
-      }
-    }
-    // Literal pins — the production rate card, written out by hand, so the
+    // CENNIK V2: no packs on offer — the slider is the top-up.
+    check("no pack cards are offered", subscriber.packs.length === 0 && subscriber.tiers.length === 0);
+    check("the slider spec: 20–5000 credits, step 1, USD", subscriber.topup.min === 20 && subscriber.topup.max === 5000
+      && subscriber.topup.step === 1 && subscriber.topup.currency === "USD");
+    // Literal pins — the approved progressive card, written out by hand
+    // (1–49 × $0.56, 50–99 × $0.52, 100–249 × $0.48, 250+ × $0.44), so the
     // expectation is not computed by the code under test.
-    const PINS: [number, number | null][] = [[200, 3200], [300, 4600], [800, 10400], [1000, 12400], [3000, 29900],
-      [5000, null], [10000, null], [50000, null]];
-    const all = [...subscriber.packs.map((p) => [p.slot, p.amountCents] as const), ...subscriber.tiers.map((t) => [t.credits, t.amountCents] as const)];
+    const PINS: [number, number][] = [[20, 1120], [49, 2744], [50, 2796], [99, 5344], [100, 5392], [249, 12544], [250, 12588], [5000, 221588]];
     for (const [n, cents] of PINS) {
-      check(`${formatCount(n)} kredytów → ${cents === null ? "not on sale" : formatMoney(cents, "PLN")}`,
-        all.find(([c]) => c === n)?.[1] === cents);
+      const q = await quote(creditsCheckoutHref(n));
+      check(`${formatCount(n)} kredytów → ${formatMoney(cents, "USD")} (shown = quoted)`,
+        topupCents(n) === cents && q.ok && q.quote.amountCents === cents && q.quote.credits === n
+        && q.quote.currency === "USD" && q.quote.stripePriceId === null, JSON.stringify(q));
     }
-    check("the 100 and 500 cards are the existing packs at their own prices",
-      subscriber.packs.find((p) => p.slot === 100)?.amountCents === 1900
-      && subscriber.packs.find((p) => p.slot === 500)?.amountCents === 7900
-      && subscriber.packs.find((p) => p.slot === 500)?.bonusCredits === 50);
+    for (const n of [19, 5001, 0, -5]) {
+      const q = await quote(creditsCheckoutHref(n));
+      check(`${n} credits is refused by the server`, !q.ok, JSON.stringify(q));
+    }
+    check("the price never falls as credits rise (no threshold arbitrage)", (() => {
+      for (let c = 21; c <= 5000; c++) if (topupCents(c) <= topupCents(c - 1)) return false;
+      return true;
+    })());
 
-    // The charge itself: begin creates a PaymentIntent for exactly the quote.
-    for (const href of [subscriber.packs.find((p) => p.slot === 800)!.href!, subscriber.packs.find((p) => p.slot === 100)!.href!,
-      subscriber.tiers.find((t) => t.credits === 1000)!.href!]) {
+    // The charge itself: begin stores the ORDER, then a PaymentIntent for exactly it.
+    for (const n of [100, 250]) {
       const seen = installStripe();
-      const req = parseIntent(href)!;
-      const res = await beginCheckout(db(), WS, "buyer@example.test", req);
+      const res = await beginCheckout(db(), WS, "buyer@example.test", { kind: "custom_credits", credits: n });
       const pi = seen.find((c) => c.method === "POST" && c.path === "/payment_intents");
-      const shown = [...subscriber.packs.map((p) => [p.href, p.amountCents]), ...subscriber.tiers.map((t) => [t.href, t.amountCents])]
-        .find(([h]) => h === href)?.[1];
-      check(`Stripe is asked for exactly the displayed amount (${href})`,
-        res.ok && pi !== undefined && Number(pi.body.amount) === shown && pi.body.currency === "pln",
-        JSON.stringify({ res, amount: pi?.body.amount, shown }));
+      check(`Stripe is asked for exactly the slider's amount (${n} credits)`,
+        res.ok && pi !== undefined && Number(pi.body.amount) === topupCents(n) && pi.body.currency === "usd"
+        && typeof pi.body["metadata[grovbase_order_id]"] === "string",
+        JSON.stringify({ res, amount: pi?.body.amount }));
     }
   }
 
-  console.log("\nD. ANNUAL — OFF UNTIL CREDITS FOLLOW A YEARLY INVOICE");
+  console.log("\nD. ANNUAL — ON SALE (12 MONTHS FOR THE PRICE OF 10, CREDITS IN 12 TRANCHES)");
   {
-    check("the offer switch is off", PRICING_OFFER.annual.enabled === false);
+    check("the offer switch is on (Cennik V2)", PRICING_OFFER.annual.enabled === true);
     for (const p of subscriber.plans) {
       const q = await quote(planCheckoutHref(p.id, "annual"), []);
-      check(`production: a forced annual ${p.slug} checkout is refused`, !q.ok && q.reason === "annual_unavailable", JSON.stringify(q));
+      check(`a plan without an annual Price is not sold annually (${p.slug})`, !q.ok && q.reason === "not_mapped", JSON.stringify(q));
     }
     const ANNUAL: Record<string, [number, string]> = {
       starter: [95040, "price_annual_starter"], pro: [287040, "price_annual_pro"], agency: [959040, "price_annual_agency"],
@@ -402,19 +398,17 @@ async function main() {
     } : p));
     for (const p of annualPlans.filter((x) => x.price_cents > 0)) {
       const q = await quoteCheckout(catalogueDb(annualPlans, PROD_PACKS), WS, { kind: "subscription", planId: p.id, period: "annual" });
-      check(`even with a synced annual Price, ${p.slug} annual is refused while the switch is off`,
-        !q.ok && q.reason === "annual_unavailable");
+      check(`with a synced annual Price, ${p.slug} annual is sold at exactly the stored yearly amount`,
+        q.ok && q.quote.amountCents === ANNUAL[p.slug][0] && q.quote.stripePriceId === ANNUAL[p.slug][1] && q.quote.period === "annual",
+        JSON.stringify(q));
     }
-    const legacy = await createPlanCheckout(catalogueDb(annualPlans, PROD_PACKS), WS, null, annualPlans[2].id, "annual");
-    check("…and the hosted fallback refuses it too", !legacy.ok && legacy.reason === "annual_unavailable");
-    const off = page("free", { plans: annualPlans });
-    check("page: annual not on sale → no saving claimed, every card monthly",
-      !off.annual.onSale && off.annual.savingPct === 0 && off.plans.every((p) => !p.payable.annual));
-    const on = page("free", { plans: annualPlans, offer: { ...PRICING_OFFER, annual: { enabled: true } } });
-    check("page: with the switch on and real annual Prices, annual is on sale with the REAL smallest saving",
+    const on = page("free", { plans: annualPlans });
+    check("page: annual on sale with the REAL smallest saving",
       on.annual.onSale && on.annual.savingPct === annualSavingPct(on.plans) && on.annual.savingPct === 20);
-    const partial = page("free", { plans: annualPlans.map((p) => (p.slug === "pro" ? { ...p, stripe_price_id_annual: null } : p)),
-      offer: { ...PRICING_OFFER, annual: { enabled: true } } });
+    const tenForTwelve = page("free", { plans: annualPlans.map((p) => (p.price_cents > 0
+      ? { ...p, annual_price_cents: p.price_cents * 10, stripe_price_annual_cents: p.price_cents * 10 } : p)) });
+    check("12 months for the price of 10 is advertised as 16.67 %", tenForTwelve.annual.savingPct === 16.67, String(tenForTwelve.annual.savingPct));
+    const partial = page("free", { plans: annualPlans.map((p) => (p.slug === "pro" ? { ...p, stripe_price_id_annual: null } : p)) });
     check("…but one plan without its annual Price keeps annual off for the whole page", !partial.annual.onSale);
     const ui = codeOnly(read("components/plan/pricing-page.tsx"));
     check("the annual segment is disabled unless on sale (no fake −20%)",
@@ -488,11 +482,13 @@ async function main() {
     seen = installStripe();
     const hcOk = await createCustomCreditsCheckout(db([sub("active")]), WS, null, 1000);
     const session = seen.find((c) => c.path === "/checkout/sessions");
-    check("hosted fallback with an active plan: the session charges the tier's displayed price",
-      hcOk.ok && Number(session?.body["line_items[0][price_data][unit_amount]"]) === 12400, JSON.stringify(session?.body ?? {}));
+    check("hosted fallback with an active plan: the session charges the rate card's price, in USD, for an order",
+      hcOk.ok && Number(session?.body["line_items[0][price_data][unit_amount]"]) === topupCents(1000)
+      && session?.body["line_items[0][price_data][currency]"] === "usd"
+      && typeof session?.body["metadata[grovbase_order_id]"] === "string", JSON.stringify(session?.body ?? {}));
     seen = installStripe();
-    const hcBad = await createCustomCreditsCheckout(db([sub("active")]), WS, null, 1001);
-    check("hosted fallback: an amount between tiers is refused", !hcBad.ok && hcBad.reason === "invalid_credits");
+    const hcBad = await createCustomCreditsCheckout(db([sub("active")]), WS, null, 5001);
+    check("hosted fallback: an amount outside 20–5000 is refused", !hcBad.ok && hcBad.reason === "invalid_credits");
     const expiry = Number(session?.body.expires_at);
     const nowS = Math.floor(Date.now() / 1000);
     check("hosted top-up sessions expire in 31 minutes, not Stripe's 24 hours (the plan is judged at creation)",
@@ -567,61 +563,22 @@ async function main() {
       !/\.(insert|update|upsert|delete)\(/.test(codeOnly(read("lib/server/billing.ts")).slice(
         read("lib/server/billing.ts").indexOf("WHO MAY TOP UP"), read("lib/server/billing.ts").indexOf("THE THREE THINGS THAT CAN BE BOUGHT"))));
     check("the webhook was not taught to refuse money (still settles credit_package / custom_credits)",
-      sha("lib/server/stripe-webhook.ts") === "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2");
+      /kind !== "credit_package" && kind !== "custom_credits"/.test(codeOnly(read("lib/server/stripe-webhook.ts"))));
   }
 
-  console.log("\nF. TIERS AND PACK SLOTS — THE OFFERED AMOUNTS AND NOTHING ELSE");
+  console.log("\nF. THE TOP-UP RATE CARD — PROGRESSIVE, LIMITED, NOTHING ELSE");
   {
-    check("exactly the ten tiers, ascending, max 50 000",
-      TOPUP_TIERS.join(",") === "1000,3000,5000,10000,15000,20000,25000,30000,40000,50000");
-    check("exactly the five pack slots, in display order", PACK_SLOTS.join(",") === "800,500,300,200,100");
-    check("a slot WITH a pack row is sold as that pack, not as a custom amount",
-      offeredCustomAmounts(PROD_PACKS).sort((a, b) => a - b).join(",") === "200,300,800,1000,3000,5000,10000,15000,20000,25000,30000,40000,50000");
-    const input = { packs: PROD_PACKS, planSlug: null, planCentsPerCredit: null };
-    for (const n of [100, 150, 250, 333, 500, 550, 777, 999, 1001, 1150, 2999, 3001, 49999, 50001, 100000]) {
-      const r = priceTopup(n, input);
-      check(`${n} is not an offered amount`, !r.ok && r.reason === "not_offered");
-    }
-    for (const bad of [0, -1000, 1000.5, Number.NaN, Number.POSITIVE_INFINITY, "1000", null, {}]) {
-      const r = priceTopup(bad, input);
+    check("bands: 56 / 52 / 48 / 44 cents, breaks after 49, 99, 249",
+      TOPUP_BANDS.map((b) => `${b.upTo}:${b.cents}`).join(",") === "49:56,99:52,249:48,null:44");
+    check("100 credits = 49 × 0.56 + 50 × 0.52 + 1 × 0.48 = $53.92 (the approved example)", topupCents(100) === 5392);
+    for (const bad of [0, -1000, 1000.5, Number.NaN, Number.POSITIVE_INFINITY, "1000", null, {}, 19, 5001]) {
+      const r = priceTopup(bad);
       check(`${JSON.stringify(bad) ?? String(bad)} is refused`, !r.ok);
     }
-    // No extrapolation above the largest pack (3 000 credits incl. bonus).
-    for (const n of [5000, 10000, 50000]) {
-      const r = priceTopup(n, input);
-      check(`${n}: above the rate card — unpriced, not extrapolated`, !r.ok && r.reason === "unpriced");
+    for (const n of [20, 21, 333, 4999, 5000]) {
+      const r = priceTopup(n);
+      check(`${n}: priced by the rate card`, r.ok && r.amountCents === topupCents(n) && r.source === "rate_card" && r.currency === "USD");
     }
-    check("the ladder price of an offered amount is validateCustomCredits' own",
-      [200, 300, 800, 1000, 3000].every((n) => {
-        const r = priceTopup(n, input); const v = validateCustomCredits(n, creditLadder(PROD_PACKS));
-        return r.ok && v.ok && r.amountCents === v.amountCents && r.source === "ladder";
-      }));
-    check("no approved prices are configured", PRICING_OFFER.topups.approvedCents === null && PRICING_OFFER.topups.perPlanCents === null);
-
-    // An approved price needs validated costs; without them it is not sold.
-    const approvedNoCosts: PricingOffer = { ...PRICING_OFFER, topups: { ...PRICING_OFFER.topups, approvedCents: { 5000: 40000 } } };
-    const r1 = priceTopup(5000, { ...input, offer: approvedNoCosts });
-    check("an approved price with no cost inputs is NOT sold (fails closed)", !r1.ok && r1.reason === "unpriced");
-    const costs = { providerCentsPerCredit: 4, paymentFeePercent: 1.5, paymentFeeFixedCents: 100, minMarginPercent: 50 };
-    const approved: PricingOffer = { ...PRICING_OFFER, topups: { ...PRICING_OFFER.topups, approvedCents: { 5000: 45000, 10000: 50000 }, costs } };
-    const ok5 = priceTopup(5000, { ...input, offer: approved });
-    check("an approved price with a margin above the minimum is sold at exactly that price",
-      ok5.ok && ok5.amountCents === 45000 && ok5.source === "approved");
-    check("margin = (price − fee − credits × cost) / price",
-      Math.abs((topupMarginPercent(5000, 45000, costs) ?? 0) - ((45000 - 675 - 100 - 20000) / 45000) * 100) < 1e-9);
-    const thin = priceTopup(10000, { ...input, offer: approved });
-    check("an approved price below the minimum margin is refused", !thin.ok && thin.reason === "unpriced");
-    const perPlan: PricingOffer = { ...approved, topups: { ...approved.topups,
-      perPlanCents: { starter: { 5000: 60000 }, pro: { 5000: 50000 }, agency: null } } };
-    const forPro = priceTopup(5000, { ...input, planSlug: "pro", offer: perPlan });
-    const forAgency = priceTopup(5000, { ...input, planSlug: "agency", offer: perPlan });
-    check("per-plan prices win for their plan, the common price applies to the others",
-      forPro.ok && forPro.amountCents === 50000 && forPro.source === "approved_plan"
-      && forAgency.ok && forAgency.amountCents === 45000 && forAgency.source === "approved");
-    const policy: PricingOffer = { ...approved, topups: { ...approved.topups, minUnitVsPlan: 1 } };
-    check("policy: a top-up credit cheaper than the buyer's plan credit is refused",
-      !approvedPriceValid(5000, 45000, 29900 / 1200, policy) && approvedPriceValid(5000, 45000, 5, policy));
-    check("…and with the policy set, an unknown plan price refuses", !approvedPriceValid(5000, 45000, null, policy));
   }
 
   console.log("\nG. PREMIERE — OFF, SERVER-CLOCKED, AUDITABLE");
@@ -698,17 +655,10 @@ async function main() {
       /startTransition\(\(\) => \{ router\.refresh\(\); reset\(\); \}\)/.test(errorPage) && /onClick=\{retry\}/.test(errorPage));
     check("subscriber: allowed, PRO marked as current", subscriber.viewer.topups === "allowed" && subscriber.viewer.currentSlug === "pro");
     check("three paid cards; Free is only a note", subscriber.plans.map((p) => p.slug).join(",") === "starter,pro,agency" && subscriber.free?.name === "Free");
-    check("pack cards 800 / 500 / 300 / 200 / 100 with coins 5 → 1",
-      subscriber.packs.map((p) => `${p.slot}:${p.level}`).join(",") === "800:5,500:4,300:3,200:2,100:1");
-    check("BEST VALUE is only on the lowest price per credit — the 800 card",
-      subscriber.packs.filter((p) => p.best).map((p) => p.slot).join(",") === "800");
-    check("savings compare real prices per credit with the 100 pack (none on the 100 pack itself)",
-      subscriber.packs.find((p) => p.slot === 100)?.savePct === null
-      && subscriber.packs.find((p) => p.slot === 800)?.savePct === Math.round((1 - 10400 / 800 / 19) * 100));
-    check("ten tiers on the page, exactly the offered ones", subscriber.tiers.map((t) => t.credits).join(",") === TOPUP_TIERS.join(","));
+    check("no pack cards (Cennik V2: the slider is the top-up)", subscriber.packs.length === 0 && subscriber.tiers.length === 0);
     const off = page("allowed", { payments: false });
     check("payments off: nothing is buyable (no link anywhere)",
-      off.plans.every((p) => !p.payable.monthly) && off.packs.every((p) => !p.href) && off.tiers.every((t) => !t.href));
+      off.plans.every((p) => !p.payable.monthly) && off.packs.every((p) => !p.href) && !off.topup.buyable);
     const unsynced = page("allowed", { packs: PROD_PACKS.map((p, i) => (i === 2 ? { ...p, stripe_sync_status: "failed" } : p)) });
     check("one unverified pack: no custom amount is priced (the checkout would refuse)",
       unsynced.tiers.every((t) => t.amountCents === null) && unsynced.packs.filter((p) => p.slot === 800 || p.slot === 200).every((p) => p.amountCents === null));
@@ -819,23 +769,25 @@ async function main() {
   console.log("\nK. UI CONTRACT");
   {
     const topups = codeOnly(read("components/plan/topups.tsx"));
-    check("the slider moves over tier INDEXES: min 0, max last, step 1",
-      /type="range" min=\{0\} max=\{last\} step=\{1\}/.test(topups));
-    check("no typed amount field", !/type="number"|inputMode/.test(topups));
-    check("labels show the first and last tier", /formatCount\(tiers\[0\]\.credits\)/.test(topups) && /formatCount\(tiers\[last\]\.credits\)/.test(topups));
+    check("the slider lands only on whole credits within the limits (clamp + step)",
+      /type="range" min=\{0\} max=\{1000\} step=\{1\}/.test(topups) && /const clamp = \(n: number\) => Math\.min\(spec\.max, Math\.max\(spec\.min, Math\.round\(n \/ spec\.step\) \* spec\.step\)\)/.test(topups));
+    check("a typed amount is accepted only inside the limits", /type="number"/.test(topups) && /min=\{spec\.min\} max=\{spec\.max\}/.test(topups)
+      && /n >= spec\.min && n <= spec\.max/.test(topups));
+    check("labels show the limits", /formatCount\(spec\.min\)/.test(topups) && /formatCount\(spec\.max\)/.test(topups));
+    check("the preview is the rate card's own function", /topupCents\(credits\)/.test(topups));
     check("the lock is the server's decision, and the locked content is inert",
       /const locked = data\.viewer\.topups !== "allowed"/.test(topups) && /inert=\{locked\}/.test(topups));
-    check("an unpriced tier has no buy button", /tier\.href \? \(/.test(topups) && /disabled data-custom-buy/.test(topups));
-    check("the slider tells a screen reader the price, or that the stop is not on sale yet",
-      /pricing\.topups\.tierSoon/.test(topups.slice(topups.indexOf("const valueText"), topups.indexOf("if (!tier)")))
+    check("no buy button without payments", /href \? \(/.test(topups) && /disabled data-custom-buy/.test(topups));
+    check("the slider tells a screen reader the amount and its price",
+      /aria-valuetext=\{valueText\}/.test(topups) && /formatMoney\(amountCents, spec\.currency\)/.test(topups)
       && /aria-describedby="topup-tier-unit"/.test(topups) && /id="topup-tier-unit"/.test(topups));
     check("an inactive subscription is sent to its settings, not to buy a second plan",
       /const inactive = reason === "plan_inactive"/.test(topups) && /href="\/settings\?tab=subscriptions"/.test(topups));
     const pageSrc = codeOnly(read("components/plan/pricing-page.tsx"));
     check("'Kup kredyty' scrolls to the top-ups under the sticky bar, honouring reduced motion",
       /go\(A\.topups\)/.test(pageSrc) && /prefers-reduced-motion: reduce/.test(pageSrc) && /scroll-mt-\[calc\(var\(--header-h\)/.test(pageSrc));
-    check("PRO first on a phone, in the middle on wide screens (two lists, matching focus order)",
-      CARD_ORDER.join() === "starter,pro,agency" && CARD_ORDER_PHONE.join() === "pro,starter,agency"
+    check("PRO first on a phone; Mini → Business on wide screens (two lists, matching focus order)",
+      CARD_ORDER.join() === "mini,starter,pro,agency" && CARD_ORDER_PHONE.join() === "pro,mini,starter,agency"
       && /layout="phone"/.test(pageSrc) && /layout="wide"/.test(pageSrc));
     check("one container width (1100px), FAQ narrower (700px)", /max-w-\[1100px\]/.test(pageSrc) && /max-w-\[700px\]/.test(pageSrc));
     const cmp = codeOnly(read("components/plan/plan-comparison.tsx"));

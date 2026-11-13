@@ -68,7 +68,7 @@ export type StoredInput = {
   dimensions_cm: { w: number | null; d: number | null; h: number | null } | null;
   user_rows: UserRow[] | null;
   acknowledge: boolean;
-  quote: { unit: number; total: number };
+  quote: { unit: number; total: number; analysis?: number };
   model: { id: string; identifier: string; provider: string };
   unit_price_usd_micros: number;
   budget_cap_usd_micros: number;
@@ -84,7 +84,7 @@ export type StartBody = {
 };
 
 export type StartResult =
-  | { ok: true; runId: string; created: boolean; quote: { unit: number; total: number } }
+  | { ok: true; runId: string; created: boolean; quote: { unit: number; total: number; analysis?: number } }
   | { ok: false; error: string; quote?: { unit: number; total: number }; missingCredits?: number; blockers?: string[]; limit?: number };
 
 const num = (v: unknown): number | null =>
@@ -128,7 +128,8 @@ export async function startGrovshotRun(
   if (!dims.ok) return { ok: false, error: "invalid_dimensions" };
   const briefs = resolveShotBriefs(body.shotBriefs, photos as string[]);
   if (!briefs.ok) return { ok: false, error: "invalid_shot_plan" };
-  const quotedTotal = typeof body.quotedTotal === "number" && Number.isInteger(body.quotedTotal) ? body.quotedTotal : null;
+  const quotedTotal = typeof body.quotedTotal === "number" && Number.isFinite(body.quotedTotal)
+    && Math.round(body.quotedTotal * 100) === body.quotedTotal * 100 ? body.quotedTotal : null;
   if (!test && quotedTotal === null) return { ok: false, error: "invalid_input" };
 
   if (!test && !(await grovshotV2Enabled(supabase, userId, workspaceId, { sessionType: "lifestyle" }))) {

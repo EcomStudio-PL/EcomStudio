@@ -90,7 +90,8 @@
     "seeMore": "Zobacz więcej",
     "pageOf": "Strona {a} z {b}",
     "next": "Dalej",
-    "seeAll": "Zobacz wszystkie"
+    "seeAll": "Zobacz wszystkie",
+    "decimalSep": ","
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -564,7 +565,8 @@
       "aiTools": "Narzędzia i silniki",
       "aiModels": "Modele, API i koszty",
       "globalSections": "Sekcje globalne",
-      "newsletter": "Newsletter"
+      "newsletter": "Newsletter",
+      "financeView": "Finanse i marża"
     },
     "engine": {
       "title": "AI Engine — Baza wiedzy",
@@ -1376,6 +1378,106 @@
         "signupClosed": "Data premiery jest zatwierdzona, ale rejestracja jest wyłączona. W dniu premiery nikt nie założy konta, dopóki jej nie włączysz.",
         "signupDiffers": "Otwarcie rejestracji ({when}) różni się od daty premiery o ponad godzinę.",
         "signupOpenNow": "Rejestracja jest już otwarta, choć premiera dopiero przed nami."
+      }
+    },
+    "finance": {
+      "sub": "Wpływy, przychód z wykorzystanych kredytów, koszty API, prowizje Stripe i przychód odroczony. Kwoty w USD (tak pobiera Stripe), „≈ zł” po kursie NBP — informacyjnie.",
+      "period": {
+        "today": "Dzisiaj",
+        "7d": "7 dni",
+        "30d": "30 dni",
+        "month": "Bieżący miesiąc",
+        "all": "Całość",
+        "custom": "Własny zakres"
+      },
+      "showing": "Okres: {from} – {to}",
+      "fx": "kurs NBP USD/PLN {rate} z {date}",
+      "fxStale": "kurs nieaktualny",
+      "fxMissing": "brak kursu NBP — kwoty tylko w USD",
+      "allCustomers": "wszyscy klienci",
+      "unavailable": "Brak danych — funkcje analityki finansowej nie odpowiedziały (migracja 0176).",
+      "cashTitle": "Wpływy (płatności Stripe)",
+      "cashSub": "Pieniądze przyjęte w okresie, zanim kredyty zostały wykorzystane.",
+      "gross": "Wpływy brutto",
+      "net": "Netto (bez VAT)",
+      "payments": "płatności: {n}",
+      "vatStripe": "VAT ze Stripe",
+      "vatEstimated": "VAT szacowany {vat}%",
+      "subMonthly": "Subskrypcje miesięczne",
+      "subAnnual": "Subskrypcje roczne",
+      "annualCash": "gotówka z góry, przychód odroczony",
+      "topups": "Doładowania",
+      "fees": "Prowizje Stripe",
+      "feesUnknown": "bez danych dla {n} płatności",
+      "refunded": "Zwroty",
+      "internalPayments": "Konta wewnętrzne",
+      "internalHint": "w tym płatności kont admin/test",
+      "otherCurrency": "{n} płatności w innej walucie niż USD — nie są doliczone do kwot powyżej.",
+      "usageTitle": "Przychód rozpoznany i marża",
+      "usageSub": "Kredyty wykorzystane w okresie, wycenione po cenie, za jaką klient je kupił (plan, plan roczny, doładowanie). Kredyty darmowe i testowe mają wartość 0.",
+      "creditsUsed": "Kredyty wykorzystane",
+      "paidFree": "płatne {paid} · darmowe {free}",
+      "revenueGross": "Przychód brutto",
+      "revenueNet": "Przychód netto",
+      "feeAttributed": "Prowizja przypisana",
+      "apiPaying": "Koszt API — klienci",
+      "apiInternal": "Koszt API — konta wewnętrzne",
+      "runs": "uruchomień: {n}",
+      "apiUnknown": "Wywołania bez kosztu",
+      "apiUnknownHint": "brak danych o koszcie — nie liczone jako 0",
+      "margin": "Marża kontrybucyjna",
+      "marginHint": "netto − API − prowizja; przed PIT/ZUS i kosztami stałymi",
+      "marginIncomplete": "niepełna — część wywołań bez kosztu",
+      "deferredTitle": "Przychód odroczony",
+      "deferredSub": "Co klienci już opłacili, a jeszcze nie wykorzystali (stan na teraz).",
+      "pendingTranches": "Transze roczne do wydania",
+      "tranches": "transz: {n} · netto {value}",
+      "unusedPaid": "Niewykorzystane płatne kredyty",
+      "netValue": "wartość netto {value}",
+      "creditsTitle": "Ruch kredytów w okresie",
+      "creditsSub": "Przyznane, wykorzystane, zwrócone i wygasłe.",
+      "grantedSub": "Z subskrypcji",
+      "grantedTopup": "Z doładowań",
+      "grantedBonus": "Bonusy i korekty",
+      "notSales": "nie są sprzedażą",
+      "used": "Wykorzystane",
+      "creditsRefunded": "Zwrócone",
+      "expired": "Wygasłe",
+      "toolsTitle": "Narzędzia",
+      "toolsSub": "Uruchomienia w okresie, skuteczność i kredyty.",
+      "eventsTitle": "Generacje — szczegóły",
+      "eventsSub": "Ostatnie 100 uruchomień w okresie: model, rozdzielczość, tokeny, koszt API i przychód. * = VAT szacowany.",
+      "internal": "wewn.",
+      "freeCredits": "kredyty darmowe",
+      "refundedN": "zwrot {n}",
+      "calls": "Wywołania API: {n}",
+      "callTokens": "tokeny we {in} / wy {out} / myślenie {thought}",
+      "note": "Kwoty netto liczone są z podatku zwróconego przez Stripe, a gdy go brak — szacunkowo przy VAT {vat}% (Stripe Tax nie jest włączony, więc VAT nie jest wyliczany per kraj). Koszt API pochodzi z cennika dostawcy i zużycia zgłoszonego w odpowiedzi; wywołanie bez danych nie jest liczone jako 0. Marża nie uwzględnia PIT, ZUS, księgowości ani kosztów stałych — to nie jest rozliczenie podatkowe.",
+      "customerTitle": "Finanse klienta",
+      "customerSub": "Pule kredytów, płatności i wynik na kliencie od początku.",
+      "pools": "Pule kredytów",
+      "pool": {
+        "subscription": "Subskrypcja",
+        "topup": "Doładowania",
+        "bonus": "Bonus",
+        "legacy": "Saldo sprzed cennika V2"
+      },
+      "poolExpires": "wygasa {date}",
+      "poolLocked": "zablokowane bez aktywnego planu",
+      "openFull": "Pełna analityka klienta",
+      "col": {
+        "tool": "Narzędzie",
+        "runs": "Uruchomienia",
+        "succeeded": "Udane",
+        "failed": "Nieudane",
+        "outputs": "Obrazy",
+        "credits": "Kredyty",
+        "internalRuns": "Wewn.",
+        "customer": "Klient",
+        "tokens": "Tokeny we / wy",
+        "apiCost": "Koszt API",
+        "revenueNet": "Przychód netto",
+        "details": "Szczegóły"
       }
     }
   },
@@ -4327,7 +4429,7 @@
     "topUpSub": "Więcej kredytów = niższa cena za 1 kredyt",
     "save": "-{n}%",
     "bestValue": "BEST VALUE",
-    "noExpiry": "Kredyty nie wygasają i są dostępne od razu po zakupie.",
+    "noExpiry": "Doładowane kredyty nie wygasają i działają przy aktywnym planie.",
     "customTitle": "Własna liczba kredytów",
     "customSub": "Im więcej wybierzesz, tym mniej płacisz za 1 kredyt.",
     "customCredits": "kredytów",
@@ -4395,13 +4497,15 @@
         "starter": "Dla sprzedawców, którzy zaczynają",
         "pro": "Dla sklepów, które publikują regularnie",
         "business": "Dla zespołów, agencji i dużych katalogów",
-        "default": "Plan abonamentowy GrovBase"
+        "default": "Plan abonamentowy GrovBase",
+        "mini": "Na pierwsze zdjęcia i małe katalogi"
       },
       "badge": {
         "starter": "Na start",
         "pro": "Najpopularniejszy",
         "business": "Dla zespołów",
-        "default": "Plan"
+        "default": "Plan",
+        "mini": "Na próbę"
       },
       "perMonth": "/ mies.",
       "approx2k": "≈ {n} zdjęć produktowych w 2K",
@@ -4429,7 +4533,7 @@
     "feat": {
       "creditsMonthly": "Kredyty co miesiąc",
       "creditPrice": "Cena 1 kredytu w planie",
-      "noExpiry": "Kredyty nie wygasają",
+      "noExpiry": "Doładowane kredyty nie wygasają",
       "topups": "Doładowania kredytów w każdej chwili",
       "allTools": "Wszystkie narzędzia obrazu",
       "customPrompts": "Własne prompty",
@@ -4473,7 +4577,7 @@
       "best": "Best value",
       "buy": "Kup",
       "soonPrice": "Cena wkrótce",
-      "noExpiry": "Kredyty nie wygasają i trafiają na konto zaraz po potwierdzeniu płatności.",
+      "noExpiry": "Doładowane kredyty nie wygasają — używasz ich przy aktywnym planie. Trafiają na konto zaraz po potwierdzeniu płatności.",
       "paymentsOff": "Płatności nie są jeszcze włączone.",
       "customTitle": "Własna liczba kredytów",
       "customSub": "Im więcej wybierzesz, tym mniej płacisz za 1 kredyt.",
@@ -4493,7 +4597,8 @@
         "inactiveTitle": "Twój plan nie jest teraz aktywny",
         "inactiveSub": "Doładowania wrócą, gdy subskrypcja znów będzie aktywna i opłacona. Sprawdź jej stan w ustawieniach.",
         "inactiveCta": "Zarządzaj subskrypcją"
-      }
+      },
+      "marginal": "kolejne kredyty po {price}"
     },
     "notice": {
       "planRequired": "Doładowania kredytów są dostępne z aktywnym planem płatnym. Wybierz plan, aby dokupić kredyty.",
@@ -4504,7 +4609,13 @@
     "faq": {
       "overline": "Najczęstsze pytania",
       "title": "Najczęstsze pytania o plany i płatności"
-    }
+    },
+    "fx": {
+      "approx": "≈ {amount}",
+      "perYear": "za rok",
+      "note": "Kwoty w zł są orientacyjne (kurs NBP z {date}). Płatność pobierana jest w USD."
+    },
+    "creditsRule": "Kredyty z abonamentu są ważne do końca opłaconego miesiąca (plan roczny: 12 miesięcznych przydziałów). Doładowania nie wygasają i działają przy aktywnym planie. Ceny w USD brutto."
   },
   "mobilenav": {
     "home": "Start",

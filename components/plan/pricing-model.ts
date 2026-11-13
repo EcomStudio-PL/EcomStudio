@@ -61,11 +61,23 @@ export function formatCount(value: number): string {
  */
 export function formatMoney(cents: number, currency: string, fraction?: 2): string {
   const digits = fraction ?? (cents % 100 === 0 ? 0 : 2);
-  return new Intl.NumberFormat(PRICE_LOCALE, {
+  // Prices are in USD since Cennik V2 and a dollar price is written the way a
+  // dollar price is: "$49.90", "$1,099". PLN keeps the Polish form ("39,28 zł").
+  return new Intl.NumberFormat(currency.toUpperCase() === "USD" ? "en-US" : PRICE_LOCALE, {
     ...groupingAlways,
     style: "currency", currency,
     minimumFractionDigits: digits, maximumFractionDigits: digits,
   }).format(cents / 100);
+}
+
+/**
+ * "≈ 197,98 zł" — the INFORMATIONAL złoty figure under a USD price, at the
+ * NBP rate the page was given (lib/server/fx.ts). Never what Stripe charges;
+ * null when there is no rate, and the caller then shows nothing.
+ */
+export function approxPln(usdCents: number, rate: number | null | undefined): string | null {
+  if (!rate || !(rate > 0) || !Number.isFinite(usdCents)) return null;
+  return formatMoney(Math.round(usdCents * rate), "PLN", 2);
 }
 
 /** A per-credit figure in minor units, written with two decimals. */

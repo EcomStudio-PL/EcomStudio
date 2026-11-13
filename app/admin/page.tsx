@@ -23,8 +23,9 @@ import { ArrowRight, Coins, Users, Wand2, Wallet } from "lucide-react";
  * /admin/system, where a connection problem is what you came for.
  */
 
-const plnFmt = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 });
-const plnExact = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" });
+// Payments are in USD since Cennik V2 (0175).
+const plnFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const plnExact = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 const pln = (cents: number) => plnFmt.format(cents / 100);
 
 const RANGES = [7, 30, 90] as const;

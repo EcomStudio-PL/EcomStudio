@@ -24,8 +24,9 @@ import { cn } from "@/lib/utils";
  * customer base disappears by mis-click.
  */
 
+// Payments are in USD since Cennik V2 (0175).
 const pln = (cents: number) =>
-  new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 }).format(cents / 100);
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
 
 export function CustomerTable({ rows, adminId, locale }: {
   rows: CustomerRow[]; adminId: string | null; locale: string;

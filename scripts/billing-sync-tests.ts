@@ -372,11 +372,12 @@ async function main() {
     const src = codeOnly(read("lib/server/checkout.ts"));
     check("the checkout service never reads an amount from its request",
       !/req\.(amount|amountCents|price|unit_amount)/.test(src));
-    // Through priceTopup (lib/server/pricing-offer.ts), which only accepts the
-    // offered tiers and prices them with validateCustomCredits.
+    // Through priceTopup (lib/server/pricing-offer.ts) = quoteTopup, the one
+    // progressive rate card (Cennik V2), and stored as an ORDER before payment.
     check("custom credits are re-validated server-side on every begin",
       /priceTopup\(req\.credits/.test(src)
-      && /validateCustomCredits\(/.test(codeOnly(read("lib/server/pricing-offer.ts"))));
+      && /quoteTopup\(/.test(codeOnly(read("lib/server/pricing-offer.ts")))
+      && /credit_order_create/.test(src) && /grovbase_order_id/.test(src));
     const action = codeOnly(read("app/actions/checkout.ts"));
     check("the action rebuilds the request from a known shape",
       /function sanitise\(/.test(action),
@@ -460,9 +461,11 @@ async function main() {
 
     // And the checkout is the thing that enforces it at runtime.
     const co = codeOnly(read("lib/server/checkout.ts"));
-    check("every quote is gated by sellable()",
-      (co.match(/sellable\(/g) ?? []).length >= 3,
-      "package, custom-credit rate card and plan must each be checked");
+    // Cennik V2: the custom amount has no catalogue row to be out of sync —
+    // its rate card is code, reviewed — so package and plan are the two rows.
+    check("every catalogue quote is gated by sellable()",
+      (co.match(/sellable\(/g) ?? []).length >= 2,
+      "package and plan must each be checked");
     check("checkout refuses with price_out_of_sync rather than charging",
       /price_out_of_sync/.test(co));
     check("the PaymentIntent amount is compared to the quote after creation",
@@ -728,7 +731,11 @@ async function main() {
           : [],
         ),
         rpc: async (fn: string) =>
-          fn === "stripe_customer_for" ? { data: "cus_stub", error: null } : { data: null, error: null },
+          fn === "stripe_customer_for" ? { data: "cus_stub", error: null }
+          // Cennik V2: a top-up is stored as an order before its PaymentIntent.
+          : fn === "credit_order_create" ? { data: "11111111-2222-4333-8444-555555555555", error: null }
+          : fn === "credit_order_attach" ? { data: true, error: null }
+          : { data: null, error: null },
       } as never;
     }
 

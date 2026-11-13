@@ -2046,6 +2046,64 @@ export type Database = {
           },
         ]
       }
+      credit_lots: {
+        Row: {
+          amount: number
+          billing_period: string | null
+          created_at: string
+          expired_at: string | null
+          expires_at: string | null
+          id: string
+          kind: string
+          payment_id: string | null
+          plan_id: string | null
+          provider_subscription_id: string | null
+          remaining: number
+          source_tx_id: string | null
+          tranche_id: string | null
+          wallet_id: string
+        }
+        Insert: { wallet_id: string; kind: string; amount: number; remaining: number }
+        Update: { remaining?: number }
+        Relationships: []
+      }
+      subscription_tranches: {
+        Row: {
+          created_at: string
+          credits: number
+          ends_at: string
+          granted_at: string | null
+          granted_tx_id: string | null
+          id: string
+          lot_id: string | null
+          payment_id: string
+          plan_id: string
+          provider_subscription_id: string | null
+          starts_at: string
+          status: string
+          tranche_no: number
+          void_reason: string | null
+          voided_at: string | null
+          wallet_id: string
+          workspace_id: string
+        }
+        Insert: { wallet_id: string; workspace_id: string; payment_id: string; plan_id: string; tranche_no: number; credits: number; starts_at: string; ends_at: string }
+        Update: { status?: string }
+        Relationships: []
+      }
+      fx_rates: {
+        Row: {
+          effective_date: string
+          fetched_at: string
+          pair: string
+          rate: number
+          source: string
+          table_no: string | null
+        }
+        Insert: { pair: string; rate: number; effective_date: string; source: string }
+        Update: { rate?: number }
+        Relationships: []
+      }
       credit_wallets: {
         Row: {
           balance: number
@@ -5652,6 +5710,12 @@ export type Database = {
           status: string
           stripe_customer_id: string | null
           workspace_id: string
+          billing_period?: string | null
+          stripe_fee_amount?: number | null
+          stripe_fee_currency?: string | null
+          stripe_net_amount?: number | null
+          stripe_exchange_rate?: number | null
+          tax_cents?: number | null
         }
         Insert: {
           amount_cents: number
@@ -7628,6 +7692,60 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      credit_wallet_state: {
+        Args: { p_workspace_id: string }
+        Returns: Json
+      }
+      admin_finance_overview: {
+        Args: { p_from: string; p_to: string; p_workspace_id?: string | null }
+        Returns: Json
+      }
+      admin_finance_events: {
+        Args: { p_from: string; p_to: string; p_workspace_id?: string | null; p_limit?: number }
+        Returns: Json
+      }
+      credit_plan_live: {
+        Args: { p_workspace_id: string }
+        Returns: boolean
+      }
+      credit_order_create: {
+        Args: { p_token: string; p_workspace_id: string; p_credits: number; p_amount_cents: number; p_currency: string; p_pricing_version: string }
+        Returns: string
+      }
+      credit_order_attach: {
+        Args: { p_token: string; p_order_id: string; p_provider_payment_id: string }
+        Returns: boolean
+      }
+      stripe_settle_v2: {
+        Args: {
+          p_token: string
+          p_event_id: string
+          p_event_type: string
+          p_workspace_id: string
+          p_provider_payment_id: string
+          p_amount_cents: number
+          p_currency: string
+          p_kind: string
+          p_plan_id: string | null
+          p_stripe_customer_id: string | null
+          p_metadata: Json
+          p_grants: Json
+          p_order_id: string | null
+        }
+        Returns: Json
+      }
+      stripe_plan_for_price: {
+        Args: { p_token: string; p_price_id: string }
+        Returns: Json
+      }
+      payment_record_fees: {
+        Args: { p_token: string; p_provider_payment_id: string; p_fee: number | null; p_net: number | null; p_currency: string | null; p_exchange_rate: number | null; p_tax_cents: number | null }
+        Returns: boolean
+      }
+      fx_rate_store: {
+        Args: { p_token: string; p_pair: string; p_rate: number; p_date: string; p_source: string; p_table: string }
+        Returns: boolean
+      }
       announcement_audience_count: {
         Args: { p_audience: Json }
         Returns: number
@@ -9371,6 +9489,7 @@ export type Database = {
         | "promotion"
         | "admin_grant"
         | "manual_adjustment"
+        | "expiration"
       job_status: "queued" | "processing" | "completed" | "failed" | "cancelled"
       product_status:
         | "draft"
@@ -9522,6 +9641,7 @@ export const Constants = {
         "promotion",
         "admin_grant",
         "manual_adjustment",
+        "expiration",
       ],
       job_status: ["queued", "processing", "completed", "failed", "cancelled"],
       product_status: ["draft", "ready", "processing", "completed", "archived"],

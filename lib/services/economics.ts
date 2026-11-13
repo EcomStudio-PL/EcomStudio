@@ -225,14 +225,17 @@ export async function customerEconomics(supabase: Client, workspaceId: string) {
   const e = (events ?? []) as UsageRow[];
   const p = (payments ?? []) as PaymentRow[];
 
+  // Payments are in USD since Cennik V2 (0175), the same currency as the API
+  // cost: the slices are computed at a rate of 1 (USD cents), never through
+  // the PLN analytics rate.
   const slices = Object.fromEntries(
-    PERIODS.map((period) => [period, sliceEconomics(withinPeriod(p, period), withinPeriod(e, period), usdToPln)])
+    PERIODS.map((period) => [period, sliceEconomics(withinPeriod(p, period), withinPeriod(e, period), 1)])
   ) as Record<Period, MoneySlice>;
 
   return {
     usdToPln,
     slices,
-    models: modelEconomics(e, slices.all.revenueCents, usdToPln),
+    models: modelEconomics(e, slices.all.revenueCents, 1),
     anomalies: costAnomalies(e),
     events: e,
     payments: p,
