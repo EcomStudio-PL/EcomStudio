@@ -13260,7 +13260,11 @@
     "reason.hands_faces": "Dłonie lub twarze",
     "reason.light_mood": "Światło lub klimat",
     "reason.scene_mismatch": "Scena nie pasuje",
-    "reason.other": "Inne"
+    "reason.other": "Inne",
+    "settings.promptVariant": "Prompt obrazu (nowe zlecenia)",
+    "settings.promptVariantA": "A – obecny, dla wszystkich",
+    "settings.promptVariantBAdmin": "B (zdjęcia nadrzędne) – tylko zlecenia administratorów",
+    "settings.promptVariantB": "B – dla wszystkich zleceń"
   },
   "gsp": {
     "title": "Podgląd procesu",
@@ -13459,6 +13463,28 @@
     "corr.product_trimmed": "PRODUKT skrócony do limitu",
     "exp.bindingHint": "Pierwszy akapit to blok wiązania: „zdjęcie 1” = pierwsza pozycja powyżej. Po zmianie kolejności popraw numery w tekście – wysyłamy dokładnie ten tekst.",
     "exp.before": "Przed (zlecenie)",
-    "exp.after": "Po (eksperyment)"
+    "exp.after": "Po (eksperyment)",
+    "ab.title": "Test A/B:",
+    "ab.a": "A – obecny ({n} zn.)",
+    "ab.b": "B – zdjęcia nadrzędne ({n} zn.)",
+    "ab.hint": "B to te same moduły tego zlecenia złożone na nowo: najpierw wiązanie zdjęć, krótki opis produktu, scena, kadr i skala z kodu, krótkie ograniczenia. Te same zdjęcia co A – zmienia się tylko tekst.",
+    "ab.refsV2": "Dobór referencji B wysłałby: {list}.",
+    "ab.useRefsV2": "Użyj doboru B",
+    "ab.dropped": "pominięte",
+    "reason.calosc_najlepsza": "najlepsze zdjęcie całości",
+    "reason.calosc_inny_kat": "całość z innego kąta",
+    "reason.detal_ujecia": "detal tego ujęcia",
+    "reason.kontekst_calosc": "całość jako kontekst",
+    "reason.uzycie_poza": "poza / sposób użycia do odwzorowania",
+    "reason.grafika_pomocnicza": "grafika pomocnicza (na końcu)",
+    "drop.fragment_w_ujeciu_calosci": "fragment w ujęciu całości",
+    "drop.uzycie_w_ujeciu_calosci": "zdjęcie użycia w ujęciu całości",
+    "drop.opakowanie": "opakowanie / inny stan",
+    "drop.inny_wariant": "inny wariant",
+    "drop.inny_stan": "inny stan produktu",
+    "drop.grafika_w_ujeciu_calosci": "grafika w ujęciu całości",
+    "drop.kolaz_lub_inne_produkty": "kolaż / inne produkty",
+    "drop.limit": "limit liczby zdjęć",
+    "corr.dropped_v2": "pominięte przez dobór B"
   }
 }

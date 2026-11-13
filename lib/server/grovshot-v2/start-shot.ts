@@ -15,7 +15,7 @@ import type { ShotInput } from "@/lib/server/grovshot-v2/lifestyle";
 import { readKb } from "@/lib/grovshot-shot/kb";
 import { SHOT_ENGINE_VERSION } from "@/lib/grovshot-shot/contract";
 import { parseUserPlan } from "@/lib/grovshot-shot/plan";
-import { IMAGE_MAX_CALLS, parseShotSettings } from "@/lib/grovshot-shot/settings";
+import { IMAGE_MAX_CALLS, orderPromptVariant, parseShotSettings } from "@/lib/grovshot-shot/settings";
 
 /**
  * GROVBASE SHOT — STARTING AN ORDER ON THE LIFESTYLE ENGINE. Nothing is
@@ -112,6 +112,9 @@ export async function startShotOrder(supabase: Client, userId: string, workspace
     unit_price_usd_micros: unitPrice,
     budget_cap_usd_micros: Math.round(settings.settings.text_budget_usd * 1_000_000 + shots * IMAGE_MAX_CALLS * (unitPrice + 10_000)),
     settings: settings.settings,
+    // Prompt B + references V2 (13.11.2026) only where the setting allows it —
+    // "b_admin": admins' orders; the order keeps its variant to the end.
+    prompt_variant: orderPromptVariant(settings.settings.prompt.variant, admin),
     kb: { version_id: kbPin.id, version: Number(kbPin.version) || 0, sha256: kbPin.sha256 },
   };
   const bucket = Math.floor(Date.now() / 300_000);

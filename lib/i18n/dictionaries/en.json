@@ -13258,7 +13258,11 @@
     "reason.hands_faces": "Hands or faces",
     "reason.light_mood": "Light or mood",
     "reason.scene_mismatch": "The scene does not fit",
-    "reason.other": "Other"
+    "reason.other": "Other",
+    "settings.promptVariant": "Image prompt (new orders)",
+    "settings.promptVariantA": "A – current, for everyone",
+    "settings.promptVariantBAdmin": "B (photos first) – administrators' orders only",
+    "settings.promptVariantB": "B – for every order"
   },
   "gsp": {
     "title": "Process view",
@@ -13457,6 +13461,28 @@
     "corr.product_trimmed": "PRODUCT trimmed to the limit",
     "exp.bindingHint": "The first paragraph is the binding block: “zdjęcie 1” = the first position above. If you reorder, fix the numbers in the text – exactly this text is sent.",
     "exp.before": "Before (order)",
-    "exp.after": "After (experiment)"
+    "exp.after": "After (experiment)",
+    "ab.title": "A/B test:",
+    "ab.a": "A – current ({n} chars)",
+    "ab.b": "B – photos first ({n} chars)",
+    "ab.hint": "B is this order's own modules re-assembled: image binding first, a short product note, the scene, frame and scale from code, short constraints. Same photos as A – only the text changes.",
+    "ab.refsV2": "Reference selection B would send: {list}.",
+    "ab.useRefsV2": "Use selection B",
+    "ab.dropped": "left out",
+    "reason.calosc_najlepsza": "best whole-product photo",
+    "reason.calosc_inny_kat": "whole product, another angle",
+    "reason.detal_ujecia": "this shot's detail",
+    "reason.kontekst_calosc": "whole product as context",
+    "reason.uzycie_poza": "pose / usage to copy",
+    "reason.grafika_pomocnicza": "auxiliary graphic (last)",
+    "drop.fragment_w_ujeciu_calosci": "fragment in a whole-product shot",
+    "drop.uzycie_w_ujeciu_calosci": "usage photo in a whole-product shot",
+    "drop.opakowanie": "packaging / another state",
+    "drop.inny_wariant": "another variant",
+    "drop.inny_stan": "another product state",
+    "drop.grafika_w_ujeciu_calosci": "graphic in a whole-product shot",
+    "drop.kolaz_lub_inne_produkty": "collage / other products",
+    "drop.limit": "image limit",
+    "corr.dropped_v2": "left out by selection B"
   }
 }

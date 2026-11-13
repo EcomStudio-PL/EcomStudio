@@ -32,8 +32,20 @@ export type ShotSettings = {
   diagnostics: { retention_days: number; experiment_daily_budget_usd: number };
   /** The image prompt (B diagnosis, 2026-11-08): PRODUKT words after its fixed
    *  first sentence, SKALA words, and the images one shot may send. */
-  prompt: { product_max_words: number; scale_max_words: number; max_references: number };
+  prompt: {
+    product_max_words: number; scale_max_words: number; max_references: number;
+    /** Which image prompt new orders get (13.11.2026): "a" the current one for
+     *  everyone; "b_admin" prompt B + references V2 for admins' orders only;
+     *  "b" for every order. Pinned on the order when it starts. */
+    variant: PromptVariantSetting;
+  };
 };
+export const PROMPT_VARIANTS = ["a", "b_admin", "b"] as const;
+export type PromptVariantSetting = (typeof PROMPT_VARIANTS)[number];
+/** The variant ONE order runs with, decided once when it starts. */
+export function orderPromptVariant(setting: PromptVariantSetting, admin: boolean): "a" | "b" {
+  return setting === "b" || (setting === "b_admin" && admin) ? "b" : "a";
+}
 
 /** The defaults: Sonnet 5.5 for the card, the plan and the prompts (no Opus by default). */
 export const DEFAULT_SHOT_SETTINGS: ShotSettings = {
@@ -49,7 +61,7 @@ export const DEFAULT_SHOT_SETTINGS: ShotSettings = {
   description_min_chars: 80,
   scenarios: { lifestyle: true, reklamowa: false },
   diagnostics: { retention_days: 30, experiment_daily_budget_usd: 2 },
-  prompt: { product_max_words: 60, scale_max_words: 45, max_references: 5 },
+  prompt: { product_max_words: 60, scale_max_words: 45, max_references: 5, variant: "a" },
 };
 
 export const LIMIT_RANGE = { min: 1, max: 20 } as const;
@@ -102,7 +114,12 @@ export function parseShotSettings(raw: unknown): { ok: true; settings: ShotSetti
     scale_max_words: ranged(pr.scale_max_words, DEFAULT_SHOT_SETTINGS.prompt.scale_max_words, 15, 150, "prompt.scale_max_words"),
     // Nano Banana Pro takes at most 6 reference images.
     max_references: ranged(pr.max_references, DEFAULT_SHOT_SETTINGS.prompt.max_references, 1, 6, "prompt.max_references"),
+    variant: DEFAULT_SHOT_SETTINGS.prompt.variant as PromptVariantSetting,
   };
+  if (pr.variant !== undefined) {
+    if ((PROMPT_VARIANTS as readonly unknown[]).includes(pr.variant)) prompt.variant = pr.variant as PromptVariantSetting;
+    else errors.push("prompt.variant");
+  }
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,

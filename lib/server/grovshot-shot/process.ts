@@ -3,8 +3,14 @@ import { createHash } from "node:crypto";
 import type { Client } from "@/lib/services/workspace";
 import { P, itemOf } from "@/lib/grovshot-v2/steps";
 import type {
-  ExperimentView, NodeStatus, PhotoRef, ProcessData, ProcessEdge, ProcessNode, RunSummary, ShotPlanView, StepDetail, StepRef,
+  ExperimentView, NodeStatus, PhotoRef, ProcessData, ProcessEdge, ProcessNode, PromptBView, RunSummary, ShotPlanView, StepDetail, StepRef,
 } from "@/lib/grovshot-shot/process-types";
+import { readKb } from "@/lib/grovshot-shot/kb";
+import { checkCard } from "@/lib/grovshot-shot/card";
+import { checkPlan } from "@/lib/grovshot-shot/plan";
+import { checkProductModules, checkSceneModules } from "@/lib/grovshot-shot/prompt";
+import { assemblePromptB } from "@/lib/grovshot-shot/prompt-b";
+import { selectReferencesV2 } from "@/lib/grovshot-shot/refs";
 import { forVision } from "@/lib/server/grovshot-v2/media";
 import { fitForClaude } from "@/lib/ai/engine/vision";
 import { prepareReferenceImage } from "@/lib/server/reference-image";
@@ -290,7 +296,56 @@ export async function readProcess(supabase: Client, runId: string): Promise<Proc
     experimentEstimateMicros: unit !== null ? unit + IMAGE_GUARD_MICROS : null,
     hasBoundary: steps.some(hasBoundary),
   };
-  return { run: summary, photos, plan, nodes, edges, experiments };
+  const promptB = derived ? [] : await promptBViews(supabase, input, asmShots, {
+    card: chosenRow(at(P.card, 0, ROWS)), plan: planChosen,
+    product: chosenRow(at(POS_WRITE, ITEM.product, ITEM.product + ROWS)), scenes: chosenRow(at(POS_WRITE, ITEM.scenes, ITEM.scenes + ROWS)),
+  });
+  return { run: summary, photos, plan, nodes, edges, experiments, promptB, promptVariant: str(input.prompt_variant) === "b" ? "b" : "a" };
+}
+
+/**
+ * Prompt B for every shot of the order, from what the order stored (its
+ * pinned knowledge version, card, plan and modules) — pure, no paid call.
+ * With prompt A's own references, so an experiment changes ONE thing.
+ * Anything missing or unreadable (older orders) → no B, never a guess.
+ */
+async function promptBViews(supabase: Client, input: Record<string, unknown>, asmShots: Record<string, unknown>[], rows: {
+  card: Row | null; plan: Row | null; product: Row | null; scenes: Row | null;
+}): Promise<PromptBView[]> {
+  try {
+    const versionId = str(obj(input.kb).version_id);
+    if (!versionId || !rows.card || !rows.plan || !rows.product || !rows.scenes || asmShots.length === 0) return [];
+    const { data } = await supabase.from("knowledge_versions").select("parsed").eq("id", versionId).maybeSingle();
+    const kb = readKb((data as { parsed?: unknown } | null)?.parsed);
+    if (!kb) return [];
+    const photoCount = arr(input.photos).length;
+    const c = checkCard(obj(rows.card.output).raw, { photoCount, kb });
+    if (!c.ok) return [];
+    const card = c.card;
+    const shots = checkPlan(obj(rows.plan.output).raw, { card, kb, shots: Number(input.shots) || asmShots.length, userPlan: null }).shots;
+    const product = checkProductModules(obj(rows.product.output).raw).modules;
+    if (!product) return [];
+    const scenes = checkSceneModules(obj(rows.scenes.output).raw, shots).modules;
+    const out: PromptBView[] = [];
+    for (const a of asmShots) {
+      const numer = Number(a.numer);
+      const shot = shots.find((s) => s.numer === numer);
+      const scene = scenes.get(numer);
+      const refs = arr(a.references).map(Number).filter((n) => Number.isInteger(n) && n > 0);
+      if (!shot || !scene || refs.length === 0 || a.blocked) continue;
+      const aux = arr(a.aux_references).map(Number);
+      const b = assemblePromptB({ kb, card, shot, product, scene, refs: { refs, aux }, aspectRatio: str(input.aspect_ratio) || null });
+      const v2 = selectReferencesV2(shot, card, { max: 6 });
+      out.push({
+        numer, text: b.text, chars: b.text.length, charsA: str(a.text).length, references: refs,
+        refsV2: v2.blocked ? [] : v2.refs, reasonsV2: v2.reasons, droppedV2: v2.dropped,
+        removed: b.notes.removed_proportion, flagsDropped: b.notes.flags_dropped,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 /* ══ an image as it was sent — re-derived and proven by its hash ══════════*/

@@ -112,7 +112,8 @@ export function ProcessView({ runId, initialShot }: { runId: string; initialShot
           onExperiment={(shot, prompt, refs) => setEditor({ shot, prompt, refs })} />
       )}
       {data && editor && (
-        <ExperimentEditor data={data} shot={editor.shot} prompt={editor.prompt} refs={editor.refs} onClose={() => setEditor(null)}
+        <ExperimentEditor data={data} shot={editor.shot} prompt={editor.prompt} refs={editor.refs}
+          promptB={data.promptB?.find((b) => b.numer === editor.shot) ?? null} onClose={() => setEditor(null)}
           onDone={() => { setEditor(null); void load(); }} />
       )}
     </div>

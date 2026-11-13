@@ -33,7 +33,7 @@ import { PHOTO_FORMS, PHOTO_VIEWS, type PhotoForm, type PhotoView } from "@/lib/
 export { PHOTO_FORMS, PHOTO_VIEWS };
 
 export type RefCorrection = {
-  code: "added_whole" | "moved_whole_first" | "moved_after_whole" | "aux_graphic" | "skipped_graphic" | "limited" | "blocked_no_whole";
+  code: "added_whole" | "moved_whole_first" | "moved_after_whole" | "aux_graphic" | "skipped_graphic" | "limited" | "blocked_no_whole" | "dropped_v2";
   photos: number[];
 };
 export type RefDecision = { refs: number[]; aux: number[]; corrections: RefCorrection[]; blocked: boolean };
@@ -121,6 +121,126 @@ export function selectReferences(shot: Pick<PlanShot, "typ" | "referencje">, car
     aux = aux.filter((n) => !dropped.includes(n));
   }
   return { refs: [...refs, ...aux], aux, corrections, blocked: false };
+}
+
+/* ── V2 (fidelity, 13.11.2026): photos first, every choice with its reason ──
+ *
+ * The 13.11 diagnosis on PROD orders: the photos DID reach the model (inline,
+ * in order, hashes equal) — but whole-product shots were still sent with
+ * photos of another kind behind the product photos: the folded pack
+ * ("opakowanie") of a bag, close-ups, usage crops. Spec 03.11 (nutcracker):
+ * "w ujęciach z całym produktem dołączamy tylko widoki całości"; 10.11/12.11:
+ * an infographic or another variant as a reference makes a different product.
+ *
+ *   whole-product shot (hero, or caly_produkt): ONLY clean whole-product
+ *     photos of the scene's state — the best one (front first), then a second
+ *     view. Detail, usage, packaging, variant and graphic photos are dropped,
+ *     each with its reason (what they show is described in words instead).
+ *   detail shot: the planned detail first, then ONE whole-product photo as
+ *     context; a planned graphic only as the last, auxiliary image.
+ *   partial use shot: the whole product first (identity), then the planned
+ *     usage/detail photos of the same state (the pose to copy).
+ *   anywhere: never a collage, a photo with other products, another variant.
+ * No clean whole-product photo → blocked (never drawn from a description).
+ */
+export type RefReason = "calosc_najlepsza" | "calosc_inny_kat" | "detal_ujecia" | "kontekst_calosc" | "uzycie_poza" | "grafika_pomocnicza";
+export type RefDrop =
+  | "fragment_w_ujeciu_calosci" | "uzycie_w_ujeciu_calosci" | "opakowanie" | "inny_wariant" | "inny_stan"
+  | "grafika_w_ujeciu_calosci" | "kolaz_lub_inne_produkty" | "limit";
+export type RefDecisionV2 = RefDecision & {
+  reasons: { photo: number; position: number; reason: RefReason }[];
+  dropped: { photo: number; reason: RefDrop }[];
+  /** The scene's state could not be matched to any whole-product photo: the best one of any state is used. */
+  stateFallback: boolean;
+};
+
+const normSt = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/\s+/g, " ").trim();
+
+export function selectReferencesV2(
+  shot: Pick<PlanShot, "typ" | "referencje" | "caly_produkt" | "stan">, card: ProductCard, opts: { max: number },
+): RefDecisionV2 {
+  const byN = new Map(card.zdjecia.map((p) => [p.n, p]));
+  const planned = [...new Set(shot.referencje)].filter((n) => byN.has(n));
+  const knownStates = new Set(card.stany.map((x) => normSt(x.stan)));
+  const state = shot.stan && knownStates.has(normSt(shot.stan)) ? normSt(shot.stan) : null;
+  const sameState = (p: CardPhoto) => !state || !p.stan || normSt(p.stan) === state;
+  const dropped: RefDecisionV2["dropped"] = [];
+  const drop = (n: number, reason: RefDrop) => { if (!dropped.some((d) => d.photo === n)) dropped.push({ photo: n, reason }); };
+  const cleanWhole = (p: CardPhoto) => p.rola === "calosc" && formOf(p) === "zdjecie";
+  const rank = (a: CardPhoto, b: CardPhoto) => VIEW_RANK[viewOf(a)] - VIEW_RANK[viewOf(b)] || a.n - b.n;
+  let stateFallback = false;
+  let wholes = card.zdjecia.filter((p) => cleanWhole(p) && sameState(p)).sort(rank);
+  if (wholes.length === 0 && state) { wholes = card.zdjecia.filter(cleanWhole).sort(rank); stateFallback = wholes.length > 0; }
+  const lead = (k: number): number[] => {
+    if (wholes.length === 0) return [];
+    const first = wholes[0];
+    if (k === 1) return [first.n];
+    const second = wholes.find((p) => p.n !== first.n && viewOf(p) !== viewOf(first)) ?? wholes.find((p) => p.n !== first.n);
+    return second ? [first.n, second.n] : [first.n];
+  };
+  // Never anywhere: collages, other products, other variants.
+  const usable = planned.filter((n) => {
+    const p = byN.get(n) as CardPhoto;
+    const f = formOf(p);
+    if (f === "kolaz" || f === "inne_produkty") { drop(n, "kolaz_lub_inne_produkty"); return false; }
+    if (p.rola === "inny_wariant") { drop(n, "inny_wariant"); return false; }
+    return true;
+  });
+  const reasons: RefDecisionV2["reasons"] = [];
+  let refs: number[] = [];
+  let aux: number[] = [];
+  const whole = shot.typ === "hero" || shot.caly_produkt === true;
+  if (shot.typ === "detal") {
+    const photos = usable.filter((n) => formOf(byN.get(n) as CardPhoto) !== "grafika");
+    const graphics = usable.filter((n) => formOf(byN.get(n) as CardPhoto) === "grafika");
+    const main = photos.find((n) => { const p = byN.get(n) as CardPhoto; return p.rola !== "calosc" && sameState(p); })
+      ?? photos.find((n) => sameState(byN.get(n) as CardPhoto)) ?? photos[0] ?? graphics[0];
+    if (main === undefined) return { refs: [], aux: [], corrections: [{ code: "blocked_no_whole", photos: [] }], blocked: true, reasons, dropped, stateFallback };
+    const context = lead(1).find((n) => n !== main);
+    refs = context !== undefined ? [main, context] : [main];
+    reasons.push({ photo: main, position: 1, reason: formOf(byN.get(main) as CardPhoto) === "grafika" ? "grafika_pomocnicza" : "detal_ujecia" });
+    if (context !== undefined) reasons.push({ photo: context, position: 2, reason: "kontekst_calosc" });
+    aux = graphics.filter((n) => n !== main);
+    for (const n of usable) if (!refs.includes(n) && !aux.includes(n)) drop(n, sameState(byN.get(n) as CardPhoto) ? "limit" : "inny_stan");
+  } else {
+    const ld = lead(2);
+    if (ld.length === 0) return { refs: [], aux: [], corrections: [{ code: "blocked_no_whole", photos: [] }], blocked: true, reasons, dropped, stateFallback };
+    refs = [...ld];
+    ld.forEach((n, i) => reasons.push({ photo: n, position: i + 1, reason: i === 0 ? "calosc_najlepsza" : "calosc_inny_kat" }));
+    for (const n of usable) {
+      if (refs.includes(n)) continue;
+      const p = byN.get(n) as CardPhoto;
+      const f = formOf(p);
+      if (!sameState(p)) { drop(n, "inny_stan"); continue; }
+      if (p.rola === "opakowanie") { drop(n, "opakowanie"); continue; }
+      if (whole) {
+        if (f === "grafika") drop(n, "grafika_w_ujeciu_calosci");
+        else if (p.rola === "detal") drop(n, "fragment_w_ujeciu_calosci");
+        else if (p.rola === "uzycie") drop(n, "uzycie_w_ujeciu_calosci");
+        else if (p.rola === "calosc") drop(n, "limit");
+        continue;
+      }
+      if (f === "grafika") { drop(n, "grafika_w_ujeciu_calosci"); continue; }
+      if (p.rola === "detal" || p.rola === "uzycie") { refs.push(n); reasons.push({ photo: n, position: refs.length, reason: "uzycie_poza" }); }
+      else drop(n, "limit");
+    }
+  }
+  const max = Math.max(1, opts.max);
+  const all = [...refs, ...aux];
+  if (all.length > max) {
+    for (const n of all.slice(max)) drop(n, "limit");
+    const keep = new Set(all.slice(0, max));
+    refs = refs.filter((n) => keep.has(n));
+    aux = aux.filter((n) => keep.has(n));
+  }
+  const final = [...refs, ...aux];
+  aux.forEach((n) => reasons.push({ photo: n, position: final.indexOf(n) + 1, reason: "grafika_pomocnicza" }));
+  return {
+    refs: final, aux, blocked: false, stateFallback,
+    reasons: reasons.filter((r) => final.includes(r.photo)).map((r) => ({ ...r, position: final.indexOf(r.photo) + 1 })),
+    dropped,
+    corrections: dropped.length ? [{ code: "dropped_v2", photos: dropped.map((d) => d.photo) }] : [],
+  };
 }
 
 /** Accepted by the image model: JPEG/PNG/WebP, real bytes, known size; the inline request stays under ~18 MB. */

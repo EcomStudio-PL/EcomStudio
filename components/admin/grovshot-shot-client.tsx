@@ -421,6 +421,12 @@ export function ShotTestsPanel({ settings, settingsErrors, model, versions, test
             <Input id="gss-tb" type="number" step="0.1" min={0.1} max={20} value={s.text_budget_usd} onChange={(e) => setS({ ...s, text_budget_usd: Number(e.target.value) })} /></div>
           <div><Label htmlFor="gss-dm">{t("gss.settings.descMin")}</Label>
             <Input id="gss-dm" type="number" min={0} max={5000} value={s.description_min_chars} onChange={(e) => setS({ ...s, description_min_chars: Number(e.target.value) })} /></div>
+          <div><Label htmlFor="gss-pv">{t("gss.settings.promptVariant")}</Label>
+            <Select id="gss-pv" value={s.prompt.variant} onChange={(e) => setS({ ...s, prompt: { ...s.prompt, variant: e.target.value as ShotSettings["prompt"]["variant"] } })}>
+              <option value="a">{t("gss.settings.promptVariantA")}</option>
+              <option value="b_admin">{t("gss.settings.promptVariantBAdmin")}</option>
+              <option value="b">{t("gss.settings.promptVariantB")}</option>
+            </Select></div>
         </div>
         <p className="text-xs text-muted">{t("gss.settings.help")}</p>
         <Button size="sm" onClick={saveSettings} disabled={pending}>{t("gss.settings.save")}</Button>

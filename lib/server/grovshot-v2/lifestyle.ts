@@ -36,7 +36,8 @@ import {
 import { checkCard, photoId, validationFeedback, type ProductCard } from "@/lib/grovshot-shot/card";
 import { checkPlan, parseUserPlan, planFeedback, planForPrompt, renderUserPlan, type PlanShot, type UserPlanRow, type Violation } from "@/lib/grovshot-shot/plan";
 import { assemblePrompt, checkProductModules, checkSceneModules, PRODUCT_PREFIX, type AssembledPrompt, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
-import { referenceProblem, selectReferences, wholeCandidates, type RefDecision } from "@/lib/grovshot-shot/refs";
+import { referenceProblem, selectReferences, selectReferencesV2, wholeCandidates, type RefDecision, type RefDecisionV2 } from "@/lib/grovshot-shot/refs";
+import { assemblePromptB } from "@/lib/grovshot-shot/prompt-b";
 import {
   classifyImageError, nextImageAttempt, parseShotSettings, type ImageErrorClass, type ShotSettings, type ShotStep,
 } from "@/lib/grovshot-shot/settings";
@@ -106,6 +107,10 @@ export type ShotInput = CoreInput & {
    *  charged, never in the customer's gallery): the admin's prompt and
    *  references (photos of that order only), exactly one image call. */
   experiment?: ShotExperiment | null;
+  /** The image prompt this order was started with (settings.prompt.variant,
+   *  decided once at start): "b" = prompt B + references V2 (13.11.2026).
+   *  Absent = "a", the prompt every order had before. */
+  prompt_variant?: "a" | "b";
 };
 export type ShotExperiment = { source_run_id: string; shot: number; prompt: string; references: number[]; pattern: "full" | "detail" };
 
@@ -595,12 +600,15 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
 }
 
 /** The plan with each shot's references replaced by the code's decision (refs.ts). Deterministic. */
-type ShotRefs = RefDecision & { planned: number[] };
+type ShotRefs = RefDecision & { planned: number[] } & Partial<Pick<RefDecisionV2, "reasons" | "dropped" | "stateFallback">>;
+
+const variantOf = (ctx: LCtx): "a" | "b" => (ctx.input.prompt_variant === "b" ? "b" : "a");
 
 function decideReferences(ctx: LCtx, card: ProductCard, plan: PlanShot[]): { plan: PlanShot[]; decisions: Map<number, ShotRefs> } {
   const decisions = new Map<number, ShotRefs>();
   const out = plan.map((shot) => {
-    const d = selectReferences(shot, card, { max: ctx.settings.prompt.max_references });
+    const max = ctx.settings.prompt.max_references;
+    const d: RefDecision | RefDecisionV2 = variantOf(ctx) === "b" ? selectReferencesV2(shot, card, { max }) : selectReferences(shot, card, { max });
     decisions.set(shot.numer, { ...d, planned: shot.referencje });
     return d.blocked ? shot : { ...shot, referencje: d.refs };
   });
@@ -721,6 +729,18 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
     }
     const m = modules.get(shot.numer);
     if (!m) continue;
+    if (variantOf(ctx) === "b") {
+      // Prompt B (13.11.2026): the same modules, the photos first, one source of size.
+      const b = assemblePromptB({ kb: ctx.kb, card, shot, product: product.value, scene: m, refs: d, aspectRatio: ctx.input.aspect_ratio });
+      shots.push({
+        numer: shot.numer, text: b.text, sha256: sha256(b.text), modules: b.modules as unknown as Json, footer: b.footer, pattern: b.pattern,
+        references: d.refs, aux_references: d.aux, planned_references: d.planned, corrections: d.corrections as unknown as Json,
+        ref_reasons: (d.reasons ?? []) as unknown as Json, ref_dropped: (d.dropped ?? []) as unknown as Json, ref_state_fallback: Boolean(d.stateFallback),
+        binding: b.binding, binding_source: "code", prompt_variant: "b", prompt_b_version: b.version, prompt_notes: b.notes as unknown as Json,
+        kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+      });
+      continue;
+    }
     const a = assemblePrompt({ kb: ctx.kb, card, shot, product: product.value, scene: m, refs: d, limits });
     shots.push({
       numer: shot.numer, text: a.text, sha256: sha256(a.text), modules: a.modules as unknown as Json, footer: a.footer, pattern: a.pattern,
@@ -730,7 +750,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
     });
   }
   const out = {
-    shots, missing, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+    shots, missing, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION, prompt_variant: variantOf(ctx),
     card_item: null, product_item: product.item, scenes_item: scenes.item, scene_source: sceneSource,
   };
   await finish(ctx, POS.assemble, ITEM.assemble, { status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: out as unknown as Json, durationMs: 0 });

@@ -13258,7 +13258,11 @@
     "reason.hands_faces": "Hände oder Gesichter",
     "reason.light_mood": "Licht oder Stimmung",
     "reason.scene_mismatch": "Die Szene passt nicht",
-    "reason.other": "Sonstiges"
+    "reason.other": "Sonstiges",
+    "settings.promptVariant": "Bild-Prompt (neue Aufträge)",
+    "settings.promptVariantA": "A – aktuell, für alle",
+    "settings.promptVariantBAdmin": "B (Fotos zuerst) – nur Aufträge von Administratoren",
+    "settings.promptVariantB": "B – für alle Aufträge"
   },
   "gsp": {
     "title": "Prozessansicht",
@@ -13457,6 +13461,28 @@
     "corr.product_trimmed": "PRODUKT auf das Limit gekürzt",
     "exp.bindingHint": "Der erste Absatz ist der Bindungsblock: „zdjęcie 1“ = erste Position oben. Nach dem Umsortieren die Nummern im Text anpassen – genau dieser Text wird gesendet.",
     "exp.before": "Vorher (Auftrag)",
-    "exp.after": "Nachher (Experiment)"
+    "exp.after": "Nachher (Experiment)",
+    "ab.title": "A/B-Test:",
+    "ab.a": "A – aktuell ({n} Zeichen)",
+    "ab.b": "B – Fotos zuerst ({n} Zeichen)",
+    "ab.hint": "B sind die Module dieses Auftrags, neu zusammengesetzt: zuerst die Bildzuordnung, eine kurze Produktnotiz, die Szene, Bildausschnitt und Maßstab aus dem Code, kurze Vorgaben. Gleiche Fotos wie A – nur der Text ändert sich.",
+    "ab.refsV2": "Referenzauswahl B würde senden: {list}.",
+    "ab.useRefsV2": "Auswahl B verwenden",
+    "ab.dropped": "ausgelassen",
+    "reason.calosc_najlepsza": "bestes Foto des ganzen Produkts",
+    "reason.calosc_inny_kat": "ganzes Produkt, anderer Winkel",
+    "reason.detal_ujecia": "Detail dieser Aufnahme",
+    "reason.kontekst_calosc": "ganzes Produkt als Kontext",
+    "reason.uzycie_poza": "Pose / Anwendung zum Übernehmen",
+    "reason.grafika_pomocnicza": "Hilfsgrafik (zuletzt)",
+    "drop.fragment_w_ujeciu_calosci": "Ausschnitt in einer Gesamtaufnahme",
+    "drop.uzycie_w_ujeciu_calosci": "Anwendungsfoto in einer Gesamtaufnahme",
+    "drop.opakowanie": "Verpackung / anderer Zustand",
+    "drop.inny_wariant": "andere Variante",
+    "drop.inny_stan": "anderer Produktzustand",
+    "drop.grafika_w_ujeciu_calosci": "Grafik in einer Gesamtaufnahme",
+    "drop.kolaz_lub_inne_produkty": "Collage / andere Produkte",
+    "drop.limit": "Bildlimit",
+    "corr.dropped_v2": "von Auswahl B ausgelassen"
   }
 }

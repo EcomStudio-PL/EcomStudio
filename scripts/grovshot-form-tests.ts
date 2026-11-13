@@ -76,13 +76,17 @@ console.log("\nB. the lifestyle engine's start route (unchanged by this fix)");
   try { changed = execFileSync("git", ["diff", "--name-only", "dfcd622", "--", "lib/server/grovshot-v2", "lib/grovshot-v2", "app/api/grovshot", "lib/server/prompt-engine.ts"], { encoding: "utf8" }).trim(); }
   catch (e) { changed = `git: ${String(e)}`; }
   // CENNIK V2 (13.11.2026) changed three of them ON PURPOSE — the GrovShot
-  // quote (analysis 2 + 1 / 1.25 per image, in hundredths) — and nothing else
-  // in them. Pinned, so any further change is a decision again.
+  // quote (analysis 2 + 1 / 1.25 per image, in hundredths); the fidelity fix
+  // of the same day changed two — prompt B and references V2 behind the
+  // settings flag (lifestyle.ts assembles by the order's pinned variant,
+  // start-shot.ts pins it). Pinned, so any further change is a decision again.
   const CENNIK_V2: Record<string, string> = {
     "lib/server/grovshot-v2/run.ts": "cac4a128d009fc1ca2b7f950fa8164dd9d5b8ab96282b0c5ea90d21719bf7758",
-    "lib/server/grovshot-v2/start-shot.ts": "0d911dadf6cfd6ca5f62366d2aa18d238f3bbf88edbbe8a98cee531482f59192",
+    "lib/server/grovshot-v2/start-shot.ts": "8ee3f60c21a6f950af3c6a312202cc217726ad85e470475ba43f3c8d0519c18e",
     "lib/server/grovshot-v2/start.ts": "eabfc587b8cc77af09ae1a9f64ca1aa5e033be0d425f36def2090027e19de01f",
+    "lib/server/grovshot-v2/lifestyle.ts": "aff0649f6f75e9ccc5e665c2516611710cd1d7bf71748f5db0109115a9256bdd",
   };
+
   const { createHash } = require("node:crypto") as typeof import("node:crypto");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
   changed = changed.split("\n").filter((f) => f && !(CENNIK_V2[f] && createHash("sha256").update(readFileSync(f)).digest("hex") === CENNIK_V2[f])).join("\n");

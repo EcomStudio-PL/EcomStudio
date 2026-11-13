@@ -64,6 +64,15 @@ export type RunSummary = {
   hasBoundary: boolean;
 };
 
+/** Prompt B of one shot (13.11.2026), rebuilt from the order's stored card,
+ *  plan and modules — no call. `references` = prompt A's (a like-for-like
+ *  A/B test); `refsV2` = what references V2 would send, with the reasons. */
+export type PromptBView = {
+  numer: number; text: string; chars: number; charsA: number; references: number[];
+  refsV2: number[]; reasonsV2: { photo: number; position: number; reason: string }[]; droppedV2: { photo: number; reason: string }[];
+  removed: string[]; flagsDropped: string[];
+};
+
 export type ProcessData = {
   run: RunSummary;
   photos: PhotoRef[];
@@ -71,6 +80,10 @@ export type ProcessData = {
   nodes: ProcessNode[];
   edges: ProcessEdge[];
   experiments: ExperimentView[];
+  /** Admin A/B: prompt B per shot (absent for derived runs or older data). */
+  promptB?: PromptBView[];
+  /** The variant the order itself ran with. */
+  promptVariant?: "a" | "b";
 };
 
 export type StepDetail = {
