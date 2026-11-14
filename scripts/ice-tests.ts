@@ -1153,6 +1153,10 @@ async function sectionI() {
     // /home's layout (0170).
     ["homeLayoutState", () => actions.homeLayoutState()],
     ["homeLayoutSave", () => actions.homeLayoutSave({ doc: defaultHomeLayout(), base: null })],
+    // Plany V3: the plan cards' feature lines (0179).
+    ["pricingCardsState", () => actions.pricingCardsState()],
+    ["pricingCardsSave", () => actions.pricingCardsSave({ doc: { v: 1, plans: {} }, base: null })],
+    ["pricingCardsRestore", () => actions.pricingCardsRestore({ version: "default", base: null })],
   ];
   const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths" && k !== "iceDbReady");
   const covered = new Set(CALLS.map(([n]) => n.replace(/\(.*\)$/, "")));
@@ -1201,6 +1205,9 @@ async function sectionI() {
       ["iceCmsMoveAction", () => wrappers.iceCmsMoveAction({ blockId: B_HERO, list: "items", from: 0, to: 1, base: null })],
       ["iceHomeLayoutStateAction", () => wrappers.iceHomeLayoutStateAction()],
       ["iceHomeLayoutSaveAction", () => wrappers.iceHomeLayoutSaveAction({ doc: {}, base: null })],
+      ["icePricingCardsStateAction", () => wrappers.icePricingCardsStateAction()],
+      ["icePricingCardsSaveAction", () => wrappers.icePricingCardsSaveAction({ doc: {}, base: null })],
+      ["icePricingCardsRestoreAction", () => wrappers.icePricingCardsRestoreAction({ version: "default", base: null })],
     ];
     const names = Object.keys(wrappers);
     const results = await Promise.all(wrapperCalls.map(([, f]) => f()));

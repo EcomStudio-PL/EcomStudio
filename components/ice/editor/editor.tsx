@@ -18,6 +18,7 @@ import { SamplesPanel } from "./samples-panel";
 import { BulkPanel } from "./bulk-panel";
 import { GalleryPanel } from "./gallery-panel";
 import { FaqPanel } from "./faq-panel";
+import { PricingCardsPanel } from "./pricing-cards-panel";
 import { LayoutOverlay, LayoutPanel, useHomeLayoutStore, type LayoutView } from "./layout-panel";
 import { isFaqPage, type FaqPage } from "@/lib/faq";
 import { useFramed } from "../framed";
@@ -51,7 +52,9 @@ type Open =
   /** FAQ V1: the shared FAQ base, on a page that shows it. */
   | { kind: "faq" }
   /** /home's sections and lists (lib/home-layout.ts). */
-  | { kind: "layout"; view: LayoutView };
+  | { kind: "layout"; view: LayoutView }
+  /** Plany V3: the plan cards' feature lines (/plany, /plan — 0179). */
+  | { kind: "cards" };
 
 type Hover = { box: { x: number; y: number; w: number; h: number }; label: string };
 
@@ -144,11 +147,14 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
   // FAQ V1: a page that paints the shared FAQ (/faq, /plany, /o-nas) marks
   // its list with data-faq-shared — the "FAQ" button opens the base there.
   const [faqPage, setFaqPage] = useState<FaqPage | "none">("none");
+  // Plany V3: the pricing page marks its plan cards — "Karty planów" opens there.
+  const [hasCards, setHasCards] = useState(false);
   const rescan = useCallback(() => {
     if (!info) return;
     setTargets(scanPage(info, session.nonce));
     const shared = document.querySelector("[data-faq-shared]")?.getAttribute("data-faq-shared");
     setFaqPage(isFaqPage(shared) ? shared : "none");
+    setHasCards(Boolean(document.querySelector("[data-plan-cards-edit]")));
   }, [info, session.nonce]);
 
   // Find the elements now, and again whenever the page changes under us (a
@@ -517,6 +523,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
           </Btn>
         )}
         {faqPage !== "none" && <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "faq" })}>{t("ice.bar.faq")}</Btn>}
+        {hasCards && <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "cards" })}>{t("ice.bar.cards")}</Btn>}
         <Btn small kind="ghost" disabled={!ctx} onClick={() => openPanel({ kind: "history" })}>{t("ice.bar.history")}</Btn>
         <Btn small kind="primary" disabled={leaving} onClick={() => void leave()}>{leaving ? t("ice.bar.leaving") : t("ice.bar.leave")}</Btn>
       </div>
@@ -548,6 +555,7 @@ function EditorInFrameless({ session, path, transport = actionsTransport }: Edit
       {ctx && open?.kind === "bulk" && <BulkPanel key={open.group} ctx={ctx} groupKey={open.group} onClose={close} />}
       {ctx && open?.kind === "visibility" && <VisibilityPanel ctx={ctx} onPick={pickUid} onClose={close} />}
       {ctx && open?.kind === "faq" && <FaqPanel ctx={ctx} page={faqPage === "none" ? null : faqPage} onClose={close} />}
+      {ctx && open?.kind === "cards" && <PricingCardsPanel t={t} locale={ctx.locale} crumbs={ctx.pageLabel} onClose={close} />}
       {ctx && open?.kind === "gallery" && hasGalleries(info, path) && (
         <GalleryPanel ctx={ctx} focusKey={isGalleryKey(open.key) ? open.key : null} onClose={close}
           onDirtyChange={(dirty) => { galleryDirty.current = dirty; }} />

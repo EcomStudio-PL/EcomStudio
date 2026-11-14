@@ -166,6 +166,8 @@ const ice = [
   "compress",
   "editor",
   "ice",
+  "plans",
+  "pricing",
   "resize",
 ] as const;
 

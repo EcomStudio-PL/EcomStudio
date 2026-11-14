@@ -4564,6 +4564,10 @@
         "team": "Team",
         "support": "Support",
         "license": "Licence"
+      },
+      "phone": {
+        "left": "Plan in the left column",
+        "right": "Plan in the right column"
       }
     },
     "topups": {
@@ -4615,7 +4619,10 @@
       "perYear": "per year",
       "note": "PLN amounts are approximate (NBP rate of {date}). You are charged in USD."
     },
-    "creditsRule": "Plan credits are valid until the end of the paid month (annual plan: 12 monthly allocations). Top-ups never expire and work while you have an active plan. Prices in USD, gross."
+    "creditsRule": "Plan credits are valid until the end of the paid month (annual plan: 12 monthly allocations). Top-ups never expire and work while you have an active plan. Prices in USD, gross.",
+    "card": {
+      "unavailable": "not included"
+    }
   },
   "mobilenav": {
     "home": "Home",
@@ -10984,7 +10991,8 @@
       "leave": "Finish editing",
       "leaving": "Finishing…",
       "galleries": "BEFORE/AFTER galleries",
-      "layout": "Page layout"
+      "layout": "Page layout",
+      "cards": "Plan cards"
     },
     "page": {
       "home": "App home (/home)",
@@ -11842,6 +11850,78 @@
         "badHref": "The link must be an in-app address starting with “/”.",
         "pillNote": "A tool pill of the upload tile: you can change its order and visibility. Its name is a page text.",
         "gone": "This item is no longer in the layout (removed meanwhile)."
+      }
+    },
+    "cards": {
+      "title": "Plan cards — features",
+      "sub": "The lines on the plan cards, separately for each plan. Changes collect in a draft — customers see them after you click “Save”. Prices, credits and plan capabilities are changed in the plans panel, not here.",
+      "plans": "Plans",
+      "language": "Texts in:",
+      "planDefault": "Restore defaults for this plan",
+      "confirmPlanDefault": "Restore this plan's default lines? The change goes into the draft — you can undo it.",
+      "undo": "Undo",
+      "undoHint": "Undo the last change in the draft",
+      "cancel": "Cancel",
+      "save": "Save",
+      "unsaved": "Unsaved changes",
+      "saved": "Plan cards saved.",
+      "restored": "Plan cards version restored.",
+      "noop": "Nothing changed.",
+      "conflict": "Someone saved the plan cards in the meantime. “Cancel” loads their version, “Save” overwrites it.",
+      "migrationMissing": "Plan card editing is not available in this database yet.",
+      "confirmLeave": "You have unsaved changes to the plan cards. Close without saving?",
+      "confirmRestore": "Restore the plan cards to this state? The current state stays in the history.",
+      "confirmRestoreDirty": "Restore this state? Unsaved draft changes will be lost (the current saved state stays in the history).",
+      "history": "Change history",
+      "historyHint": "Every save is a version — and so is every restore. A deleted line comes back by restoring an earlier version.",
+      "historyEmpty": "No saved changes — the cards show the defaults.",
+      "actSave": "save",
+      "actRestore": "restore",
+      "current": "current",
+      "restore": "Restore this state",
+      "restoreDefault": "Restore defaults (all plans)",
+      "count": "visible: {n} of {all}",
+      "groupHidden": "Group hidden",
+      "groupEmpty": "Nothing to show — the group disappears from the card",
+      "groupVisible": "Show group",
+      "groupName": "Group name ({lang})",
+      "groupNameFallback": "No name in: {langs} — the default name stays there.",
+      "add": "+ Add line",
+      "addFeature": "Bring back a plan feature…",
+      "confirmRemove": "Remove this line from this plan's card? You can undo it, and after saving restore it from the history.",
+      "removed": "Line removed (in the draft).",
+      "noText": "(no text)",
+      "bound": "Plan feature",
+      "custom": "Custom line",
+      "hiddenChip": "Hidden",
+      "notOnPlan": "Not in this plan — not shown",
+      "defaultText": "Default text",
+      "missingLangs": "Missing: {langs} — not shown there",
+      "done": "Done",
+      "text": "Text ({lang})",
+      "textHintBound": "Empty field = this feature's default text. Values from the plan: {seats} — team seats, {credits} — monthly credits.",
+      "textHintCustom": "Write the text in every language (PL, EN, DE) — without a translation the line is not shown in that language. Values from the plan: {seats}, {credits}.",
+      "status": "Mark",
+      "st": {
+        "autoYes": "Included ✓ (as the plan has it)",
+        "autoSoon": "Soon (as the plan has it)",
+        "autoHidden": "Don't show (not in this plan)",
+        "yes": "Included ✓",
+        "soon": "Soon",
+        "no": "Not included ✕"
+      },
+      "lockYes": "The mark follows the plan: the feature works on this plan. It is changed in the plan settings, not here.",
+      "lockSoon": "This feature is not running in the app yet — it can only be “Soon”, never “Included”.",
+      "lockNo": "This plan does not have this feature — hide it or show it as “Not included ✕”, never as “Included”.",
+      "customHint": "A custom line is not tied to the plan's capabilities or the comparison table — mark as “Included” only what really works.",
+      "err": {
+        "custom_needs_text": "A new line has no text — write it or remove the line.",
+        "text_too_long": "The text is too long (140 characters at most).",
+        "bad_placeholder": "Unknown value in curly braces — {seats} and {credits} are allowed.",
+        "bad_text": "The text contains characters that are not allowed.",
+        "too_large": "Too much content on the cards.",
+        "bad_items": "Too many lines in a group (20 at most).",
+        "generic": "The plan cards did not pass validation."
       }
     }
   },

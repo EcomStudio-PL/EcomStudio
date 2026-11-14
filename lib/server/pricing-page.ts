@@ -13,6 +13,7 @@ import {
 import { TOPUP_CURRENCY, TOPUP_LIMITS } from "@/lib/plans/topup-price";
 import { usdPlnRate, type FxRate } from "@/lib/server/fx";
 import { PRICING_PAGE } from "@/components/plan/pricing-config";
+import { readCardsDoc, type PricingCardsDoc } from "@/components/plan/card-features";
 import type {
   PricingPackView, PricingPageData, PricingPlanView, PricingTierView, PricingViewer,
 } from "@/components/plan/pricing-types";
@@ -64,7 +65,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
   const { data: { user } } = await supabase.auth.getUser();
   const workspace = user ? await getCurrentWorkspace(supabase, user.id) : null;
 
-  const [{ data: planRows, error: planError }, { data: packRows, error: packError }, liveSub, gate, costRow, fx] = await Promise.all([
+  const [{ data: planRows, error: planError }, { data: packRows, error: packError }, liveSub, gate, costRow, fx, cards] = await Promise.all([
     supabase.from("subscription_plans").select(PLAN_COLUMNS).eq("active", true).order("sort_order"),
     supabase.from("credit_packages").select(PACK_COLUMNS).eq("active", true).order("sort_order"),
     workspace
@@ -79,6 +80,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
         .eq("model_identifier", PRICING_PAGE.costReferenceModel).eq("active", true).limit(1)
       : Promise.resolve({ data: null }),
     usdPlnRate(supabase).catch(() => null),
+    readPricingCards(supabase),
   ]);
   // An unreadable catalogue is an outage, not an empty offer: a page of "not
   // on sale" cards would be a false statement. The route's error boundary
@@ -86,7 +88,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
   if (planError || packError) throw new Error("pricing_catalogue_unavailable");
   const plan = gate?.ok ? await topupPlanContext(supabase, gate.planId) : { slug: null, centsPerCredit: null };
 
-  return buildPricingPage({
+  const page = buildPricingPage({
     plans: (planRows ?? []) as PlanRow[],
     packs: (packRows ?? []) as PackRowFull[],
     viewer: {
@@ -100,6 +102,23 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
     payments: paymentsEnabled(),
     fx,
   });
+  return { ...page, cards };
+}
+
+/**
+ * PLANY V3 — the card feature lines an admin published (0179). Presentation
+ * only: it never touches a price, a credit or a capability. Anything but a
+ * valid document — no row, no function yet, a read error, a malformed doc —
+ * is null, and the cards render the code default exactly as before.
+ */
+async function readPricingCards(supabase: Client): Promise<PricingCardsDoc | null> {
+  try {
+    const { data, error } = await supabase.rpc("pricing_cards_published");
+    if (error || !data) return null;
+    return readCardsDoc((data as { doc?: unknown }).doc);
+  } catch {
+    return null;
+  }
 }
 
 /**

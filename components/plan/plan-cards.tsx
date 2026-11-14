@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { Check, Clock3, Crown } from "lucide-react";
+import { Check, Clock3, Crown, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { Gate } from "@/components/home/gate";
@@ -10,9 +10,8 @@ import {
   annualSavingCents, approxPln, creditsWord, formatCount, formatMoney, formatPerCredit, isFewForm, planCheckoutHref,
   planCredits, planMonthlyCents, planPerCreditCents, seatLabel, type BillingPeriod,
 } from "./pricing-model";
-import {
-  CARD_GROUPS, featureOn, planPresentation, type FeatureKey, type PlanTone,
-} from "./pricing-config";
+import { planPresentation, type FeatureKey, type PlanTone } from "./pricing-config";
+import { defaultPlanCard, planCardConfig, resolveCard, type ResolvedGroup, type ResolvedLine } from "./card-features";
 import type { PricingPageData, PricingPlanView } from "./pricing-types";
 
 /**
@@ -20,9 +19,17 @@ import type { PricingPageData, PricingPlanView } from "./pricing-types";
  *
  * Every figure on a card is a catalogue row (price, credits) or a division of
  * two real numbers (price per credit, images per month at a named model's real
- * price). Every feature line comes from `featureOn` — the same truth table the
- * comparison reads — so a card cannot claim what the table denies. Anything
- * that is planned but not running carries "Wkrótce", never a ✓.
+ * price). The feature lines are the admin's document (card-features.ts, 0179;
+ * the code default until one is saved), and every line bound to a feature
+ * shows `featureOn` — the same truth table the comparison reads — so a card
+ * cannot claim what the table denies. Anything that is planned but not
+ * running carries "Wkrótce", never a ✓.
+ *
+ * PLANY V3 layout: on a phone one column (PRO first); from 768px two columns;
+ * four in a row only where the cards get ≥ 280px each (the list's own width
+ * ≥ 1180px, on a ≥ 1280px screen — /plan with its sidebar stays 2 × 2 longer).
+ * Each wide card is a subgrid of five rows (header, credits, price, button,
+ * features), so a row's prices and buttons share one line whatever wraps.
  */
 
 type Theme = {
@@ -164,14 +171,20 @@ export function PlanCards({ plans, period, data, order, layout, onChangeHint }: 
   onChangeHint: () => void;
 }) {
   const ranked = [...plans].sort((a, b) => rank(order, a.slug) - rank(order, b.slug));
+  const cards = ranked.map((plan) => (
+    <PlanCard key={plan.id} plan={plan} period={period} data={data} layout={layout} onChangeHint={onChangeHint} />
+  ));
+  if (layout === "phone") {
+    return <div data-plan-cards="phone" className="mx-auto grid max-w-[440px] gap-5 md:hidden">{cards}</div>;
+  }
   return (
-    <div data-plan-cards={layout}
-      className={layout === "wide"
-        ? "hidden items-stretch gap-5 lg:grid lg:grid-cols-4 xl:gap-6"
-        : "mx-auto grid max-w-[440px] gap-5 lg:hidden"}>
-      {ranked.map((plan) => (
-        <PlanCard key={plan.id} plan={plan} period={period} data={data} layout={layout} onChangeHint={onChangeHint} />
-      ))}
+    // The list measures itself (a size container): four columns need room for
+    // four ≥ 280px cards, not merely a wide window.
+    <div data-plan-cards="wide" className="hidden [container-type:inline-size] md:block">
+      <div data-plan-grid
+        className="mx-auto grid max-w-[1040px] grid-cols-2 gap-5 xl:[@container(min-width:1180px)]:max-w-none xl:[@container(min-width:1180px)]:grid-cols-4 xl:[@container(min-width:1290px)]:gap-6">
+        {cards}
+      </div>
     </div>
   );
 }
@@ -196,7 +209,7 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
   const perCredit = planPerCreditCents(plan, period);
   const saving = period === "annual" ? annualSavingCents(plan) : null;
   const cta = planCta(plan, period, data, t, name);
-  const highlights = look.highlights;
+  const groups = useCardGroups(plan, data);
   const cost = data.imageCost;
   // "≈ 171 zdjęć", but "≈ 42 zdjęcia" — the noun follows the number.
   const approx = (size: "2k" | "4k", n: number) =>
@@ -215,38 +228,43 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
     <article data-plan-card={plan.slug} data-layout={layout} data-tone={look.tone}
       aria-labelledby={`plan-${layout}-${plan.slug}`}
       className={cn(
-        "relative flex flex-col rounded-[28px] p-6 sm:p-7",
-        isPro && "lg:-my-4 lg:py-10",
+        "relative rounded-[28px] p-6 sm:p-7",
+        // Wide: five rows shared with the other cards in the row (subgrid).
+        layout === "wide" ? "row-span-5 grid grid-rows-subgrid gap-y-0" : "flex flex-col",
+        // PRO stands out of a row of four; its content stays on the shared lines
+        // (-16px margin + 44px padding = the others' 28px).
+        isPro && layout === "wide" && "xl:[@container(min-width:1180px)]:-my-4 xl:[@container(min-width:1180px)]:py-11",
         theme.card,
       )}
       style={theme.style}>
       {/* A. HEADER — icon, badge, the name large and uppercase, the audience. */}
-      <div className="flex items-center justify-between gap-3">
-        <span className={cn("flex h-10 w-10 items-center justify-center rounded-xl", theme.icon)} style={theme.iconStyle}>
-          <Icon size={19} aria-hidden />
-        </span>
-        <span data-plan-badge className={cn(
-          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.12em]",
-          theme.badge,
-        )}>
-          {isPro && <Crown size={11} aria-hidden />}
-          {t(look.badgeKey)}
-        </span>
+      <div data-plan-head>
+        <div className="flex items-center justify-between gap-3">
+          <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", theme.icon)} style={theme.iconStyle}>
+            <Icon size={19} aria-hidden />
+          </span>
+          <span data-plan-badge className={cn(
+            "inline-flex min-w-0 items-center gap-1 rounded-full px-2.5 py-1 text-right text-[10.5px] font-bold uppercase tracking-[0.12em]",
+            theme.badge,
+          )}>
+            {isPro && <Crown size={11} aria-hidden className="shrink-0" />}
+            {t(look.badgeKey)}
+          </span>
+        </div>
+        <h3 id={`plan-${layout}-${plan.slug}`}
+          className={cn("mt-5 font-display text-[1.625rem] font-bold uppercase leading-none tracking-[0.03em]", theme.name)}>
+          {name}
+        </h3>
+        <p className={cn("mt-2 text-[14px] leading-snug", theme.sub)}>{t(look.taglineKey)}</p>
       </div>
-      <h3 id={`plan-${layout}-${plan.slug}`}
-        className={cn("mt-5 font-display text-[1.625rem] font-bold uppercase leading-none tracking-[0.03em]", theme.name)}>
-        {name}
-      </h3>
-      {/* Two lines reserved on wide screens so the three prices line up. */}
-      <p className={cn("mt-2 text-[14px] leading-snug lg:min-h-[2.6rem]", theme.sub)}>{t(look.taglineKey)}</p>
 
       {/* B. CREDITS — what the month buys, then what that is in images. */}
-      <div data-plan-credits className={cn("mt-5 rounded-2xl px-4 py-3.5 lg:min-h-[7.5rem]", theme.box)}>
-        <p className="flex flex-wrap items-baseline gap-x-1.5 font-display text-[1.1875rem] font-semibold leading-tight">
+      <div data-plan-credits className={cn("mt-5 rounded-2xl px-4 py-3.5", theme.box)}>
+        <p className="flex flex-wrap items-baseline gap-x-1.5 font-display text-[1.1875rem] font-semibold leading-tight [overflow-wrap:normal]">
           <span className="self-center"><Diamond size={10} /></span>
-          <span className="tabular-nums">{formatCount(credits)}</span>
-          <span>{creditsWord(credits, t)}</span>
-          <span className={cn("text-[14px] font-medium", theme.sub)}>{t("pricing.plan.perMonth")}</span>
+          <span className="whitespace-nowrap tabular-nums">{formatCount(credits)}</span>
+          <span className="whitespace-nowrap">{creditsWord(credits, t)}</span>
+          <span className={cn("whitespace-nowrap text-[14px] font-medium", theme.sub)}>{t("pricing.plan.perMonth")}</span>
         </p>
         {cost ? (
           <ul className={cn("mt-1.5 space-y-0.5 text-[13.5px] leading-snug", theme.sub)}>
@@ -258,21 +276,27 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
         )}
       </div>
 
-      {/* C. PRICE — the catalogue row, to the grosz. */}
-      <div className="mt-5">
-        <p className="flex items-baseline gap-1.5">
-          <span data-plan-price className="font-display text-[2.75rem] font-semibold leading-none tracking-[-0.03em] tabular-nums">
+      {/* C. PRICE — the catalogue row, to the cent. An amount is never broken
+          ("$109.9 / 0"): it does not wrap, it shrinks with a narrow card
+          (cqi of this box — the size container is here, not on the card:
+          containment on the card would switch its subgrid off), and only
+          "/ mies." may drop below it. Text around amounts breaks at spaces
+          only (the page's overflow-wrap:anywhere is off here). */}
+      <div data-plan-pricebox className="mt-5 min-w-0 [container-type:inline-size]">
+        <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 [overflow-wrap:normal]">
+          <span data-plan-price
+            className="whitespace-nowrap font-display text-[clamp(2rem,19cqi,2.75rem)] font-semibold leading-none tracking-[-0.03em] tabular-nums">
             {formatMoney(monthly, plan.currency)}
           </span>
-          <span className={cn("text-[15px] font-medium", theme.sub)}>{t("pricing.plan.perMonth")}</span>
+          <span className={cn("whitespace-nowrap text-[15px] font-medium", theme.sub)}>{t("pricing.plan.perMonth")}</span>
         </p>
         {data.fx && plan.currency.toUpperCase() === "USD" && (
-          <p data-plan-pln className={cn("mt-1 text-[12.5px]", theme.sub)}>
+          <p data-plan-pln className={cn("mt-1 text-[12.5px] [overflow-wrap:normal]", theme.sub)}>
             {t("pricing.fx.approx", { amount: approxPln(period === "annual" && plan.annualPriceCents > 0 ? plan.annualPriceCents : monthly, data.fx.rate) ?? "" })}
             {period === "annual" && plan.annualPriceCents > 0 ? ` ${t("pricing.fx.perYear")}` : ""}
           </p>
         )}
-        <p className={cn("mt-2 min-h-[1.25rem] text-[13px]", theme.sub)}>
+        <p data-plan-billing className={cn("mt-2 min-h-[1.25rem] text-[13px] [overflow-wrap:normal]", theme.sub)}>
           {period === "annual" && plan.annualPriceCents > 0
             ? t("pricing.plan.billedYearly", { price: formatMoney(plan.annualPriceCents, plan.currency) })
               + (saving ? ` · ${t("pricing.plan.saveYearly", { price: formatMoney(saving, plan.currency) })}` : "")
@@ -300,49 +324,65 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
         )}
       </div>
 
-      {/* E. WHAT IS IN IT — highlights first, then the groups. */}
-      <div className={cn("mt-6", theme.highlight)}>
-        <p className={cn("text-[11px] font-bold uppercase tracking-[0.14em]", theme.group)}>{t("pricing.group.highlights")}</p>
-        <ul className="mt-2.5 space-y-2">
-          {highlights.map((key) => (
-            <FeatureLine key={key} feature={key} plan={plan} theme={theme} />
-          ))}
-        </ul>
-      </div>
-      {CARD_GROUPS.map((group) => {
-        const rows = group.features.filter((f) => !highlights.includes(f)
-          && featureOn(f, plan.slug, plan.capabilities) !== "no");
-        if (rows.length === 0) return null;
-        return (
-          <div key={group.key} className={cn("mt-5 border-t pt-4", theme.divider)}>
-            <p className={cn("text-[11px] font-bold uppercase tracking-[0.14em]", theme.group)}>{t(group.titleKey)}</p>
+      {/* E. WHAT IS IN IT — the admin's groups for this plan (or the code
+          default). A group with nothing left to show leaves no trace. */}
+      <div data-plan-features>
+        {groups.map((group, i) => (
+          <div key={group.id} data-card-group={group.id}
+            className={cn(
+              group.id === "highlights" ? cn("mt-6", theme.highlight)
+                : i === 0 ? "mt-6" : cn("mt-5 border-t pt-4", theme.divider),
+            )}>
+            <p className={cn("text-[11px] font-bold uppercase tracking-[0.14em]", theme.group)}>{group.title}</p>
             <ul className="mt-2.5 space-y-2">
-              {rows.map((key) => <FeatureLine key={key} feature={key} plan={plan} theme={theme} />)}
+              {group.lines.map((line) => <FeatureLine key={line.id} line={line} theme={theme} />)}
             </ul>
           </div>
-        );
-      })}
+        ))}
+      </div>
     </article>
   );
 }
 
-function FeatureLine({ feature, plan, theme }: { feature: FeatureKey; plan: PricingPlanView; theme: Theme }) {
+/** The groups this card shows. Any surprise in the document → the code default. */
+function useCardGroups(plan: PricingPlanView, data: PricingPageData): ResolvedGroup[] {
+  const { t, locale } = useI18n();
+  const facts = {
+    slug: plan.slug,
+    caps: plan.capabilities,
+    locale,
+    t,
+    values: {
+      ...(typeof plan.capabilities.workspace_members === "number" ? { seats: seatLabel(plan.capabilities.workspace_members, t) } : {}),
+      credits: formatCount(planCredits(plan)),
+    },
+    featureLabel: (f: FeatureKey) => t(FEATURE_LABEL[f]),
+  };
+  try {
+    return resolveCard(planCardConfig(data.cards, plan.slug), facts);
+  } catch {
+    return resolveCard(defaultPlanCard(plan.slug), facts);
+  }
+}
+
+function FeatureLine({ line, theme }: { line: ResolvedLine; theme: Theme }) {
   const { t } = useI18n();
-  const state = featureOn(feature, plan.slug, plan.capabilities);
-  if (state === "no") return null;
-  const seats = feature === "seats" && typeof plan.capabilities.workspace_members === "number"
-    ? seatLabel(plan.capabilities.workspace_members, t) : null;
+  const { state } = line;
   return (
-    <li data-feature={feature} data-state={state} className="flex items-start gap-2.5 text-[14px] leading-snug">
+    <li data-line={line.id} data-feature={line.feature} data-state={state}
+      className={cn("flex items-start gap-2.5 text-[14px] leading-snug", state === "no" && "opacity-75")}>
       {state === "yes"
         ? <Check size={16} strokeWidth={2.5} aria-hidden className={cn("mt-[1px] shrink-0", theme.check)} />
-        : <Clock3 size={16} aria-hidden className={cn("mt-[1px] shrink-0 opacity-80", theme.check)} />}
+        : state === "soon"
+          ? <Clock3 size={16} aria-hidden className={cn("mt-[1px] shrink-0 opacity-80", theme.check)} />
+          : <X size={16} strokeWidth={2.5} aria-hidden className="mt-[1px] shrink-0 opacity-70" />}
       <span className="min-w-0 flex-1">
-        {t(FEATURE_LABEL[feature])}
-        {seats && <span className="font-semibold"> · {seats}</span>}
+        {line.text}
+        {line.suffix && <span className="font-semibold"> · {line.suffix}</span>}
+        {state === "no" && <span className="sr-only"> — {t("pricing.card.unavailable")}</span>}
       </span>
       {state === "soon" && (
-        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold", theme.soon)}>
+        <span className={cn("shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold", theme.soon)}>
           {t("pricing.soon")}
         </span>
       )}

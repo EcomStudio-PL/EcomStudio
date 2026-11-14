@@ -4564,6 +4564,10 @@
         "team": "Team",
         "support": "Support",
         "license": "Lizenz"
+      },
+      "phone": {
+        "left": "Plan in der linken Spalte",
+        "right": "Plan in der rechten Spalte"
       }
     },
     "topups": {
@@ -4615,7 +4619,10 @@
       "perYear": "pro Jahr",
       "note": "PLN-Beträge sind Richtwerte (NBP-Kurs vom {date}). Abgerechnet wird in USD."
     },
-    "creditsRule": "Plan-Credits gelten bis zum Ende des bezahlten Monats (Jahresplan: 12 monatliche Zuteilungen). Aufladungen verfallen nicht und gelten bei aktivem Plan. Preise in USD, brutto."
+    "creditsRule": "Plan-Credits gelten bis zum Ende des bezahlten Monats (Jahresplan: 12 monatliche Zuteilungen). Aufladungen verfallen nicht und gelten bei aktivem Plan. Preise in USD, brutto.",
+    "card": {
+      "unavailable": "nicht enthalten"
+    }
   },
   "mobilenav": {
     "home": "Start",
@@ -10984,7 +10991,8 @@
       "leave": "Bearbeitung beenden",
       "leaving": "Wird beendet…",
       "galleries": "VORHER/NACHHER-Galerien",
-      "layout": "Seitenlayout"
+      "layout": "Seitenlayout",
+      "cards": "Plankarten"
     },
     "page": {
       "home": "App-Startseite (/home)",
@@ -11842,6 +11850,78 @@
         "badHref": "Der Link muss eine App-Adresse sein, die mit „/“ beginnt.",
         "pillNote": "Eine Werkzeug-Pille der Upload-Kachel: Reihenfolge und Sichtbarkeit sind änderbar. Ihr Name ist ein Seitentext.",
         "gone": "Dieses Element ist nicht mehr im Layout (inzwischen entfernt)."
+      }
+    },
+    "cards": {
+      "title": "Plankarten — Funktionen",
+      "sub": "Die Zeilen auf den Plankarten, für jeden Plan einzeln. Änderungen sammeln sich in einem Entwurf — Kunden sehen sie nach „Speichern“. Preise, Credits und Planfunktionen werden im Plan-Bereich geändert, nicht hier.",
+      "plans": "Pläne",
+      "language": "Texte auf:",
+      "planDefault": "Standard für diesen Plan wiederherstellen",
+      "confirmPlanDefault": "Die Standardzeilen dieses Plans wiederherstellen? Die Änderung landet im Entwurf — du kannst sie rückgängig machen.",
+      "undo": "Rückgängig",
+      "undoHint": "Letzte Änderung im Entwurf rückgängig machen",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "unsaved": "Ungespeicherte Änderungen",
+      "saved": "Plankarten gespeichert.",
+      "restored": "Version der Plankarten wiederhergestellt.",
+      "noop": "Nichts geändert.",
+      "conflict": "Jemand hat die Plankarten inzwischen gespeichert. „Abbrechen“ lädt diese Version, „Speichern“ überschreibt sie.",
+      "migrationMissing": "Das Bearbeiten der Plankarten ist in dieser Datenbank noch nicht verfügbar.",
+      "confirmLeave": "Es gibt ungespeicherte Änderungen an den Plankarten. Ohne Speichern schließen?",
+      "confirmRestore": "Die Plankarten auf diesen Stand zurücksetzen? Der aktuelle Stand bleibt im Verlauf.",
+      "confirmRestoreDirty": "Diesen Stand wiederherstellen? Ungespeicherte Änderungen im Entwurf gehen verloren (der gespeicherte Stand bleibt im Verlauf).",
+      "history": "Änderungsverlauf",
+      "historyHint": "Jedes Speichern ist eine Version — jedes Wiederherstellen auch. Eine gelöschte Zeile kommt zurück, wenn du eine frühere Version wiederherstellst.",
+      "historyEmpty": "Keine gespeicherten Änderungen — die Karten zeigen den Standard.",
+      "actSave": "gespeichert",
+      "actRestore": "wiederhergestellt",
+      "current": "aktuell",
+      "restore": "Diesen Stand wiederherstellen",
+      "restoreDefault": "Standard wiederherstellen (alle Pläne)",
+      "count": "sichtbar: {n} von {all}",
+      "groupHidden": "Gruppe ausgeblendet",
+      "groupEmpty": "Nichts anzuzeigen — die Gruppe verschwindet von der Karte",
+      "groupVisible": "Gruppe anzeigen",
+      "groupName": "Gruppenname ({lang})",
+      "groupNameFallback": "Kein Name in: {langs} — dort bleibt der Standardname.",
+      "add": "+ Zeile hinzufügen",
+      "addFeature": "Planfunktion zurückholen…",
+      "confirmRemove": "Diese Zeile von der Karte dieses Plans entfernen? Du kannst es rückgängig machen und nach dem Speichern aus dem Verlauf wiederherstellen.",
+      "removed": "Zeile entfernt (im Entwurf).",
+      "noText": "(kein Text)",
+      "bound": "Planfunktion",
+      "custom": "Eigene Zeile",
+      "hiddenChip": "Ausgeblendet",
+      "notOnPlan": "Nicht im Plan — nicht sichtbar",
+      "defaultText": "Standardtext",
+      "missingLangs": "Fehlt: {langs} — dort nicht sichtbar",
+      "done": "Fertig",
+      "text": "Text ({lang})",
+      "textHintBound": "Leeres Feld = Standardtext dieser Funktion. Werte aus dem Plan: {seats} — Teamplätze, {credits} — Credits pro Monat.",
+      "textHintCustom": "Schreibe den Text in jeder Sprache (PL, EN, DE) — ohne Übersetzung erscheint die Zeile in dieser Sprache nicht. Werte aus dem Plan: {seats}, {credits}.",
+      "status": "Markierung",
+      "st": {
+        "autoYes": "Enthalten ✓ (laut Plan)",
+        "autoSoon": "Bald (laut Plan)",
+        "autoHidden": "Nicht anzeigen (nicht im Plan)",
+        "yes": "Enthalten ✓",
+        "soon": "Bald",
+        "no": "Nicht enthalten ✕"
+      },
+      "lockYes": "Die Markierung folgt dem Plan: Die Funktion läuft in diesem Plan. Sie wird in den Planeinstellungen geändert, nicht hier.",
+      "lockSoon": "Diese Funktion läuft in der App noch nicht — sie kann nur „Bald“ sein, nie „Enthalten“.",
+      "lockNo": "Dieser Plan hat diese Funktion nicht — blende sie aus oder zeige sie als „Nicht enthalten ✕“, nie als „Enthalten“.",
+      "customHint": "Eine eigene Zeile ist nicht mit den Planfunktionen oder der Vergleichstabelle verbunden — markiere nur als „Enthalten“, was wirklich funktioniert.",
+      "err": {
+        "custom_needs_text": "Eine neue Zeile hat keinen Text — schreibe ihn oder entferne die Zeile.",
+        "text_too_long": "Der Text ist zu lang (höchstens 140 Zeichen).",
+        "bad_placeholder": "Unbekannter Wert in geschweiften Klammern — erlaubt sind {seats} und {credits}.",
+        "bad_text": "Der Text enthält nicht erlaubte Zeichen.",
+        "too_large": "Zu viel Inhalt auf den Karten.",
+        "bad_items": "Zu viele Zeilen in einer Gruppe (höchstens 20).",
+        "generic": "Die Plankarten haben die Prüfung nicht bestanden."
       }
     }
   },

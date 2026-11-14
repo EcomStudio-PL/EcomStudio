@@ -1,4 +1,5 @@
 import type { PlanCapabilities } from "@/lib/plans/capabilities";
+import type { PricingCardsDoc } from "./card-features";
 
 /**
  * WHAT THE PRICING PAGE IS GIVEN — computed on the server, displayed here.
@@ -90,4 +91,10 @@ export type PricingPageData = {
    * table is not readable anonymously. null: the figures are omitted.
    */
   imageCost: { model: string; k2: number | null; k4: number | null } | null;
+  /**
+   * PLANY V3 — the feature lines an admin arranged per plan in „Edytuj
+   * stronę” (card-features.ts, 0179): presentation only, already validated.
+   * null / absent: the code default (the cards exactly as before).
+   */
+  cards?: PricingCardsDoc | null;
 };

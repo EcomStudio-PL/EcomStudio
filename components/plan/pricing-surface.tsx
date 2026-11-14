@@ -110,7 +110,10 @@ export async function PricingSurface({ scope, notice = null }: {
           popularTools={popularity.keys}
           searchTags={searchTags}
         />
-        <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10 xl:px-10">
+        {/* Plany V3: 24–32px side margins (no 40px xl gutter): at 1280px the
+            four cards get 289px instead of 285px. Everything but the cards is
+            narrower than the page and centred, so only they feel it. */}
+        <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10">
           {body}
         </main>
         {ld && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(ld) }} />}

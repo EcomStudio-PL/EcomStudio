@@ -50,3 +50,8 @@ export async function iceHomeLayoutStateAction() { return ice.homeLayoutState();
 export async function iceHomeLayoutSaveAction(input: { doc: unknown; base: string | null; action?: "save" | "restore" }) {
   return ice.homeLayoutSave(input);
 }
+export async function icePricingCardsStateAction() { return ice.pricingCardsState(); }
+export async function icePricingCardsSaveAction(input: { doc: unknown; base: string | null }) { return ice.pricingCardsSave(input); }
+export async function icePricingCardsRestoreAction(input: { version: string; base: string | null }) {
+  return ice.pricingCardsRestore(input);
+}

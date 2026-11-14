@@ -39,6 +39,8 @@ import {
 // app/actions/ice.ts reach every editor action through this one file.
 export { galleryDiscard, galleryPublish, galleryRestore, gallerySave, galleryState, galleryVersions } from "./gallery";
 export { homeLayoutSave, homeLayoutState } from "./home";
+// Plany V3: the plan cards' feature lines on /plany and /plan (0179).
+export { pricingCardsRestore, pricingCardsSave, pricingCardsState } from "./pricing-cards";
 
 /**
  * EVERY WRITE (AND ADMIN READ) THE VISUAL EDITOR MAKES.

@@ -19,8 +19,10 @@ const A = PRICING_PAGE.anchors;
 /**
  * CENNIK — the one pricing page, rendered at /plany (public) and /plan (in the
  * app) from the same server data. Order: premiere (only while it runs), the
- * heading with the period pill, the three plans, the comparison, the top-ups,
- * the FAQ. One spacing token between sections, one container width.
+ * heading with the period pill, the plans, the comparison, the top-ups, the
+ * FAQ. One spacing token between sections. Widths (Plany V3): the heading and
+ * the cards up to 1320px (four cards in a row need it), the premiere banner,
+ * comparison and top-ups 1100px as before, the FAQ 700px.
  */
 export function PricingPage({ data, notice, faq }: {
   data: PricingPageData;
@@ -78,11 +80,13 @@ export function PricingPage({ data, notice, faq }: {
 
   return (
     <div data-pricing-page
-      className="mx-auto flex w-full max-w-[1100px] flex-col gap-[var(--pricing-gap)] pb-6 [--pricing-gap:56px] sm:[--pricing-gap:72px] lg:[--pricing-gap:96px]">
-      <div className="flex flex-col gap-8 sm:gap-10">
+      className="mx-auto flex w-full flex-col gap-[var(--pricing-gap)] pb-6 [--pricing-gap:56px] sm:[--pricing-gap:72px] lg:[--pricing-gap:96px]">
+      <div data-pricing-top className="mx-auto flex w-full max-w-[1320px] flex-col gap-8 sm:gap-10">
         {data.premiere && (
-          <PremiereBanner endsAt={data.premiere.endsAt} endsAtMs={data.premiere.endsAtMs}
-            serverNow={data.premiere.serverNow} endsAtLabel={data.premiere.endsAtLabel} />
+          <div className="mx-auto w-full max-w-[1100px]">
+            <PremiereBanner endsAt={data.premiere.endsAt} endsAtMs={data.premiere.endsAtMs}
+              serverNow={data.premiere.serverNow} endsAtLabel={data.premiere.endsAtLabel} />
+          </div>
         )}
 
         {/* The heading: what to do, in one sentence, and the period pill. */}
@@ -125,11 +129,13 @@ export function PricingPage({ data, notice, faq }: {
             </a>
           </div>
         </header>
-        {notice && <CheckoutNotice status={notice} />}
+        {notice && <div className="mx-auto w-full max-w-[1100px]"><CheckoutNotice status={notice} /></div>}
 
         {/* THE PLANS. PRO first on a phone, in the middle on wide screens —
-            two lists so the reading and focus order match what is drawn. */}
-        <section id={A.plans} tabIndex={-1} aria-labelledby="pricing-title" className={cn(section, "pt-2 lg:pt-4")}>
+            two lists so the reading and focus order match what is drawn.
+            data-plan-cards-edit: „Edytuj stronę” offers „Karty planów” here. */}
+        <section id={A.plans} tabIndex={-1} aria-labelledby="pricing-title" data-plan-cards-edit=""
+          className={cn(section, "pt-2 lg:pt-4")}>
           <PlanCards plans={plans} period={period} data={data} order={CARD_ORDER_PHONE} layout="phone" onChangeHint={toChange} />
           <PlanCards plans={plans} period={period} data={data} order={CARD_ORDER} layout="wide" onChangeHint={toChange} />
           <div className="mx-auto mt-8 max-w-2xl space-y-1.5 text-center text-[13px] leading-relaxed text-muted lg:mt-10">
@@ -148,14 +154,14 @@ export function PricingPage({ data, notice, faq }: {
         </section>
       </div>
 
-      <section id={A.compare} tabIndex={-1} aria-labelledby="compare-title" className={section}>
+      <section id={A.compare} tabIndex={-1} aria-labelledby="compare-title" className={cn(section, "mx-auto w-full max-w-[1100px]")}>
         <h2 id="compare-title" className="mb-6 text-center font-display text-[1.75rem] font-semibold tracking-[-0.02em] sm:text-[2rem]">
           {t("pricing.compare.title")}
         </h2>
         <PlanComparison plans={orderBy(plans, CARD_ORDER)} period={period} data={data} onChangeHint={toChange} />
       </section>
 
-      <section id={A.topups} tabIndex={-1} aria-labelledby="topups-title" className={section}>
+      <section id={A.topups} tabIndex={-1} aria-labelledby="topups-title" className={cn(section, "mx-auto w-full max-w-[1100px]")}>
         <TopUps data={data} onChoosePlan={toPlans} />
       </section>
 

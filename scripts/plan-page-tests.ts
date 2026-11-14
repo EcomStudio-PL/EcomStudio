@@ -789,7 +789,10 @@ async function main() {
     check("PRO first on a phone; Mini → Business on wide screens (two lists, matching focus order)",
       CARD_ORDER.join() === "mini,starter,pro,agency" && CARD_ORDER_PHONE.join() === "pro,mini,starter,agency"
       && /layout="phone"/.test(pageSrc) && /layout="wide"/.test(pageSrc));
-    check("one container width (1100px), FAQ narrower (700px)", /max-w-\[1100px\]/.test(pageSrc) && /max-w-\[700px\]/.test(pageSrc));
+    // Plany V3: the heading and the cards widen to 1320px (four in a row);
+    // the comparison and top-ups keep 1100px, the FAQ 700px.
+    check("widths: heading + cards 1320px, comparison/top-ups 1100px, FAQ 700px",
+      /max-w-\[1320px\]/.test(pageSrc) && /max-w-\[1100px\]/.test(pageSrc) && /max-w-\[700px\]/.test(pageSrc));
     const cmp = codeOnly(read("components/plan/plan-comparison.tsx"));
     check(`comparison folds to the first ${COMPARE_INITIAL_ROWS} rows, the rest are hidden (not focusable)`,
       COMPARE_INITIAL_ROWS === 9 && /hidden=\{!open && index >= COMPARE_INITIAL_ROWS\}/.test(cmp)

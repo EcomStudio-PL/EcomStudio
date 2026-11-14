@@ -4564,6 +4564,10 @@
         "team": "Zespół",
         "support": "Wsparcie",
         "license": "Licencja"
+      },
+      "phone": {
+        "left": "Plan w lewej kolumnie",
+        "right": "Plan w prawej kolumnie"
       }
     },
     "topups": {
@@ -4615,7 +4619,10 @@
       "perYear": "za rok",
       "note": "Kwoty w zł są orientacyjne (kurs NBP z {date}). Płatność pobierana jest w USD."
     },
-    "creditsRule": "Kredyty z abonamentu są ważne do końca opłaconego miesiąca (plan roczny: 12 miesięcznych przydziałów). Doładowania nie wygasają i działają przy aktywnym planie. Ceny w USD brutto."
+    "creditsRule": "Kredyty z abonamentu są ważne do końca opłaconego miesiąca (plan roczny: 12 miesięcznych przydziałów). Doładowania nie wygasają i działają przy aktywnym planie. Ceny w USD brutto.",
+    "card": {
+      "unavailable": "niedostępne"
+    }
   },
   "mobilenav": {
     "home": "Start",
@@ -10984,7 +10991,8 @@
       "leave": "Zakończ edycję",
       "leaving": "Kończenie…",
       "galleries": "Galerie PRZED/PO",
-      "layout": "Układ strony"
+      "layout": "Układ strony",
+      "cards": "Karty planów"
     },
     "page": {
       "home": "Strona główna aplikacji (/home)",
@@ -11842,6 +11850,78 @@
         "badHref": "Link musi być adresem w aplikacji zaczynającym się od „/”.",
         "pillNote": "Pigułka narzędzia w kafelku „Wgraj zdjęcie”: możesz zmienić jej kolejność i widoczność. Jej nazwę edytujesz jako tekst strony.",
         "gone": "Tego elementu nie ma już w układzie (usunięty w międzyczasie)."
+      }
+    },
+    "cards": {
+      "title": "Karty planów — funkcje",
+      "sub": "Pozycje na kartach, osobno dla każdego planu. Zmiany zbierają się w szkicu — klienci zobaczą je po kliknięciu „Zapisz”. Ceny, kredyty i możliwości planów zmienia się w panelu planów, nie tutaj.",
+      "plans": "Plany",
+      "language": "Teksty w języku:",
+      "planDefault": "Przywróć domyślne dla tego planu",
+      "confirmPlanDefault": "Przywrócić domyślne pozycje tego planu? Zmiana trafi do szkicu — możesz ją cofnąć.",
+      "undo": "Cofnij",
+      "undoHint": "Cofnij ostatnią zmianę w szkicu",
+      "cancel": "Anuluj",
+      "save": "Zapisz",
+      "unsaved": "Niezapisane zmiany",
+      "saved": "Zapisano karty planów.",
+      "restored": "Przywrócono wersję kart planów.",
+      "noop": "Nic się nie zmieniło.",
+      "conflict": "Ktoś zapisał karty planów w międzyczasie. „Anuluj” wczyta jego wersję, „Zapisz” ją nadpisze.",
+      "migrationMissing": "Edycja kart planów nie jest jeszcze dostępna w tej bazie danych.",
+      "confirmLeave": "Masz niezapisane zmiany w kartach planów. Zamknąć bez zapisywania?",
+      "confirmRestore": "Przywrócić karty planów do tego stanu? Obecny stan zostanie w historii.",
+      "confirmRestoreDirty": "Przywrócić ten stan? Niezapisane zmiany ze szkicu przepadną (obecny zapisany stan zostanie w historii).",
+      "history": "Historia zmian",
+      "historyHint": "Każdy zapis jest wersją — przywrócenie też. Usuniętą pozycję odzyskasz, przywracając wcześniejszą wersję.",
+      "historyEmpty": "Brak zapisanych zmian — karty pokazują ustawienia domyślne.",
+      "actSave": "zapis",
+      "actRestore": "przywrócenie",
+      "current": "obecna",
+      "restore": "Przywróć ten stan",
+      "restoreDefault": "Przywróć ustawienia domyślne (wszystkie plany)",
+      "count": "widoczne: {n} z {all}",
+      "groupHidden": "Grupa ukryta",
+      "groupEmpty": "Nic do pokazania — grupa zniknie z karty",
+      "groupVisible": "Pokazuj grupę",
+      "groupName": "Nazwa grupy ({lang})",
+      "groupNameFallback": "Brak nazwy w: {langs} — tam zostaje nazwa domyślna.",
+      "add": "+ Dodaj pozycję",
+      "addFeature": "Przywróć funkcję planu…",
+      "confirmRemove": "Usunąć tę pozycję z karty tego planu? Możesz to cofnąć, a po zapisaniu przywrócić z historii.",
+      "removed": "Usunięto pozycję (w szkicu).",
+      "noText": "(bez tekstu)",
+      "bound": "Funkcja planu",
+      "custom": "Pozycja własna",
+      "hiddenChip": "Ukryta",
+      "notOnPlan": "Plan jej nie ma — niewidoczna",
+      "defaultText": "Tekst domyślny",
+      "missingLangs": "Brak: {langs} — tam się nie pokaże",
+      "done": "Gotowe",
+      "text": "Tekst ({lang})",
+      "textHintBound": "Puste pole = tekst domyślny tej funkcji. Wartości z planu: {seats} — miejsca w zespole, {credits} — kredyty miesięcznie.",
+      "textHintCustom": "Wpisz tekst w każdym języku (PL, EN, DE) — bez tłumaczenia pozycja nie pokaże się w danym języku. Wartości z planu: {seats}, {credits}.",
+      "status": "Oznaczenie",
+      "st": {
+        "autoYes": "Dostępne ✓ (zgodnie z planem)",
+        "autoSoon": "Wkrótce (zgodnie z planem)",
+        "autoHidden": "Nie pokazuj (plan jej nie ma)",
+        "yes": "Dostępne ✓",
+        "soon": "Wkrótce",
+        "no": "Niedostępne ✕"
+      },
+      "lockYes": "Oznaczenie wynika z planu: funkcja działa na tym planie. Zmienia się je w ustawieniach planu, nie tutaj.",
+      "lockSoon": "Ta funkcja nie działa jeszcze w aplikacji — może być tylko „Wkrótce”, nigdy „Dostępne”.",
+      "lockNo": "Ten plan nie ma tej funkcji — możesz ją ukryć albo pokazać jako „Niedostępne ✕”, nigdy jako „Dostępne”.",
+      "customHint": "Pozycja własna nie jest powiązana z możliwościami planu ani z tabelą porównania — oznacz jako „Dostępne” tylko to, co naprawdę działa.",
+      "err": {
+        "custom_needs_text": "Nowa pozycja nie ma tekstu — wpisz go albo usuń pozycję.",
+        "text_too_long": "Tekst jest za długi (najwyżej 140 znaków).",
+        "bad_placeholder": "Nieznana wartość w nawiasach klamrowych — dozwolone są {seats} i {credits}.",
+        "bad_text": "Tekst zawiera niedozwolone znaki.",
+        "too_large": "Za dużo treści na kartach.",
+        "bad_items": "Za dużo pozycji w grupie (najwyżej 20).",
+        "generic": "Karty planów nie przeszły weryfikacji."
       }
     }
   },
