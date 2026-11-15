@@ -97,6 +97,29 @@ export async function fetchProviderBalance(slug: string, key: string): Promise<S
   }
 }
 
+/** The environment variable each automatic provider's key may live in — the
+ *  same names lib/images/providers.ts reads. */
+const KEY_ENV: Readonly<Record<string, string>> = { fal: "FAL_KEY", stability: "STABILITY_API_KEY" };
+
+/**
+ * The provider's key, resolved the way the tools that USE it resolve it: the
+ * process environment first, then Vault, then a credential row still holding
+ * ciphertext from before Vault (provider_credential_read, server token). A
+ * reader that looked only at Vault reported fal — whose key is such a row —
+ * as "not configured" while fal was serving requests.
+ */
+async function providerKeyFor(supabase: Client, providerId: string, slug: string, token: string | null): Promise<string | null> {
+  const envName = KEY_ENV[slug];
+  const fromEnv = envName ? process.env[envName]?.trim() : "";
+  if (fromEnv) return fromEnv;
+  let legacy: { encrypted_value: string; iv: string; auth_tag: string } | null = null;
+  if (token) {
+    const { data } = await supabase.rpc("provider_credential_read", { p_token: token, p_provider_id: providerId });
+    legacy = data?.[0] ?? null;
+  }
+  return readProviderKey(supabase, providerId, legacy);
+}
+
 /**
  * Read every AUTOMATIC provider's balance and record it (0180,
  * api_provider_sync_record). Works with an admin session or, from the cron,
@@ -117,7 +140,7 @@ export async function syncProviderBalances(
     if (PROVIDER_FUNDS[p.slug]?.balance !== "api") {
       result = { status: "unsupported" };
     } else {
-      const key = await readProviderKey(supabase, p.id);
+      const key = await providerKeyFor(supabase, p.id, p.slug, token);
       result = key ? await fetchProviderBalance(p.slug, key) : { status: "not_configured" };
     }
     out[p.slug] = result.status;
