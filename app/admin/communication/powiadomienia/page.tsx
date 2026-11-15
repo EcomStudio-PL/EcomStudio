@@ -35,7 +35,7 @@ export default async function CommunicationNotifications() {
 
   const [{ dict }, prefs, telegram, mail, outbox] = await Promise.all([
     getDictionary(),
-    supabase.from("notification_preferences").select("event_type, telegram_enabled, admin_email_enabled"),
+    supabase.from("notification_preferences").select("event_type, telegram_enabled, admin_email_enabled, admin_panel_enabled"),
     readIntegration<TelegramConfig>(supabase, "telegram"),
     readIntegration<MailConfig>(supabase, "mail"),
     // Admin-only under RLS since 0052, so this is a plain read: newest first,
@@ -59,6 +59,7 @@ export default async function CommunicationNotifications() {
     wired: event.wired,
     telegram: stored.get(event.type)?.telegram_enabled === true,
     adminEmail: stored.get(event.type)?.admin_email_enabled === true,
+    adminPanel: stored.get(event.type)?.admin_panel_enabled === true,
   }));
 
   const log: NotificationLogRow[] = (outbox.data ?? []).map((row) => ({

@@ -3,6 +3,7 @@ import type { Client } from "@/lib/services/workspace";
 import type { Database } from "@/lib/database.types";
 import { invoiceGrants, lineFacts, type Grant, type PlanForPrice } from "@/lib/billing/invoice-grants";
 import { stripeGet } from "@/lib/stripe/client";
+import { scheduleSaleReport } from "@/lib/server/api-reserves/reports";
 
 /**
  * WHAT A STRIPE EVENT DOES TO GROVBASE.
@@ -415,7 +416,11 @@ async function settle(
     if (status === "order_mismatch") {
       console.error("stripe.webhook.order_mismatch", args.event.id, args.paymentId, args.purchase.orderId);
     }
-    if (status === "applied") await recordFees(supabase, token, args.paymentId, args.paymentId);
+    if (status === "applied") {
+      await recordFees(supabase, token, args.paymentId, args.paymentId);
+      // API Reserve Center (0180): the admin's after-sale report, after the response.
+      scheduleSaleReport(supabase, (data as { payment_id?: string } | null)?.payment_id);
+    }
     return { outcome: status === "order_mismatch" ? "recorded" : ((status as HandledOutcome) ?? "applied"), detail: status };
   }
   const { data, error } = await supabase.rpc("stripe_settle_payment", {
@@ -769,6 +774,8 @@ async function onInvoicePaid(
   if (settledStatus === "applied") {
     const tax = int(invoice.tax);
     await recordFees(supabase, token, invoiceId, paymentIntent, tax);
+    // API Reserve Center (0180): the admin's after-sale report, after the response.
+    scheduleSaleReport(supabase, (settled as { payment_id?: string } | null)?.payment_id);
   }
   const purchase = mainPlan ? { kind: "subscription" as const } : null;
   // After settlement, whatever its outcome — a retry of an event that settled

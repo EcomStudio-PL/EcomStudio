@@ -1479,6 +1479,198 @@
         "revenueNet": "Przychód netto",
         "details": "Szczegóły"
       }
+    },
+    "reserves": {
+      "tab": {
+        "overview": "Przegląd",
+        "reserves": "Rezerwy API"
+      },
+      "sub": "Środki u dostawców API, kredyty klientów i pieniądze, które trzeba zabezpieczyć na ich realizację. Tylko dla administratorów.",
+      "unavailable": "Nie udało się wczytać danych rezerw (brak migracji 0180 albo uprawnień).",
+      "noData": "Brak danych",
+      "disabled": "Raporty wyłączone",
+      "covered": "Dostępne środki pokrywają zalecaną rezerwę.",
+      "needsTopup": "Do zabezpieczenia: {amount}",
+      "unknownFunds": "Brak salda dla: {list} — wpisz je ręcznie albo uruchom synchronizację.",
+      "cautiousShort": "ostrożny",
+      "inactive": "nieaktywny",
+      "hours": "{n} h",
+      "days": "{n} dni",
+      "save": "Zapisz",
+      "saved": "Zapisano.",
+      "synced": "Synchronizacja zakończona.",
+      "syncNow": "Synchronizuj",
+      "enterFunds": "Saldo / doładowanie",
+      "providerSettings": "Ustawienia",
+      "billingPanel": "Panel rozliczeń",
+      "status": {
+        "ok": "OK",
+        "warning": "Ostrzeżenie",
+        "critical": "Krytyczny",
+        "no_data": "Brak danych",
+        "off": "Nie monitorowany"
+      },
+      "basis": {
+        "confirmed": "Potwierdzona",
+        "estimated": "Szacowana",
+        "manual": "Wprowadzona ręcznie",
+        "unavailable": "Niedostępna"
+      },
+      "mode": {
+        "auto": "Automatyczny (API dostawcy)",
+        "manual": "Ręczny",
+        "postpaid": "Postpaid (faktura po fakcie)",
+        "off": "Nie monitoruj"
+      },
+      "cap": {
+        "api": "Saldo czytane z oficjalnego API dostawcy.",
+        "manual": "Dostawca nie udostępnia salda przez API — wpisz saldo; system odejmuje zarejestrowane koszty.",
+        "postpaid": "Rozliczenie po fakcie (faktura) — brak salda prepaid, pokazujemy kwotę do zabezpieczenia."
+      },
+      "sync": {
+        "ok": "ostatnia synchronizacja udana",
+        "error": "błąd synchronizacji",
+        "unsupported": "API dostawcy nie podaje salda",
+        "not_configured": "brak klucza API"
+      },
+      "ev": {
+        "balance_set": "saldo",
+        "topup": "doładowanie",
+        "correction": "korekta",
+        "sync": "synchronizacja"
+      },
+      "pool": {
+        "subscription": "Abonamentowe",
+        "topup": "Doładowania",
+        "bonus": "Bonusy",
+        "legacy": "Historyczne",
+        "tranches": "Przyszłe transze roczne",
+        "expiring": "Wygasające w {days} dni"
+      },
+      "scenario": {
+        "standard": "Standardowy",
+        "cautious": "Ostrożny"
+      },
+      "source": {
+        "history": "Koszt kredytu z historii: koszty API klientów ÷ wykorzystane kredyty.",
+        "config": "Koszt kredytu z konfiguracji modeli (cena dostawcy ÷ cena w kredytach) — za mało historii.",
+        "none": "Brak podstawy do wyceny kredytu — skonfiguruj ceny modeli."
+      },
+      "assume": {
+        "unknown_costs": "Część wywołań ma nieznany koszt — liczone są osobno, nie jako $0.",
+        "history_insufficient": "Za mało historii (< {n} kredytów) — koszt kredytu z konfiguracji modeli obrazu; koszty pomocnicze (analiza, prompty) nieznane.",
+        "no_cost_basis": "Brak historii i cen modeli — prognoza niemożliwa.",
+        "utilization_full": "Brak historii wygaśnięć — przyjęto pełne wykorzystanie kredytów abonamentowych."
+      },
+      "kpi": {
+        "available": "Dostępne środki u dostawców",
+        "spendToday": "Wydatki API dzisiaj",
+        "spendWindows": "24 h {h24} · 7 dni {d7} · 30 dni {d30}",
+        "reserve": "Zalecana rezerwa",
+        "reserveHint": "bufor {buffer}% · {days} dni · scenariusz {scenario}",
+        "missing": "Brakuje do zabezpieczenia",
+        "missingHint": "doładowania {topup} · postpaid {secure}",
+        "customerCredits": "Pozostałe kredyty klientów",
+        "customerCreditsHint": "konta wewnętrzne osobno: {internal}",
+        "soldMonth": "Kredyty sprzedane (miesiąc)",
+        "soldHint": "abonamenty {sub} · doładowania {topup} · bonusy {bonus}",
+        "usedMonth": "Kredyty wykorzystane (miesiąc)",
+        "expiredHint": "wygasło: {n}",
+        "exposure": "Koszt realizacji dostępnych kredytów",
+        "exposureHint": "scenariusz ostrożny: {cautious}"
+      },
+      "credits": {
+        "title": "Kredyty — pule",
+        "sub": "Klienci płacący i konta wewnętrzne osobno.",
+        "pool": "Pula",
+        "customers": "Klienci",
+        "internal": "Wewnętrzne"
+      },
+      "forecast": {
+        "title": "Prognoza zapotrzebowania",
+        "cpc": "Koszt API 1 kredytu",
+        "utilization": "Wykorzystanie kredytów abonamentowych",
+        "h24": "Najbliższe 24 h",
+        "d7": "Najbliższe 7 dni",
+        "horizon": "Horyzont {days} dni",
+        "spendSplit": "Wydatki w miesiącu",
+        "spendSplitValue": "klienci {customers} · wewnętrzne {internal} · system {system}",
+        "unknownCalls": "{n} wywołań w tym miesiącu ma nieznany koszt."
+      },
+      "providers": {
+        "title": "Dostawcy API"
+      },
+      "p": {
+        "available": "Dostępne",
+        "limitLeft": "Pozostały limit",
+        "postpaidNoBalance": "postpaid — bez salda",
+        "hour": "Ostatnia godzina",
+        "today": "Dzisiaj",
+        "month": "Ten miesiąc",
+        "calls": "{n} wywołań",
+        "share": "{n}% wszystkich wydatków",
+        "need": "Potrzeba 24 h / 7 dni",
+        "needHint": "wg wybranego scenariusza",
+        "reserve": "Zalecana rezerwa",
+        "topup": "Rekomendowane doładowanie",
+        "secure": "Do zabezpieczenia (faktura)",
+        "runway": "Starczy na",
+        "sync": "Ostatnia synchronizacja",
+        "unknown": "{n} wywołań bez znanego kosztu — saldo może być niższe."
+      },
+      "f": {
+        "kind": "Rodzaj wpisu",
+        "balanceSet": "Aktualne saldo u dostawcy",
+        "topup": "Zarejestruj doładowanie",
+        "correction": "Korekta (±)",
+        "amount": "Kwota (USD)",
+        "note": "Notatka",
+        "help": {
+          "balance_set": "Nowy punkt odniesienia: od teraz system odejmuje zarejestrowane koszty od tej kwoty.",
+          "topup": "Dodaje kwotę do szacowanego salda. Nic nie jest kupowane automatycznie.",
+          "correction": "Kwota dodatnia lub ujemna, z notatką — dla rozbieżności z panelem dostawcy."
+        },
+        "mode": "Tryb monitorowania",
+        "billingUrl": "Adres panelu rozliczeń",
+        "warn": "Próg ostrzeżenia (USD)",
+        "critical": "Próg krytyczny (USD)",
+        "limit": "Limit kredytowy w miesiącu (USD, opcjonalnie)"
+      },
+      "settings": {
+        "title": "Ustawienia rezerw i raportów",
+        "sub": "Bufor bezpieczeństwa, horyzont prognozy i harmonogram raportów.",
+        "enabled": "Raporty i alerty włączone",
+        "buffer": "Bufor bezpieczeństwa (%)",
+        "horizon": "Horyzont rezerwy (dni)",
+        "scenario": "Scenariusz zalecanej rezerwy",
+        "cautiousFactor": "Mnożnik scenariusza ostrożnego",
+        "history": "Okno historii (dni)",
+        "minHistory": "Min. kredytów w historii",
+        "dailyHour": "Godzina raportu dziennego",
+        "timezone": "Strefa czasowa raportów",
+        "alertRepeat": "Ponawiaj alert co (godz.)",
+        "skipEmpty": "Pomijaj puste raporty godzinowe"
+      },
+      "reports": {
+        "title": "Raporty i alerty",
+        "sub": "Historia ostatnich wysyłek ze statusem dostarczenia, w każdym kanale osobno.",
+        "channels": "Kanały: Komunikacja → Powiadomienia",
+        "sent": "Raport testowy wysłany do włączonych kanałów.",
+        "empty": "Jeszcze nic nie wysłano.",
+        "test": {
+          "sale": "Test: po sprzedaży",
+          "hourly": "Test: godzinowy",
+          "daily": "Test: dzienny",
+          "funds_low": "Test: niskie środki"
+        }
+      },
+      "err": {
+        "notAdmin": "Tylko administrator może to zrobić.",
+        "timezone": "Nieznana strefa czasowa (np. Europe/Warsaw).",
+        "url": "Adres musi zaczynać się od https://",
+        "invalid": "Nieprawidłowa wartość.",
+        "generic": "Nie udało się. Spróbuj ponownie."
+      }
     }
   },
   "support": {
@@ -5621,7 +5813,13 @@
     "stepErr.network": "serwer nieosiągalny",
     "stepErr.generic": "połączenie nie powiodło się",
     "stepErr.not_configured": "brak konfiguracji",
-    "stepErr.send_failed": "wysyłka nie powiodła się"
+    "stepErr.send_failed": "wysyłka nie powiodła się",
+    "ev.reserveSale": "Raport po sprzedaży (rezerwy API)",
+    "ev.reserveHourly": "Raport godzinowy (rezerwy API)",
+    "ev.reserveDaily": "Raport dzienny (rezerwy API)",
+    "ev.fundsLow": "Alert: niskie środki u dostawcy API",
+    "cat.finance": "Finanse i rezerwy API",
+    "chAdminPanel": "Panel administratora"
   },
   "reg": {
     "title": "Rejestracja i bezpieczeństwo",

@@ -1479,6 +1479,198 @@
         "revenueNet": "Net revenue",
         "details": "Details"
       }
+    },
+    "reserves": {
+      "tab": {
+        "overview": "Overview",
+        "reserves": "API reserves"
+      },
+      "sub": "Funds held by API providers, customers' credits and the money to keep ready for them. Admins only.",
+      "unavailable": "Reserve data could not be loaded (migration 0180 or permissions missing).",
+      "noData": "No data",
+      "disabled": "Reports off",
+      "covered": "Available funds cover the recommended reserve.",
+      "needsTopup": "To secure: {amount}",
+      "unknownFunds": "No balance for: {list} — enter it or run a sync.",
+      "cautiousShort": "cautious",
+      "inactive": "inactive",
+      "hours": "{n} h",
+      "days": "{n} days",
+      "save": "Save",
+      "saved": "Saved.",
+      "synced": "Sync finished.",
+      "syncNow": "Sync",
+      "enterFunds": "Balance / top-up",
+      "providerSettings": "Settings",
+      "billingPanel": "Billing panel",
+      "status": {
+        "ok": "OK",
+        "warning": "Warning",
+        "critical": "Critical",
+        "no_data": "No data",
+        "off": "Not monitored"
+      },
+      "basis": {
+        "confirmed": "Confirmed",
+        "estimated": "Estimated",
+        "manual": "Entered manually",
+        "unavailable": "Unavailable"
+      },
+      "mode": {
+        "auto": "Automatic (provider API)",
+        "manual": "Manual",
+        "postpaid": "Postpaid (invoiced afterwards)",
+        "off": "Do not monitor"
+      },
+      "cap": {
+        "api": "Balance read from the provider's official API.",
+        "manual": "The provider has no balance API — enter the balance; recorded costs are subtracted.",
+        "postpaid": "Billed afterwards (invoice) — no prepaid balance; the amount to set aside is shown."
+      },
+      "sync": {
+        "ok": "last sync succeeded",
+        "error": "sync failed",
+        "unsupported": "the provider API reports no balance",
+        "not_configured": "no API key"
+      },
+      "ev": {
+        "balance_set": "balance",
+        "topup": "top-up",
+        "correction": "correction",
+        "sync": "sync"
+      },
+      "pool": {
+        "subscription": "Subscription",
+        "topup": "Top-ups",
+        "bonus": "Bonus",
+        "legacy": "Legacy",
+        "tranches": "Future annual tranches",
+        "expiring": "Expiring within {days} days"
+      },
+      "scenario": {
+        "standard": "Standard",
+        "cautious": "Cautious"
+      },
+      "source": {
+        "history": "Cost per credit from history: customers' API costs ÷ credits used.",
+        "config": "Cost per credit from the model configuration (provider price ÷ credit price) — not enough history.",
+        "none": "No basis to price a credit — configure model prices."
+      },
+      "assume": {
+        "unknown_costs": "Some calls have an unknown cost — counted apart, never as $0.",
+        "history_insufficient": "Not enough history (< {n} credits) — cost per credit from the image model configuration; auxiliary costs (analysis, prompts) unknown.",
+        "no_cost_basis": "No history and no model prices — no forecast possible.",
+        "utilization_full": "No expiry history — full use of subscription credits assumed."
+      },
+      "kpi": {
+        "available": "Funds at providers",
+        "spendToday": "API spend today",
+        "spendWindows": "24 h {h24} · 7 days {d7} · 30 days {d30}",
+        "reserve": "Recommended reserve",
+        "reserveHint": "buffer {buffer}% · {days} days · {scenario} scenario",
+        "missing": "Missing to secure",
+        "missingHint": "top-ups {topup} · postpaid {secure}",
+        "customerCredits": "Customers' remaining credits",
+        "customerCreditsHint": "internal accounts apart: {internal}",
+        "soldMonth": "Credits sold (month)",
+        "soldHint": "subscriptions {sub} · top-ups {topup} · bonus {bonus}",
+        "usedMonth": "Credits used (month)",
+        "expiredHint": "expired: {n}",
+        "exposure": "Cost to serve available credits",
+        "exposureHint": "cautious scenario: {cautious}"
+      },
+      "credits": {
+        "title": "Credits — pools",
+        "sub": "Paying customers and internal accounts apart.",
+        "pool": "Pool",
+        "customers": "Customers",
+        "internal": "Internal"
+      },
+      "forecast": {
+        "title": "Demand forecast",
+        "cpc": "API cost of 1 credit",
+        "utilization": "Subscription credit utilisation",
+        "h24": "Next 24 h",
+        "d7": "Next 7 days",
+        "horizon": "{days}-day horizon",
+        "spendSplit": "Spend this month",
+        "spendSplitValue": "customers {customers} · internal {internal} · system {system}",
+        "unknownCalls": "{n} calls this month have an unknown cost."
+      },
+      "providers": {
+        "title": "API providers"
+      },
+      "p": {
+        "available": "Available",
+        "limitLeft": "Limit left",
+        "postpaidNoBalance": "postpaid — no balance",
+        "hour": "Last hour",
+        "today": "Today",
+        "month": "This month",
+        "calls": "{n} calls",
+        "share": "{n}% of all spend",
+        "need": "Need 24 h / 7 days",
+        "needHint": "per the selected scenario",
+        "reserve": "Recommended reserve",
+        "topup": "Recommended top-up",
+        "secure": "To set aside (invoice)",
+        "runway": "Lasts about",
+        "sync": "Last sync",
+        "unknown": "{n} calls without a known cost — the balance may be lower."
+      },
+      "f": {
+        "kind": "Entry type",
+        "balanceSet": "Current balance at the provider",
+        "topup": "Record a top-up",
+        "correction": "Correction (±)",
+        "amount": "Amount (USD)",
+        "note": "Note",
+        "help": {
+          "balance_set": "A new reference point: from now on recorded costs are subtracted from it.",
+          "topup": "Adds the amount to the estimated balance. Nothing is bought automatically.",
+          "correction": "A positive or negative amount, with a note — for differences with the provider's panel."
+        },
+        "mode": "Monitoring mode",
+        "billingUrl": "Billing panel URL",
+        "warn": "Warning threshold (USD)",
+        "critical": "Critical threshold (USD)",
+        "limit": "Monthly credit limit (USD, optional)"
+      },
+      "settings": {
+        "title": "Reserve and report settings",
+        "sub": "Safety buffer, forecast horizon and report schedule.",
+        "enabled": "Reports and alerts on",
+        "buffer": "Safety buffer (%)",
+        "horizon": "Reserve horizon (days)",
+        "scenario": "Scenario for the recommended reserve",
+        "cautiousFactor": "Cautious scenario multiplier",
+        "history": "History window (days)",
+        "minHistory": "Min. credits in history",
+        "dailyHour": "Daily report hour",
+        "timezone": "Report time zone",
+        "alertRepeat": "Repeat an alert every (hours)",
+        "skipEmpty": "Skip empty hourly reports"
+      },
+      "reports": {
+        "title": "Reports and alerts",
+        "sub": "Recent deliveries with their status, per channel.",
+        "channels": "Channels: Communication → Notifications",
+        "sent": "Test report sent to the enabled channels.",
+        "empty": "Nothing sent yet.",
+        "test": {
+          "sale": "Test: after sale",
+          "hourly": "Test: hourly",
+          "daily": "Test: daily",
+          "funds_low": "Test: low funds"
+        }
+      },
+      "err": {
+        "notAdmin": "Only an administrator can do this.",
+        "timezone": "Unknown time zone (e.g. Europe/Warsaw).",
+        "url": "The URL must start with https://",
+        "invalid": "Invalid value.",
+        "generic": "That failed. Try again."
+      }
     }
   },
   "support": {
@@ -5621,7 +5813,13 @@
     "stepErr.network": "the server is unreachable",
     "stepErr.generic": "the connection failed",
     "stepErr.not_configured": "not configured",
-    "stepErr.send_failed": "sending failed"
+    "stepErr.send_failed": "sending failed",
+    "ev.reserveSale": "After-sale report (API reserves)",
+    "ev.reserveHourly": "Hourly report (API reserves)",
+    "ev.reserveDaily": "Daily report (API reserves)",
+    "ev.fundsLow": "Alert: low funds at an API provider",
+    "cat.finance": "Finance and API reserves",
+    "chAdminPanel": "Admin panel"
   },
   "reg": {
     "title": "Registration and security",

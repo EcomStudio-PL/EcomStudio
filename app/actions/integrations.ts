@@ -733,7 +733,7 @@ const KNOWN_EVENTS: readonly string[] = NOTIFICATION_EVENTS.map((event) => event
  *  left exactly as the database has it — which is what keeps flipping the
  *  e-mail switch from quietly rewriting the Telegram one the operator set
  *  months ago (and the other way round). */
-export type NotificationChannelPatch = { telegram?: boolean; adminEmail?: boolean };
+export type NotificationChannelPatch = { telegram?: boolean; adminEmail?: boolean; adminPanel?: boolean };
 
 /**
  * Save the switchboard.
@@ -755,12 +755,15 @@ export async function saveNotificationPreferencesAction(
       telegram_off: [] as string[],
       admin_email_on: [] as string[],
       admin_email_off: [] as string[],
+      admin_panel_on: [] as string[],
+      admin_panel_off: [] as string[],
     };
     for (const event of KNOWN_EVENTS) {
       const patch = prefs[event];
       if (!patch) continue;
       if (patch.telegram !== undefined) buckets[patch.telegram ? "telegram_on" : "telegram_off"].push(event);
       if (patch.adminEmail !== undefined) buckets[patch.adminEmail ? "admin_email_on" : "admin_email_off"].push(event);
+      if (patch.adminPanel !== undefined) buckets[patch.adminPanel ? "admin_panel_on" : "admin_panel_off"].push(event);
     }
     // Written out rather than built from a column name, so each statement's
     // payload is a plain typed object the compiler checks against the table.
@@ -769,6 +772,8 @@ export async function saveNotificationPreferencesAction(
       { events: buckets.telegram_off, patch: { telegram_enabled: false } },
       { events: buckets.admin_email_on, patch: { admin_email_enabled: true } },
       { events: buckets.admin_email_off, patch: { admin_email_enabled: false } },
+      { events: buckets.admin_panel_on, patch: { admin_panel_enabled: true } },
+      { events: buckets.admin_panel_off, patch: { admin_panel_enabled: false } },
     ];
     if (updates.every((update) => update.events.length === 0)) return { ok: false, error: "invalid" };
 

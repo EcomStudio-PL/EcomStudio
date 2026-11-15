@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
-import { AlertTriangle, CreditCard, History, Mail, Users } from "lucide-react";
+import { AlertTriangle, CreditCard, History, Landmark, Mail, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
@@ -44,6 +44,8 @@ export type NotificationPrefRow = {
   wired: boolean;
   telegram: boolean;
   adminEmail: boolean;
+  /** Since 0180: the message is kept in the admin panel itself. */
+  adminPanel: boolean;
 };
 
 /** One row of the delivery log, read and formatted server-side: the queue's own
@@ -74,6 +76,10 @@ const EVENT_LABELS: Record<NotificationEvent, string> = {
   "payment.failed": "comm.ev.paymentFailed",
   "subscription.cancelled": "comm.ev.subscriptionCancelled",
   "system.error": "comm.ev.systemError",
+  "finance.reserve_sale": "comm.ev.reserveSale",
+  "finance.reserve_hourly": "comm.ev.reserveHourly",
+  "finance.reserve_daily": "comm.ev.reserveDaily",
+  "finance.funds_low": "comm.ev.fundsLow",
 };
 
 const CATEGORY_ICONS: Record<NotificationCategory, LucideIcon> = {
@@ -81,11 +87,13 @@ const CATEGORY_ICONS: Record<NotificationCategory, LucideIcon> = {
   users: Users,
   sales: CreditCard,
   system: AlertTriangle,
+  finance: Landmark,
 };
 
-const CHANNEL_LABELS: Record<NotificationChannel, string> = {
+const CHANNEL_LABELS: Record<NotificationChannel | "admin_panel", string> = {
   telegram: "comm.chTelegram",
   admin_email: "comm.chAdminEmail",
+  admin_panel: "comm.chAdminPanel",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -166,7 +174,7 @@ function groupByCategory(rows: NotificationPrefRow[]): Group[] {
 
 /** Which switch is being saved, and which test is running. The key carries the
  *  channel so flipping Telegram never locks the e-mail switch beside it. */
-type SwitchKey = `${string}:${"telegram" | "adminEmail"}`;
+type SwitchKey = `${string}:${"telegram" | "adminEmail" | "adminPanel"}`;
 type Running = "registration" | "waitlist" | null;
 
 export function NotificationPrefs({ rows, telegramConnected, adminEmail, log }: {
@@ -179,14 +187,14 @@ export function NotificationPrefs({ rows, telegramConnected, adminEmail, log }: 
   const { t } = useI18n();
   const router = useRouter();
   const [state, setState] = useState(
-    () => Object.fromEntries(rows.map((row) => [row.type, { telegram: row.telegram, adminEmail: row.adminEmail }]))
+    () => Object.fromEntries(rows.map((row) => [row.type, { telegram: row.telegram, adminEmail: row.adminEmail, adminPanel: row.adminPanel }]))
   );
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [running, setRunning] = useState<Running>(null);
 
   const adminEmailReady = adminEmail === "ready";
 
-  async function toggle(type: NotificationEvent, channel: "telegram" | "adminEmail", next: boolean) {
+  async function toggle(type: NotificationEvent, channel: "telegram" | "adminEmail" | "adminPanel", next: boolean) {
     const key: SwitchKey = `${type}:${channel}`;
     setSaving((prev) => ({ ...prev, [key]: true }));
     setState((prev) => ({ ...prev, [type]: { ...prev[type], [channel]: next } }));
@@ -265,6 +273,15 @@ export function NotificationPrefs({ rows, telegramConnected, adminEmail, log }: 
                       warning={t(adminEmail === "no_recipient" ? "comm.err.adminEmailMissing" : "comm.err.mailNotConfigured")}
                       onChange={(next) => void toggle(row.type, "adminEmail", next)}
                     />
+                    {row.category === "finance" && (
+                      <ChannelSwitch
+                        name={t("comm.chAdminPanel")} event={label}
+                        checked={state[row.type]?.adminPanel === true}
+                        saving={saving[`${row.type}:adminPanel`] === true}
+                        deliverable warning=""
+                        onChange={(next) => void toggle(row.type, "adminPanel", next)}
+                      />
+                    )}
                   </div>
                 </li>
               );
@@ -412,7 +429,7 @@ function eventLabel(type: string, t: (key: string) => string): string {
 }
 
 function channelLabel(channel: string, t: (key: string) => string): string {
-  const key = CHANNEL_LABELS[channel as NotificationChannel];
+  const key = CHANNEL_LABELS[channel as NotificationChannel | "admin_panel"];
   return key ? t(key) : channel;
 }
 

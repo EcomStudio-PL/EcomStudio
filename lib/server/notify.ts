@@ -50,9 +50,14 @@ export type NotificationEvent =
   | "subscription.renewed"
   | "payment.failed"
   | "subscription.cancelled"
-  | "system.error";
+  | "system.error"
+  // API Reserve Center (0180): admin reports about API funds and reserves.
+  | "finance.reserve_sale"
+  | "finance.reserve_hourly"
+  | "finance.reserve_daily"
+  | "finance.funds_low";
 
-export type NotificationCategory = "sales" | "users" | "mail" | "system";
+export type NotificationCategory = "sales" | "users" | "mail" | "system" | "finance";
 
 /**
  * The catalogue the admin panel renders, in the same order and with the same
@@ -82,6 +87,10 @@ export const NOTIFICATION_EVENTS: readonly {
   { type: "payment.failed", category: "sales", sortOrder: 80, wired: false },
   { type: "subscription.cancelled", category: "sales", sortOrder: 90, wired: false },
   { type: "system.error", category: "system", sortOrder: 100, wired: true },
+  { type: "finance.reserve_sale", category: "finance", sortOrder: 110, wired: true },
+  { type: "finance.reserve_hourly", category: "finance", sortOrder: 120, wired: true },
+  { type: "finance.reserve_daily", category: "finance", sortOrder: 130, wired: true },
+  { type: "finance.funds_low", category: "finance", sortOrder: 140, wired: true },
 ];
 
 /** The renderable half of a notification — what `formatTelegram` needs. */
@@ -214,6 +223,9 @@ export async function notify(supabase: Client, input: NotifyInput): Promise<void
         icon: input.icon ?? null,
         rows: input.rows ?? [],
         quote: input.quote ?? null,
+        // Since 0180 the long breakdown of a report survives the queue (the
+        // renderer folds it into an expandable block); absent for other events.
+        details: input.details ?? null,
         footer: input.footer ?? null,
         data: input.data ?? null,
       },
@@ -394,6 +406,7 @@ export function readClaim(raw: unknown): ClaimedRow | null {
       icon: asString(payload.icon) || undefined,
       rows: readRows(payload.rows),
       quote: asString(payload.quote) || undefined,
+      details: asString(payload.details) || undefined,
       footer: asString(payload.footer) || undefined,
       data: readData(payload.data),
     },

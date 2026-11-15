@@ -202,6 +202,11 @@ const ACTIONS: Record<string, { label: string; path: (ctx: Record<string, string
   "waitlist.signup": { label: "Otwórz listę", path: () => "/admin/waitlist?view=pending" },
   "mail.received": { label: "Otwórz skrzynkę", path: () => "/admin/communication" },
   "system.error": { label: "Otwórz log", path: () => "/admin/logs" },
+  // API Reserve Center (0180).
+  "finance.reserve_sale": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
+  "finance.reserve_hourly": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
+  "finance.reserve_daily": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
+  "finance.funds_low": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
 };
 
 /* ── one voice per event ────────────────────────────────────────────────────
@@ -220,6 +225,10 @@ const SUBTITLES: Record<string, string> = {
   "subscription.renewed": "Subskrypcja odnowiona na kolejny okres",
   "subscription.cancelled": "Subskrypcja anulowana",
   "system.error": "Zdarzenie wymagające uwagi operatora",
+  "finance.reserve_sale": "Potwierdzona płatność — aktualizacja rezerw API",
+  "finance.reserve_hourly": "Ostatnia godzina i stan środków u dostawców API",
+  "finance.reserve_daily": "Sprzedaż, kredyty, koszty API i rezerwy z całego dnia",
+  "finance.funds_low": "Środki u dostawcy API wymagają uzupełnienia",
 };
 
 export function subtitleFor(event: string | undefined): string {

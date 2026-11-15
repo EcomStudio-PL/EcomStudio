@@ -1479,6 +1479,198 @@
         "revenueNet": "Umsatz netto",
         "details": "Details"
       }
+    },
+    "reserves": {
+      "tab": {
+        "overview": "Übersicht",
+        "reserves": "API-Reserven"
+      },
+      "sub": "Guthaben bei API-Anbietern, Credits der Kunden und das Geld, das dafür bereitgehalten werden muss. Nur für Admins.",
+      "unavailable": "Reservedaten konnten nicht geladen werden (Migration 0180 oder Rechte fehlen).",
+      "noData": "Keine Daten",
+      "disabled": "Berichte aus",
+      "covered": "Das verfügbare Guthaben deckt die empfohlene Reserve.",
+      "needsTopup": "Abzusichern: {amount}",
+      "unknownFunds": "Kein Guthaben für: {list} — manuell eintragen oder synchronisieren.",
+      "cautiousShort": "vorsichtig",
+      "inactive": "inaktiv",
+      "hours": "{n} Std.",
+      "days": "{n} Tage",
+      "save": "Speichern",
+      "saved": "Gespeichert.",
+      "synced": "Synchronisierung abgeschlossen.",
+      "syncNow": "Synchronisieren",
+      "enterFunds": "Guthaben / Aufladung",
+      "providerSettings": "Einstellungen",
+      "billingPanel": "Abrechnung",
+      "status": {
+        "ok": "OK",
+        "warning": "Warnung",
+        "critical": "Kritisch",
+        "no_data": "Keine Daten",
+        "off": "Nicht überwacht"
+      },
+      "basis": {
+        "confirmed": "Bestätigt",
+        "estimated": "Geschätzt",
+        "manual": "Manuell eingetragen",
+        "unavailable": "Nicht verfügbar"
+      },
+      "mode": {
+        "auto": "Automatisch (Anbieter-API)",
+        "manual": "Manuell",
+        "postpaid": "Postpaid (nachträgliche Rechnung)",
+        "off": "Nicht überwachen"
+      },
+      "cap": {
+        "api": "Guthaben über die offizielle Anbieter-API.",
+        "manual": "Keine Guthaben-API — Guthaben eintragen; erfasste Kosten werden abgezogen.",
+        "postpaid": "Nachträgliche Abrechnung — kein Prepaid-Guthaben; angezeigt wird der zurückzulegende Betrag."
+      },
+      "sync": {
+        "ok": "letzte Synchronisierung erfolgreich",
+        "error": "Synchronisierung fehlgeschlagen",
+        "unsupported": "die Anbieter-API liefert kein Guthaben",
+        "not_configured": "kein API-Schlüssel"
+      },
+      "ev": {
+        "balance_set": "Guthaben",
+        "topup": "Aufladung",
+        "correction": "Korrektur",
+        "sync": "Synchronisierung"
+      },
+      "pool": {
+        "subscription": "Abo",
+        "topup": "Aufladungen",
+        "bonus": "Bonus",
+        "legacy": "Alt-Guthaben",
+        "tranches": "Künftige Jahrestranchen",
+        "expiring": "Verfallen in {days} Tagen"
+      },
+      "scenario": {
+        "standard": "Standard",
+        "cautious": "Vorsichtig"
+      },
+      "source": {
+        "history": "Kosten pro Credit aus der Historie: API-Kosten der Kunden ÷ genutzte Credits.",
+        "config": "Kosten pro Credit aus der Modellkonfiguration (Anbieterpreis ÷ Creditpreis) — zu wenig Historie.",
+        "none": "Keine Grundlage für Credit-Kosten — Modellpreise konfigurieren."
+      },
+      "assume": {
+        "unknown_costs": "Einige Aufrufe haben unbekannte Kosten — gesondert gezählt, nie als $0.",
+        "history_insufficient": "Zu wenig Historie (< {n} Credits) — Kosten pro Credit aus der Bildmodell-Konfiguration; Nebenkosten (Analyse, Prompts) unbekannt.",
+        "no_cost_basis": "Keine Historie und keine Modellpreise — keine Prognose möglich.",
+        "utilization_full": "Keine Verfallshistorie — volle Nutzung der Abo-Credits angenommen."
+      },
+      "kpi": {
+        "available": "Guthaben bei Anbietern",
+        "spendToday": "API-Kosten heute",
+        "spendWindows": "24 Std. {h24} · 7 Tage {d7} · 30 Tage {d30}",
+        "reserve": "Empfohlene Reserve",
+        "reserveHint": "Puffer {buffer}% · {days} Tage · Szenario {scenario}",
+        "missing": "Fehlt zur Absicherung",
+        "missingHint": "Aufladungen {topup} · Postpaid {secure}",
+        "customerCredits": "Verbleibende Kunden-Credits",
+        "customerCreditsHint": "interne Konten separat: {internal}",
+        "soldMonth": "Verkaufte Credits (Monat)",
+        "soldHint": "Abos {sub} · Aufladungen {topup} · Bonus {bonus}",
+        "usedMonth": "Genutzte Credits (Monat)",
+        "expiredHint": "verfallen: {n}",
+        "exposure": "Kosten der verfügbaren Credits",
+        "exposureHint": "vorsichtiges Szenario: {cautious}"
+      },
+      "credits": {
+        "title": "Credits — Pools",
+        "sub": "Zahlende Kunden und interne Konten getrennt.",
+        "pool": "Pool",
+        "customers": "Kunden",
+        "internal": "Intern"
+      },
+      "forecast": {
+        "title": "Bedarfsprognose",
+        "cpc": "API-Kosten pro Credit",
+        "utilization": "Nutzung der Abo-Credits",
+        "h24": "Nächste 24 Std.",
+        "d7": "Nächste 7 Tage",
+        "horizon": "Horizont {days} Tage",
+        "spendSplit": "Kosten im Monat",
+        "spendSplitValue": "Kunden {customers} · intern {internal} · System {system}",
+        "unknownCalls": "{n} Aufrufe in diesem Monat haben unbekannte Kosten."
+      },
+      "providers": {
+        "title": "API-Anbieter"
+      },
+      "p": {
+        "available": "Verfügbar",
+        "limitLeft": "Restlimit",
+        "postpaidNoBalance": "Postpaid — kein Guthaben",
+        "hour": "Letzte Stunde",
+        "today": "Heute",
+        "month": "Dieser Monat",
+        "calls": "{n} Aufrufe",
+        "share": "{n}% aller Kosten",
+        "need": "Bedarf 24 Std. / 7 Tage",
+        "needHint": "nach gewähltem Szenario",
+        "reserve": "Empfohlene Reserve",
+        "topup": "Empfohlene Aufladung",
+        "secure": "Zurückzulegen (Rechnung)",
+        "runway": "Reicht etwa",
+        "sync": "Letzte Synchronisierung",
+        "unknown": "{n} Aufrufe ohne bekannte Kosten — das Guthaben kann niedriger sein."
+      },
+      "f": {
+        "kind": "Eintragsart",
+        "balanceSet": "Aktuelles Guthaben beim Anbieter",
+        "topup": "Aufladung erfassen",
+        "correction": "Korrektur (±)",
+        "amount": "Betrag (USD)",
+        "note": "Notiz",
+        "help": {
+          "balance_set": "Neuer Bezugspunkt: ab jetzt werden erfasste Kosten davon abgezogen.",
+          "topup": "Erhöht das geschätzte Guthaben. Es wird nichts automatisch gekauft.",
+          "correction": "Positiver oder negativer Betrag mit Notiz — für Abweichungen zum Anbieterpanel."
+        },
+        "mode": "Überwachungsmodus",
+        "billingUrl": "URL der Abrechnung",
+        "warn": "Warnschwelle (USD)",
+        "critical": "Kritische Schwelle (USD)",
+        "limit": "Monatliches Kreditlimit (USD, optional)"
+      },
+      "settings": {
+        "title": "Reserve- und Berichtseinstellungen",
+        "sub": "Sicherheitspuffer, Prognosehorizont und Berichtsplan.",
+        "enabled": "Berichte und Warnungen an",
+        "buffer": "Sicherheitspuffer (%)",
+        "horizon": "Reservehorizont (Tage)",
+        "scenario": "Szenario der empfohlenen Reserve",
+        "cautiousFactor": "Multiplikator vorsichtiges Szenario",
+        "history": "Historienfenster (Tage)",
+        "minHistory": "Min. Credits in der Historie",
+        "dailyHour": "Uhrzeit des Tagesberichts",
+        "timezone": "Zeitzone der Berichte",
+        "alertRepeat": "Warnung wiederholen alle (Std.)",
+        "skipEmpty": "Leere Stundenberichte überspringen"
+      },
+      "reports": {
+        "title": "Berichte und Warnungen",
+        "sub": "Letzte Zustellungen mit Status, je Kanal.",
+        "channels": "Kanäle: Kommunikation → Benachrichtigungen",
+        "sent": "Testbericht an die aktiven Kanäle gesendet.",
+        "empty": "Noch nichts gesendet.",
+        "test": {
+          "sale": "Test: nach Verkauf",
+          "hourly": "Test: stündlich",
+          "daily": "Test: täglich",
+          "funds_low": "Test: wenig Guthaben"
+        }
+      },
+      "err": {
+        "notAdmin": "Nur ein Administrator kann das tun.",
+        "timezone": "Unbekannte Zeitzone (z. B. Europe/Warsaw).",
+        "url": "Die URL muss mit https:// beginnen.",
+        "invalid": "Ungültiger Wert.",
+        "generic": "Fehlgeschlagen. Bitte erneut versuchen."
+      }
     }
   },
   "support": {
@@ -5621,7 +5813,13 @@
     "stepErr.network": "der Server ist nicht erreichbar",
     "stepErr.generic": "die Verbindung ist fehlgeschlagen",
     "stepErr.not_configured": "nicht konfiguriert",
-    "stepErr.send_failed": "Senden fehlgeschlagen"
+    "stepErr.send_failed": "Senden fehlgeschlagen",
+    "ev.reserveSale": "Bericht nach Verkauf (API-Reserven)",
+    "ev.reserveHourly": "Stundenbericht (API-Reserven)",
+    "ev.reserveDaily": "Tagesbericht (API-Reserven)",
+    "ev.fundsLow": "Warnung: wenig Guthaben beim API-Anbieter",
+    "cat.finance": "Finanzen und API-Reserven",
+    "chAdminPanel": "Admin-Panel"
   },
   "reg": {
     "title": "Registrierung und Sicherheit",

@@ -2621,6 +2621,63 @@ export type Database = {
         }
         Relationships: []
       }
+      api_reserve_settings: {
+        Row: {
+          alert_repeat_hours: number
+          buffer_percent: number
+          cautious_factor: number
+          daily_report_hour: number
+          enabled: boolean
+          history_days: number
+          horizon_days: number
+          hourly_skip_empty: boolean
+          id: string
+          min_history_credits: number
+          report_timezone: string
+          scenario: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: { id?: string }
+        Update: { id?: string }
+        Relationships: []
+      }
+      api_provider_funds: {
+        Row: {
+          balance_at: string | null
+          balance_basis: string | null
+          balance_usd_micros: number | null
+          billing_url: string | null
+          credit_limit_usd_micros: number | null
+          critical_usd_micros: number
+          last_sync_at: string | null
+          last_sync_error_safe: string | null
+          last_sync_status: string | null
+          mode: string
+          provider_id: string
+          updated_at: string
+          updated_by: string | null
+          warn_usd_micros: number
+        }
+        Insert: { provider_id: string }
+        Update: { provider_id?: string }
+        Relationships: []
+      }
+      api_provider_fund_events: {
+        Row: {
+          amount_usd_micros: number | null
+          balance_usd_micros: number | null
+          created_at: string
+          created_by: string | null
+          id: number
+          kind: string
+          note: string | null
+          provider_id: string
+        }
+        Insert: { provider_id: string; kind: string }
+        Update: { kind?: string }
+        Relationships: []
+      }
       pricing_cards: {
         Row: {
           doc: Json
@@ -5586,6 +5643,7 @@ export type Database = {
       notification_preferences: {
         Row: {
           admin_email_enabled: boolean
+          admin_panel_enabled: boolean
           category: string
           event_type: string
           sort_order: number
@@ -5594,6 +5652,7 @@ export type Database = {
         }
         Insert: {
           admin_email_enabled?: boolean
+          admin_panel_enabled?: boolean
           category: string
           event_type: string
           sort_order?: number
@@ -5602,6 +5661,7 @@ export type Database = {
         }
         Update: {
           admin_email_enabled?: boolean
+          admin_panel_enabled?: boolean
           category?: string
           event_type?: string
           sort_order?: number
@@ -7845,6 +7905,30 @@ export type Database = {
       pricing_cards_write: {
         Args: { p_doc: Json; p_base: string | null; p_action: string }
         Returns: Json
+      }
+      api_reserve_snapshot: {
+        Args: { p_token?: string }
+        Returns: Json
+      }
+      api_reserve_sale_facts: {
+        Args: { p_token: string; p_payment_id: string }
+        Returns: Json
+      }
+      api_reserve_settings_save: {
+        Args: { p: Json }
+        Returns: Json
+      }
+      api_provider_funds_save: {
+        Args: { p_provider: string; p: Json }
+        Returns: undefined
+      }
+      api_provider_fund_record: {
+        Args: { p_provider: string; p_kind: string; p_amount_usd_micros: number; p_note?: string }
+        Returns: undefined
+      }
+      api_provider_sync_record: {
+        Args: { p_token: string; p_slug: string; p_status: string; p_balance_usd_micros: number | null; p_error: string | null }
+        Returns: undefined
       }
       grovshot_diagnostics_purge: {
         Args: Record<PropertyKey, never>

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { usdPlnRate } from "@/lib/server/fx";
 import { financeEvents, financeOverview, financePeriod } from "@/lib/services/finance";
 import { FinanceFigures, FinanceEventsTable } from "@/components/admin/finance-figures";
+import { FinanceTabs } from "@/components/admin/finance-tabs";
 import { cn } from "@/lib/utils";
 
 /**
@@ -47,6 +48,7 @@ export default async function AdminFinance({ searchParams }: {
   return (
     <div>
       <PageHeader title={t("admin.nav.financeView")} sub={t("admin.finance.sub")} />
+      <FinanceTabs />
 
       <div className="mb-5 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1.5">

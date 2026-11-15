@@ -287,7 +287,10 @@ async function main() {
       // pools, the top-up slider (server-priced order), invoice-line grants,
       // fees, "≈ zł". Checkout/billing/offer above were re-pinned by it too.
       ["lib/plans/pricing.ts", "ea6bb85dc5648e27f71d2e6a9e3e251357028bca0adff23389d46191d71b3a63"],
-      ["lib/server/stripe-webhook.ts", "7e30b173c0ca5c18f3768d429000cc6388995ebf4fdde50a64cc85870ace0f25"],
+      // + API Reserve Center (0180): scheduleSaleReport() after an APPLIED
+      //   settlement — an after-response report, no change to what is booked
+      //   (was 7e30b173… before).
+      ["lib/server/stripe-webhook.ts", "bdaed1651896af37136b34d9948fd554fcaa53ae44ae75d1a47c445d4aacc746"],
       ["lib/server/stripe-pricing.ts", "7f4b0b5c16155649bbce52b87e24a50bf7ea8944922a5fe04179f0527fdc1974"],
       ["components/plan/pricing-model.ts", "7a9878786e320e08013249d679f587367e9a3488816d6809da22589aeb68fa8e"],
       ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],

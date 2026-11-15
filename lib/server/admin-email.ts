@@ -74,6 +74,11 @@ const DESTINATIONS: Readonly<Record<string, { label: string; path: string }>> = 
   "user.registered": { label: "Otwórz listę użytkowników", path: "/admin/users" },
   "waitlist.signup": { label: "Otwórz listę oczekujących", path: "/admin/waitlist?view=pending" },
   "contact.message": { label: "Otwórz zgłoszenia", path: "/admin/support/zgloszenia" },
+  // API Reserve Center (0180).
+  "finance.reserve_sale": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
+  "finance.reserve_hourly": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
+  "finance.reserve_daily": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
+  "finance.funds_low": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
 };
 
 const DEFAULT_DESTINATION = { label: "Otwórz panel GrovBase", path: "/admin" };
