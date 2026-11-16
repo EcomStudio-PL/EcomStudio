@@ -899,7 +899,9 @@ const PAY: readonly [string, string][] = [
   // The old pricing board is gone: /plan and /plany share components/plan/pricing-page.tsx.
   ["lib/server/checkout.ts", "910d7cda06fa604513452fd77154698d595d021ef4d0285fda14370a60a86c20"],
   // + API Reserve Center (0180): the after-sale report hook (was 7e30b173…).
-  ["lib/server/stripe-webhook.ts", "bdaed1651896af37136b34d9948fd554fcaa53ae44ae75d1a47c445d4aacc746"],
+  // + Smart Subscription Management (0181): the plan-change settlement hook
+  //   after stripe_settle_v2 (was bdaed165…).
+  ["lib/server/stripe-webhook.ts", "91d3f1548383bd559469f86ea0e2e1824b94703b1c78680e4d51add40570118b"],
   ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
   ["components/plan/pricing-model.ts", "7a9878786e320e08013249d679f587367e9a3488816d6809da22589aeb68fa8e"],
   // FAQ V1: only the FAQ question list left this file (the questions are the

@@ -1,17 +1,18 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Landmark, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Landmark, Repeat, ShieldCheck, type LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 /**
- * FINANSE — two tabs, each a real route (like Komunikacja): the period
- * analytics (0176) and the API Reserve Center (0180), which complements it.
+ * FINANSE — three tabs, each a real route (like Komunikacja): the period
+ * analytics (0176), the API Reserve Center (0180) and plan changes (0181).
  */
 const TABS: readonly { href: string; key: string; icon: LucideIcon }[] = [
   { href: "/admin/finance", key: "overview", icon: Landmark },
   { href: "/admin/finance/rezerwy", key: "reserves", icon: ShieldCheck },
+  { href: "/admin/finance/zmiany-planow", key: "planChanges", icon: Repeat },
 ];
 
 export function FinanceTabs() {

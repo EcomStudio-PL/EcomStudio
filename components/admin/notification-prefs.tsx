@@ -80,6 +80,7 @@ const EVENT_LABELS: Record<NotificationEvent, string> = {
   "finance.reserve_hourly": "comm.ev.reserveHourly",
   "finance.reserve_daily": "comm.ev.reserveDaily",
   "finance.funds_low": "comm.ev.fundsLow",
+  "finance.plan_change_review": "comm.ev.planChangeReview",
 };
 
 const CATEGORY_ICONS: Record<NotificationCategory, LucideIcon> = {

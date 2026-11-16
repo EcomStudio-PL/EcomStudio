@@ -97,4 +97,21 @@ export type PricingPageData = {
    * null / absent: the code default (the cards exactly as before).
    */
   cards?: PricingCardsDoc | null;
+  /**
+   * SMART SUBSCRIPTION MANAGEMENT (0181) — present only while the module is ON
+   * and the viewer's workspace has an active subscription. Absent: the cards
+   * behave exactly as before ("you already have a plan").
+   */
+  planChange?: PlanChangeView | null;
+};
+
+export type BillingPeriod = "monthly" | "annual";
+
+export type PlanChangeView = {
+  currentPlanId: string;
+  currentPeriod: BillingPeriod;
+  /** A change already reserved, waiting for its payment, or scheduled. */
+  pending: { id: string; status: string; toPlanId: string; toPeriod: BillingPeriod; effectiveAt: string | null; timing: string } | null;
+  /** For the bank step (3-D Secure) and a new payment method — public by design. */
+  publishableKey: string | null;
 };

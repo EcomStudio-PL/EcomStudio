@@ -1483,7 +1483,8 @@
     "reserves": {
       "tab": {
         "overview": "Übersicht",
-        "reserves": "API-Reserven"
+        "reserves": "API-Reserven",
+        "planChanges": "Planwechsel"
       },
       "sub": "Guthaben bei API-Anbietern, Credits der Kunden und das Geld, das dafür bereitgehalten werden muss. Nur für Admins.",
       "unavailable": "Reservedaten konnten nicht geladen werden (Migration 0180 oder Rechte fehlen).",
@@ -1671,6 +1672,69 @@
         "invalid": "Ungültiger Wert.",
         "generic": "Fehlgeschlagen. Bitte erneut versuchen."
       }
+    },
+    "planChanges": {
+      "sub": "Planwechsel der Kunden: Abzüge, Pool-Reservierungen, Abrechnung mit Stripe.",
+      "on": "Modul an",
+      "off": "Modul aus",
+      "portalUnknown": "Customer Portal: nicht lesbar",
+      "portalOpen": "Customer Portal: Planwechsel AN",
+      "portalClosed": "Customer Portal: Planwechsel aus",
+      "rule1": "Abzug = min(Wert der Restlaufzeit, Wert ungenutzter Credits des aktuellen Pools) — nur auf dem Server berechnet.",
+      "rule2": "Ein Abonnement: ein Wechsel ändert das bestehende (proration_behavior none + einmaliger Gutschein) — nie ein doppelter Abzug.",
+      "rule3": "Credits erst nach dem signierten Webhook; der Pool wird vor der Zahlung reserviert und bei Fehlschlag freigegeben.",
+      "rule4": "Einschalten deaktiviert den Planwechsel im Customer Portal (Karte, Rechnungen, Kündigung bleiben); Ausschalten stellt ihn wieder her.",
+      "enable": "Einschalten",
+      "disable": "Ausschalten",
+      "enableTitle": "Planwechsel einschalten?",
+      "enableBody": "Kunden mit aktivem Plan sehen Wechsel-Buttons. Der Planwechsel im Stripe Customer Portal wird deaktiviert (Karte, Rechnungen und Kündigung bleiben). Erst nach einem Zahlungstest im Stripe-Testmodus einschalten.",
+      "disableTitle": "Planwechsel ausschalten?",
+      "disableBody": "Die Wechsel-Buttons verschwinden und das Customer Portal erhält seine vorherige Planwechsel-Konfiguration zurück. Laufende Wechsel schließen Webhook und Sweep ab.",
+      "enabledOk": "Modul eingeschaltet.",
+      "disabledOk": "Modul ausgeschaltet.",
+      "switchFailed": "Das Modul konnte nicht umgeschaltet werden (Stripe oder Berechtigungen).",
+      "reviewTitle": "Manuelle Bearbeitung: {n}",
+      "reviewSub": "Wechsel, die das System nicht automatisch ausgeführt hat (ungewöhnliches Abo, Betragsabweichung).",
+      "historyTitle": "Verlauf",
+      "historySub": "Die letzten 60 Wechsel mit allen Beträgen.",
+      "empty": "Keine Planwechsel.",
+      "col": {
+        "when": "Wann",
+        "workspace": "Workspace",
+        "change": "Wechsel",
+        "list": "Preis",
+        "deduction": "Abzug",
+        "due": "Fällig",
+        "closed": "Geschlossene Credits",
+        "status": "Status"
+      },
+      "period": {
+        "monthly": "Mon.",
+        "annual": "Jahr"
+      },
+      "kind": {
+        "upgrade": "höherer Plan",
+        "downgrade": "niedrigerer Plan",
+        "to_annual": "auf jährlich",
+        "to_monthly": "auf monatlich"
+      },
+      "timing": {
+        "immediate": "sofort",
+        "period_end": "zum Periodenende"
+      },
+      "status": {
+        "quoted": "Angebot",
+        "held": "reserviert",
+        "awaiting_payment": "wartet auf Zahlung",
+        "scheduled": "geplant",
+        "completed": "abgerechnet",
+        "released": "freigegeben",
+        "canceled": "abgebrochen",
+        "expired": "abgelaufen",
+        "failed": "fehlgeschlagen",
+        "manual_review": "manuelle Bearbeitung"
+      },
+      "late": "Zahlung nach Freigabe"
     }
   },
   "support": {
@@ -4814,6 +4878,79 @@
     "creditsRule": "Plan-Credits gelten bis zum Ende des bezahlten Monats (Jahresplan: 12 monatliche Zuteilungen). Aufladungen verfallen nicht und gelten bei aktivem Plan. Preise in USD, brutto.",
     "card": {
       "unavailable": "nicht enthalten"
+    },
+    "change": {
+      "title": "Plan wechseln",
+      "loading": "Wir berechnen das genaue Angebot…",
+      "validUntil": "Angebot gültig bis {time}. Die Beträge hat der Server aus deiner Zahlung für den laufenden Zeitraum berechnet.",
+      "confirmScheduled": "Wechsel planen",
+      "confirmPay": "{amount} zahlen und Plan wechseln",
+      "waiting": "Zahlung eingegangen — wir warten auf die Bestätigung von Stripe. Die Credits erscheinen, sobald die Zahlung verbucht ist.",
+      "done": "Fertig: Du hast jetzt {plan}. Wir haben {credits} Credits für den neuen Zeitraum gutgeschrieben.",
+      "scheduledDone": "Geplant: {plan} gilt ab {date}. Bis dahin ändert sich nichts.",
+      "perYear": "/ Jahr",
+      "perMonth": "/ Monat",
+      "period": {
+        "monthly": "monatlich",
+        "annual": "jährlich"
+      },
+      "from": "Aktueller Plan",
+      "to": "Neuer Plan",
+      "when": "Wann",
+      "now": "Sofort (neuer Zeitraum ab heute)",
+      "atDate": "Ab {date} (Ende des bezahlten Zeitraums)",
+      "listPrice": "Preis des neuen Plans",
+      "timeValue": "Wert der Restlaufzeit",
+      "timeValueHint": "{pct} % des Zeitraums, von {basis} bezahlt",
+      "creditValue": "Wert ungenutzter Credits",
+      "creditValueHint": "{n} Credits aus dem aktuellen Plan-Pool",
+      "deduction": "Abzug",
+      "deductionHint": "Der kleinere der beiden Beträge oben",
+      "dueNow": "Jetzt fällig",
+      "dueLater": "Fällig am {date}",
+      "creditsAnnual": "Neuer Jahresplan: {n} Credits sofort, weitere Tranchen monatlich (nie 12 Monate auf einmal).",
+      "creditsMonthly": "Neuer Plan: der volle Pool von {n} Credits direkt nach der Zahlung.",
+      "oldClosed": "{n} ungenutzte Credits aus dem aktuellen Plan-Pool werden im Abzug verrechnet (der Pool wird geschlossen).",
+      "oldKept": "Deine aktuellen Plan-Credits bleiben bis zu ihrem ursprünglichen Ablauf.",
+      "oldContinues": "Bis {date} behältst du deinen aktuellen Plan und seine Credits unverändert.",
+      "otherPools": "Aufladungen, Boni und frühere Credits werden nicht verändert.",
+      "noRefund": "Ein niedrigerer Plan ist keine Erstattung — du zahlst den vollen Preis des neuen Plans.",
+      "oneSubscription": "Wir ändern dein bestehendes Abonnement — es entsteht kein zweites und du zahlst nie doppelt.",
+      "paymentNeeded": "Deine Bank hat die gespeicherte Methode abgelehnt oder verlangt eine andere. Gib eine Zahlungsmethode an, um den Wechsel abzuschließen.",
+      "cancelChange": "Wechsel abbrechen",
+      "pendingScheduled": "Geplanter Wechsel zu {plan} ab {date}.",
+      "pendingPayment": "Der Wechsel zu {plan} wartet auf die Zahlung.",
+      "inProgress": "Wechsel läuft",
+      "ctaToAnnual": "Zur jährlichen Zahlung wechseln",
+      "ctaToMonthly": "Zur monatlichen Zahlung wechseln",
+      "ctaUpgrade": "Auf {name} upgraden",
+      "ctaDowngrade": "Zu {name} wechseln",
+      "ctaShort": "Plan wechseln",
+      "refuse": {
+        "disabled": "Planwechsel sind noch nicht verfügbar. Kontaktiere uns, wir erledigen das für dich.",
+        "payments_disabled": "Zahlungen sind vorübergehend nicht verfügbar. Bitte später erneut versuchen.",
+        "no_subscription": "Du hast kein aktives Abo — wähle einen Plan auf dieser Seite.",
+        "subscription_not_active": "Dein Abo ist nicht aktiv (z. B. offene Zahlung). Begleiche sie in den Zahlungseinstellungen.",
+        "cancel_scheduled": "Dein Abo ist zur Kündigung vorgemerkt. Setze es in den Zahlungseinstellungen fort und wechsle dann den Plan.",
+        "change_in_progress": "Du hast bereits einen laufenden Planwechsel.",
+        "inflight_usage": "Eine Generierung läuft — warte, bis sie fertig ist, und versuche es erneut.",
+        "unknown_plan": "Dieser Plan ist nicht verfügbar.",
+        "not_on_sale": "Dieser Plan oder Zahlungszeitraum ist gerade nicht im Verkauf.",
+        "same_plan": "Das ist dein aktueller Plan.",
+        "too_close_to_renewal": "Dein Abo verlängert sich innerhalb von 24 Stunden. Wechsle nach der Verlängerung.",
+        "period_ended": "Der laufende Zeitraum endet gerade. Versuche es gleich noch einmal.",
+        "manual_review": "Diesen Wechsel bearbeiten wir manuell — das GrovBase-Team ist informiert und meldet sich bei dir.",
+        "quote_expired": "Das Angebot ist abgelaufen. Öffne den Wechsel erneut, um die aktuellen Beträge zu sehen.",
+        "quote_changed": "Seit dem Angebot haben sich Guthaben oder Zeitraum geändert. Öffne den Wechsel erneut.",
+        "stripe_error": "Das Zahlungssystem war nicht erreichbar. Es wurde nichts abgebucht — bitte erneut versuchen.",
+        "payment_failed": "Die Zahlung ist nicht zustande gekommen. Plan und Credits sind unverändert.",
+        "already_paid": "Dieser Wechsel ist bereits bezahlt — du siehst den neuen Plan gleich.",
+        "not_authorized": "Melde dich an, um den Plan zu wechseln.",
+        "not_found": "Dieser Wechsel wurde nicht gefunden.",
+        "generic": "Etwas ist schiefgelaufen. Bitte erneut versuchen."
+      },
+      "creditsAnnualLater": "Ab {date}: Jahresplan — {n} Credits in der ersten Tranche, weitere monatlich (nie 12 Monate auf einmal).",
+      "creditsMonthlyLater": "Ab {date}: der neue Plan mit dem vollen Pool von {n} Credits, sobald der erste Monat bezahlt ist."
     }
   },
   "mobilenav": {
@@ -5819,7 +5956,8 @@
     "ev.reserveDaily": "Tagesbericht (API-Reserven)",
     "ev.fundsLow": "Warnung: wenig Guthaben beim API-Anbieter",
     "cat.finance": "Finanzen und API-Reserven",
-    "chAdminPanel": "Admin-Panel"
+    "chAdminPanel": "Admin-Panel",
+    "ev.planChangeReview": "Planwechsel zur manuellen Bearbeitung"
   },
   "reg": {
     "title": "Registrierung und Sicherheit",

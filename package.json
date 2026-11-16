@@ -190,7 +190,9 @@
     "test:gallerytools": "esbuild scripts/gallery-tools-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/gallery-tools-tests.cjs --log-level=silent && node .next/gallery-tools-tests.cjs",
     "test:gallerytools:sql": "bash scripts/gallery-tool-mode-sql-tests.sh",
     "test:publictools": "esbuild scripts/public-tools-tests.ts --bundle --platform=node --format=cjs --alias:next/cache=./scripts/stubs/faq-next-cache.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/public-tools-tests.cjs --log-level=error && node .next/public-tools-tests.cjs",
-    "test:publictools:sql": "bash scripts/public-tools-sql-tests.sh"
+    "test:publictools:sql": "bash scripts/public-tools-sql-tests.sh",
+    "test:planchange": "esbuild scripts/plan-change-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --alias:next/cache=./scripts/stubs/faq-next-cache.ts --external:sharp --outfile=.next/plan-change-tests.cjs --log-level=silent && node .next/plan-change-tests.cjs",
+    "test:planchange:sql": "bash scripts/plan-change-sql-tests.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",

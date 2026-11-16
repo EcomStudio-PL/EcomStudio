@@ -14,8 +14,10 @@ import { TOPUP_CURRENCY, TOPUP_LIMITS } from "@/lib/plans/topup-price";
 import { usdPlnRate, type FxRate } from "@/lib/server/fx";
 import { PRICING_PAGE } from "@/components/plan/pricing-config";
 import { readCardsDoc, type PricingCardsDoc } from "@/components/plan/card-features";
+import { planChangesEnabled } from "@/lib/server/plan-change";
+import { stripePublishableKey } from "@/lib/stripe/publishable";
 import type {
-  PricingPackView, PricingPageData, PricingPlanView, PricingTierView, PricingViewer,
+  PlanChangeView, PricingPackView, PricingPageData, PricingPlanView, PricingTierView, PricingViewer,
 } from "@/components/plan/pricing-types";
 
 /** The statuses that make a second subscription a double charge — the same
@@ -69,7 +71,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
     supabase.from("subscription_plans").select(PLAN_COLUMNS).eq("active", true).order("sort_order"),
     supabase.from("credit_packages").select(PACK_COLUMNS).eq("active", true).order("sort_order"),
     workspace
-      ? supabase.from("subscriptions").select("plan_id, status")
+      ? supabase.from("subscriptions").select("plan_id, status, stripe_price_id")
         .eq("workspace_id", workspace.id).in("status", LIVE_STATUSES).limit(1)
       : Promise.resolve({ data: null }),
     workspace ? requireActivePaidPlan(supabase, workspace, now) : Promise.resolve(null),
@@ -102,7 +104,42 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
     payments: paymentsEnabled(),
     fx,
   });
-  return { ...page, cards };
+  const live = ((liveSub.data ?? [])[0] as { plan_id: string; status: string; stripe_price_id: string | null } | undefined) ?? null;
+  const planChange = workspace && live ? await readPlanChangeView(supabase, workspace.id, live, (planRows ?? []) as PlanRow[]) : null;
+  return { ...page, cards, planChange };
+}
+
+/**
+ * SMART SUBSCRIPTION MANAGEMENT (0181): what the cards need to offer a change
+ * — only while the module is ON and the subscription is active. Anything
+ * unreadable is null, and the cards keep their "you already have a plan".
+ */
+async function readPlanChangeView(
+  supabase: Client, workspaceId: string, live: { plan_id: string; status: string; stripe_price_id: string | null }, plans: PlanRow[],
+): Promise<PlanChangeView | null> {
+  try {
+    if (live.status !== "active" || !(await planChangesEnabled(supabase))) return null;
+    const plan = plans.find((p) => p.id === live.plan_id);
+    const period = plan && live.stripe_price_id
+      ? (plan.stripe_price_id_annual === live.stripe_price_id ? "annual" : plan.stripe_price_id_monthly === live.stripe_price_id ? "monthly" : null)
+      : null;
+    if (!plan || !period) return null;
+    const { data: pending } = await supabase.from("plan_changes")
+      .select("id, status, to_plan_id, to_period, effective_at, timing")
+      .eq("workspace_id", workspaceId).in("status", ["held", "awaiting_payment", "scheduled"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    return {
+      currentPlanId: plan.id,
+      currentPeriod: period,
+      pending: pending ? {
+        id: pending.id, status: pending.status, toPlanId: pending.to_plan_id,
+        toPeriod: pending.to_period === "annual" ? "annual" : "monthly", effectiveAt: pending.effective_at, timing: pending.timing,
+      } : null,
+      publishableKey: stripePublishableKey(),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

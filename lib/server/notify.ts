@@ -55,7 +55,9 @@ export type NotificationEvent =
   | "finance.reserve_sale"
   | "finance.reserve_hourly"
   | "finance.reserve_daily"
-  | "finance.funds_low";
+  | "finance.funds_low"
+  // Smart Subscription Management (0181): a plan change the app did not automate.
+  | "finance.plan_change_review";
 
 export type NotificationCategory = "sales" | "users" | "mail" | "system" | "finance";
 
@@ -91,6 +93,7 @@ export const NOTIFICATION_EVENTS: readonly {
   { type: "finance.reserve_hourly", category: "finance", sortOrder: 120, wired: true },
   { type: "finance.reserve_daily", category: "finance", sortOrder: 130, wired: true },
   { type: "finance.funds_low", category: "finance", sortOrder: 140, wired: true },
+  { type: "finance.plan_change_review", category: "finance", sortOrder: 150, wired: true },
 ];
 
 /** The renderable half of a notification — what `formatTelegram` needs. */

@@ -211,6 +211,8 @@ const ACTIONS: Record<string, { label: string; path: (ctx: Record<string, string
   "finance.reserve_hourly": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
   "finance.reserve_daily": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
   "finance.funds_low": { label: "Otwórz Rezerwy API", path: () => "/admin/finance/rezerwy" },
+  // Smart Subscription Management (0181).
+  "finance.plan_change_review": { label: "Otwórz zmiany planów", path: () => "/admin/finance/zmiany-planow" },
 };
 
 /* ── one voice per event ────────────────────────────────────────────────────
@@ -233,6 +235,7 @@ const SUBTITLES: Record<string, string> = {
   "finance.reserve_hourly": "Ostatnia godzina i stan środków u dostawców API",
   "finance.reserve_daily": "Sprzedaż, kredyty, koszty API i rezerwy z całego dnia",
   "finance.funds_low": "Środki u dostawcy API wymagają uzupełnienia",
+  "finance.plan_change_review": "Zmiana planu klienta wymaga decyzji administratora",
 };
 
 export function subtitleFor(event: string | undefined): string {

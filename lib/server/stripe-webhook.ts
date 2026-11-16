@@ -4,6 +4,7 @@ import type { Database } from "@/lib/database.types";
 import { invoiceGrants, lineFacts, type Grant, type PlanForPrice } from "@/lib/billing/invoice-grants";
 import { stripeGet } from "@/lib/stripe/client";
 import { scheduleSaleReport } from "@/lib/server/api-reserves/reports";
+import { settlePlanChange } from "@/lib/server/plan-change";
 
 /**
  * WHAT A STRIPE EVENT DOES TO GROVBASE.
@@ -771,6 +772,17 @@ async function onInvoicePaid(
   if (settleError) throw new Error(`settle_failed:${settleError.code ?? "unknown"}`);
   const settledStatus = (settled as { status?: string } | null)?.status;
   const result: HandleResult = { outcome: (settledStatus as HandledOutcome) ?? "applied" };
+  // SMART SUBSCRIPTION MANAGEMENT (0181): the invoice of a plan change closes
+  // that change — after the settlement above granted the new plan from its
+  // line, and on a retry too (idempotent: 'already'). A database error throws,
+  // so Stripe retries. No change for this invoice: a no-op.
+  if (settledStatus === "applied" || settledStatus === "already_settled") {
+    await settlePlanChange(supabase, token, {
+      subscriptionId, invoiceId,
+      paymentId: (settled as { payment_id?: string } | null)?.payment_id ?? null,
+      priceId,
+    });
+  }
   if (settledStatus === "applied") {
     const tax = int(invoice.tax);
     await recordFees(supabase, token, invoiceId, paymentIntent, tax);

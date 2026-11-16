@@ -290,7 +290,10 @@ async function main() {
       // + API Reserve Center (0180): scheduleSaleReport() after an APPLIED
       //   settlement — an after-response report, no change to what is booked
       //   (was 7e30b173… before).
-      ["lib/server/stripe-webhook.ts", "bdaed1651896af37136b34d9948fd554fcaa53ae44ae75d1a47c445d4aacc746"],
+      // + Smart Subscription Management (0181): settlePlanChange() after the
+      //   settlement (applied or already settled) — closes a plan change; the
+      //   grants are still the invoice lines' (was bdaed165… before).
+      ["lib/server/stripe-webhook.ts", "91d3f1548383bd559469f86ea0e2e1824b94703b1c78680e4d51add40570118b"],
       ["lib/server/stripe-pricing.ts", "7f4b0b5c16155649bbce52b87e24a50bf7ea8944922a5fe04179f0527fdc1974"],
       ["components/plan/pricing-model.ts", "7a9878786e320e08013249d679f587367e9a3488816d6809da22589aeb68fa8e"],
       ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],

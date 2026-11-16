@@ -5,6 +5,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import { dispatchToken } from "@/lib/server/server-token";
 import { bearerToken, secretMatches } from "@/lib/server/cron-auth";
 import { runReservesTick } from "@/lib/server/api-reserves/reports";
+import { sweepPlanChanges } from "@/lib/server/plan-change";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,11 @@ export const maxDuration = 60;
  * dispatch token (what Vault holds for the tick) or CRON_SECRET. Every
  * privileged read and write below goes through a token-gated function; the
  * reply is counts and codes, never an amount or a key.
+ *
+ * The same wake also sweeps plan changes (0181): a reserved change whose
+ * payment window passed has its invoice voided in Stripe and its pool
+ * released. It runs first and on its own — a failure there never stops the
+ * reports, and a failed report never stops the sweep.
  */
 type Verdict = { ok: true; via: "cron_secret" | "dispatch_token" } | { ok: false; reason: string };
 
@@ -34,11 +40,13 @@ export async function POST(request: Request) {
   const verdict = authorize(request);
   if (!verdict.ok) return NextResponse.json({ ok: false, reason: verdict.reason }, { status: 401 });
   const supabase = createAnonClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const sweep = await sweepPlanChanges(supabase).catch(() => ({ released: 0, skipped: 0 }));
   try {
     const run = await runReservesTick(supabase);
     return NextResponse.json({
       ok: true, via: verdict.via, ran: run.ran, hourly: run.hourly ?? null, daily: run.daily ?? null,
       alerts: run.alerts?.length ?? 0, synced: run.synced ? Object.keys(run.synced).length : 0,
+      plan_changes: sweep,
     });
   } catch (e) {
     console.error("cron.reserves", e instanceof Error ? e.message : "error");

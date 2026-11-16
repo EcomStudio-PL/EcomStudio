@@ -79,6 +79,8 @@ const DESTINATIONS: Readonly<Record<string, { label: string; path: string }>> = 
   "finance.reserve_hourly": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
   "finance.reserve_daily": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
   "finance.funds_low": { label: "Otwórz Rezerwy API", path: "/admin/finance/rezerwy" },
+  // Smart Subscription Management (0181).
+  "finance.plan_change_review": { label: "Otwórz zmiany planów", path: "/admin/finance/zmiany-planow" },
 };
 
 const DEFAULT_DESTINATION = { label: "Otwórz panel GrovBase", path: "/admin" };

@@ -5,6 +5,7 @@ import { Check, Clock3, Crown, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { Gate } from "@/components/home/gate";
+import { PlanChangeTrigger } from "./plan-change";
 import { Diamond } from "@/components/layout/credits-control";
 import {
   annualSavingCents, approxPln, creditsWord, formatCount, formatMoney, formatPerCredit, isFewForm, planCheckoutHref,
@@ -148,12 +149,28 @@ export const featureLabelKey = (key: FeatureKey) => FEATURE_LABEL[key];
 /** The CTA a plan card offers this viewer, decided from server facts only. */
 export type PlanCta =
   | { kind: "buy"; href: string; label: string }
-  | { kind: "disabled"; label: string; hint?: "change" };
+  | { kind: "disabled"; label: string; hint?: "change" }
+  /** 0181: the module is on and the viewer has an active plan — a change. */
+  | { kind: "change"; planId: string; period: BillingPeriod; label: string; hint?: undefined };
 
 export function planCta(
   plan: PricingPlanView, period: BillingPeriod, data: PricingPageData,
   t: (k: string, v?: Record<string, string | number>) => string, name: string,
 ): PlanCta {
+  // SMART SUBSCRIPTION MANAGEMENT (0181), only while it is on: the current
+  // plan AND period is "current", a change in progress blocks a second one,
+  // every other payable plan/period is a change of THIS subscription.
+  const pc = data.planChange;
+  if (pc) {
+    if (pc.currentPlanId === plan.id && pc.currentPeriod === period) return { kind: "disabled", label: t("pricing.plan.current") };
+    if (pc.pending) return { kind: "disabled", label: t("pricing.change.inProgress") };
+    if (!plan.payable[period]) return { kind: "disabled", label: t("pricing.plan.unavailable") };
+    const current = data.plans.find((p) => p.id === pc.currentPlanId);
+    const label = current?.id === plan.id
+      ? t(period === "annual" ? "pricing.change.ctaToAnnual" : "pricing.change.ctaToMonthly")
+      : t(current && plan.priceCents > current.priceCents ? "pricing.change.ctaUpgrade" : "pricing.change.ctaDowngrade", { name });
+    return { kind: "change", planId: plan.id, period, label };
+  }
   if (data.viewer.currentSlug === plan.slug) return { kind: "disabled", label: t("pricing.plan.current") };
   // One live subscription per workspace — the checkout refuses a second, so
   // the button does not pretend otherwise.
@@ -311,6 +328,8 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
           <Gate href={cta.href} signedIn={data.viewer.signedIn} className={ctaClass}>
             {cta.label}
           </Gate>
+        ) : cta.kind === "change" && data.planChange ? (
+          <PlanChangeTrigger planId={cta.planId} period={cta.period} label={cta.label} view={data.planChange} className={ctaClass} />
         ) : (
           <button type="button" disabled aria-disabled className={cn(ctaClass, "cursor-not-allowed opacity-70")}>
             {cta.label}

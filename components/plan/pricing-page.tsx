@@ -9,6 +9,7 @@ import { PLAN_FAQ_LEGACY, type FaqPublicItem } from "@/lib/faq";
 import { CheckoutNotice } from "./checkout-notice";
 import { PremiereBanner } from "./premiere-banner";
 import { PlanCards } from "./plan-cards";
+import { PendingPlanChange } from "./plan-change";
 import { PlanComparison } from "./plan-comparison";
 import { TopUps } from "./topups";
 import { PricingFaq } from "./pricing-faq";
@@ -130,6 +131,10 @@ export function PricingPage({ data, notice, faq }: {
           </div>
         </header>
         {notice && <div className="mx-auto w-full max-w-[1100px]"><CheckoutNotice status={notice} /></div>}
+        {data.planChange?.pending && (
+          <PendingPlanChange view={data.planChange}
+            planName={data.plans.find((p) => p.id === data.planChange?.pending?.toPlanId)?.name ?? ""} />
+        )}
 
         {/* THE PLANS. PRO first on a phone, in the middle on wide screens —
             two lists so the reading and focus order match what is drawn.

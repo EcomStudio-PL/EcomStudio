@@ -82,7 +82,26 @@ function relevant(report: ReserveReport): ProviderReserve[] {
 export type SaleFacts = {
   id: string; kind: string; amount_cents: number; currency: string; billing_period: string | null; billing_reason: string | null;
   plan_slug: string | null; plan_name: string | null; internal: boolean; credits_now: number; credits_scheduled: number;
+  /** 0181: the plan change this payment settled, when it was one. */
+  plan_change?: {
+    kind: string; from_plan: string | null; from_period: string | null; to_plan: string | null; to_period: string | null;
+    list_price_cents: number; deduction_cents: number; amount_due_cents: number; closed_credits: number; late: boolean;
+  } | null;
 };
+
+const periodWord = (p: string | null) => (p === "annual" ? "rocznie" : "miesięcznie");
+
+/** A settled plan change: what it was, what was deducted, what closed. */
+function planChangeRows(facts: SaleFacts): [string, string][] {
+  const c = facts.plan_change;
+  if (!c) return [];
+  return [
+    ["🔁 Zmiana", `${c.from_plan ?? "?"} (${periodWord(c.from_period)}) → ${c.to_plan ?? "?"} (${periodWord(c.to_period)})${c.late ? " · płatność po zwolnieniu rezerwacji" : ""}`],
+    ["🏷 Cena nowego planu", cents(c.list_price_cents, facts.currency)],
+    ["➖ Odliczenie", c.deduction_cents > 0 ? cents(c.deduction_cents, facts.currency) : "brak"],
+    ["🔒 Zamknięte kredyty starej puli", credits(Number(c.closed_credits))],
+  ];
+}
 
 export function saleMessage(facts: SaleFacts, report: ReserveReport): NotifyInput {
   const total = Number(facts.credits_now) + Number(facts.credits_scheduled);
@@ -95,6 +114,7 @@ export function saleMessage(facts: SaleFacts, report: ReserveReport): NotifyInpu
     ["🧾 Rodzaj", `${what}${facts.internal ? " (konto wewnętrzne)" : ""}`],
     ...(facts.plan_name ? [["📦 Plan", `${facts.plan_slug === "agency" ? "Business" : facts.plan_name}${facts.billing_period ? ` · ${facts.billing_period === "annual" ? "roczny" : "miesięczny"}` : ""}`] as [string, string]] : []),
     ["💳 Płatność", cents(facts.amount_cents, facts.currency)],
+    ...planChangeRows(facts),
     ["🪙 Przyznane kredyty", `${credits(Number(facts.credits_now))}${Number(facts.credits_scheduled) > 0 ? ` (+ ${credits(Number(facts.credits_scheduled))} w transzach)` : ""}`],
     ["📈 Szacowane dodatkowe zobowiązanie API", usd(liability.standard)],
     [`🛡 Zobowiązanie z buforem ${report.settings.buffer_percent}%`, usd(liability.withBuffer)],
@@ -204,7 +224,11 @@ export async function reportSale(supabase: Client, paymentId: string | null | un
     if (!loaded || !loaded.report.settings.enabled) return;
     const { data } = await supabase.rpc("api_reserve_sale_facts", { p_token: token, p_payment_id: paymentId });
     if (!data) return;
-    await notify(supabase, saleMessage(data as unknown as SaleFacts, loaded.report));
+    // 0181: a change's figures, when this payment settled one (best effort —
+    // without them the report is the plain sale report).
+    const change = await supabase.rpc("plan_change_for_payment", { p_token: token, p_payment_id: paymentId }).then((r) => r.data, () => null);
+    const facts = { ...(data as unknown as SaleFacts), plan_change: (change as SaleFacts["plan_change"]) ?? null };
+    await notify(supabase, saleMessage(facts, loaded.report));
   } catch (e) {
     console.error("reserves.sale", e instanceof Error ? e.message : "error");
   }

@@ -12,6 +12,7 @@ import {
   COMPARE_GROUPS, COMPARE_INITIAL_ROWS, featureOn, planPresentation, type FeatureKey,
 } from "./pricing-config";
 import { featureLabelKey, planCta } from "./plan-cards";
+import { PlanChangeTrigger } from "./plan-change";
 import type { PricingPageData, PricingPlanView } from "./pricing-types";
 
 /**
@@ -102,6 +103,13 @@ export function PlanComparison({ plans, period, data, onChangeHint }: {
                           )}>
                           {t("pricing.compare.choose")}
                         </Gate>
+                      ) : cta.kind === "change" && data.planChange ? (
+                        <PlanChangeTrigger planId={cta.planId} period={cta.period} label={t("pricing.change.ctaShort")} view={data.planChange}
+                          className={cn(
+                            "inline-flex h-9 w-full max-w-[150px] items-center justify-center rounded-lg px-3 text-[13px] font-semibold transition-colors",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--surface))]",
+                            pro ? "cta [--accent:var(--accent-strong)]" : "border border-line-strong bg-surface text-ink hover:bg-raised",
+                          )} />
                       ) : (
                         <span className="inline-flex flex-col items-center gap-1">
                           <span className="inline-flex h-9 items-center rounded-lg px-2 text-[12px] font-medium text-muted">{cta.label}</span>
@@ -261,6 +269,13 @@ function PhoneComparison({ plans, period, data, onChangeHint, open, listId, cell
                   )}>
                   {t("pricing.compare.choose")}
                 </Gate>
+              ) : cta.kind === "change" && data.planChange ? (
+                <PlanChangeTrigger planId={cta.planId} period={cta.period} label={t("pricing.change.ctaShort")} view={data.planChange}
+                  className={cn(
+                    "inline-flex h-11 w-full items-center justify-center whitespace-nowrap rounded-lg px-2 text-[13px] font-semibold transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--surface))]",
+                    pro ? "cta [--accent:var(--accent-strong)]" : "border border-line-strong bg-surface text-ink hover:bg-raised",
+                  )} />
               ) : (
                 <span className="flex min-h-11 flex-col items-center justify-center gap-0.5">
                   <span className="text-[12px] font-medium leading-tight text-muted">{cta.label}</span>

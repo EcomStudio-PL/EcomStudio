@@ -2678,6 +2678,53 @@ export type Database = {
         Update: { kind?: string }
         Relationships: []
       }
+      plan_changes: {
+        Row: {
+          amount_due_cents: number
+          basis_cents: number
+          closed_credits: number
+          completed_at: string | null
+          created_at: string
+          credit_value_cents: number
+          currency: string
+          deduction_cents: number
+          effective_at: string | null
+          error_code: string | null
+          expires_at: string
+          fingerprint: string | null
+          from_period: string | null
+          from_plan_id: string | null
+          from_price_id: string | null
+          held_credits: number
+          hold: Json
+          id: string
+          kind: string
+          late: boolean
+          list_price_cents: number
+          payment_id: string | null
+          provider_subscription_id: string
+          quote: Json
+          quoted_at: string
+          release: Json
+          requested_by: string | null
+          review_reason: string | null
+          status: string
+          stripe_coupon_id: string | null
+          stripe_invoice_id: string | null
+          stripe_payment_intent_id: string | null
+          stripe_schedule_id: string | null
+          time_value_cents: number
+          timing: string
+          to_period: string
+          to_plan_id: string
+          to_price_id: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: { workspace_id: string; provider_subscription_id: string; kind: string; timing: string; to_plan_id: string; to_period: string; to_price_id: string; currency: string; list_price_cents: number; amount_due_cents: number }
+        Update: { status?: string }
+        Relationships: []
+      }
       pricing_cards: {
         Row: {
           doc: Json
@@ -7910,6 +7957,19 @@ export type Database = {
         Args: { p_token?: string }
         Returns: Json
       }
+      plan_changes_enabled: { Args: Record<PropertyKey, never>; Returns: boolean }
+      plan_changes_set: { Args: { p_enabled: boolean; p_portal?: Json }; Returns: Json }
+      plan_change_context: { Args: { p_token: string; p_workspace_id: string }; Returns: Json }
+      plan_change_open: { Args: { p_token: string; p_workspace_id: string; p: Json }; Returns: string }
+      plan_change_hold: { Args: { p_token: string; p_change_id: string }; Returns: Json }
+      plan_change_attach: { Args: { p_token: string; p_change_id: string; p: Json }; Returns: string }
+      plan_change_release: { Args: { p_token: string; p_change_id: string; p_status: string; p_reason?: string }; Returns: Json }
+      plan_change_settle: {
+        Args: { p_token: string; p_subscription: string; p_invoice: string; p_payment_id: string; p_price_id: string }
+        Returns: Json
+      }
+      plan_change_for_payment: { Args: { p_token: string; p_payment_id: string }; Returns: Json }
+      plan_change_due: { Args: { p_token: string }; Returns: Json }
       api_reserve_sale_facts: {
         Args: { p_token: string; p_payment_id: string }
         Returns: Json

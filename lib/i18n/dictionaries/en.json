@@ -1483,7 +1483,8 @@
     "reserves": {
       "tab": {
         "overview": "Overview",
-        "reserves": "API reserves"
+        "reserves": "API reserves",
+        "planChanges": "Plan changes"
       },
       "sub": "Funds held by API providers, customers' credits and the money to keep ready for them. Admins only.",
       "unavailable": "Reserve data could not be loaded (migration 0180 or permissions missing).",
@@ -1671,6 +1672,69 @@
         "invalid": "Invalid value.",
         "generic": "That failed. Try again."
       }
+    },
+    "planChanges": {
+      "sub": "Customer plan changes: deductions, pool reservations, Stripe settlement.",
+      "on": "Module on",
+      "off": "Module off",
+      "portalUnknown": "Customer Portal: not readable",
+      "portalOpen": "Customer Portal: plan change ON",
+      "portalClosed": "Customer Portal: plan change off",
+      "rule1": "Deduction = min(value of remaining time, value of unused credits in the current pool) — computed on the server only.",
+      "rule2": "One subscription: a change updates the existing one (proration_behavior none + a one-off coupon) — never a double deduction.",
+      "rule3": "Credits only after the signed webhook settles; the pool is reserved before payment and released on failure.",
+      "rule4": "Turning on disables plan change in the Customer Portal (card, invoices and cancelling stay); turning off restores it.",
+      "enable": "Turn on",
+      "disable": "Turn off",
+      "enableTitle": "Turn plan changes on?",
+      "enableBody": "Customers with an active plan will see plan change buttons. Plan change in the Stripe Customer Portal will be disabled (card, invoices and cancelling stay). Turn on only after a payment test in Stripe test mode.",
+      "disableTitle": "Turn plan changes off?",
+      "disableBody": "The plan change buttons disappear and the Customer Portal gets its previous plan change configuration back. Changes in progress are finished by the webhook and the sweep.",
+      "enabledOk": "Module turned on.",
+      "disabledOk": "Module turned off.",
+      "switchFailed": "Could not switch the module (Stripe or permissions).",
+      "reviewTitle": "Manual handling: {n}",
+      "reviewSub": "Changes the system did not perform automatically (an unusual subscription, an amount mismatch).",
+      "historyTitle": "Change history",
+      "historySub": "The last 60 changes with every amount.",
+      "empty": "No plan changes.",
+      "col": {
+        "when": "When",
+        "workspace": "Workspace",
+        "change": "Change",
+        "list": "Price",
+        "deduction": "Deduction",
+        "due": "Due",
+        "closed": "Closed credits",
+        "status": "Status"
+      },
+      "period": {
+        "monthly": "mo",
+        "annual": "yr"
+      },
+      "kind": {
+        "upgrade": "higher plan",
+        "downgrade": "lower plan",
+        "to_annual": "to yearly",
+        "to_monthly": "to monthly"
+      },
+      "timing": {
+        "immediate": "now",
+        "period_end": "at period end"
+      },
+      "status": {
+        "quoted": "quoted",
+        "held": "reserved",
+        "awaiting_payment": "awaiting payment",
+        "scheduled": "scheduled",
+        "completed": "settled",
+        "released": "released",
+        "canceled": "cancelled",
+        "expired": "expired",
+        "failed": "failed",
+        "manual_review": "manual handling"
+      },
+      "late": "paid after release"
     }
   },
   "support": {
@@ -4814,6 +4878,79 @@
     "creditsRule": "Plan credits are valid until the end of the paid month (annual plan: 12 monthly allocations). Top-ups never expire and work while you have an active plan. Prices in USD, gross.",
     "card": {
       "unavailable": "not included"
+    },
+    "change": {
+      "title": "Change plan",
+      "loading": "Calculating the exact quote…",
+      "validUntil": "Quote valid until {time}. The amounts were computed by the server from your payment for the current period.",
+      "confirmScheduled": "Schedule the change",
+      "confirmPay": "Pay {amount} and change plan",
+      "waiting": "Payment received — waiting for Stripe's confirmation. Credits appear once it is settled.",
+      "done": "Done: you are on {plan}. We added {credits} credits for the new period.",
+      "scheduledDone": "Scheduled: {plan} starts on {date}. Nothing changes until then.",
+      "perYear": "/ year",
+      "perMonth": "/ mo",
+      "period": {
+        "monthly": "monthly",
+        "annual": "yearly"
+      },
+      "from": "Current plan",
+      "to": "New plan",
+      "when": "When",
+      "now": "Now (a new period starts today)",
+      "atDate": "From {date} (end of the paid period)",
+      "listPrice": "New plan price",
+      "timeValue": "Value of remaining time",
+      "timeValueHint": "{pct}% of the period, of {basis} paid",
+      "creditValue": "Value of unused credits",
+      "creditValueHint": "{n} credits from the current plan pool",
+      "deduction": "Deduction",
+      "deductionHint": "The smaller of the two amounts above",
+      "dueNow": "Due now",
+      "dueLater": "Due on {date}",
+      "creditsAnnual": "New yearly plan: {n} credits right away, the next tranches monthly (never 12 months at once).",
+      "creditsMonthly": "New plan: the full pool of {n} credits right after payment.",
+      "oldClosed": "{n} unused credits from the current plan pool are settled in the deduction (the pool is closed).",
+      "oldKept": "Your current plan credits stay until their original expiry.",
+      "oldContinues": "Until {date} you keep your current plan and its credits unchanged.",
+      "otherPools": "Top-ups, bonuses and earlier credits are not changed.",
+      "noRefund": "A lower plan is not a refund — you pay the full price of the new plan.",
+      "oneSubscription": "We change your existing subscription — no second one is created and you never pay twice.",
+      "paymentNeeded": "Your bank declined the saved method or needs another one. Enter a payment method to finish the change.",
+      "cancelChange": "Cancel the change",
+      "pendingScheduled": "Scheduled change to {plan} from {date}.",
+      "pendingPayment": "Change to {plan} is waiting for payment.",
+      "inProgress": "Change in progress",
+      "ctaToAnnual": "Switch to yearly billing",
+      "ctaToMonthly": "Switch to monthly billing",
+      "ctaUpgrade": "Upgrade to {name}",
+      "ctaDowngrade": "Change to {name}",
+      "ctaShort": "Change plan",
+      "refuse": {
+        "disabled": "Plan changes are not available yet. Contact us and we will do it for you.",
+        "payments_disabled": "Payments are temporarily unavailable. Please try later.",
+        "no_subscription": "You have no active plan — choose one on this page.",
+        "subscription_not_active": "Your plan is not active (e.g. an overdue payment). Settle it in the billing settings.",
+        "cancel_scheduled": "Your plan is set to cancel. Resume it in the billing settings, then change the plan.",
+        "change_in_progress": "You already have a plan change in progress.",
+        "inflight_usage": "A generation is running — wait for it to finish and try again.",
+        "unknown_plan": "This plan is unavailable.",
+        "not_on_sale": "This plan or billing period is not on sale right now.",
+        "same_plan": "This is your current plan.",
+        "too_close_to_renewal": "Your plan renews within 24 hours. Change it after the renewal.",
+        "period_ended": "The current period is ending. Try again in a moment.",
+        "manual_review": "We will handle this change manually — the GrovBase team has been notified and will contact you.",
+        "quote_expired": "The quote expired. Open the change again to see the current amounts.",
+        "quote_changed": "Your balance or period changed since the quote. Open the change again to see the current amounts.",
+        "stripe_error": "We could not reach the payment system. Nothing was charged — please try again.",
+        "payment_failed": "The payment did not go through. Your plan and credits are unchanged.",
+        "already_paid": "This change is already paid — you will see the new plan in a moment.",
+        "not_authorized": "Sign in to change your plan.",
+        "not_found": "This change was not found.",
+        "generic": "Something went wrong. Please try again."
+      },
+      "creditsAnnualLater": "From {date}: yearly plan — {n} credits in the first tranche, the next ones monthly (never 12 months at once).",
+      "creditsMonthlyLater": "From {date}: the new plan with its full pool of {n} credits once the first month is paid."
     }
   },
   "mobilenav": {
@@ -5819,7 +5956,8 @@
     "ev.reserveDaily": "Daily report (API reserves)",
     "ev.fundsLow": "Alert: low funds at an API provider",
     "cat.finance": "Finance and API reserves",
-    "chAdminPanel": "Admin panel"
+    "chAdminPanel": "Admin panel",
+    "ev.planChangeReview": "Plan change needing manual handling"
   },
   "reg": {
     "title": "Registration and security",
