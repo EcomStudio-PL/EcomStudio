@@ -124,6 +124,9 @@ function subjectFor(payload: AdminEventPayload): string {
   const title = clean(payload.title, TITLE_MAX);
   const icon = collapse(payload.icon ?? "");
   const head = [icon, title].filter((part) => part !== "").join(" ");
+  // A headline that already names the brand (the finance reports: "Nowa
+  // sprzedaż — GrovBase", "GrovBase — raport dzienny") is not suffixed again.
+  if (head && /GrovBase/i.test(title)) return head;
   return head ? `${head} — GrovBase` : "Powiadomienie — GrovBase";
 }
 

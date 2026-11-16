@@ -71,6 +71,8 @@ export type TgNotification = {
   details?: string;
   footer?: string;
   actions?: TgAction[];
+  /** A finance REPORT (finance.*): rows printed as a table — see buildNotification. */
+  table?: boolean;
 };
 
 /* ── budgets ────────────────────────────────────────────────────────────────
@@ -88,6 +90,8 @@ const FOOTER_MAX = 80;
 /** Compact mode: an alert is scanned in seconds, not read. Anything past this
  *  belongs in the admin panel, and the card says so rather than going silent. */
 export const TG_ROWS_MAX = 8;
+/** A finance report is a table the operator reads whole (still far below 4096 characters). */
+export const TG_TABLE_ROWS_MAX = 24;
 
 function collapse(text: string): string {
   return String(text ?? "").replace(/\s+/g, " ").trim();
@@ -285,6 +289,33 @@ export type BuildInput = {
  * be rewritten to look like the rest of the family.
  */
 export function buildNotification(input: BuildInput): TgNotification {
+  // FINANCE REPORTS ARE TABLES, NOT EVENT CARDS (0180). Every row is a
+  // labelled figure the operator reads in full: the label is kept (the event
+  // registry would re-label 🔁 as "Następna płatność" and 🧮 as "Saldo po
+  // zakupie", and drop every other label), equal values are NOT merged (two
+  // rows reading "$0.00" are two facts), and the card shows up to
+  // TG_TABLE_ROWS_MAX rows. Keyed `data` stays for published templates only.
+  if (typeof input.event === "string" && input.event.startsWith("finance.")) {
+    const rows: TgRow[] = [];
+    for (const [rawLabel, rawValue] of input.rows ?? []) {
+      const value = compactValue(rawValue);
+      if (!value) continue;
+      const { icon, text } = splitIconLabel(rawLabel);
+      rows.push({ icon: icon || "•", label: text || undefined, value });
+    }
+    return {
+      event: input.event,
+      icon: collapse(input.icon ?? "") || "🔔",
+      title: input.title,
+      subtitle: input.subtitle ?? subtitleFor(input.event),
+      rows,
+      quote: input.quote,
+      details: input.details,
+      footer: input.footer,
+      actions: actionsFor(input.event, { ...input.actionContext }),
+      table: true,
+    };
+  }
   const data = input.data ?? {};
   const meta: TgNotification["meta"] = {};
   let highlight: TgRow | undefined;
@@ -417,8 +448,9 @@ export function renderTelegramNotification(
   const body: string[] = [];
   if (n.highlight?.value) body.push(renderRow(n.highlight));
   const rows = n.rows.filter((r) => collapse(r.value) !== "");
-  for (const row of rows.slice(0, TG_ROWS_MAX)) body.push(renderRow(row));
-  const hidden = rows.length - Math.min(rows.length, TG_ROWS_MAX);
+  const cap = n.table ? TG_TABLE_ROWS_MAX : TG_ROWS_MAX;
+  for (const row of rows.slice(0, cap)) body.push(renderRow(row));
+  const hidden = rows.length - Math.min(rows.length, cap);
   // Never silently drop data: say how much is waiting in the panel.
   if (hidden > 0) body.push(`➕  <i>+${hidden} więcej w panelu</i>`);
   if (body.length > 0) blocks.push(body.join("\n"));
