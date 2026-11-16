@@ -18,7 +18,8 @@
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { canonicalJson, diffKb, kbInstructions, parseKb, pickFooter, type KbParsed } from "@/lib/grovshot-shot/kb";
+import { canonicalJson, diffKb, kbInstructions, parseKb, pickFooter, readKb, readKbShape, type KbParsed } from "@/lib/grovshot-shot/kb";
+import { buildKbImport } from "@/lib/grovshot-shot/kb-import";
 import { CARD_SCHEMA, PLAN_SCHEMA, SCENES_SCHEMA, contractText, wrapData } from "@/lib/grovshot-shot/contract";
 import { checkCard, type ProductCard } from "@/lib/grovshot-shot/card";
 import { checkPlan, parseUserPlan, planFeedback, type PlanShot } from "@/lib/grovshot-shot/plan";
@@ -83,14 +84,15 @@ check("K15 the Product Lock reaches ONLY the prompt step, where the file places 
   promptText.includes(LOCK.slice(0, 60)) && !cardText.includes(LOCK.slice(0, 60)) && !planText.includes(LOCK.slice(0, 60)) && !promptText.includes("{{fidelity_rules}}"));
 check("K16 the card step gets the recipe catalog and the flags list; the plan the chosen recipe and its flags' rules",
   /home_care: Home care/.test(cardText) && /- swieci:/.test(cardText) && /Wybrany przepis stylu: Home care/.test(planText) && /pastelowy – Pastelowy/.test(planText) && !/Wybrany przepis/.test(cardText));
-check("K17 the format errors are named: a missing section, a recipe without KIERUNEK, an unknown placeholder",
+check("K17 the structure never refuses a file: a renamed section, a recipe without KIERUNEK, an unknown placeholder are notes; the file is read and kept",
   (() => {
     const a = parseKb(KB_FILE.replace("## Negative bazowy", "## Negatywy"));
     const b = parseKb(KB_FILE.replace(/#### KIERUNEK\nSezonowa reklama premium[^\n]*\n/, ""));
     const c = parseKb(`${KB_FILE}\n{{opis_klienta}}\n`);
-    return !a.ok && a.errors.some((e) => e.code === "missing_section" && e.detail === "Negative bazowy")
-      && !b.ok && b.errors.some((e) => e.code === "recipe_missing_direction" && /reklama_sezonowa/.test(e.detail ?? ""))
-      && !c.ok && c.errors.some((e) => e.code === "unknown_placeholder");
+    return a.ok && a.ready && a.warnings.some((e) => e.code === "negative_missing") && a.kb.sections.some((x) => x.title === "Negatywy" && x.text.includes("render, CGI"))
+      && b.ok && b.ready && b.warnings.some((e) => e.code === "recipe_missing_direction") && !b.kb.recipes.some((r) => r.id === "reklama_sezonowa")
+      && b.kb.sections.some((x) => x.title === "Przepisy stylu" && x.text.includes("Reklama sezonowa"))
+      && c.ok && c.ready && c.warnings.some((e) => e.code === "unknown_placeholder");
   })());
 const edited = parseKb(KB_FILE
   .replace("Reklama premium AGD, food styling. Prawdziwe zdjęcie", "Reklama premium AGD i food styling. Prawdziwe zdjęcie")
@@ -247,6 +249,73 @@ check("W2 v2: the binding section is not sent to Claude as an instruction; the l
   && pickFooter(KB2, { type: "hero", people: "brak" }, { recipeId: "wnetrza_premium", flags: [] }).text.includes("real estate"));
 const kd = diffKb(KB, KB2);
 check("W3 v1 → v2 diff shows exactly the intended changes (elektronika block, footers, negative)", kd.special.modified.some((m) => m.flag === "elektronika") && kd.recipes.added.length === 0 && kd.recipes.removed.length === 0, kd.special.modified);
+
+/* ══ N ═══════════════════════════════════════════════════════════════════*/
+section("N. THE 15.11 FILE (plain style), READ AS WRITTEN — NO EDITS");
+const KB3_FILE = readFileSync("docs/grovshot-shot/grovbase-shot-wiedza-v2.md", "utf8");
+check("N0 the attached file is kept byte for byte (sha256 2a0f6ed1…f7068)", sha(KB3_FILE) === "2a0f6ed18cdf6ed849b8352b0514a132120b442e3be355b7cffe949470ef7068", sha(KB3_FILE));
+const p3 = parseKb(KB3_FILE);
+const KB3 = (p3 as { kb: KbParsed }).kb;
+check("N1 it is read whole and the engine can run on it (no blocker)", p3.ok && p3.ready && p3.blockers.length === 0, p3.ok ? p3.blockers : null);
+check("N2 all 19 recipes, headed by their id", KB3.recipes.map((r) => r.id).join() === "dom_ikea,wnetrza_premium,agd_jedzenie,home_care,lazienka,kinowy_przemyslowy,ogrod_plener,outdoor_akcja,zwierzeta,beauty,komfort_zimowy,zielen_w_domu,swiateczna_aura,ozdoby_swiateczne,audio_gadzety,elektronika_noc,sport_fitness,trening_silowy,dziecko", KB3.recipes.map((r) => r.id));
+const ikea = KB3.recipes.find((r) => r.id === "dom_ikea")!;
+check("N3 KIERUNEK from the code block, verbatim, without its label", ikea.direction === "kampania lifestyle marki wyposażenia domu w stylu IKEA – jasny, ciepły, zamieszkany dom, ludzie w trakcie codziennej czynności. Prawdziwe zdjęcie, nie render (raw photo)." && KB3.recipes.every((r) => r.direction.length > 40 && !/^KIERUNEK/i.test(r.direction) && !r.direction.includes("```")), ikea.direction);
+check("N4 Kategorie → the catalog; Światło + Zasady → the recipe's rules; Negative → its additions", ikea.categories.length === 6 && ikea.categories[5] === "drobne wyposażenie"
+  && /^Światło: jasne, naturalne/.test(ikea.rules) && /\nZasady: pełne, zamieszkane wnętrza/.test(ikea.rules) && ikea.negative.join("|") === "puste showroomowe wnętrze|prześwietlone okna", ikea);
+check("N5 a recipe with no Światło line (swiateczna_aura) keeps its long KIERUNEK and its rules", /Ciepłe, złote światła/.test(KB3.recipes.find((r) => r.id === "swiateczna_aura")!.direction) && /^Zasady: brokat/.test(KB3.recipes.find((r) => r.id === "swiateczna_aura")!.rules));
+check("N6 7 flags from „(flaga: x)”, the title without the marker, the bullets as rules (no prompt block: the file asks for none)",
+  KB3.special.map((x) => `${x.flag}:${x.title}`).join("|") === "swieci:Produkty świecące|cieplo:Umowna poświata ciepła|wnetrze:Przekrój i wizualizacja działania|mgielka:Mgiełka, para, dym|siatka:Materiały przezierne|miekki:Produkty miękkie i worki|szklo:Butelki, szkło, płyny"
+  && KB3.special.every((x) => x.block === null && x.rules.startsWith("- ")), KB3.special.map((x) => x.flag));
+check("N7 the always-on rules (9: 7 marked „zawsze”, 2 without a flag) are never dropped", p3.ok && p3.always.length === 9 && p3.always.includes("Postacie") && p3.always.includes("Orientacja produktu w ruchu"), p3.ok ? p3.always : null);
+const LOCK3 = LOCK;
+const kbCard3 = kbInstructions(KB3, "karta", { fidelityRules: LOCK3 });
+const kbPlan3 = kbInstructions(KB3, "plan", { recipeId: "dom_ikea", flags: ["swieci"], fidelityRules: LOCK3 });
+const kbPrompt3 = kbInstructions(KB3, ["produkt", "sceny"], { recipeId: "dom_ikea", flags: ["swieci"], fidelityRules: LOCK3 });
+check("N8 every step reads the always-on rules (Postacie, Skala, Wierność budowy, Dzieci)", [kbCard3, kbPlan3, kbPrompt3].every((t) => t.includes("### Postacie (zawsze)") && t.includes("### Skala (zawsze)") && t.includes("### Wierność budowy (zawsze)") && t.includes("### Dzieci (zawsze)")));
+check("N9 the card step: the 19-recipe catalog with categories and the 7 flags to choose from", /- dom_ikea: dom_ikea – kategorie: produkty domowe/.test(kbCard3) && /- swieci: Produkty świecące/.test(kbCard3) && (kbCard3.match(/^- [a-z_]+: [a-z_]+ – kategorie:/gm) ?? []).length === 19 && !/Wybrany przepis/.test(kbCard3));
+check("N10 the plan step: the chosen recipe (KIERUNEK, Światło, Zasady, negative) and the set flag's rules — not the other flags",
+  /Wybrany przepis stylu: dom_ikea/.test(kbPlan3) && kbPlan3.includes(ikea.direction) && /Światło: jasne, naturalne/.test(kbPlan3) && /Dopiski negative przepisu: puste showroomowe wnętrze/.test(kbPlan3)
+  && /### swieci – Produkty świecące/.test(kbPlan3) && /Lampy do roślin: magenta/.test(kbPlan3) && !/### cieplo/.test(kbPlan3));
+check("N11 every other section reaches the models: Zasady nadrzędne, Karta produktu, Reguły planu (with the people table), Wzorzec promptu, Procedura, the file's own header",
+  ["Zasady nadrzędne", "Karta produktu", "Reguły planu", "Wzorzec promptu", "Procedura przed każdym produktem", "GrovBase Shot – baza wiedzy silnika lifestyle"].every((t) => KB3.sections.some((x) => x.title === t))
+  && kbPlan3.includes("| 6–10 | 2–4 | 1–3 | reszta, w tym detale |") && kbPlan3.includes("Kontrola anty-stock"));
+check("N12 the footer table: 8 rows code can check + a default (the plainest one), recipe-tied rows first",
+  KB3.footers.map((f) => f.key).join() === "wnetrze,hero_we_wnetrzu,zwierzeta,beauty,ludzie,akcja,makro_detal,hero_produktu_bez_ludzi,domyslna"
+  && KB3.footers.filter((f) => f.when.isDefault).length === 1 && KB3.footers.find((f) => f.when.isDefault)!.text === "Ultra realistic, 8k, cinematic light, realistic materials, sharp focus, film grain.", KB3.footers.map((f) => f.key));
+const pf = (type: "hero" | "uzycie" | "detal", people: "brak" | "dlonie" | "postacie", recipeId: string) => pickFooter(KB3, { type, people }, { recipeId, flags: [] }).key;
+check("N13 the footer per shot: detail → makro; people → ludzie; hero without people → hero; beauty/animals → their own; interiors only in wnetrza_premium",
+  pf("detal", "brak", "beauty") === "makro_detal" && pf("uzycie", "dlonie", "agd_jedzenie") === "ludzie" && pf("hero", "brak", "dom_ikea") === "hero_produktu_bez_ludzi"
+  && pf("uzycie", "postacie", "beauty") === "beauty" && pf("uzycie", "brak", "zwierzeta") === "zwierzeta" && pf("hero", "postacie", "wnetrza_premium") === "hero_we_wnetrzu"
+  && !pickFooter(KB3, { type: "hero", people: "brak" }, { recipeId: "agd_jedzenie", flags: [] }).text.includes("real estate"));
+check("N14 the „ruch” row (another row + a [placeholder]) is never pasted into an image prompt: the scene step reads it as an instruction",
+  KB3.footers.every((f) => !f.text.includes("[")) && kbPrompt3.includes("- ruch: stopka „ludzie, akcja” + motion blur on [element w ruchu].") && !kbPlan3.includes("- ruch: stopka"));
+check("N15 the negative base as written (42 items, no horizontal rule swallowed)", KB3.negativeItems.length === 42 && KB3.negativeBase.startsWith("render 3D, CGI") && KB3.negativeBase.endsWith("ze zdjęć referencyjnych") && !KB3.negativeBase.includes("---"));
+check("N16 the plan rules one by one (26) and the people table of „Ludzie i zwierzęta w zestawie”", KB3.planRules.length === 26 && JSON.stringify(KB3.peopleTable) === JSON.stringify([
+  { from: 1, to: 2, persons: [0, 1], hands: [0, 1] }, { from: 3, to: 5, persons: [1, 2], hands: [1, 1] }, { from: 6, to: 10, persons: [2, 4], hands: [1, 3] }]));
+const card3x = { ...CARD, przepis_stylu: "dom_ikea", flagi: ["swieci"] } as ProductCard;
+const n17 = assemblePrompt({ kb: KB3, card: card3x, shot: P3.shots[0], product, scene: scenes.modules.get(1)! });
+const n17d = assemblePrompt({ kb: KB3, card: card3x, shot: P3.shots[2], product, scene: scenes.modules.get(3)! });
+check("N17 the image prompt from the 15.11 file: KIERUNEK verbatim, its footer, the file's negative + the recipe's — the module order unchanged (no REGUŁA module: its flags carry no prompt block)",
+  n17.modules.find((m) => m.name === "KIERUNEK")!.text === ikea.direction && n17.footer === pickFooter(KB3, { type: P3.shots[0].typ, people: P3.shots[0].ludzie }, { recipeId: "dom_ikea", flags: ["swieci"] }).key
+  && n17.modules.find((m) => m.name === "NEGATIVE")!.text.includes("puste showroomowe wnętrze") && n17.modules.find((m) => m.name === "NEGATIVE")!.text.includes("gałązka eukaliptusa")
+  && n17.modules.map((m) => m.name).join() === a1.modules.map((m) => m.name).filter((n) => !n.startsWith("REGUŁA")).join() && n17d.footer === "makro_detal" && n17d.text.includes(ikea.direction),
+  { a: n17.modules.map((m) => m.name), b: a1.modules.map((m) => m.name), f: n17d.footer });
+check("N18 the files of 07–08.11 are read exactly as before (the stored parses are unchanged)",
+  sha(canonicalJson(KB)) === "1d7b259a6a695f0e28655e1a45aa6311ceba43dbced6317b0e5dfd772a75a2bd" && sha(canonicalJson((parseKb(readFileSync("docs/grovshot-shot/baza-wiedzy-v2.md", "utf8")) as { kb: KbParsed }).kb)) === "eeb55928a9298e3343f253a1a5df16e693914cabb7e8c4a9264ce775566d3190");
+check("N19 Windows line ends and a BOM read like the plain file", canonicalJson((parseKb(`﻿${KB3_FILE.replace(/\n/g, "\r\n")}`) as { kb: KbParsed }).kb) === canonicalJson(KB3));
+const empty = parseKb("# Notatki\n\nPomysły na następną wersję.\n");
+check("N20 a file with nothing for the engine is still read (a draft): not ready, why; readKb refuses it, the preview still reads it",
+  empty.ok && !empty.ready && empty.blockers.map((b) => b.code).join() === "no_recipes,no_footers" && readKb(JSON.parse(canonicalJson(empty.kb))) === null && readKbShape(JSON.parse(canonicalJson(empty.kb))) !== null
+  && empty.kb.sections.some((x) => x.text.includes("Pomysły")));
+const bi = buildKbImport({ fileName: "grovbase-shot-wiedza-v2.md", content: KB3_FILE, note: "Wiedza 2.0" });
+check("N21 the upload payload: the file unchanged (its sha256), the canonical parse, engine_ready in the summary",
+  bi.ok && bi.file.content === KB3_FILE && bi.file.sha256 === sha(KB3_FILE) && canonicalJson(bi.file.parsed) === canonicalJson(KB3) && bi.file.summary.engine_ready === true && bi.read.recipes === 19 && bi.read.always === 9);
+check("N22 only technical checks refuse an upload", ["empty_file", "not_markdown", "change_note_required", "unreadable", "file_too_large"].join() === [
+  buildKbImport({ fileName: "a.md", content: " \n", note: "abc" }), buildKbImport({ fileName: "a.docx", content: "# x", note: "abc" }),
+  buildKbImport({ fileName: "a.md", content: "# x", note: "" }), buildKbImport({ fileName: "a.md", content: "# x\u0000", note: "abc" }),
+  buildKbImport({ fileName: "a.md", content: "x".repeat(300_001), note: "abc" })].map((r) => (r.ok ? "ok" : r.error)).join()
+  && buildKbImport({ fileName: "notatki.md", content: "# x\n\ncokolwiek", note: "szkic" }).ok);
+
 const whole = (o: { typ: PlanShot["typ"]; referencje: number[] }) => selectReferences(o, CARD, { max: 5 });
 check("W4 whole photos found from the card (rola calosc, clean photo), seller order on equal views", wholeCandidates(CARD).join() === "1,2,7");
 const w5 = whole({ typ: "uzycie", referencje: [4, 1] });

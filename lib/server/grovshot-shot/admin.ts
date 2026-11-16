@@ -1,7 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { P } from "@/lib/grovshot-v2/steps";
-import { readKb, type KbParsed } from "@/lib/grovshot-shot/kb";
+import { readKb, readKbShape, type KbParsed } from "@/lib/grovshot-shot/kb";
 import { DEFAULT_SHOT_SETTINGS, orderStatus, parseShotSettings, type OrderStatus, type ShotSettings } from "@/lib/grovshot-shot/settings";
 
 /**
@@ -17,6 +17,8 @@ export type KbVersionRow = {
   id: string; version: number; active: boolean; status: "draft" | "active" | "archived";
   createdAt: string; activatedAt: string | null; author: string | null; note: string | null;
   sha256: string; sourceSha256: string | null; summary: Record<string, unknown> | null;
+  /** The engine can run on it (only such a version can be activated). */
+  ready: boolean;
 };
 export type KbEventRow = { id: string; versionId: string; version: number | null; action: string; fromVersion: number | null; note: string | null; actor: string | null; at: string };
 export type TestProduct = { id: string; title: string; photos: { path: string; url: string | null }[]; description: string; notes: string };
@@ -58,6 +60,7 @@ export async function readShotAdmin(supabase: Client): Promise<ShotAdmin> {
     status: r.active ? "active" : r.activated_at ? "archived" : "draft",
     createdAt: r.created_at, activatedAt: r.activated_at, author: who(r.created_by), note: r.changelog,
     sha256: r.content_sha256, sourceSha256: r.source_sha256, summary: r.summary ? obj(r.summary) : null,
+    ready: readKb(r.parsed) !== null,
   }));
   const byId = new Map(list.map((r) => [r.id, r.version]));
   const activeRow = list.find((r) => r.active);
@@ -90,13 +93,24 @@ export async function readShotAdmin(supabase: Client): Promise<ShotAdmin> {
   };
 }
 
-/** One version's file and parse (preview, comparison). */
-export async function readKbVersion(supabase: Client, id: string): Promise<{ version: number; kb: KbParsed; source: string } | null> {
-  const { data } = await supabase.from("knowledge_versions").select("version, parsed, source_id").eq("id", id).eq("tool_key", "grovshot_shot").maybeSingle();
-  const kb = data ? readKb(data.parsed) : null;
+/** One version's parse and file, exactly as uploaded (preview, comparison, download); a draft too. */
+export async function readKbVersion(supabase: Client, id: string): Promise<{
+  version: number; kb: KbParsed; ready: boolean; source: string; fileName: string | null; original: { title: string; content: string } | null;
+} | null> {
+  const { data } = await supabase.from("knowledge_versions").select("version, parsed, source_id, summary").eq("id", id).eq("tool_key", "grovshot_shot").maybeSingle();
+  const kb = data ? readKbShape(data.parsed) : null;
   if (!data || !kb || !data.source_id) return null;
-  const { data: src } = await supabase.from("knowledge_sources").select("content").eq("id", data.source_id).maybeSingle();
-  return { version: data.version, kb, source: src?.content ?? "" };
+  const summary = obj(data.summary);
+  const originalId = typeof summary.original_source_id === "string" ? summary.original_source_id : null;
+  const [{ data: src }, { data: orig }] = await Promise.all([
+    supabase.from("knowledge_sources").select("content").eq("id", data.source_id).maybeSingle(),
+    originalId ? supabase.from("knowledge_sources").select("title, content").eq("id", originalId).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  return {
+    version: data.version, kb, ready: readKb(data.parsed) !== null, source: src?.content ?? "",
+    fileName: typeof summary.file_name === "string" ? summary.file_name : null,
+    original: orig?.content ? { title: orig.title ?? "", content: orig.content } : null,
+  };
 }
 
 /* ── the run view ─────────────────────────────────────────────────────────*/

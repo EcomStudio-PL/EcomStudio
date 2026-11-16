@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/database.types";
-import { parseKb, canonicalJson, type KbIssue, type KbParsed } from "@/lib/grovshot-shot/kb";
+import { readKb, type KbIssue, type KbParsed, type KbReadSummary } from "@/lib/grovshot-shot/kb";
+import { buildKbImport } from "@/lib/grovshot-shot/kb-import";
 import { parseShotSettings, type ShotSettings } from "@/lib/grovshot-shot/settings";
 import { readKbVersion } from "@/lib/server/grovshot-shot/admin";
 
@@ -27,46 +28,40 @@ async function adminClient() {
 }
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
-/** Import a knowledge file: checked and parsed HERE (the browser's preview is never trusted), saved as a draft. */
+/**
+ * Import a knowledge file. Only technical checks: a .md file, readable text,
+ * not empty, within the size, a change note (buildKbImport). The structure is
+ * never a reason to refuse: the file is saved byte for byte as a NEW INACTIVE
+ * version and read here (no model call); one the engine cannot run on is a
+ * draft that cannot be activated — an import never touches the active version.
+ */
 export async function importKbAction(input: {
   fileName: string; content: string; note: string; original?: { fileName: string; content: string } | null;
-}): Promise<Result<{ id: string; version: number; duplicate: boolean; warnings: KbIssue[] }>> {
+}): Promise<Result<{ id: string; version: number; duplicate: boolean; ready: boolean; blockers: string[]; read: KbReadSummary }>> {
   const a = await adminClient();
   if (!a) return { ok: false, error: "forbidden" };
-  const note = String(input?.note ?? "").trim();
-  if (note.length < 3) return { ok: false, error: "change_note_required" };
-  const content = String(input?.content ?? "");
-  if (!/\.(md|markdown)$/i.test(String(input?.fileName ?? ""))) return { ok: false, error: "not_markdown" };
-  const parsed = parseKb(content);
-  if (!parsed.ok) return { ok: false, error: "invalid_file", errors: parsed.errors };
-  const kb = parsed.kb;
-  const summary = {
-    recipes: kb.recipes.length, derived_recipes: kb.recipes.filter((r) => r.derived).length, flags: kb.special.length,
-    prompt_blocks: kb.special.filter((s) => s.block).length, footers: kb.footers.length, plan_rules: kb.planRules.length,
-    negative_items: kb.negativeItems.length, directions: kb.directions.length, sections: kb.sections.length,
-    warnings: parsed.warnings.map((w) => `${w.code}${w.detail ? `:${w.detail}` : ""}`).slice(0, 20),
-    file_name: String(input.fileName).slice(0, 200),
-  };
+  const built = buildKbImport({ fileName: input?.fileName, content: input?.content, note: input?.note });
+  if (!built.ok) return { ok: false, error: built.error };
   const original = input.original?.content ? { title: String(input.original.fileName).slice(0, 200), content: input.original.content, sha256: sha(input.original.content) } : null;
-  const { data, error } = await a.supabase.rpc("grovshot_shot_kb_import", {
-    p_file: {
-      title: kb.title || input.fileName, file_name: input.fileName, content, sha256: sha(content),
-      // The canonical parse (sorted keys) — the database hashes exactly this.
-      parsed: JSON.parse(canonicalJson(kb)) as Json, summary, change_note: note, format_version: 1,
-    } as Json,
-    p_original: original as Json,
-  });
+  const { data, error } = await a.supabase.rpc("grovshot_shot_kb_import", { p_file: built.file as unknown as Json, p_original: original as Json });
   if (error) return { ok: false, error: "generic" };
   const r = data as { id?: string; version?: number; duplicate?: boolean; error?: string } | null;
   if (!r || r.error || !r.id) return { ok: false, error: r?.error ?? "generic" };
   revalidatePath(PAGE);
-  return { ok: true, id: r.id, version: Number(r.version), duplicate: Boolean(r.duplicate), warnings: parsed.warnings };
+  return { ok: true, id: r.id, version: Number(r.version), duplicate: Boolean(r.duplicate), ready: built.ready, blockers: built.blockers, read: built.read };
 }
 
-/** Activate a version for NEW orders; an earlier one is a rollback (both recorded). */
+/**
+ * Activate a version for NEW orders; an earlier one is a rollback (both
+ * recorded). A version the engine cannot run on is refused here AND in the
+ * database (0182), so the working active version is never replaced by it.
+ */
 export async function activateKbAction(versionId: string, note: string): Promise<Result<{ version: number; action: string }>> {
   const a = await adminClient();
   if (!a) return { ok: false, error: "forbidden" };
+  const { data: row } = await a.supabase.from("knowledge_versions").select("parsed").eq("id", versionId).eq("tool_key", "grovshot_shot").maybeSingle();
+  if (!row) return { ok: false, error: "not_found" };
+  if (!readKb(row.parsed)) return { ok: false, error: "not_engine_ready" };
   const { data, error } = await a.supabase.rpc("grovshot_shot_kb_activate", { p_version_id: versionId, p_note: String(note ?? "").slice(0, 2000) });
   if (error) return { ok: false, error: "generic" };
   const r = data as { version?: number; action?: string; unchanged?: boolean; error?: string } | null;
@@ -75,8 +70,10 @@ export async function activateKbAction(versionId: string, note: string): Promise
   return { ok: true, version: Number(r.version), action: r.unchanged ? "unchanged" : String(r.action) };
 }
 
-/** One version's parse and file (preview, comparison). */
-export async function readKbVersionAction(versionId: string): Promise<Result<{ version: number; kb: KbParsed; source: string }>> {
+/** One version's parse and file (preview, comparison, download — the file exactly as uploaded). */
+export async function readKbVersionAction(versionId: string): Promise<Result<{
+  version: number; kb: KbParsed; ready: boolean; source: string; fileName: string | null; original: { title: string; content: string } | null;
+}>> {
   const a = await adminClient();
   if (!a) return { ok: false, error: "forbidden" };
   const v = await readKbVersion(a.supabase, versionId);

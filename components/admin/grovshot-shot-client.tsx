@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Upload, X } from "lucide-react";
+import { Download, Loader2, Upload, X } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -9,7 +9,7 @@ import { formatDate } from "@/lib/utils";
 import {
   activateKbAction, deleteTestProductAction, importKbAction, readKbVersionAction, saveShotSettingsAction, saveTestProductAction,
 } from "@/app/actions/grovshot-shot";
-import { diffKb, parseKb, type KbDiff, type KbIssue, type KbParsed } from "@/lib/grovshot-shot/kb";
+import { KB_FORMAT, diffKb, type KbDiff, type KbParsed, type KbReadSummary } from "@/lib/grovshot-shot/kb";
 import { SHOT_STEPS, type ShotSettings } from "@/lib/grovshot-shot/settings";
 import { CLAUDE_STAGE_MODELS } from "@/lib/grovshot-v2/config";
 import { ANTHROPIC_EFFORTS } from "@/lib/ai/anthropic-options";
@@ -20,16 +20,37 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 
 /**
  * GROVBASE SHOT → Baza wiedzy / Testy — the admin's interactive pieces.
- * The knowledge file is checked in the browser for the PREVIEW and the
- * comparison only; the server parses it again before anything is saved.
+ * Import = choose a .md file, describe the change, „Wgraj nową wersję”.
+ * Only technical checks happen here (a readable, non-empty .md within the
+ * size); the server reads the file and saves it byte for byte as a new,
+ * INACTIVE version. Preview, comparison and download are on demand.
  */
 
 type T = (key: string, values?: Record<string, string | number>) => string;
 const usd = (m: number | null | undefined) => (m === null || m === undefined ? "—" : `$${(m / 1_000_000).toFixed(4)}`);
-const issueText = (t: T, i: KbIssue) => `${t(`gss.issue.${i.code}`)}${i.detail ? ` – ${i.detail}` : ""}`;
 const pre = "whitespace-pre-wrap break-words rounded-lg bg-raised p-3 text-xs leading-relaxed";
+/** Bytes a .md file may have before it is read (the text limit is KB_FORMAT.maxChars). */
+const MAX_FILE_BYTES = 1_500_000;
+const num = (v: unknown) => (typeof v === "number" ? v : 0);
+
+function saveAs(name: string, content: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+const mdName = (s: string, fallback: string) => {
+  const base = s.trim().replace(/[\\/:*?"<>|]+/g, "_") || fallback;
+  return /\.(md|markdown)$/i.test(base) ? base : `${base}.md`;
+};
 
 /* ══ Baza wiedzy ══════════════════════════════════════════════════════════*/
+
+type Saved = { version: number; duplicate: boolean; ready: boolean; blockers: string[]; read: KbReadSummary };
 
 export function ShotKbPanel({ versions, events, active }: {
   versions: KbVersionRow[]; events: KbEventRow[]; active: { id: string; version: number; kb: KbParsed } | null;
@@ -37,28 +58,44 @@ export function ShotKbPanel({ versions, events, active }: {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [file, setFile] = useState<{ name: string; content: string } | null>(null);
-  const [original, setOriginal] = useState<{ name: string; content: string } | null>(null);
+  const [file, setFile] = useState<{ name: string; content: string; bytes: number } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [view, setView] = useState<{ version: number; kb: KbParsed } | null>(null);
+  const [saved, setSaved] = useState<Saved | null>(null);
+  const [view, setView] = useState<{ version: number; kb: KbParsed; ready: boolean } | null>(null);
   const [compare, setCompare] = useState<{ version: number; diff: KbDiff } | null>(null);
   const [activateNote, setActivateNote] = useState("");
-  const parsed = useMemo(() => (file ? parseKb(file.content) : null), [file]);
-  const diff = useMemo(() => (parsed?.kb ? diffKb(active?.kb ?? null, parsed.kb) : null), [parsed, active]);
+  const blockersText = (codes: string[]) => codes.map((c) => t(`gss.kb.blocker.${c}`)).join("; ");
 
-  async function read(list: FileList | null, set: (f: { name: string; content: string } | null) => void) {
+  /** Technical checks only: a .md file, not empty, within the size, valid UTF-8 text (kept byte for byte). */
+  async function read(list: FileList | null) {
     const f = list?.[0];
     if (!f) return;
-    if (!/\.(md|markdown)$/i.test(f.name)) { toast.error(t("gss.kb.notMd")); return; }
-    set({ name: f.name, content: await f.text() });
+    setSaved(null);
+    const fail = (code: string) => { setFile(null); setFileError(t(`gss.err.${code}`)); };
+    if (!/\.(md|markdown)$/i.test(f.name)) return fail("not_markdown");
+    if (f.size === 0) return fail("empty_file");
+    if (f.size > MAX_FILE_BYTES) return fail("file_too_large");
+    let content: string;
+    try {
+      content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await f.arrayBuffer());
+    } catch {
+      return fail("unreadable");
+    }
+    if (content.trim().length === 0) return fail("empty_file");
+    if (content.length > KB_FORMAT.maxChars) return fail("file_too_large");
+    if (content.includes("\u0000")) return fail("unreadable");
+    setFileError(null);
+    setFile({ name: f.name, content, bytes: f.size });
   }
-  function save() {
+  function upload() {
     if (!file) return;
     start(async () => {
-      const r = await importKbAction({ fileName: file.name, content: file.content, note, original: original ? { fileName: original.name, content: original.content } : null });
-      if (!r.ok) { toast.error(r.errors?.length ? r.errors.map((e) => issueText(t, e)).join("; ") : t(`gss.err.${r.error}`)); return; }
+      const r = await importKbAction({ fileName: file.name, content: file.content, note });
+      if (!r.ok) { toast.error(t(`gss.err.${r.error}`)); return; }
+      setSaved({ version: r.version, duplicate: r.duplicate, ready: r.ready, blockers: r.blockers, read: r.read });
       toast.success(r.duplicate ? t("gss.kb.duplicate", { v: r.version }) : t("gss.kb.saved", { v: r.version }));
-      setFile(null); setOriginal(null); setNote("");
+      setFile(null); setNote("");
       router.refresh();
     });
   }
@@ -71,11 +108,13 @@ export function ShotKbPanel({ versions, events, active }: {
       router.refresh();
     });
   }
-  function load(v: KbVersionRow, mode: "view" | "compare") {
+  function load(v: KbVersionRow, mode: "view" | "compare" | "file" | "original") {
     start(async () => {
       const r = await readKbVersionAction(v.id);
       if (!r.ok) { toast.error(t(`gss.err.${r.error}`)); return; }
-      if (mode === "view") { setView({ version: r.version, kb: r.kb }); setCompare(null); }
+      if (mode === "file") saveAs(mdName(r.fileName ?? "", `grovbase-shot-wiedza-v${r.version}`), r.source);
+      else if (mode === "original") { if (r.original) saveAs(mdName(r.original.title, `oryginal-v${r.version}`), r.original.content); }
+      else if (mode === "view") { setView({ version: r.version, kb: r.kb, ready: r.ready }); setCompare(null); }
       else { setCompare({ version: r.version, diff: diffKb(active?.kb ?? null, r.kb) }); setView(null); }
     });
   }
@@ -85,41 +124,25 @@ export function ShotKbPanel({ versions, events, active }: {
       <section className="space-y-3" data-gss-kb-import>
         <h3 className="text-sm font-semibold">{t("gss.kb.importTitle")}</h3>
         <p className="text-xs text-muted">{t("gss.kb.importHelp")}</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-3 text-xs text-muted"
-            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void read(e.dataTransfer.files, setFile); }}>
-            <Upload size={16} aria-hidden />
-            <span>{file ? file.name : t("gss.kb.dropFile")}</span>
-            <input type="file" accept=".md,.markdown,text/markdown" className="sr-only" onChange={(e) => void read(e.target.files, setFile)} />
-          </label>
-          <label className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-3 text-xs text-muted">
-            <Upload size={16} aria-hidden />
-            <span>{original ? original.name : t("gss.kb.dropOriginal")}</span>
-            <input type="file" accept=".md,.markdown,text/markdown" className="sr-only" onChange={(e) => void read(e.target.files, setOriginal)} />
-          </label>
-        </div>
+        <label className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted"
+          onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void read(e.dataTransfer.files); }} data-gss-kb-file={file ? "chosen" : "none"}>
+          <Upload size={16} aria-hidden />
+          <span className="break-all">{file ? t("gss.kb.fileInfo", { name: file.name, size: Math.max(1, Math.round(file.bytes / 1024)) }) : t("gss.kb.dropFile")}</span>
+          <input type="file" accept=".md,.markdown,text/markdown" className="sr-only" onChange={(e) => { void read(e.target.files); e.target.value = ""; }} />
+        </label>
+        {fileError && <p className="text-xs text-danger" role="alert">{fileError}</p>}
         <div>
           <Label htmlFor="gss-note">{t("gss.kb.note")}</Label>
           <Textarea id="gss-note" rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder={t("gss.kb.notePh")} />
         </div>
-        {parsed && (
-          <div className="space-y-3" data-gss-kb-check={parsed.ok ? "ok" : "error"}>
-            {!parsed.ok && (
-              <ul className="list-disc space-y-1 pl-5 text-xs text-danger">{parsed.errors.map((e, i) => <li key={i}>{issueText(t, e)}</li>)}</ul>
-            )}
-            {parsed.warnings.length > 0 && (
-              <ul className="list-disc space-y-1 pl-5 text-xs text-warning">{parsed.warnings.map((e, i) => <li key={i}>{issueText(t, e)}</li>)}</ul>
-            )}
-            {parsed.ok && diff && (
-              <>
-                <p className="text-xs text-muted">{t("gss.kb.parsedSummary", { r: parsed.kb.recipes.length, f: parsed.kb.special.length, s: parsed.kb.footers.length, p: parsed.kb.planRules.length })}</p>
-                <DiffView diff={diff} against={active?.version ?? null} t={t} />
-                <KbPreview kb={parsed.kb} t={t} />
-              </>
-            )}
-            <Button onClick={save} disabled={pending || !parsed.ok || note.trim().length < 3}>
-              {pending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : null}{t("gss.kb.saveDraft")}
-            </Button>
+        <Button onClick={upload} disabled={pending || !file || note.trim().length < 3} data-gss-kb-upload>
+          {pending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Upload size={14} aria-hidden />}{t("gss.kb.upload")}
+        </Button>
+        {saved && (
+          <div className={`space-y-1 rounded-xl border p-3 text-xs ${saved.ready ? "border-border" : "border-warning"}`} data-gss-kb-saved={saved.ready ? "ready" : "draft"}>
+            <p className="font-semibold">{saved.duplicate ? t("gss.kb.duplicate", { v: saved.version }) : t("gss.kb.saved", { v: saved.version })}</p>
+            <p>{t("gss.kb.readOk", { r: saved.read.recipes, f: saved.read.flags, a: saved.read.always, s: saved.read.footers, p: saved.read.planRules, n: saved.read.negative, x: saved.read.sections })}</p>
+            <p className={saved.ready ? "text-muted" : "text-warning"}>{saved.ready ? t("gss.kb.readyHint") : t("gss.kb.draftHint", { reasons: blockersText(saved.blockers) })}</p>
           </div>
         )}
       </section>
@@ -131,16 +154,24 @@ export function ShotKbPanel({ versions, events, active }: {
             <Label htmlFor="gss-act-note">{t("gss.kb.activateNote")}</Label>
             <Input id="gss-act-note" value={activateNote} maxLength={2000} onChange={(e) => setActivateNote(e.target.value)} />
             {versions.map((v) => (
-              <div key={v.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-xs" data-gss-version={v.version} data-status={v.status}>
+              <div key={v.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-xs" data-gss-version={v.version} data-status={v.status} data-ready={v.ready ? "1" : "0"}>
                 <span className="font-semibold">v{v.version}</span>
                 <Badge tone={v.status === "active" ? "success" : v.status === "draft" ? "info" : "neutral"} dot>{t(`gss.kb.status.${v.status}`)}</Badge>
+                {!v.ready && <Badge tone="warning">{t("gss.kb.notReady")}</Badge>}
                 <span className="text-muted">{formatDate(v.createdAt, locale)} · {v.author ?? "—"}</span>
                 <span className="min-w-0 flex-1 truncate" title={v.note ?? ""}>{v.note}</span>
+                {v.summary && <span className="text-muted">{t("gss.kb.parsedSummary", { r: num(v.summary.recipes), f: num(v.summary.flags), s: num(v.summary.footers), p: num(v.summary.plan_rules) })}</span>}
                 <code className="text-[10px] text-muted">{v.sha256.slice(0, 10)}</code>
                 <Button size="sm" variant="ghost" onClick={() => load(v, "view")} disabled={pending}>{t("gss.kb.preview")}</Button>
                 {active && !v.active && <Button size="sm" variant="ghost" onClick={() => load(v, "compare")} disabled={pending}>{t("gss.kb.compare")}</Button>}
+                <Button size="sm" variant="ghost" onClick={() => load(v, "file")} disabled={pending} data-gss-kb-download>
+                  <Download size={12} aria-hidden />{t("gss.kb.download")}
+                </Button>
+                {typeof v.summary?.original_source_id === "string" && (
+                  <Button size="sm" variant="ghost" onClick={() => load(v, "original")} disabled={pending}><Download size={12} aria-hidden />{t("gss.kb.downloadOriginal")}</Button>
+                )}
                 {!v.active && (
-                  <Button size="sm" variant="secondary" onClick={() => activate(v)} disabled={pending}>
+                  <Button size="sm" variant="secondary" onClick={() => activate(v)} disabled={pending || !v.ready} title={v.ready ? undefined : t("gss.kb.notReadyHint")}>
                     {active && v.version < active.version ? t("gss.kb.rollback") : t("gss.kb.activate")}
                   </Button>
                 )}
@@ -148,7 +179,13 @@ export function ShotKbPanel({ versions, events, active }: {
             ))}
           </div>
         )}
-        {view && <div className="space-y-2"><p className="text-xs font-semibold">{t("gss.kb.previewOf", { v: view.version })}</p><KbPreview kb={view.kb} t={t} /></div>}
+        {view && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold">{t("gss.kb.previewOf", { v: view.version })}</p>
+            {!view.ready && <p className="text-xs text-warning">{t("gss.kb.notReadyHint")}</p>}
+            <KbPreview kb={view.kb} t={t} />
+          </div>
+        )}
         {compare && <DiffView diff={compare.diff} against={active?.version ?? null} t={t} title={t("gss.kb.compareOf", { v: compare.version })} />}
       </section>
 
