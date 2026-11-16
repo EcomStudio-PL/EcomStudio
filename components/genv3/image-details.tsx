@@ -434,8 +434,18 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               is the first question a seller asks of their own image, and it
               used to sit below a wall of settings. Keyed by generation — the
               view stays mounted across prev/next, and a reused instance
-              painted the previous image's thumbnails under the new one. */}
-          <SourcesSection key={item.generationId} item={item} />
+              painted the previous image's thumbnails under the new one.
+
+              THE KEY MUST BE UNIQUE AMONG THIS PANEL'S CHILDREN. Since the
+              section stopped having a wrapper of its own (dfcd622) it is a
+              sibling of ResultFeedback, which was keyed by the very same
+              generation id. Two siblings with one key: on every prev/next
+              React lost track of the old section and never removed it, so
+              each new image ADDED a row of „Zdjęcia wejściowe” — the earlier
+              images' references, other products' photos, frozen skeletons —
+              under the new one. Each keyed child here carries its own prefix
+              (scripts/preview-sources-tests.ts walks the real view). */}
+          <SourcesSection key={`sources-${item.generationId}`} item={item} />
 
           {/* MINIATURKA made with Packshot AI: the photos after the retouch,
               ready to go into a new Miniaturka without paying for it again. */}
@@ -604,7 +614,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
 
           {/* 👍 / 👎 — one vote per result, stored server-side; ranking only. */}
           {/* Not on Retusz or Miniaturka: each run is an independent task, ratings feed nothing. */}
-          {item.generationId && item.operation !== "ecommerce_thumbnail" && item.operation !== "image_retouch" && <ResultFeedback key={item.generationId} generationId={item.generationId} />}
+          {item.generationId && item.operation !== "ecommerce_thumbnail" && item.operation !== "image_retouch" && <ResultFeedback key={`feedback-${item.generationId}`} generationId={item.generationId} />}
 
           {/* The one thing this panel exists to lead to, at full width. */}
           {/* GrovBase Shot: one more generation of THIS shot, priced on the button (two steps). */}
@@ -786,12 +796,15 @@ function SourcesSection({ item }: { item: GalleryItem }) {
   }, [item.generationId]);
 
   const data = state.data;
+  // Each photo once. A shot may have been sent the same photo twice (a clean
+  // view repeated for fidelity) — that is one input photo, not two, and a
+  // repeated URL would also be a repeated React key in the row below.
   const shots = data
     ? [
       ...data.references.map((url) => ({ url, kind: t("genv3.sourcesRefs") })),
       ...data.inspirations.map((url) => ({ url, kind: t("genv3.sourcesInsp") })),
       ...(data.marked ? [{ url: data.marked, kind: t("genv3.sourcesMarked") }] : []),
-    ]
+    ].filter((s, i, all) => all.findIndex((x) => x.url === s.url) === i)
     : [];
   // One row of four cells. Five or more sources give up the fourth tile to
   // the "+N" counter, so the row never wraps into a ragged second line.
