@@ -27,7 +27,8 @@ Dwa niezależne moduły, każdy z osobną migracją, osobnymi commitami i osobny
 
 - **Rezerwa** = zapotrzebowanie × (1 + bufor, domyślnie 20 %); doładowanie = max(0, rezerwa − dostępne); scenariusz standardowy i ostrożny; ekspozycja 24 h / 7 dni / horyzont osobno.
 - **Raporty**: po sprzedaży (tylko z webhooka po ZAKSIĘGOWANEJ płatności, po odpowiedzi), godzinowy (puste godziny pomijane), dzienny (23:00 Europe/Warsaw, edytowalne), alert niskich środków (deduplikacja + powtórka co N godzin). Kanały per zdarzenie: panel / e-mail / Telegram w Komunikacja → Powiadomienia (nowy kanał „Panel administratora”). Harmonogram: pg_cron `grovbase-api-reserves` (co 15 min) → pg_net → `/api/cron/reserves` (token). Błąd powiadomienia nigdy nie cofa ani nie blokuje płatności.
-- **Weryfikacja na PROD**: trasa crona bez tokenu → 401, GET → 405, strona admina bez sesji → przekierowanie do logowania; ręczny tick → `200 {"via":"dispatch_token","hourly":"sent","synced":2}`, raport godzinowy zapisany w panelu. Synchronizacja fal zwracała „not_configured” — klucz fal jest wierszem z szyfrogramem sprzed Vault; poprawione w `80a43f2`.
+- **Weryfikacja na PROD**: trasa crona bez tokenu → 401, GET → 405, strona admina bez sesji → przekierowanie do logowania; ręczny tick → `200 {"via":"dispatch_token","hourly":"sent","synced":2}`, raport godzinowy zapisany w panelu. Raport dzienny 23:00 (Warszawa) wyszedł 15.11 o 22:00 UTC: panel „sent”, e-mail „sent”, Telegram „skipped” (bot nie jest podłączony w integracjach).
+- **fal.ai — stan faktyczny**: synchronizacja zwraca „not_configured” i to jest prawda. Klucz fal jest zapisany jako szyfrogram sprzed Vault, a środowisko produkcyjne nie ma `APP_ENCRYPTION_KEY`, więc nie da się go odczytać ani w synchronizacji, ani w narzędziach (fal nie ma żadnego wywołania w `ai_provider_calls`). `80a43f2` sprawia, że synchronizacja odczytuje klucz dokładnie tak jak narzędzia (env → Vault → stary rekord). Żeby włączyć automatyczne saldo fal: zapisać klucz fal ponownie w panelu (AI → Dostawcy) — trafi do Vault.
 - **Poprawka w trakcie** (`5ed0c82`): renderer Telegrama traktował raport finansowy jak kartę zdarzenia — 🔁 dostawało etykietę „Następna płatność”, 🧮 „Saldo po zakupie”, inne etykiety znikały, równe wartości („$0.00”) były scalane, widać było 8 wierszy. Dla `finance.*` wiersze idą teraz jako tabela (etykieta zostaje, bez scalania, do 24 wierszy); pozostałe zdarzenia bez zmian. Temat e-maila nie dostaje drugiego „— GrovBase”.
 
 ## Moduł 2 — Zmiana planu (WYŁĄCZONY)
@@ -61,3 +62,12 @@ Hashe `stripe-webhook.ts` przypięte na nowo z komentarzem w `plan-page-tests` i
 ## Wycofanie
 
 Moduł 2: wyłącznik (stan obecny). Pełne usunięcie — komentarz ROLLBACK w `0181_plan_changes.sql`. Moduł 1: wyłącznik w ustawieniach rezerw albo `select cron.unschedule('grovbase-api-reserves')`; pełne — komentarz ROLLBACK w `0180_api_reserves.sql`. Kod: revert `896cb75` / `5ed0c82` / `80a43f2` / `0e3181c`.
+
+## Weryfikacja po wdrożeniu modułu 2 (`dpl_FV1yWcxcb1ZXcJchqS4EDTBLSfG5`, READY → grovbase.com)
+
+- Tick pg_cron 02:48 i 03:00 UTC → `200`, `"plan_changes":{"released":0,"skipped":0}` (sweep działa), o 03:00 `hourly: skipped_empty`, `synced: 2`.
+- `/plany` 200 (gość: 0 przycisków zmiany planu), `/plan` i `/admin/finance/zmiany-planow` bez sesji → logowanie.
+- PROD po wdrożeniu: flaga `{"enabled": false}`, `plan_changes` 0 wierszy, salda 488 / 1 124 / 49 743,75 (bez zmian), inwariant 0 rozbieżności, Customer Portal bez zmian.
+- Błędy runtime (8 h): 0.
+- Notion: strona nie została utworzona — przestrzeń Notion wyczerpała limit darmowych bloków; dokumentacja jest w `CLAUDE.md` i tym pliku.
+
