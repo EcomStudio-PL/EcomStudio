@@ -78,20 +78,25 @@ console.log("\nB. Miniaturka: retouched photos used again");
   check("a reference is `retouched:<uuid>`, nothing else", retouchedJobId(retouchedRef(J(1))) === J(1)
     && retouchedJobId("retouched:../../etc") === null && retouchedJobId("ws/p/1.png") === null && retouchedJobId(null) === null);
 
+  // V4 (17.11.2026): photos after Packshot AI are ADDED AT THE END — the
+  // originals stay where they are; nothing is replaced, moved or removed.
   const form = [photo("ws/a.png"), photo("ws/b.png"), photo("ws/c.png")];
   const m = mergeRetouched(form, [r(1, "ws/b.png"), r(2, "ws/zzz.png")], 10);
-  check("the retouched photo takes its original's place, at the same position",
-    m.photos[1].path === retouchedRef(J(1)) && m.replaced === 1);
-  check("unrelated photos stay where they were", m.photos[0].path === "ws/a.png" && m.photos[2].path === "ws/c.png");
-  check("one whose original is not in the form is appended", m.photos[3]?.path === retouchedRef(J(2)) && m.added === 1 && m.photos.length === 4);
+  check("three photos in the form + two after Packshot AI → A, B, C, Packshot A, Packshot B (originals kept, order kept)",
+    m.photos.map((p) => p.path).join() === ["ws/a.png", "ws/b.png", "ws/c.png", retouchedRef(J(1)), retouchedRef(J(2))].join() && m.added === 2);
+  const empty = mergeRetouched([], [r(1, "ws/b.png"), r(2, null)], 10);
+  check("an empty form gets both, in the order offered", empty.photos.map((p) => p.path).join() === [retouchedRef(J(1)), retouchedRef(J(2))].join() && empty.added === 2);
   const again = mergeRetouched(m.photos, [r(1, "ws/b.png"), r(2, null)], 10);
-  check("a second click adds nothing twice", again.photos.length === 4 && again.duplicates === 2 && again.added + again.replaced === 0);
+  check("a second click adds nothing twice (the Retusz job's reference, not a URL) and changes nothing",
+    again.photos.length === 5 && again.duplicates === 2 && again.added === 0 && again.photos.map((p) => p.path).join() === m.photos.map((p) => p.path).join());
+  const sameJobNewUrl = mergeRetouched(m.photos, [{ ref: retouchedRef(J(1)), original: null, url: "https://x/fresh-signed-url" }], 10);
+  check("…even when its signed URL changed", sameJobNewUrl.duplicates === 1 && sameJobNewUrl.added === 0);
   const full = Array.from({ length: 9 }, (_, i) => photo(`ws/${i}.png`));
   const capped = mergeRetouched(full, [r(3, null), r(4, null), r(5, null)], 10);
-  check("the limit (10) holds: one appended, two counted as skipped, never forced in",
-    capped.photos.length === 10 && capped.added === 1 && capped.skipped === 2);
-  const swapAtLimit = mergeRetouched(Array.from({ length: 10 }, (_, i) => photo(`ws/${i}.png`)), [r(6, "ws/4.png")], 10);
-  check("…but replacing an original at the limit is always possible", swapAtLimit.replaced === 1 && swapAtLimit.photos.length === 10);
+  check("the limit (10) holds: one appended, two counted as skipped, never forced in, nothing removed",
+    capped.photos.length === 10 && capped.added === 1 && capped.skipped === 2 && capped.photos.slice(0, 9).every((p, i) => p.path === `ws/${i}.png`));
+  const atLimit = mergeRetouched(Array.from({ length: 10 }, (_, i) => photo(`ws/${i}.png`)), [r(6, "ws/4.png")], 10);
+  check("…a full form is never changed to make room (its original is not swapped out)", atLimit.added === 0 && atLimit.skipped === 1 && atLimit.photos[4].path === "ws/4.png");
   check("a forged reference is ignored", mergeRetouched(form, [{ ref: "retouched:nope", original: null, url: "x" }], 10).photos.length === 3);
 
   let events = 0;
@@ -102,15 +107,18 @@ console.log("\nB. Miniaturka: retouched photos used again");
     taken?.length === 1 && taken[0].ref === retouchedRef(J(7)) && takeRetouched() === null && events === 1);
 
   const ws = code("components/thumbnail/workspace.tsx");
-  check("the form: merges, switches Packshot AI OFF and says so — and starts nothing",
-    /mergeRetouched\(/.test(ws) && /setRetouch\(false\)/.test(ws) && /thumb\.reuse\.done/.test(ws)
-    && !/absorbRetouched[\s\S]{0,700}(generate|submit|start)\(/.test(ws));
-  check("…the price counts carried photos as paid only while Packshot AI is on", /reused:\s*retouchOn \? carried : 0/.test(ws));
-  check("the toast reads exactly as specified (PL), and exists in EN/DE",
-    (pl as { thumb: { reuse: { done: string } } }).thumb.reuse.done === "Zdjęcia są już po retuszu – nie zapłacisz za retusz ponownie."
-    && [en, de].every((d) => typeof (d as { thumb: { reuse: { done?: string } } }).thumb.reuse.done === "string"));
+  check("the form: merges, switches Packshot AI OFF only when something was added — and starts nothing",
+    /mergeRetouched\(/.test(ws) && /if \(merged\.added > 0\) \{[\s\S]{0,160}setRetouch\(false\)/.test(ws)
+    && !/absorbRetouched[\s\S]{0,1400}(generate|submit|start)\(/.test(ws));
+  check("…the price never counts carried photos as free: OFF = the composition only, ON = a new pass for every photo",
+    !/reused:/.test(ws) && /quoteTotal\(\{\s*photos: photos\.length, retouch: retouchOn,/.test(ws));
+  const reuseTexts = (d: unknown) => (d as { thumb: { reuse: Record<string, unknown> } }).thumb.reuse;
+  check("the messages read as specified (PL), and exist in EN/DE",
+    reuseTexts(pl).partial === "Dodano {added}. Nie dodano {skipped}, ponieważ limit wynosi {max}."
+    && reuseTexts(pl).hint === "Dodane zdjęcia są już po obróbce – włącz Packshot AI tylko, jeśli chcesz obrobić je ponownie."
+    && [en, de].every((d) => ["added", "partial", "full", "already", "hint"].every((k) => typeof reuseTexts(d)[k] === "string")));
   const det = code("components/genv3/image-details.tsx");
-  check("the preview's „Użyj do nowej miniaturki”: offers, closes the preview, navigates without a reload",
+  check("the preview's „Użyj w kolejnej generacji”: offers, closes the preview, navigates without a reload",
     /offerRetouched\(/.test(det) && /onClose\(\)/.test(det) && /router\.push\(THUMBNAIL_PATH\)/.test(det) && !/location\.(href|assign|reload)/.test(det));
 }
 

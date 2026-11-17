@@ -889,13 +889,14 @@ function SourcesSection({ item }: { item: GalleryItem }) {
 }
 
 /**
- * „ZDJĘCIA PO RETUSZU” — a Miniaturka made with Packshot AI keeps the photos
- * it retouched (each a Retusz job in the library). Here they are in the
- * order the Miniaturka had them: open one, save one, or „Użyj do nowej
- * miniaturki” — they go into the Miniaturka form (in place of their
- * originals, the retouch switched off: not paid for twice), with the preview
- * closed and no reload. Nothing for a Miniaturka without them; a record that
- * lost them since says nothing either (no section, no error).
+ * „ZDJĘCIA PO PACKSHOT AI” — a Miniaturka made with Packshot AI keeps the
+ * photos it retouched (each a Retusz job in the library). Here are THIS
+ * Miniaturka's own passes (never photos it was merely given), in its order:
+ * open one, save one, or „Użyj w kolejnej generacji” — they are ADDED at the
+ * end of the Miniaturka form (nothing there replaced; duplicates and the
+ * limit of 10 counted, lib/thumbnail/reuse.ts), Packshot AI switched off (not
+ * paid for twice), with the preview closed and no reload. Nothing for a
+ * Miniaturka without them; a record that lost them since says nothing either.
  */
 function RetouchedSection({ item, onClose }: { item: GalleryItem; onClose: () => void }) {
   const { t } = useI18n();

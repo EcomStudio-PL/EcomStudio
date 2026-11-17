@@ -106,7 +106,8 @@ export function ToolFrame({ frame, tools, back, title, children, className }: {
   frame: FrameValue;
   /** Inflight tools whose tiles live in this gallery (the "Wyniki" spinner). */
   tools: readonly string[];
-  /** Omit on a screen that has no way back of its own (none today). */
+  /** Omit on a screen that has no way back of its own (Miniaturka, 17.11.2026:
+   *  no „← E-commerce” — its name and „?” stand alone). */
   back?: { href: string; label: string };
   /** The tool's name, or its mode tabs. */
   title: React.ReactNode;

@@ -2,7 +2,7 @@
  * MINIATURKA — PHOTOS ALREADY RETOUCHED, USED AGAIN WITHOUT PAYING AGAIN.
  *
  * A Miniaturka made with „Packshot AI” keeps every retouched photo (each is a
- * Retusz job of its own, in the library). „Użyj do nowej miniaturki” in the
+ * Retusz job of its own, in the library). „Użyj w kolejnej generacji” in the
  * preview hands them to the Miniaturka form as `retouched:<that job's id>` —
  * a reference the server resolves itself (lib/server/thumbnail/run.ts): the
  * workspace's own Retusz job, its stored file, checked like a reused pass.
@@ -32,10 +32,8 @@ export type FormPhoto = { key: string; path: string; url: string };
 
 export type MergeResult = {
   photos: FormPhoto[];
-  /** Appended at the end. */
+  /** Appended at the end, in the order they were offered. */
   added: number;
-  /** Put in place of their originals, at the originals' positions. */
-  replaced: number;
   /** Did not fit under the limit. */
   skipped: number;
   /** Already in the form (a second click, the same photo twice). */
@@ -43,19 +41,18 @@ export type MergeResult = {
 };
 
 /**
- * The form's photos with the retouched ones put in:
- *   · a retouched photo whose ORIGINAL is in the form takes its place (same
- *     position) — matched by the stored path the original was uploaded as,
- *     never by a file name;
- *   · one already in the form (the same Retusz job) is not added again;
- *   · the rest are appended in the order the earlier Miniaturka had them,
- *     as long as the limit allows — the rest are counted, never forced in;
- *   · every other photo stays where it was.
+ * The form's photos with the retouched ones ADDED AT THE END (17.11.2026):
+ *   · nothing in the form is replaced, moved or removed — an original and its
+ *     retouched version are two different files and may both be there;
+ *   · one already in the form (the same Retusz job — its durable reference,
+ *     never a signed URL) is not added again;
+ *   · the rest are appended in the order the earlier Miniaturka had them, as
+ *     long as the limit allows — the rest are counted, never forced in, and
+ *     no photo of the customer's is dropped to make room.
  */
 export function mergeRetouched(current: readonly FormPhoto[], incoming: readonly RetouchedPhoto[], max: number): MergeResult {
   const photos = current.slice();
   let added = 0;
-  let replaced = 0;
   let skipped = 0;
   let duplicates = 0;
   for (const r of incoming) {
@@ -64,21 +61,14 @@ export function mergeRetouched(current: readonly FormPhoto[], incoming: readonly
       duplicates++;
       continue;
     }
-    const photo: FormPhoto = { key: r.ref, path: r.ref, url: r.url };
-    const at = r.original ? photos.findIndex((p) => p.path === r.original) : -1;
-    if (at >= 0) {
-      photos[at] = photo;
-      replaced++;
-      continue;
-    }
     if (photos.length >= max) {
       skipped++;
       continue;
     }
-    photos.push(photo);
+    photos.push({ key: r.ref, path: r.ref, url: r.url });
     added++;
   }
-  return { photos, added, replaced, skipped, duplicates };
+  return { photos, added, skipped, duplicates };
 }
 
 /* ── the hand-over: preview → Miniaturka form ──────────────────────────── */

@@ -131,7 +131,7 @@ export function WorkflowRuntime({
       {/* MINIATURKA — its own panel (photos → optional Retusz → one
           composition → 2560×2560). It exists for one workflow only, so it
           needs no per-workflow key; the two branches below keep theirs. */}
-      {thumbnail && <ThumbnailWorkspace workspaceId={workspaceId} credits={credits} data={thumbnail} back={back} title={toolName} />}
+      {thumbnail && <ThumbnailWorkspace workspaceId={workspaceId} credits={credits} data={thumbnail} title={toolName} />}
       {!thumbnail && <>{tool && fashion ? (
         /* A TOOL. Keyed like the generator below, and for the same reason: the
            panel seeds its pools, its size and its framing from props once, so

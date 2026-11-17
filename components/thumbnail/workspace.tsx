@@ -47,11 +47,10 @@ import { useReorderHint } from "@/components/tool-guide/use-reorder-hint";
  * as they were for the next one. The click's own id makes a double submit
  * the same run.
  */
-export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: {
+export function ThumbnailWorkspace({ workspaceId, credits, data, title }: {
   workspaceId: string;
   credits: number;
   data: ThumbnailRuntimeData;
-  back: { href: string; label: string };
   title: string;
 }) {
   const { t, locale } = useI18n();
@@ -68,19 +67,25 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
   const reserved = useRef(0);
   const inFlight = useRef(0);
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
+  /** „2 zdjęcia” / „5 zdjęć” — the counted form each sentence needs. */
+  const countPhotos = (kind: "added" | "skipped", count: number) => {
+    let form = "other";
+    try { form = new Intl.PluralRules(locale).select(count); } catch { /* keep "other" */ }
+    return t(`thumb.reuse.${kind}Photos.${form}`, { n: n(count) });
+  };
   const gate = useInflightGate();
   const reorderHint = useReorderHint("ecommerce_thumbnail");
   useEffect(() => { if (gate.balance !== null) setBalance(gate.balance); }, [gate.balance, gate.balanceAt]);
 
   const retouchOn = retouch && data.retouch.available;
-  // Photos already retouched (carried from an earlier Miniaturka): with
-  // Packshot AI switched back on, their pass counts as paid — the server
-  // prices them the same way (lib/server/thumbnail/run.ts).
+  // Photos already after Packshot AI (carried from an earlier Miniaturka).
+  // Packshot AI OFF: used as they are, nothing to pay for them. Switched back
+  // ON on purpose: every photo — those too — gets a NEW pass at Retusz's
+  // price, and the server prices it the same way (lib/server/thumbnail/run.ts).
   const carried = photos.filter((p) => retouchedJobId(p.path) !== null).length;
   const quote = useMemo(() => quoteTotal({
     photos: photos.length, retouch: retouchOn, retouchUnit: data.retouch.unit, thumbnailCredits: data.thumbnailCredits ?? 0,
-    reused: retouchOn ? carried : 0,
-  }), [photos.length, retouchOn, data.retouch.unit, data.thumbnailCredits, carried]);
+  }), [photos.length, retouchOn, data.retouch.unit, data.thumbnailCredits]);
   const missing = Math.max(0, quote.total - balance);
 
   /*
@@ -139,13 +144,15 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
   useHomeHandoff((file) => { void upload([file]); });
 
   /*
-    „UŻYJ DO NOWEJ MINIATURKI” — retouched photos offered by an earlier
-    Miniaturka's preview (here, or from the library on another screen). They
-    take their originals' places (by the stored path, never the file name),
-    the rest are appended up to the limit, nothing already here is added
-    twice, and Packshot AI goes OFF: they are retouched already. Nothing
-    starts on its own — the price is recomputed and the customer decides.
-    Only the photo list and that switch change; every other setting stays.
+    „UŻYJ W KOLEJNEJ GENERACJI” — photos after Packshot AI offered by an
+    earlier Miniaturka's preview (here, or from the library on another
+    screen). They are ADDED AT THE END, in the order that Miniaturka had them;
+    nothing already here is replaced, moved or removed, nothing is added twice
+    (the Retusz job's own reference, never a URL), and what does not fit under
+    the limit is left out and said so. When something was added, Packshot AI
+    goes OFF: they are processed already. Nothing starts on its own — the
+    price is recomputed and the customer decides. Only the photo list and
+    that switch change; every other setting stays.
   */
   const photosRef = useRef(photos);
   photosRef.current = photos;
@@ -155,12 +162,21 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
       const incoming = takeRetouched();
       if (!incoming) return;
       const merged = mergeRetouched(photosRef.current, incoming, data.maxPhotos);
-      photosRef.current = merged.photos;
-      setPhotos(merged.photos);
-      setRetouch(false);
-      if (merged.added + merged.replaced > 0) toast.success(t("thumb.reuse.done"));
-      else if (merged.duplicates > 0) toast.message(t("thumb.reuse.already"));
-      if (merged.skipped > 0) toast.error(t("thumb.reuse.skipped", { n: merged.skipped, max: data.maxPhotos }));
+      if (merged.added > 0) {
+        photosRef.current = merged.photos;
+        setPhotos(merged.photos);
+        setRetouch(false);
+      }
+      const max = data.maxPhotos;
+      if (merged.added > 0 && merged.skipped > 0) {
+        toast.error(t("thumb.reuse.partial", { added: countPhotos("added", merged.added), skipped: countPhotos("skipped", merged.skipped), max }));
+      } else if (merged.added > 0) {
+        toast.success(t("thumb.reuse.added", { added: countPhotos("added", merged.added) }));
+      } else if (merged.skipped > 0) {
+        toast.error(t("thumb.reuse.full", { skipped: countPhotos("skipped", merged.skipped), max }));
+      } else if (merged.duplicates > 0) {
+        toast.message(t("thumb.reuse.already"));
+      }
     };
     absorbRetouched();
     window.addEventListener(RETOUCHED_EVENT, absorbRetouched);
@@ -258,7 +274,11 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
   ];
 
   return (
-    <ToolFrame frame={frame} tools={["ecommerce_thumbnail"]} back={back} title={<h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>}>
+    // NO WAY BACK in this header (17.11.2026): Miniaturka shows its name and
+    // the „?” only — the „← E-commerce” link is gone here and nowhere else.
+    // ToolFrame draws no arrow and no separator without `back`, so nothing
+    // is left where the link stood.
+    <ToolFrame frame={frame} tools={["ecommerce_thumbnail"]} title={<h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>}>
       <ToolColumns
         cols="lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)]"
         attrs={{ "data-thumbnail-tool": true }}
@@ -300,6 +320,12 @@ export function ThumbnailWorkspace({ workspaceId, credits, data, back, title }: 
                 <Switch checked={retouchOn} onChange={setRetouch} label={t("thumb.retouchTitle")}
                   disabled={!data.retouch.available} />
               </div>
+              {/* Only while photos already after Packshot AI are in the form
+                  (they arrive through „Użyj w kolejnej generacji”): switching
+                  it on processes them again, at the price shown. */}
+              {carried > 0 && (
+                <p data-thumbnail-reuse-hint className="mt-2 text-[12px] leading-relaxed text-muted">{t("thumb.reuse.hint")}</p>
+              )}
             </section>
 
             {/* C — the summary of THIS configuration stays: it is part of the

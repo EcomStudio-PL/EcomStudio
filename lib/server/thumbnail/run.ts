@@ -102,6 +102,10 @@ export type StoredInput = {
   quote: ThumbnailQuote;
   /** Per photo: an earlier run's Retusz result reused for free (or null). */
   reuse: ({ job_id: string; path: string } | null)[];
+  /** Per photo, Retusz ON only: the stored upload a carried photo's NEW pass is
+   *  made from (null for an ordinary photo, which is its own source). Absent
+   *  on runs started before 17.11.2026 — they behave as they always did. */
+  retouch_sources?: (string | null)[];
   config: {
     model: ThumbnailModel; size: ThumbnailSize; quality: ThumbnailQuality; timeout_ms: number;
     finish: FinishConfig; token_prices: TokenPrices;
@@ -132,12 +136,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * A PHOTO ALREADY RETOUCHED in an earlier Miniaturka of this workspace,
- * carried into a new one („Użyj do nowej miniaturki”): `retouched:<the Retusz
+ * carried into a new one („Użyj w kolejnej generacji”): `retouched:<the Retusz
  * job's id>`. Not a path the browser could point anywhere — the server finds
  * the job's own stored file (this workspace, a Retusz job, its file in the
- * library) and checks it the way a reused pass is checked. Retusz OFF: that
- * file is the photo, nothing is retouched or charged again. Retusz ON: the
- * pass counts as already paid (the reuse rule of a retry).
+ * library) and checks it the way a reused pass is checked.
+ *   · Packshot AI OFF: that file is the photo — nothing is retouched or
+ *     charged again (the default after „Użyj w kolejnej generacji”).
+ *   · Packshot AI ON (the customer switched it back on, on purpose): a NEW
+ *     pass, priced like any other, made from the stored upload that job was
+ *     retouched from (`retouch_sources`) — Retusz only ever reads uploads, so
+ *     its own path is not touched. Until 17.11.2026 the pass counted as
+ *     already paid and was skipped while the switch said „on”.
+ *   · A retry of a failed run (`reuseFrom`) still reuses every pass that run
+ *     already paid for — never charged twice.
  */
 export const CARRIED_PREFIX = RETOUCHED_PREFIX;
 export const carriedJobId = retouchedJobId;
@@ -198,8 +209,17 @@ export async function startThumbnailRun(
   // The earlier run could not be read: not "nothing to reuse" — the
   // customer would be quoted (and charged) for passes already paid.
   if (!fromRetry) return { ok: false, error: "unavailable" };
-  // Retusz ON: a carried photo's pass is one already paid for.
-  const reuse = fromRetry.map((r, i) => (retouch ? carried[i] ?? r : r));
+  // Retusz ON with a carried photo: a pass ordered on purpose, made anew from
+  // the upload its Retusz job started from — priced, never skipped. Only a
+  // retry's own paid passes are free.
+  const reuse = fromRetry;
+  let retouchSources: (string | null)[] | undefined;
+  if (retouch && carried.some(Boolean)) {
+    const originals = await carriedOriginals(supabase, workspaceId, photos as string[]);
+    if (originals === "unknown") return { ok: false, error: "unavailable" };
+    if (originals === "missing") return { ok: false, error: "retouch_original_missing" };
+    retouchSources = originals;
+  }
   const quote = quoteTotal({
     photos: photos.length, retouch,
     retouchUnit: state.retouch.available ? state.retouch.unit : null,
@@ -218,6 +238,7 @@ export async function startThumbnailRun(
     retouch,
     quote,
     reuse,
+    ...(retouchSources ? { retouch_sources: retouchSources } : {}),
     config: {
       model: state.config.model, size: state.config.size, quality: state.config.quality,
       timeout_ms: state.config.timeoutMs, finish: state.config.finish, token_prices: state.config.tokenPrices,
@@ -278,6 +299,37 @@ async function carriedRetouches(
   }
   return out;
 }
+
+/**
+ * The stored upload each carried photo's Retusz job was made from (null for an
+ * ordinary photo): "missing" when one is not a Retusz job of this workspace
+ * that names an upload of this workspace, "unknown" when it could not be read.
+ */
+async function carriedOriginals(
+  supabase: Client, workspaceId: string, photos: string[],
+): Promise<(string | null)[] | "missing" | "unknown"> {
+  const ids = [...new Set(photos.map((p) => carriedJobId(p)).filter((x): x is string => !!x))];
+  if (ids.length === 0) return photos.map(() => null);
+  const { data, error } = await supabase.from("generation_jobs").select("id, settings")
+    .in("id", ids).eq("workspace_id", workspaceId);
+  if (error || !data) return "unknown";
+  const byId = new Map(data.map((r) => [r.id, r.settings as { operation?: unknown; reference_paths?: unknown } | null]));
+  const out: (string | null)[] = [];
+  for (const photo of photos) {
+    const id = carriedJobId(photo);
+    if (!id) { out.push(null); continue; }
+    const s = byId.get(id);
+    const first = Array.isArray(s?.reference_paths) ? s!.reference_paths[0] : undefined;
+    if (!s || s.operation !== "image_retouch" || !validPhotoPath(first, workspaceId)) return "missing";
+    out.push(first);
+  }
+  return out;
+}
+
+/** The file a photo's Retusz pass reads: a carried photo's own upload when it
+ *  is re-processed on purpose, otherwise the photo as uploaded. */
+export const retouchSourceOf = (input: Pick<StoredInput, "photos" | "retouch_sources">, i: number): string =>
+  input.retouch_sources?.[i] ?? input.photos[i];
 
 /**
  * RETRY WITHOUT PAYING TWICE: the Retusz results of an earlier run of the
@@ -409,7 +461,7 @@ async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
         // ledger would refuse the second as already running).
         for (const i of pending) {
           if (batch.length >= RETOUCH_CONCURRENCY) break;
-          if (batch.some((j) => input.photos[j] === input.photos[i])) continue;
+          if (batch.some((j) => retouchSourceOf(input, j) === retouchSourceOf(input, i))) continue;
           batch.push(i);
         }
       }
@@ -471,7 +523,9 @@ type PassRecovery =
 
 async function retouchItem(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<ItemOutcome> {
   const { supabase, runId, owner, input } = ctx;
-  const photo = input.photos[i];
+  // The upload this pass reads (a carried photo re-processed on purpose: the
+  // upload its earlier Retusz job was made from).
+  const photo = retouchSourceOf(input, i);
   const t0 = ctx.deps.now();
   const snap = steps.find((s) => s.position === STEP.retouch && s.item_index === i);
 
@@ -572,7 +626,7 @@ async function retouchItem(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<It
 async function recoverPass(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<PassRecovery | "unknown"> {
   const claimed = new Set(steps.filter((s) => s.position === STEP.retouch && s.item_index !== i)
     .map((s) => outputOf(s).job_id).filter((v): v is string => typeof v === "string"));
-  const prior = await priorRetouchJob(ctx, ctx.input.photos[i], claimed);
+  const prior = await priorRetouchJob(ctx, retouchSourceOf(ctx.input, i), claimed);
   if (prior === "unknown") return "unknown";
   if (!prior) return { kind: "fresh" };
   if (prior.status === "failed") return { kind: "fail", code: "retouch_failed" };
@@ -746,9 +800,14 @@ async function prepareOne(ctx: Ctx, src: Source, i: number, trialRun: boolean): 
     const record = src.retouchJobId ? await retouchRecord(ctx, src.retouchJobId) : null;
     if (record === "unknown") return "source_unavailable";
     // A carried photo is bound to its Retusz job itself (the job names its
-    // own original); any other pass to THIS run's photo.
+    // own original); any other pass to THIS run's photo — a carried photo
+    // re-processed on purpose, to the upload its new pass was made from.
     const carried = carriedJobId(ctx.input.photos[i]);
-    if (src.retouchJobId && (!record || (carried ? carried !== src.retouchJobId : record.reference !== ctx.input.photos[i]))) {
+    const renewedFrom = ctx.input.retouch_sources?.[i] ?? null;
+    const bound = renewedFrom
+      ? record?.reference === renewedFrom
+      : (carried ? carried === src.retouchJobId : record?.reference === ctx.input.photos[i]);
+    if (src.retouchJobId && (!record || !bound)) {
       return "retouch_output_mismatch";
     }
     // TRIAL: a Retusz pass made for a trial workspace is stored MARKED, and a
@@ -1559,6 +1618,8 @@ export function parseInput(raw: unknown): StoredInput | null {
   if (!i || i.v !== 1 || !Array.isArray(i.photos) || i.photos.length === 0 || typeof i.retouch !== "boolean") return null;
   if (!i.quote || !i.config || !i.prompt || typeof i.prompt.digest !== "string") return null;
   if (!Array.isArray(i.reuse) || i.reuse.length !== i.photos.length) return null;
+  if (i.retouch_sources !== undefined && (!Array.isArray(i.retouch_sources) || i.retouch_sources.length !== i.photos.length
+    || !i.retouch_sources.every((x) => x === null || typeof x === "string"))) return null;
   return i as StoredInput;
 }
 

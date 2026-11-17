@@ -99,6 +99,25 @@ export function planToBriefs(
   });
 }
 
+/* ── „Inspiracja (opcjonalnie)” in Stwórz zdjęcie ─────────────────────── */
+
+/**
+ * The custom-inspiration section of Stwórz zdjęcie is OFF unless
+ * app_settings("generation").customInspirationEnabled is literally `true`
+ * (17.11.2026). Off means more than hidden: no section, no library, no drop
+ * target, nothing restored from a draft, no reference slot reserved for it,
+ * and /api/generate drops any inspirationPaths a request still carries. The
+ * implementation stays; setting the value to true brings it back as it was.
+ * Stored inspirations on past jobs are never touched.
+ */
+export const CUSTOM_INSPIRATION_DEFAULT = false;
+export function customInspirationEnabled(generationSettings: unknown): boolean {
+  const v = generationSettings && typeof generationSettings === "object"
+    ? (generationSettings as Record<string, unknown>).customInspirationEnabled
+    : undefined;
+  return typeof v === "boolean" ? v : CUSTOM_INSPIRATION_DEFAULT;
+}
+
 /* ── how many product photos a mode really sends ───────────────────────── */
 
 /**

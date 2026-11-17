@@ -4,7 +4,7 @@
     "products": "Products",
     "generator": "AI Studio",
     "library": "Library",
-    "prompts": "Shot Generator",
+    "prompts": "Generator GrovShot",
     "history": "History",
     "credits": "Credits",
     "plan": "Plan",
@@ -3300,7 +3300,7 @@
       "analysis_refused": "The AI model declined to analyse these photos — try other product photos. No credits were taken.",
       "analysis_truncated": "The AI model's answer was incomplete — try again. No credits were taken.",
       "analysis_bad_image": "One of the photos has an unsupported format — use JPG, PNG or WEBP.",
-      "scenario_unavailable": "This session type is unavailable — GrovBase Shot creates a lifestyle session."
+      "scenario_unavailable": "This session type is unavailable — Generator GrovShot creates a lifestyle session."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -4286,7 +4286,7 @@
   "mega": {
     "create": "Create",
     "edit": "Edit",
-    "engine": "Ready generator",
+    "engine": "Generator GrovShot",
     "custom": "Own prompt",
     "allTools": "All tools",
     "videoSoon": "Video generation is in the works — the architecture is already waiting for it.",
@@ -5127,11 +5127,11 @@
     "batchDone": "Generated {n} images.",
     "someFailed": "{n} shots failed — their credits were refunded.",
     "allFailed": "Image generation failed. Credits were refunded.",
-    "modeManaged": "GrovBase Shot 1.0",
+    "modeManaged": "Generator GrovShot",
     "modeManagedSub": "GrovBase designs the shots for you — you pick the model and session type.",
     "modeCustom": "Create a photo",
     "modeCustomSub": "Your prompt drives the generation — full control over the scene.",
-    "managedTitle": "GrovBase Shot 1.0",
+    "managedTitle": "Generator GrovShot",
     "managedSub": "Add product photos, pick a session type and model — GrovBase does the rest.",
     "customTitle": "Create a photo",
     "customSub": "Describe in your own words what you want to generate.",
@@ -5442,9 +5442,9 @@
     "copyFailed": "Could not copy — the browser did not allow access to the clipboard.",
     "inputPhotos": "Input photos",
     "retouched": {
-      "title": "Retouched photos",
-      "open": "Retouched photo {n}",
-      "use": "Use for a new thumbnail"
+      "title": "Photos after Packshot AI",
+      "open": "Photo after Packshot AI {n}",
+      "use": "Use in the next generation"
     }
   },
   "retouch": {
@@ -8556,7 +8556,7 @@
     },
     "prompts": {
       "desc": "GrovBase writes the prompt and plans the shots.",
-      "words": "generator, generate image, ready generator, engine, prompt, shots, plan, ai"
+      "words": "generator, generate image, ready generator, engine, prompt, shots, plan, ai, generator grovshot, grovshot"
     },
     "generator": {
       "desc": "Write your own prompt and generate the image.",
@@ -10977,7 +10977,7 @@
         "desc": "The product in a natural setting."
       },
       "grovshot": {
-        "name": "Grovshot generator",
+        "name": "Generator GrovShot",
         "desc": "A product shoot from your photo."
       },
       "custom": {
@@ -11185,12 +11185,23 @@
       "invalid_input": "Invalid input — please add the photos again.",
       "trial_check_failed": "Your plan could not be checked just now. Nothing was charged for the composition — please try again.",
       "source_locked": "One of the retouched photos still has a watermark. Remove the watermark in the library and try again — nothing was charged for the composition.",
-      "watermark_failed": "The thumbnail could not be prepared. The composition cost was returned."
+      "watermark_failed": "The thumbnail could not be prepared. The composition cost was returned.",
+      "retouch_original_missing": "The photo this Packshot AI result was made from is gone — turn Packshot AI off to use it without processing it again."
     },
     "reuse": {
-      "done": "These photos are already retouched – you will not pay for the retouch again.",
-      "already": "These retouched photos are already in the form.",
-      "skipped": "{n} photo(s) not added — Miniaturka takes at most {max} photos."
+      "added": "Added {added}.",
+      "partial": "Added {added}. {skipped} not added because the limit is {max}.",
+      "full": "{skipped} not added because the limit is {max}.",
+      "already": "These photos after Packshot AI are already in the form.",
+      "hint": "The added photos are already processed – turn Packshot AI on only if you want to process them again.",
+      "addedPhotos": {
+        "one": "{n} photo",
+        "other": "{n} photos"
+      },
+      "skippedPhotos": {
+        "one": "{n} photo",
+        "other": "{n} photos"
+      }
     }
   },
   "ice": {

@@ -8,6 +8,7 @@ import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { toolMaxAttempts } from "@/lib/server/ai-engine";
 import { QUALITIES, type Quality } from "@/lib/ai/types";
 import { acceptedBody, answerAtAcceptance, clientId } from "@/lib/server/inflight-accept";
+import { readCustomInspirationEnabled } from "@/lib/server/custom-inspiration";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
   // instruction wraps the customer's prompt as separated data. Server-side
   // only — the body cannot choose, see or replace it. With nothing published
   // this is a no-op and the generator runs exactly as before.
-  const [engine, maxAttempts] = await Promise.all([
+  const [engine, maxAttempts, inspirationEnabled] = await Promise.all([
     prepareGeneratorEngine(supabase, user.id, workspace.id, {
       userPrompt: String(body.prompt ?? ""),
       negative: typeof body.negative === "string" ? body.negative : null,
@@ -63,6 +64,9 @@ export async function POST(request: Request) {
     }),
     // The panel's "Próby" for the generator: 1 = one paid request per image.
     toolMaxAttempts(supabase, "generator"),
+    // „Inspiracja (opcjonalnie)” is off unless switched on: then no
+    // inspiration reaches a model, whatever an old tab or a draft still sends.
+    readCustomInspirationEnabled(supabase),
   ]);
   if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
 
@@ -91,7 +95,9 @@ export async function POST(request: Request) {
     requireCustomVisible: true,
     referencePaths,
     referenceImageIds: (body.referenceImageIds ?? []).filter((x) => typeof x === "string"),
-    inspirationPaths: (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5),
+    inspirationPaths: inspirationEnabled
+      ? (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5)
+      : [],
     maxAttempts,
   }), (result) => engine.finish(result));
   if ("accepted" in first) return NextResponse.json(acceptedBody(first.accepted), { status: 202 });

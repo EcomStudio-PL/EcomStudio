@@ -11,6 +11,7 @@ import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { grovshotPrices } from "@/lib/server/tool-prices";
 import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { readSmartPromptOffer } from "@/lib/server/smart-prompt";
+import { readCustomInspirationEnabled } from "@/lib/server/custom-inspiration";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
@@ -124,9 +125,9 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
   const audience = await publicToolAudience(tool.path);
   if (audience.kind === "guest") {
     const reader = guestReadClient();
-    const [managed, custom] = reader
-      ? await Promise.all([managedData(reader), customModelsFor(reader)])
-      : [null, [] as GenModel[]];
+    const [managed, custom, inspirationEnabled] = reader
+      ? await Promise.all([managedData(reader), customModelsFor(reader), readCustomInspirationEnabled(reader)])
+      : [null, [] as GenModel[], false];
     return (
       <ToolScope tool={tool} audience={audience}>
         <div className="workspace workspace-page gen-shell pt-1">
@@ -135,7 +136,7 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
               sessionPreviews: managed?.sessionPreviews, variant, initialStyle,
               descriptionMin: managed?.descriptionMin ?? DEFAULT_SHOT_SETTINGS.description_min_chars,
               analysisCredits: managed?.analysisCredits ?? 0 }}
-            custom={{ models: custom, initialPrompt: "" }}
+            custom={{ models: custom, initialPrompt: "", inspirationEnabled }}
             initialTab={initialTab} credits={0} workspaceId=""
             initialItems={[]} initialCursor={null} back={back} />
         </div>
@@ -148,7 +149,7 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
-  const [managed, custom, wallet, gallery, smartPrompt] = await Promise.all([
+  const [managed, custom, wallet, gallery, smartPrompt, inspirationEnabled] = await Promise.all([
     managedData(supabase),
     customModelsFor(supabase),
     getWallet(supabase, workspace.id),
@@ -156,6 +157,8 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
     listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, tool: "grovbase_shot" }),
     // Inteligentny prompt: the catalogue price and whether it may be offered.
     readSmartPromptOffer(supabase),
+    // „Inspiracja (opcjonalnie)” in Stwórz zdjęcie — off unless switched on.
+    readCustomInspirationEnabled(supabase),
   ]);
 
   const engineV2 = await engineV2For(supabase, user.id, workspace.id, managed.models);
@@ -181,7 +184,7 @@ export async function GeneratorStudioPage({ tool, initialTab, searchParams }: {
       <div className="workspace workspace-page gen-shell pt-1">
         <GeneratorWorkspace
           managed={{ ...managed, variant, initialStyle, engineV2 }}
-          custom={{ models: custom, smartPrompt, initialPrompt }}
+          custom={{ models: custom, smartPrompt, initialPrompt, inspirationEnabled }}
           // A handed-over prompt opens the mode it belongs to.
           initialTab={initialPrompt ? "stworz" : initialTab}
           credits={wallet?.balance ?? 0}

@@ -4,7 +4,7 @@
     "products": "Produkte",
     "generator": "AI Studio",
     "library": "Bibliothek",
-    "prompts": "Aufnahmen-Generator",
+    "prompts": "Generator GrovShot",
     "history": "Verlauf",
     "credits": "Credits",
     "plan": "Tarif",
@@ -3300,7 +3300,7 @@
       "analysis_refused": "Das KI-Modell hat die Analyse dieser Fotos abgelehnt — versuche andere Produktfotos. Es wurden keine Credits abgebucht.",
       "analysis_truncated": "Die Antwort des KI-Modells war unvollständig — versuche es erneut. Es wurden keine Credits abgebucht.",
       "analysis_bad_image": "Eines der Fotos hat ein nicht unterstütztes Format — verwende JPG, PNG oder WEBP.",
-      "scenario_unavailable": "Diese Sitzungsart ist nicht verfügbar — GrovBase Shot erstellt eine Lifestyle-Sitzung."
+      "scenario_unavailable": "Diese Sitzungsart ist nicht verfügbar — Generator GrovShot erstellt eine Lifestyle-Sitzung."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -4286,7 +4286,7 @@
   "mega": {
     "create": "Erstellen",
     "edit": "Bearbeiten",
-    "engine": "Fertiger Generator",
+    "engine": "Generator GrovShot",
     "custom": "Eigener Prompt",
     "allTools": "Alle Werkzeuge",
     "videoSoon": "Video-Generierung ist in Arbeit — die Architektur wartet schon darauf.",
@@ -5127,11 +5127,11 @@
     "batchDone": "{n} Bilder generiert.",
     "someFailed": "{n} Aufnahmen sind fehlgeschlagen — die Credits wurden erstattet.",
     "allFailed": "Die Generierung ist fehlgeschlagen. Credits wurden erstattet.",
-    "modeManaged": "GrovBase Shot 1.0",
+    "modeManaged": "Generator GrovShot",
     "modeManagedSub": "GrovBase entwirft die Aufnahmen für dich — du wählst Modell und Sessiontyp.",
     "modeCustom": "Foto erstellen",
     "modeCustomSub": "Dein Prompt steuert die Generierung — volle Kontrolle über die Szene.",
-    "managedTitle": "GrovBase Shot 1.0",
+    "managedTitle": "Generator GrovShot",
     "managedSub": "Füge Produktfotos hinzu, wähle Sessiontyp und Modell — GrovBase erledigt den Rest.",
     "customTitle": "Foto erstellen",
     "customSub": "Beschreibe mit eigenen Worten, was du generieren möchtest.",
@@ -5442,9 +5442,9 @@
     "copyFailed": "Kopieren fehlgeschlagen — der Browser hat den Zugriff auf die Zwischenablage nicht erlaubt.",
     "inputPhotos": "Eingabefotos",
     "retouched": {
-      "title": "Retuschierte Fotos",
-      "open": "Retuschiertes Foto {n}",
-      "use": "Für ein neues Thumbnail verwenden"
+      "title": "Fotos nach Packshot AI",
+      "open": "Foto nach Packshot AI {n}",
+      "use": "In der nächsten Generierung verwenden"
     }
   },
   "retouch": {
@@ -8556,7 +8556,7 @@
     },
     "prompts": {
       "desc": "GrovBase schreibt den Prompt und plant die Aufnahmen.",
-      "words": "generator, bild generieren, fertiger generator, engine, prompt, aufnahmen, ki"
+      "words": "generator, bild generieren, fertiger generator, engine, prompt, aufnahmen, ki, generator grovshot, grovshot"
     },
     "generator": {
       "desc": "Eigenen Prompt schreiben und das Bild generieren.",
@@ -10977,7 +10977,7 @@
         "desc": "Das Produkt in natürlicher Umgebung."
       },
       "grovshot": {
-        "name": "Grovshot-Generator",
+        "name": "Generator GrovShot",
         "desc": "Ein Produktshooting aus deinem Foto."
       },
       "custom": {
@@ -11185,12 +11185,23 @@
       "invalid_input": "Ungültige Eingabe — bitte füge die Fotos erneut hinzu.",
       "trial_check_failed": "Dein Tarif konnte gerade nicht geprüft werden. Für die Komposition wurde nichts berechnet — versuche es erneut.",
       "source_locked": "Eines der retuschierten Fotos hat noch ein Wasserzeichen. Entferne das Wasserzeichen in der Bibliothek und versuche es erneut — für die Komposition wurde nichts berechnet.",
-      "watermark_failed": "Das Thumbnail konnte nicht vorbereitet werden. Die Kosten der Komposition wurden erstattet."
+      "watermark_failed": "Das Thumbnail konnte nicht vorbereitet werden. Die Kosten der Komposition wurden erstattet.",
+      "retouch_original_missing": "Das Foto, aus dem dieses Packshot-AI-Ergebnis entstand, ist nicht mehr vorhanden — schalte Packshot AI aus, um es ohne erneute Bearbeitung zu verwenden."
     },
     "reuse": {
-      "done": "Diese Fotos sind bereits retuschiert – die Retusche wird nicht erneut berechnet.",
-      "already": "Diese retuschierten Fotos sind bereits im Formular.",
-      "skipped": "{n} Foto(s) nicht hinzugefügt — Miniaturka nimmt höchstens {max} Fotos."
+      "added": "{added} hinzugefügt.",
+      "partial": "{added} hinzugefügt. {skipped} nicht hinzugefügt, weil das Limit {max} beträgt.",
+      "full": "{skipped} nicht hinzugefügt, weil das Limit {max} beträgt.",
+      "already": "Diese Fotos nach Packshot AI sind bereits im Formular.",
+      "hint": "Die hinzugefügten Fotos sind bereits bearbeitet – schalte Packshot AI nur ein, wenn du sie erneut bearbeiten möchtest.",
+      "addedPhotos": {
+        "one": "{n} Foto",
+        "other": "{n} Fotos"
+      },
+      "skippedPhotos": {
+        "one": "{n} Foto",
+        "other": "{n} Fotos"
+      }
     }
   },
   "ice": {

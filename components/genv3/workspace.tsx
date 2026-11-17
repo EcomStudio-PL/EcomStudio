@@ -99,6 +99,8 @@ export type CustomModeData = {
   models: GenModel[];
   smartPrompt?: SmartPromptOffer;
   initialPrompt?: string;
+  /** „Inspiracja (opcjonalnie)” — app_settings("generation").customInspirationEnabled; absent = off. */
+  inspirationEnabled?: boolean;
 };
 
 /**
@@ -201,6 +203,11 @@ export function GeneratorWorkspace({
   // ── state: one photo pool, two modes ──────────────────────────────────
   const [refs, setRefs] = useState<UploadedRef[]>([]);
   const [insp, setInsp] = useState<UploadedRef[]>([]);
+  /** Inspiration in Stwórz zdjęcie is switched on (customInspirationEnabled). Off: no
+   *  section, no library, no drop target, nothing restored, nothing sent, no slot reserved. */
+  const inspOn = !!customData && customData.inspirationEnabled === true;
+  /** What may travel or count: the photos in the pool only while the section exists. */
+  const activeInsp = inspOn ? insp : [];
   const [grov, setGrov] = useState<GrovshotSettings>(grovDefaults);
   const [stw, setStw] = useState<StworzSettings>(stworzDefaults);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -261,7 +268,7 @@ export function GeneratorWorkspace({
   const total = Math.round(((managed ? managedData?.analysisCredits ?? 0 : 0) + perShot * effCount) * 100) / 100;
   const missing = Math.max(0, total - balance);
   /** How many product photos THIS mode sends (the rest stay, greyed). */
-  const usable = managed ? MAX_REFS : customPhotoBudget(model, insp.length);
+  const usable = managed ? MAX_REFS : customPhotoBudget(model, activeInsp.length);
 
   const setCfg = (patch: Partial<GrovshotSettings & StworzSettings>) => {
     if (managed) setGrov((s) => ({ ...s, ...patch }));
@@ -330,7 +337,7 @@ export function GeneratorWorkspace({
     // dropped meanwhile is counted against the cap, and kept.
     const want = {
       refs: Math.min(MAX_REFS, ids.filter((id) => !id.startsWith(INSP)).length),
-      insp: customData ? Math.min(INSP_MAX, ids.filter((id) => id.startsWith(INSP)).length) : 0,
+      insp: inspOn ? Math.min(INSP_MAX, ids.filter((id) => id.startsWith(INSP)).length) : 0,
     };
     reserved.current.refs += want.refs;
     reserved.current.insp += want.insp;
@@ -344,13 +351,15 @@ export function GeneratorWorkspace({
         if (epoch !== restoreEpoch.current) return;
         const id = ids[i] ?? "";
         const isInsp = id.startsWith(INSP);
+        // A draft's inspiration with the section off: not uploaded, not restored, never sent.
+        if (isInsp && !inspOn) continue;
         const raw = isInsp ? id.slice(INSP.length) : id;
         const file = files[i]!;
         const ref = !session.guest && workspaceId && raw.startsWith(`${workspaceId}/`)
           ? { key: raw, path: raw, url: URL.createObjectURL(file) }
           : await storeFile(file, isInsp ? inspFolder.current : adhocFolder.current);
         if (!ref) continue;
-        if (isInsp) { if (nextInsp.length < INSP_MAX && customData) nextInsp.push(ref); }
+        if (isInsp) { if (nextInsp.length < INSP_MAX && inspOn) nextInsp.push(ref); }
         else if (nextRefs.length < MAX_REFS) { nextRefs.push(ref); keyMap.set(raw, ref.key); }
       }
       if (epoch !== restoreEpoch.current) return;
@@ -373,6 +382,8 @@ export function GeneratorWorkspace({
 
   // ── uploads (browser → private bucket; only paths travel to the API) ───
   async function upload(files: File[], target: "refs" | "insp") {
+    // No way in with the section off — whichever path (drop, paste, library) asks.
+    if (target === "insp" && !inspOn) return;
     const folder = target === "insp" ? inspFolder.current : adhocFolder.current;
     const setter = target === "insp" ? setInsp : setRefs;
     const cap = target === "insp" ? INSP_MAX : MAX_REFS;
@@ -404,6 +415,7 @@ export function GeneratorWorkspace({
   /** A GrovBase library pick becomes an ordinary inspiration upload (the
    *  generate route keeps only this workspace's paths). */
   async function addFromLibrary(urls: string[]) {
+    if (!inspOn) return;
     const files: File[] = [];
     for (const url of urls) {
       try {
@@ -601,7 +613,8 @@ export function GeneratorWorkspace({
             // retake still has the product to hold on to.
             referencePaths: refs.map((r) => r.path).slice(0, usable > 0 ? Math.min(usable, MAX_REFS) : MAX_REFS),
             referenceImageIds: [],
-            inspirationPaths: insp.map((r) => r.path).slice(0, INSP_MAX),
+            // Only while the section exists (customInspirationEnabled); the server drops them too.
+            inspirationPaths: activeInsp.map((r) => r.path).slice(0, INSP_MAX),
           },
         }),
         tool: "generator", operation: null, expected: effCount, ratio: effRatio, preview: refs[0]?.url ?? null,
@@ -630,7 +643,7 @@ export function GeneratorWorkspace({
     onDrop: (files, event) => {
       if (files.length === 0) { toast.error(t("products.invalidType")); return; }
       const target = (event.target as Element | null)?.closest?.("[data-drop-target]");
-      const pool = target?.getAttribute("data-drop-target") === "insp" && !managed ? "insp" : "refs";
+      const pool = target?.getAttribute("data-drop-target") === "insp" && !managed && inspOn ? "insp" : "refs";
       void upload(files, pool);
     },
   });
@@ -823,16 +836,18 @@ export function GeneratorWorkspace({
       <ToolDraftBanner session={session} />
       {photos}
       <PromptSection value={stw.prompt} onChange={setPrompt} max={PROMPT_MAX} smart={smart} />
-      <InspirationSection
-        items={insp}
-        uploading={uploading}
-        disabled={!model?.supportsRefs}
-        onUpload={(files) => upload(files, "insp")}
-        onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
-        onMove={(from, to) => setInsp((prev) => reorder(prev, from, to))}
-        reorderHint={reorderHint}
-        onOpenLibrary={session.guest ? undefined : () => setLibraryOpen(true)}
-      />
+      {inspOn && (
+        <InspirationSection
+          items={insp}
+          uploading={uploading}
+          disabled={!model?.supportsRefs}
+          onUpload={(files) => upload(files, "insp")}
+          onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
+          onMove={(from, to) => setInsp((prev) => reorder(prev, from, to))}
+          reorderHint={reorderHint}
+          onOpenLibrary={session.guest ? undefined : () => setLibraryOpen(true)}
+        />
+      )}
       {modelControl()}
       {formatControl}
       <div className={cn("grid gap-6 [&>*]:min-w-0", qualityControl && "min-[420px]:grid-cols-2 min-[420px]:gap-4")}>
@@ -853,7 +868,7 @@ export function GeneratorWorkspace({
         overlay={(
           <>
             <DropOverlay show={dragging} title={t("genv3.dropTitle")} sub={t("genv3.dropSub")} />
-            {customData && (
+            {inspOn && (
               <InspirationLibraryModal open={libraryOpen} onClose={() => setLibraryOpen(false)}
                 room={Math.max(0, INSP_MAX - insp.length)} onPick={(urls) => { void addFromLibrary(urls); }} />
             )}

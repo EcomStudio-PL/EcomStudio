@@ -18,9 +18,13 @@ import { cn } from "@/lib/utils";
  *
  * NO DIVIDER: the balance and "Doładuj" were two links with a hairline between
  * them, and that hairline read as a rendering glitch rather than as structure.
- * Both halves went to the same place — `/credits` — so they are now literally
- * one link, and the hierarchy is carried by type size instead: the balance in
- * the display face, the invitation to top up a step smaller beside it.
+ * Both halves went to the same place, so they are now literally one link, and
+ * the hierarchy is carried by type size instead: the balance in the display
+ * face, the invitation to top up a step smaller beside it.
+ *
+ * WHERE IT GOES: `/plan` (17.11.2026) — plans and credit top-ups on one page,
+ * where buying more actually happens. `/credits` (the history) is unchanged
+ * and still reachable from the account menu.
  */
 export function CreditsControl({ credits, compact = false }: { credits: number; compact?: boolean }) {
   const { t, locale } = useI18n();
@@ -35,7 +39,7 @@ export function CreditsControl({ credits, compact = false }: { credits: number; 
 
   return (
     <Link
-      href="/credits"
+      href="/plan"
       title={title}
       aria-label={`${title}: ${credits} — ${t("creditsPanel.buy")}`}
       className={cn(

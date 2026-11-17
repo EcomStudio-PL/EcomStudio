@@ -36,6 +36,7 @@ import { advanceThumbnailRun, startThumbnailRun, validPhotoPath, type ThumbnailD
 import { readThumbnailRun } from "@/lib/server/thumbnail/status";
 import type { RetouchInput, RetouchResult } from "@/lib/server/retouch";
 import { baselineThumbnailBody } from "./thumbnail-baseline";
+import { retouchedRef } from "@/lib/thumbnail/reuse";
 import { db, freshDb, id, iso, type Row } from "./stubs/thumb-db";
 
 let failures = 0;
@@ -316,6 +317,179 @@ async function driveToEnd(runId: string, deps: Partial<ThumbnailDeps>, max = 20)
     db().now += 11_000; // the yielded lease (10 s) runs out before the next call
   }
   return db().runs.get(runId)!;
+}
+
+
+/* ══ P · PACKSHOT AI IN MINIATURKA (V4, 17.11.2026) ══════════════════════*/
+
+async function sectionP() {
+  console.log("\nP. PACKSHOT AI — results kept, carried photos, re-processing on purpose, prices");
+  const thumbJob = () => tableRows("generation_jobs").find((j) => (j.settings as Row | null)?.operation === "ecommerce_thumbnail");
+  const retouchJobs = () => tableRows("generation_jobs").filter((j) => (j.settings as Row | null)?.operation === "image_retouch");
+  const passOutputs = (runId: string) => db().steps.filter((s) => s.run_id === runId && s.position === 1 && s.status === "succeeded")
+    .sort((a, b) => (a.item_index as number) - (b.item_index as number)).map((s) => s.output as Row);
+  /** Photos already after Packshot AI: Retusz jobs of THIS workspace made from uploads (as an earlier Miniaturka leaves them). */
+  async function seedCarried(n: number, ws = WS) {
+    const originals = await seedPhotos(n);
+    const seedRec: Recorder = { retouch: [], sunburst: [] };
+    const retouch = await fakeRetouchFactory(seedRec);
+    const refs: string[] = [];
+    for (const o of originals) {
+      const r = await retouch(SUPA, USER, ws, { sourcePath: o, resolution: "2K", format: "original", quotedOutputs: 1 });
+      refs.push(retouchedRef((r as { jobId: string }).jobId));
+    }
+    return { originals, refs };
+  }
+
+  // P1 — Packshot AI OFF: the composition only.
+  setupEnv();
+  let rec: Recorder = { retouch: [], sunburst: [] };
+  let photos = await seedPhotos(2);
+  const s1 = await start(photos, false);
+  const q1 = (s1 as { quote: { total: number; retouchCount: number } }).quote;
+  const r1 = await driveToEnd((s1 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("P1 OFF: price = the composition only (20), 0 Retusz calls, charged 20 once", s1.ok && q1.total === 20 && q1.retouchCount === 0
+    && rec.retouch.length === 0 && r1.status === "ok" && thumbStarts().length === 1 && db().wallet.balance === 980);
+
+  // P2 — Packshot AI ON, two photos: two passes, both kept and tied to THIS Miniaturka.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(2);
+  const s2 = await start(photos, true);
+  const q2 = (s2 as { quote: { total: number; retouchCount: number } }).quote;
+  const r2 = await driveToEnd((s2 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const out2 = passOutputs(r2.id as string);
+  const tj2 = thumbJob();
+  check("P2 ON, 2 photos: price = 20 + 2 × 7 = 34; one pass per photo, in order; run ok", s2.ok && q2.total === 34 && q2.retouchCount === 2
+    && rec.retouch.map((x) => x.sourcePath).join() === photos.join() && r2.status === "ok");
+  check("P2 each pass is its own Retusz job with its own file (id, storage, workspace, original, order)",
+    retouchJobs().length === 2 && out2.length === 2 && new Set(out2.map((o) => o.job_id)).size === 2
+    && out2.every((o, i) => {
+      const j = retouchJobs().find((x) => x.id === o.job_id)!;
+      return j.workspace_id === WS && j.user_id === USER && ((j.settings as Row).reference_paths as string[])[0] === photos[i]
+        && db().storage.has(`generation-assets:${o.path}`);
+    }));
+  check("P2 the Miniaturka records exactly its passes' files, in its photos' order (its „Zdjęcia po Packshot AI”)",
+    Array.isArray((tj2?.settings as Row)?.retouched_paths) && ((tj2!.settings as Row).retouched_paths as string[]).join() === out2.map((o) => o.path).join());
+
+  // P3 — passes done, the composition fails: the passes stay (library, paid once); the composition is refunded.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  rec.sunburstOutcome = async (input) => callSunburst({ ...input, fetchImpl: (async () => new Response(JSON.stringify({ error: { code: "server_error" } }), { status: 502 })) as unknown as typeof fetch });
+  photos = await seedPhotos(2);
+  const s3 = await start(photos, true);
+  const r3 = await driveToEnd((s3 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const out3 = passOutputs(r3.id as string);
+  check("P3 composition failed after 2 passes: run failed, composition refunded once, run credits = the 2 passes only",
+    r3.status === "failed" && charges().filter((c) => c.kind === "fail").length === 1 && r3.credits === 14 && rec.retouch.length === 2);
+  check("P3 the 2 results are still in the library (completed Retusz jobs, files kept) — nothing deleted",
+    out3.length === 2 && out3.every((o) => db().storage.has(`generation-assets:${o.path}`)
+      && retouchJobs().some((j) => j.id === o.job_id && j.status === "completed")));
+
+  // P4 — the retry of that run: the paid passes are reused, never bought again.
+  const before4 = rec.retouch.length;
+  rec.sunburstOutcome = undefined;
+  const s4 = await start(photos, true, { reuseFrom: r3.id, reusedCount: 2 });
+  const r4 = await driveToEnd((s4 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("P4 retry: priced at the composition only (2 passes reused), 0 new Retusz calls, ok",
+    s4.ok && (s4 as { quote: { total: number } }).quote.total === 20 && rec.retouch.length === before4 && r4.status === "ok");
+
+  // P5 — photos carried from an earlier Miniaturka, Packshot AI OFF: used as they are, nothing charged for them.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  let carried = await seedCarried(2);
+  const plain = await seedPhotos(1);
+  photos = [...carried.refs, ...plain];
+  const s5 = await start(photos, false);
+  const r5 = await driveToEnd((s5 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const carriedBytes = carried.refs.map((ref) => {
+    const job = retouchJobs().find((j) => ref.endsWith(j.id as string))!;
+    return createHash("sha256").update(db().storage.get(`generation-assets:${((job.settings as Row).provider_output as Row[])[0].stored_path}`)!).digest("hex");
+  });
+  check("P5 OFF with 2 carried + 1 photo: price 20, 0 Retusz calls, the composition gets the 2 processed files + the photo",
+    s5.ok && (s5 as { quote: { total: number } }).quote.total === 20 && rec.retouch.length === 0 && r5.status === "ok"
+    && rec.sunburst[0].expectedImageSha256.slice(0, 2).join() === carriedBytes.join() && db().wallet.balance === 980);
+
+  // P6 — Packshot AI switched back ON on purpose: every photo gets a NEW pass, priced — the carried ones from their originals.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  carried = await seedCarried(2);
+  const plain6 = await seedPhotos(1);
+  photos = [...carried.refs, ...plain6];
+  const oldJobs = new Set(retouchJobs().map((j) => j.id));
+  const s6 = await start(photos, true);
+  const r6 = await driveToEnd((s6 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const out6 = passOutputs(r6.id as string);
+  check("P6 ON with 2 carried + 1 photo: price = 20 + 3 × 7 = 41 (the carried ones are NOT free any more)",
+    s6.ok && (s6 as { quote: { total: number; retouchCount: number } }).quote.total === 41 && (s6 as { quote: { retouchCount: number } }).quote.retouchCount === 3);
+  check("P6 3 new passes: the carried photos re-processed from the uploads their earlier passes were made from",
+    rec.retouch.map((x) => x.sourcePath).join() === [...carried.originals, plain6[0]].join());
+  check("P6 run ok (the new passes bound to their sources), 3 NEW Retusz jobs — the earlier ones untouched",
+    r6.status === "ok" && out6.length === 3 && out6.every((o) => !oldJobs.has(o.job_id)) && retouchJobs().filter((j) => oldJobs.has(j.id)).length === 2);
+  check("P6 an older client's cheaper quote (carried counted as free) is refused, nothing charged",
+    await (async () => {
+      const before = charges().length;
+      const s = await start(photos, true, { quotedTotal: 27 });
+      return !s.ok && (s as { error: string }).error === "price_changed" && charges().length === before;
+    })());
+
+  // P7 — re-processing a carried photo dies after Retusz delivered: recovered from its source, not bought again.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  carried = await seedCarried(1);
+  db().now += 3_600_000; // the earlier Miniaturka was an hour ago
+  const s7 = await start(carried.refs, true);
+  const runId7 = (s7 as { runId: string }).runId;
+  const retouch7 = await fakeRetouchFactory(rec);
+  const dies: Partial<ThumbnailDeps> = { ...depsFor(rec, retouch7), runRetouch: async (...a) => { await retouch7(...a); throw new Error("killed after Retusz delivered"); } };
+  await advanceThumbnailRun(SUPA, USER, WS, runId7, { deadlineAt: db().now + 270_000, deps: dies }).catch(() => "crashed");
+  const st7 = db().steps.find((s) => s.run_id === runId7 && s.position === 1);
+  if (st7) { st7.status = "running"; st7.error_code = null; st7.locked_until = db().now + 1000; }
+  const run7 = db().runs.get(runId7)!; run7.status = "running"; run7.error = null; run7.locked_until = null;
+  db().now += 600_000;
+  const before7 = rec.retouch.length;
+  const r7 = await driveToEnd(runId7, depsFor(rec, retouch7));
+  const out7 = db().steps.find((s) => s.run_id === runId7 && s.position === 1)?.output as Row | undefined;
+  check("P7 an interrupted re-processing pass is recovered (found by its source upload), NOT called again; run ok",
+    rec.retouch.length === before7 && r7.status === "ok" && out7?.recovered === true);
+  check("P7 …and what it recovered is the NEW pass, never the earlier result it was carried from",
+    !!out7 && !carried.refs[0].endsWith(out7.job_id as string) && retouchJobs().some((j) => j.id === out7.job_id));
+
+  // P8 — someone else's results can never be used.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  const OTHER = "33333333-3333-4333-8333-333333333333";
+  const foreign = await seedCarried(1, OTHER);
+  const s8off = await start(foreign.refs, false);
+  const s8on = await start(foreign.refs, true);
+  check("P8 another workspace's Packshot AI result is refused (OFF and ON), nothing charged, nothing sent",
+    !s8off.ok && (s8off as { error: string }).error === "retouch_reuse_missing" && !s8on.ok && (s8on as { error: string }).error === "retouch_reuse_missing"
+    && charges().length === 0 && rec.retouch.length === 0 && rec.sunburst.length === 0);
+
+  // P9 — a carried result whose original upload is unknown: re-processing refused before any charge; OFF still works.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  carried = await seedCarried(1);
+  const job9 = retouchJobs().find((j) => carried.refs[0].endsWith(j.id as string))!;
+  (job9.settings as Row).reference_paths = [];
+  const s9on = await start(carried.refs, true);
+  const s9off = await start(carried.refs, false);
+  check("P9 original unknown: ON refused (retouch_original_missing, nothing charged); OFF accepted as it is",
+    !s9on.ok && (s9on as { error: string }).error === "retouch_original_missing" && s9off.ok && charges().length === 0);
+
+  // P10 — a run started before this change (carried counted as reused, no retouch_sources) still finishes as it was quoted.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  carried = await seedCarried(1);
+  const s10 = await start(carried.refs, true);
+  const run10 = db().runs.get((s10 as { runId: string }).runId)!;
+  const in10 = run10.input as Row;
+  const job10 = retouchJobs().find((j) => carried.refs[0].endsWith(j.id as string))!;
+  in10.reuse = [{ job_id: job10.id, path: ((job10.settings as Row).provider_output as Row[])[0].stored_path }];
+  delete in10.retouch_sources;
+  const r10 = await driveToEnd(run10.id as string, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("P10 an in-flight run of the old shape: its reused pass costs nothing, 0 Retusz calls, ok (no mismatch)",
+    r10.status === "ok" && rec.retouch.length === 0);
 }
 
 /* ══ A · the request ═════════════════════════════════════════════════════*/
@@ -1560,6 +1734,7 @@ async function main() {
   await sectionC();
   sectionD();
   await sectionE();
+  await sectionP();
   await sectionH();
   sectionF();
   sectionG();

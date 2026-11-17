@@ -160,8 +160,13 @@ async function main() {
   check("…its resolution is Retusz's own default (the /retusz panel's default)",
     /resolution: RETOUCH_DEFAULT_RESOLUTION/.test(read("lib/server/thumbnail/settings.ts")) && RETOUCH_DEFAULT_RESOLUTION === "2K"
     && /retouch_resolution: state\.retouch\.available \? state\.retouch\.resolution/.test(runTs));
+  // V4 (17.11.2026): a carried photo re-processed on purpose passes the
+  // upload its earlier Retusz job was made from — still a stored upload of
+  // this workspace (validPhotoPath), still a path, never bytes.
   check("…and the photo it passes is the stored upload, unchanged (the path, never bytes it prepared)",
-    /const photo = input\.photos\[i\];/.test(runTs));
+    /const photo = retouchSourceOf\(input, i\);/.test(runTs)
+    && /input\.retouch_sources\?\.\[i\] \?\? input\.photos\[i\]/.test(runTs)
+    && /validPhotoPath\(first, workspaceId\)/.test(runTs));
   check("Miniaturka never sends its own prompt, an OpenAI request or a second image to Retusz",
     !/prompt/.test(call) && !/images|image:/.test(call));
 

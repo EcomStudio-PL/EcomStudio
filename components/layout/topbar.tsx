@@ -66,7 +66,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, bell }: {
               control: balance and top-up as one object. */}
           <div className={cn("inline-flex h-9 items-center rounded-full", pillClass)}>
             <Link
-              href="/credits"
+              href="/plan"
               aria-label={pillTitle}
               title={pillTitle}
               className="inline-flex h-full items-center gap-1.5 rounded-l-full pl-2.5 pr-2.5 text-[13px] font-bold"
@@ -80,7 +80,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, bell }: {
               <span className="tabular-nums">{new Intl.NumberFormat(locale).format(credits)}</span>
             </Link>
             <Link
-              href="/credits"
+              href="/plan"
               aria-label={t("creditsPanel.buy")}
               title={t("creditsPanel.buy")}
               className={cn(

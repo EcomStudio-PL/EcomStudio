@@ -4,7 +4,7 @@
     "products": "Produkty",
     "generator": "AI Studio",
     "library": "Biblioteka",
-    "prompts": "Generator ujęć",
+    "prompts": "Generator GrovShot",
     "history": "Historia",
     "credits": "Kredyty",
     "plan": "Plan",
@@ -3300,7 +3300,7 @@
       "analysis_refused": "Model AI odmówił analizy tych zdjęć — spróbuj innych zdjęć produktu. Kredyty nie zostały pobrane.",
       "analysis_truncated": "Odpowiedź modelu AI była niepełna — spróbuj ponownie. Kredyty nie zostały pobrane.",
       "analysis_bad_image": "Jedno ze zdjęć ma nieobsługiwany format — użyj JPG, PNG lub WEBP.",
-      "scenario_unavailable": "Ten rodzaj sesji jest niedostępny — GrovBase Shot tworzy sesję lifestyle."
+      "scenario_unavailable": "Ten rodzaj sesji jest niedostępny — Generator GrovShot tworzy sesję lifestyle."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -4286,7 +4286,7 @@
   "mega": {
     "create": "Twórz",
     "edit": "Edytuj",
-    "engine": "Gotowy generator",
+    "engine": "Generator GrovShot",
     "custom": "Własny prompt",
     "allTools": "Wszystkie narzędzia",
     "videoSoon": "Generowanie wideo jest w przygotowaniu — architektura już na nie czeka.",
@@ -5127,11 +5127,11 @@
     "batchDone": "Wygenerowano {n} obrazów.",
     "someFailed": "{n} ujęć nie udało się wygenerować — kredyty za nie zostały zwrócone.",
     "allFailed": "Nie udało się wygenerować obrazów. Kredyty zostały zwrócone.",
-    "modeManaged": "GrovBase Shot 1.0",
+    "modeManaged": "Generator GrovShot",
     "modeManagedSub": "GrovBase projektuje ujęcia za Ciebie — Ty wybierasz model i typ sesji.",
     "modeCustom": "Stwórz zdjęcie",
     "modeCustomSub": "Twój prompt steruje generacją — pełna kontrola nad sceną.",
-    "managedTitle": "GrovBase Shot 1.0",
+    "managedTitle": "Generator GrovShot",
     "managedSub": "Dodaj zdjęcia produktu, wybierz typ sesji i model — resztą zajmie się GrovBase.",
     "customTitle": "Stwórz zdjęcie",
     "customSub": "Opisz własnymi słowami, co chcesz wygenerować.",
@@ -5442,9 +5442,9 @@
     "copyFailed": "Nie udało się skopiować — przeglądarka nie zezwoliła na dostęp do schowka.",
     "inputPhotos": "Zdjęcia wejściowe",
     "retouched": {
-      "title": "Zdjęcia po retuszu",
-      "open": "Zdjęcie po retuszu {n}",
-      "use": "Użyj do nowej miniaturki"
+      "title": "Zdjęcia po Packshot AI",
+      "open": "Zdjęcie po Packshot AI {n}",
+      "use": "Użyj w kolejnej generacji"
     }
   },
   "retouch": {
@@ -8556,7 +8556,7 @@
     },
     "prompts": {
       "desc": "GrovBase pisze prompt i planuje serię ujęć.",
-      "words": "generator, generuj obraz, gotowy generator, silnik, prompt, ujęcia, plan, ai"
+      "words": "generator, generuj obraz, gotowy generator, silnik, prompt, ujęcia, plan, ai, generator grovshot, grovshot"
     },
     "generator": {
       "desc": "Wpisujesz własny prompt i generujesz obraz.",
@@ -10977,7 +10977,7 @@
         "desc": "Produkt w naturalnym otoczeniu."
       },
       "grovshot": {
-        "name": "Generator Grovshot",
+        "name": "Generator GrovShot",
         "desc": "Sesja produktowa z Twojego zdjęcia."
       },
       "custom": {
@@ -11185,12 +11185,27 @@
       "invalid_input": "Nieprawidłowe dane — dodaj zdjęcia ponownie.",
       "trial_check_failed": "Nie udało się teraz sprawdzić Twojego planu. Za kompozycję nic nie zostało pobrane — spróbuj ponownie.",
       "source_locked": "Jedno z poprawionych zdjęć ma jeszcze znak wodny. Usuń znak wodny w bibliotece i spróbuj ponownie — za kompozycję nic nie zostało pobrane.",
-      "watermark_failed": "Nie udało się przygotować miniaturki. Koszt kompozycji wrócił na konto."
+      "watermark_failed": "Nie udało się przygotować miniaturki. Koszt kompozycji wrócił na konto.",
+      "retouch_original_missing": "Nie ma już zdjęcia, z którego powstało zdjęcie po Packshot AI — wyłącz Packshot AI, aby użyć go bez ponownej obróbki."
     },
     "reuse": {
-      "done": "Zdjęcia są już po retuszu – nie zapłacisz za retusz ponownie.",
-      "already": "Te zdjęcia po retuszu są już w formularzu.",
-      "skipped": "Nie dodano {n} zdj. — Miniaturka przyjmuje maksymalnie {max} zdjęć."
+      "added": "Dodano {added}.",
+      "partial": "Dodano {added}. Nie dodano {skipped}, ponieważ limit wynosi {max}.",
+      "full": "Nie dodano {skipped}, ponieważ limit wynosi {max}.",
+      "already": "Te zdjęcia po Packshot AI są już w formularzu.",
+      "hint": "Dodane zdjęcia są już po obróbce – włącz Packshot AI tylko, jeśli chcesz obrobić je ponownie.",
+      "addedPhotos": {
+        "one": "{n} zdjęcie",
+        "few": "{n} zdjęcia",
+        "many": "{n} zdjęć",
+        "other": "{n} zdjęcia"
+      },
+      "skippedPhotos": {
+        "one": "{n} zdjęcia",
+        "few": "{n} zdjęć",
+        "many": "{n} zdjęć",
+        "other": "{n} zdjęcia"
+      }
     }
   },
   "ice": {

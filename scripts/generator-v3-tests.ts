@@ -104,7 +104,8 @@ section("C. Product photos Stwórz really sends");
   const ws = read("components/genv3/workspace.tsx");
   check("C8 Stwórz sends only the usable photos (a model that takes none keeps them for the retake); GrovShot all of them",
     /referencePaths: refs\.map\(\(r\) => r\.path\)\.slice\(0, usable > 0 \? Math\.min\(usable, MAX_REFS\) : MAX_REFS\)/.test(ws)
-    && /const usable = managed \? MAX_REFS : customPhotoBudget\(model, insp\.length\)/.test(ws));
+    // Only inspirations that can be sent count (customInspirationEnabled, 17.11.2026).
+    && /const usable = managed \? MAX_REFS : customPhotoBudget\(model, activeInsp\.length\)/.test(ws));
 }
 
 /* ── D ─────────────────────────────────────────────────────────────────── */

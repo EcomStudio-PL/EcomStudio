@@ -107,7 +107,7 @@ export async function GET(request: Request) {
   }
 
   /*
-    MINIATURKA — the photos after Retusz („Zdjęcia po retuszu”). A run with
+    MINIATURKA — the photos after Packshot AI („Zdjęcia po Packshot AI”). A run with
     Packshot AI ON recorded them as `retouched_paths` (the Retusz jobs' files,
     in the order of its photos); a run that was GIVEN retouched photos holds
     them as `retouched:<job>` references among its photos. Either way each is
@@ -177,7 +177,11 @@ export async function GET(request: Request) {
     references: urls([...references, ...carriedPaths]),
     inspirations: urls(inspirations),
     marked: marked ? signed.get(marked) ?? null : null,
-    retouched: retouchFiles.flatMap((f) => {
+    // „Zdjęcia po Packshot AI”: only what THIS Miniaturka's own Packshot AI
+    // pass produced (its `retouched_paths`, in its photos' order). Photos it
+    // was given already processed (carried from an earlier order) are its
+    // input photos above — never listed here as if this run had made them.
+    retouched: retouchFiles.filter((f) => fromRun.includes(f.jobId)).flatMap((f) => {
       const url = signed.get(f.path);
       return url ? [{ ref: retouchedRef(f.jobId), original: f.original, url, thumbUrl: (f.thumb && signed.get(f.thumb)) || url }] : [];
     }),
