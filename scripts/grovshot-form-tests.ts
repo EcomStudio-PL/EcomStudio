@@ -80,11 +80,13 @@ console.log("\nB. the lifestyle engine's start route (unchanged by this fix)");
   // of the same day changed two — prompt B and references V2 behind the
   // settings flag (lifestyle.ts assembles by the order's pinned variant,
   // start-shot.ts pins it). Pinned, so any further change is a decision again.
+  // 23.11.2026 (audit fix, decided): lifestyle.ts gates the plan after the
+  // reference correction, logs the image rules and the quality plan per shot.
   const CENNIK_V2: Record<string, string> = {
     "lib/server/grovshot-v2/run.ts": "cac4a128d009fc1ca2b7f950fa8164dd9d5b8ab96282b0c5ea90d21719bf7758",
     "lib/server/grovshot-v2/start-shot.ts": "8ee3f60c21a6f950af3c6a312202cc217726ad85e470475ba43f3c8d0519c18e",
     "lib/server/grovshot-v2/start.ts": "eabfc587b8cc77af09ae1a9f64ca1aa5e033be0d425f36def2090027e19de01f",
-    "lib/server/grovshot-v2/lifestyle.ts": "aff0649f6f75e9ccc5e665c2516611710cd1d7bf71748f5db0109115a9256bdd",
+    "lib/server/grovshot-v2/lifestyle.ts": "a8d0930b89bf1b37abf70ae6cbb6d7f697b52912380e2b563d690f90d3f2e591",
   };
 
   const { createHash } = require("node:crypto") as typeof import("node:crypto");
@@ -143,7 +145,12 @@ console.log("\nE. „Stwórz zdjęcie” and the gallery");
   let before = "";
   try { before = execFileSync("git", ["show", "dfcd622:components/genv3/workspace.tsx"], { encoding: "utf8" }).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^\s*\/\/.*$/gm, ""); } catch { /* no history */ }
   const fn = (src: string) => { const a = src.indexOf("async function generateCustom"); return a < 0 ? "" : src.slice(a, src.indexOf("\n  }\n", a)); };
-  check("„Stwórz zdjęcie” sends exactly what it sent before", before === "" || (fn(now) !== "" && fn(now) === fn(before)));
+  // The one deliberate change since (V4, 17.11.2026): inspirations travel only
+  // while the section exists (customInspirationEnabled) — `activeInsp`.
+  const v4 = (src: string) => src.replace("inspirationPaths: activeInsp.map(", "inspirationPaths: insp.map(");
+  const lines = (src: string) => src.split("\n").filter((l) => l.trim()).join("\n");
+  check("„Stwórz zdjęcie” sends exactly what it sent before (but for the V4 inspiration switch)",
+    before === "" || (fn(now) !== "" && lines(v4(fn(now))) === lines(fn(before))));
   const custom = now.slice(now.indexOf("<PromptSection"), now.indexOf("</>", now.indexOf("<PromptSection")));
   check("…its form still has its prompt, inspirations, model and quality — and no Allegro description", /<InspirationSection/.test(custom) && /modelControl\(\)/.test(custom) && /qualityControl/.test(custom) && !/V2Fields/.test(custom));
   const gallery = code("components/genv3/gallery.tsx");

@@ -33,20 +33,52 @@
  * and the flag blocks that describe the SCENE or protect fidelity (soft
  * product size, pastel colour, season, pets, passive products, mist).
  * Left out: `swieci` and `elektronika` (they re-light and re-colour the
- * product), the NEGATIVE list, the card's risks as text. Pure.
+ * product), the NEGATIVE list, the card's risks as text.
+ *
+ * b2 (23.11.2026, audit): the flag blocks were never sent — the active
+ * knowledge base had none, and the short list left out the four categories
+ * that need them most. Now (image-rules.ts) a reviewed flag's SHORT block
+ * goes into its own module in the order of authority
+ *
+ *   [WIĄZANIE] → [PRODUKT] → [REGUŁY PRODUKTU] → [SCENA] → [KADR I SKALA] → [OGRANICZENIA]
+ *
+ * (critical, then construction/material rules ahead of the scene; scene
+ * rules inside it), every flag left out is recorded with its reason, the
+ * light line follows the plan's indoor / outdoor and the count line the
+ * plan's typed number of items. Pure.
  */
 import { pickFooter, recipeById, type KbParsed } from "@/lib/grovshot-shot/kb";
 import type { CardPhoto, ProductCard } from "@/lib/grovshot-shot/card";
 import type { PlanShot } from "@/lib/grovshot-shot/plan";
 import { formOf, type RefDecisionV2 } from "@/lib/grovshot-shot/refs";
 import { PRODUCT_PREFIX, wordCount, type PromptModule, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
+import { selectImageRules, type DroppedImageRule, type IncludedImageRule } from "@/lib/grovshot-shot/image-rules";
 
-export const PROMPT_B_VERSION = "b1";
+export const PROMPT_B_VERSION = "b2";
 export const B_LIMITS = {
   product: 60, genre: 45, moment: 45, person: 30, set: 55, state: 30, frame: 60, detail: 110, dims: 25,
 } as const;
-/** Flag blocks that describe the scene or protect the product's own look. */
-export const B_KEEP_FLAGS = new Set(["miekki", "pastelowy", "sezonowy", "sezon_uzycia", "dla_zwierzat", "pasywny", "mgielka"]);
+/** The light line of a whole-product shot, by the plan's typed setting (23.11.2026). */
+export const SETTING_LINE = {
+  wnetrze: "Wnętrza europejskie, bez flar i słońca w kadrze.",
+  plener: "Prawdziwy plener: dozwolone naturalne słońce, także boczne, z kontrolowaną ekspozycją, bez flar obiektywu i przepalonego nieba.",
+  /** A plan written before the setting existed: the line every order had until then. */
+  legacy: "Wnętrza europejskie, bez flar i słońca w kadrze.",
+} as const;
+
+/** "2 identyczne egzemplarze", "5 identycznych egzemplarzy" (Polish numerals). */
+function copiesPl(n: number): string {
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return few ? `${n} identyczne egzemplarze` : `${n} identycznych egzemplarzy`;
+}
+
+/** The count line, from the plan's typed number of items (or, for an earlier plan, the old flag rule). */
+export function countLine(shot: Pick<PlanShot, "egzemplarze" | "liczba_egzemplarzy">, flags: ReadonlySet<string>): string {
+  if (shot.egzemplarze === "komplet") return "Cały komplet dokładnie jak na zdjęciach: te same elementy w tej samej liczbie, jako jeden zestaw – bez dodatkowych sztuk.";
+  if (shot.egzemplarze === "kilka_identycznych" && shot.liczba_egzemplarzy) return `Dokładnie ${copiesPl(shot.liczba_egzemplarzy)} produktu, każdy wierny zdjęciom.`;
+  if (shot.egzemplarze === "jeden") return "Jeden egzemplarz produktu.";
+  return flags.has("wiele_sztuk") ? "Produkt w liczbie sztuk takiej jak na zdjęciach." : "Jeden egzemplarz produktu.";
+}
 
 /** Sentences end at . ! ? followed by a capital letter — "ok. 3 m", "np. kubek", "35 mm. Figurka" split right. */
 const sentences = (t: string) => t.split(/(?<=[.!?])\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ„"])/).map((x) => x.trim()).filter(Boolean);
@@ -191,12 +223,23 @@ export function bindingB(card: ProductCard, refs: number[], aux: number[], patte
 
 export type AssembledPromptB = {
   text: string; modules: PromptModule[]; footer: string; pattern: "full" | "detail"; variant: "b"; version: string;
-  binding: string; notes: { removed_proportion: string[]; flags_dropped: string[]; flags_kept: string[]; product_words: number };
+  binding: string;
+  notes: {
+    removed_proportion: string[]; flags_dropped: string[]; flags_kept: string[]; product_words: number;
+    /** The admin's log (never the customer's): every flag of the card, the image rules sent, the rest and why. */
+    active_flags: string[];
+    included_image_rules: Omit<IncludedImageRule, "text">[];
+    dropped_rules_reasons: DroppedImageRule[];
+    setting: "wnetrze" | "plener" | "legacy" | null;
+    count: string | null;
+  };
 };
 
 /** The final prompt B of one shot — exactly what the image model receives. */
 export function assemblePromptB(o: {
-  kb: KbParsed; card: ProductCard; shot: Pick<PlanShot, "typ" | "ludzie" | "caly_produkt">; product: ProductModules; scene: SceneModules;
+  kb: KbParsed; card: ProductCard;
+  shot: Pick<PlanShot, "typ" | "ludzie" | "caly_produkt"> & Partial<Pick<PlanShot, "otoczenie" | "egzemplarze" | "liczba_egzemplarzy">>;
+  product: ProductModules; scene: SceneModules;
   refs: Pick<RefDecisionV2, "refs" | "aux">;
   /** The order's format ("16:9") — the frame arithmetic needs it. */
   aspectRatio?: string | null;
@@ -218,11 +261,17 @@ export function assemblePromptB(o: {
   const genre = capSentences(recipe.direction, B_LIMITS.genre);
   const modules: PromptModule[] = [{ name: "WIĄZANIE ZDJĘĆ", source: "code", text: binding }];
   const flags = new Set(card.flagi);
-  const kept = kb.special.filter((sp) => flags.has(sp.flag) && sp.block && B_KEEP_FLAGS.has(sp.flag));
-  const dropped = kb.special.filter((sp) => flags.has(sp.flag) && sp.block && !B_KEEP_FLAGS.has(sp.flag)).map((sp) => sp.flag);
+  // The flag blocks this shot sends (image-rules.ts): critical + construction
+  // ahead of the scene, scene rules inside it; the rest recorded with a reason.
+  const rules = selectImageRules(kb.special, card.flagi, pattern);
+  const productRules = rules.included.filter((r) => r.role !== "scene").map((r) => r.text).join(" ");
+  const sceneRules = rules.included.filter((r) => r.role === "scene").map((r) => r.text);
   let productWords = 0;
+  let setting: AssembledPromptB["notes"]["setting"] = null;
+  let count: string | null = null;
   if (pattern === "detail") {
     modules.push({ name: "DETAL", source: "model", text: clean(scene.detal, B_LIMITS.detail) });
+    if (productRules) modules.push({ name: "REGUŁY PRODUKTU", source: "kb", text: productRules });
     modules.push({ name: "SCENA", source: "kb", text: genre });
     modules.push({ name: "KADR", source: "model", text: clean(scene.kadr, B_LIMITS.frame) });
     modules.push({ name: "OGRANICZENIA", source: "code", text: `Tylko ten fragment produktu, ostry i dokładnie jak na zdjęciu 1. Rekwizyty gładkie, bez napisów i logo. ${footer.text}` });
@@ -231,13 +280,14 @@ export function assemblePromptB(o: {
     const product = capSentences(body.split(/(?<=[.!?])\s+/).filter((x) => !/(nie jest|to nie|nie mylić|nie pomylić)/i.test(x)).join(" "), B_LIMITS.product);
     productWords = wordCount(product);
     if (product) modules.push({ name: "PRODUKT", source: "model", text: `Cechy, których nie wolno pomylić: ${product}` });
+    if (productRules) modules.push({ name: "REGUŁY PRODUKTU", source: "kb", text: productRules });
     const sceneText = [
       genre,
       clean(scene.moment, B_LIMITS.moment),
       shot.ludzie !== "brak" && scene.postac ? clean(scene.postac, B_LIMITS.person) : "",
       clean(scene.scenografia, B_LIMITS.set),
       scene.stan_chwyt ? clean(scene.stan_chwyt, B_LIMITS.state) : "",
-      ...kept.map((sp) => sp.block as string),
+      ...sceneRules,
     ].filter(Boolean).join(" ");
     modules.push({ name: "SCENA", source: "model", text: sceneText });
     const scale = scaleBlock(card);
@@ -245,12 +295,13 @@ export function assemblePromptB(o: {
     removed.push(...framed.removed);
     modules.push({ name: "KADR I SKALA", source: "model", text: [framed.text, scale].filter(Boolean).join(" ") });
     const whole = shot.typ === "hero" || shot.caly_produkt;
-    const many = flags.has("wiele_sztuk");
+    setting = shot.otoczenie === "plener" ? "plener" : shot.otoczenie === "wnetrze" ? "wnetrze" : "legacy";
+    count = countLine(shot, flags);
     const constraints = [
-      many ? "Produkt w liczbie sztuk takiej jak na zdjęciach." : "Jeden egzemplarz produktu.",
+      count,
       whole ? "Produkt widoczny w całości, niczym niezasłonięty, ostry." : "Produkt ostry i rozpoznawalny.",
       shot.ludzie !== "brak" ? "Ludzie naturalni, z poprawnymi dłońmi, nie patrzą w obiektyw." : "",
-      "Rekwizyty gładkie, bez napisów i logo. Wnętrza europejskie, bez flar i słońca w kadrze.",
+      `Rekwizyty gładkie, bez napisów i logo. ${SETTING_LINE[setting]}`,
       footer.text,
     ].filter(Boolean).join(" ");
     modules.push({ name: "OGRANICZENIA", source: "code", text: constraints });
@@ -258,6 +309,11 @@ export function assemblePromptB(o: {
   const final = modules.filter((m) => m.text.trim());
   return {
     text: final.map((m) => m.text).join("\n\n"), modules: final, footer: footer.key, pattern, variant: "b", version: PROMPT_B_VERSION,
-    binding, notes: { removed_proportion: removed, flags_dropped: dropped, flags_kept: kept.map((sp) => sp.flag), product_words: productWords },
+    binding,
+    notes: {
+      removed_proportion: removed, flags_dropped: rules.dropped.map((d) => d.flag), flags_kept: rules.included.map((r) => r.flag),
+      product_words: productWords, active_flags: rules.active,
+      included_image_rules: rules.included.map((r) => ({ flag: r.flag, role: r.role, words: r.words, trimmed: r.trimmed })), dropped_rules_reasons: rules.dropped, setting, count,
+    },
   };
 }

@@ -14,7 +14,7 @@
 import { PEOPLE, SHOT_TYPES } from "@/lib/grovshot-shot/kb";
 
 /** Bumped when a contract, schema or the prompt assembly changes. Stored with every order. */
-export const SHOT_ENGINE_VERSION = "grovshot-lifestyle-1.0";
+export const SHOT_ENGINE_VERSION = "grovshot-lifestyle-1.1";
 
 export const PHOTO_ROLES = ["calosc", "detal", "uzycie", "opakowanie", "inny_wariant"] as const;
 /** What a photo IS (graphics, collages and photos with other products are never a main reference). */
@@ -32,6 +32,15 @@ export const LIGHTS = [
   "pochmurne_rozproszone", "noc_lampka", "wnetrze_lampy", "inne",
 ] as const;
 export type Light = (typeof LIGHTS)[number];
+/** Where a scene is (23.11.2026): decides the light constraint of prompt B — never guessed from words. */
+export const SETTINGS = ["wnetrze", "plener"] as const;
+export type SceneSetting = (typeof SETTINGS)[number];
+/** What the seller sells, as one listing: one item, one set of several parts, or several identical items. */
+export const OFFER_TYPES = ["jeden", "komplet", "kilka_sztuk"] as const;
+export type OfferType = (typeof OFFER_TYPES)[number];
+/** How many of the product one shot shows: one item (or part of a set), the whole set, N identical items. */
+export const COPIES = ["jeden", "komplet", "kilka_identycznych"] as const;
+export type Copies = (typeof COPIES)[number];
 
 const str = { type: "STRING" };
 const num = { type: "NUMBER", nullable: true };
@@ -57,6 +66,7 @@ export const CARD_SCHEMA = obj({
   ryzyka: strs,
   flagi: strs,
   przepis_stylu: str,
+  oferta: obj({ typ: en(OFFER_TYPES), sztuk: num }),
 });
 
 export const PLAN_SCHEMA = obj({
@@ -65,6 +75,7 @@ export const PLAN_SCHEMA = obj({
     items: obj({
       numer: int, argument: str, typ: en(SHOT_TYPES), kierunek: str, miejsce: str, swiatlo: str, swiatlo_typ: en(LIGHTS),
       kadr: en(FRAMES), ludzie: en(PEOPLE), stan: str, caly_produkt: bool, referencje: strs, opis: str, skala_cm: num,
+      otoczenie: en(SETTINGS), egzemplarze: en(COPIES), liczba_egzemplarzy: num,
     }),
   },
   konflikty: strs,
@@ -90,8 +101,8 @@ export function contractText(stage: ContractStage, kb: { version: number }): str
     "Zwróć wyłącznie JSON zgodny ze schematem odpowiedzi; nie dopisuj pól, nie zostawiaj pól pustych, gdy dane istnieją.",
   ];
   const task: Record<ContractStage, string> = {
-    karta: "Krok 2 silnika GrovBase Shot – KARTA PRODUKTU. Przeczytaj wszystkie zdjęcia i opis z Allegro i zapisz kartę produktu. Niczego nie odrzucaj: każdemu zdjęciu nadaj rolę, formę, ujęcie, widok, stan i listę elementów, których nie wolno kopiować. „rola” = calosc tylko wtedy, gdy na zdjęciu widać CAŁY produkt (nie ciasny detal). „forma”: zdjecie (czysta fotografia), grafika (strzałki wymiarów, linie techniczne, napisy dodane na grafice), kolaz (kilka ujęć na jednym obrazie), inne_produkty (porównanie lub inne produkty obok). „ujecie”: przod, 3_4, bok, tyl, gora albo inne. W „stany” wypisz krótkie nazwy stanów produktu widocznych na zdjęciach (np. „zamknięty”, „otwarty”, „w użyciu”) z identyfikatorami zdjęć; pole „stan” każdego zdjęcia przepisz dosłownie z tej listy, bez dopisków – szczegóły widoku zapisz w „widok”. Wymiary bez źródła w opisie oznacz jako założenie. Przepis stylu i flagi wybierz wyłącznie z katalogów poniżej.",
-    plan: "Krok 3 silnika GrovBase Shot – PLAN UJĘĆ. Na podstawie karty produktu zaplanuj dokładnie zamówioną liczbę ujęć, w kolejności galerii aukcji. Referencje podawaj jako identyfikatory Z z karty, w kolejności dołączania do generacji. Pozycje ustalone przez administratora są wiążące: przepisz je bez zmian i zaplanuj tylko pozostałe. Konflikty, których przy tej liczbie ujęć nie da się rozwiązać, wpisz do „konflikty” zamiast dokładać ujęć.",
+    karta: "Krok 2 silnika GrovBase Shot – KARTA PRODUKTU. Przeczytaj wszystkie zdjęcia i opis z Allegro i zapisz kartę produktu. Niczego nie odrzucaj: każdemu zdjęciu nadaj rolę, formę, ujęcie, widok, stan i listę elementów, których nie wolno kopiować. „rola” = calosc tylko wtedy, gdy na zdjęciu widać CAŁY produkt (nie ciasny detal). „forma”: zdjecie (czysta fotografia), grafika (strzałki wymiarów, linie techniczne, napisy dodane na grafice), kolaz (kilka ujęć na jednym obrazie), inne_produkty (porównanie lub inne produkty obok). „ujecie”: przod, 3_4, bok, tyl, gora albo inne. W „stany” wypisz krótkie nazwy stanów produktu widocznych na zdjęciach (np. „zamknięty”, „otwarty”, „w użyciu”) z identyfikatorami zdjęć; pole „stan” każdego zdjęcia przepisz dosłownie z tej listy, bez dopisków – szczegóły widoku zapisz w „widok”. Wymiary bez źródła w opisie oznacz jako założenie. „oferta”: co dokładnie sprzedaje ta aukcja – „jeden” (jeden przedmiot), „komplet” (jeden zestaw złożony z kilku różnych elementów, „sztuk” = null) albo „kilka_sztuk” (kilka identycznych egzemplarzy w cenie, „sztuk” = ich liczba z opisu); bez pewności – „jeden”. Przepis stylu i flagi wybierz wyłącznie z katalogów poniżej.",
+    plan: "Krok 3 silnika GrovBase Shot – PLAN UJĘĆ. Na podstawie karty produktu zaplanuj dokładnie zamówioną liczbę ujęć, w kolejności galerii aukcji. Referencje podawaj jako identyfikatory Z z karty, w kolejności dołączania do generacji. Pozycje ustalone przez administratora są wiążące: przepisz je bez zmian i zaplanuj tylko pozostałe. Konflikty, których przy tej liczbie ujęć nie da się rozwiązać, wpisz do „konflikty” zamiast dokładać ujęć. „otoczenie”: wnetrze albo plener – gdzie naprawdę dzieje się scena. „egzemplarze”: jeden (jeden egzemplarz albo część kompletu), komplet (cały zestaw tak jak na zdjęciach) albo kilka_identycznych – tylko gdy oferta karty to kilka_sztuk, z „liczba_egzemplarzy” nie większą niż w ofercie (w pozostałych przypadkach null). Nie rozbijaj kompletu na kilka identycznych produktów i nie dodawaj sztuk, których klient nie sprzedaje.",
     prompty: "Krok 4 silnika GrovBase Shot – MODUŁY PROMPTU. Piszesz tylko moduły zależne od produktu i sceny; KIERUNEK, reguły specjalne, stopkę i negative bazowy dokleja kod dosłownie z bazy wiedzy – nie powtarzaj ich. Blok wiązania zdjęć (które zdjęcie przedstawia produkt, a które detal) też dokleja kod na początku promptu. Moduły piszesz po polsku, konkretnie, bez nazw marek innych niż na produkcie. Nie pisz, czym produkt nie jest, i nie wymieniaj innych produktów, kategorii ani materiałów, których na produkcie nie ma – każde takie słowo podsuwa modelowi obrazu inny przedmiot.",
   };
   return [task[stage], ...common].join("\n");

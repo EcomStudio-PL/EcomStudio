@@ -1957,7 +1957,7 @@ async function partL() {
     const asm = stepsOf(r.runId, P.write).find((s) => s.item_index === 30);
     const shotsOut = ((asm?.output as Row)?.shots ?? []) as Row[];
     check("L11 every final prompt is stored with its sha256, the knowledge and engine versions (admin-only step rows)",
-      shotsOut.length === 3 && shotsOut.every((x) => typeof x.sha256 === "string" && x.kb_version === 1 && x.engine_version === "grovshot-lifestyle-1.0")
+      shotsOut.length === 3 && shotsOut.every((x) => typeof x.sha256 === "string" && x.kb_version === 1 && x.engine_version === "grovshot-lifestyle-1.1")
       && w.imageCalls.every((c) => shotsOut.some((x) => x.text === c.prompt)) && new Set(w.imageCalls.map((c) => c.prompt)).size === 3);
     check("L12 the delivered images are in the library, quality 'skipped' (no automatic check looked at them)",
       tableRows("generations").length === 3 && tableRows("generations").every((g) => g.quality_status === "skipped"));
@@ -2239,7 +2239,122 @@ async function partL() {
   }
 }
 
-partE().then(partL).then(() => {
+/* ══ LX · THE FIX OF 23.11.2026 — image rules, the plan gate, quality (synthetic) ═══*/
+
+const LX_KB = (() => {
+  const p = parseKb(readFileSync("docs/grovshot-shot/grovbase-shot-wiedza-v4-3-testowa.md", "utf8"));
+  if (!p.ok) throw new Error("kb43");
+  return JSON.parse(canonicalJson(p.kb)) as Record<string, unknown>;
+})();
+function lxKb() {
+  LS_VERSIONS.length = 0;
+  LS_VERSIONS.push({ id: "44444444-4444-4444-8444-444444444443", version: 4, active: true, sha256: sha(JSON.stringify(LX_KB)), parsed: LX_KB });
+}
+function lxVariant(v: "a" | "b") {
+  const row = tableRows("app_settings").find((x) => x.key === "grovshot_shot") as Row;
+  row.value = { ...DEFAULT_SHOT_SETTINGS, prompt: { ...DEFAULT_SHOT_SETTINGS.prompt, variant: v } };
+}
+/** A thermo-hygrometer with an LCD and a probe on a cable (HTC-2-like), flag „ekran”, one item sold. */
+function lxCard(photos: number): Row {
+  return {
+    ...lsCard(photos), produkt: { nazwa: "Termohigrometr HTC-2 z sondą", wariant: "biały", kategoria: "stacje pogodowe" },
+    wymiary: { tekst: "10,5 × 9,5 × 2 cm", zrodlo: "opis", szerokosc_cm: 10.5, glebokosc_cm: 2, wysokosc_cm: 9.5, pewne: true },
+    budowa: { elementy: ["wyświetlacz LCD z trzema strefami", "sonda na przewodzie"], kolory: ["biały"], materialy: ["plastik"], liczby: ["3 strefy"] },
+    flagi: ["ekran"], przepis_stylu: "dom_ikea", oferta: { typ: "jeden", sztuk: null },
+  };
+}
+function lxPlan(shots: number, photos: number, over: (n: number) => Row = () => ({})): Row {
+  const p = lsPlan(shots, photos);
+  return {
+    ...p,
+    ujecia: (p.ujecia as Row[]).map((x) => ({ ...x, otoczenie: Number(x.numer) === 2 ? "plener" : "wnetrze", egzemplarze: "jeden", liczba_egzemplarzy: null, ...over(Number(x.numer)) })),
+  };
+}
+const LCD = "identyczny podział na strefy";
+
+async function partLX() {
+  section("LX. GROVSHOT FIX 23.11.2026 — the KB image rules reach the image call; the plan gate; quality (synthetic)");
+  {
+    const w = await lsWorld({ photos: 7, card: () => lxCard(7), plan: (_i, shots) => lxPlan(shots, 7) });
+    lxKb(); lxVariant("b");
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) { check("LX0 order accepted", false, r); return; }
+    await lsDrive(w, r.runId);
+    const run = runOf(r.runId);
+    const asm = stepsOf(r.runId, P.write).find((x) => x.item_index === 30);
+    const out = ((asm?.output as Row)?.shots ?? []) as Row[];
+    check("LX1 prompt B on KB v4.3, a card with „ekran”: 3 of 3 delivered, 3 charged — the gate let a clean plan through",
+      run.status === "ok" && delivered(r.runId) === 3 && charges().length === 3 && (run.input as Row).prompt_variant === "b", { st: run.status, e: run.error });
+    check("LX2 EVERY image call (hero, outdoor use, screen detail) carries the KB's LCD rule — in the request to the image model, not only Claude's system text",
+      w.imageCalls.length === 3 && w.imageCalls.every((c) => c.prompt.includes(LCD)) && w.stageCalls.some((c) => (c.direct?.system ?? "").includes("Ekrany i wyświetlacze")),
+      w.imageCalls.map((c) => c.prompt.slice(0, 80)));
+    check("LX3 …with its photos: each call sends the references code chose (hero opens with the whole product, the detail with its detail)",
+      w.imageCalls.every((c) => c.references.length >= 1) && out.every((x) => Array.isArray(x.references) && (x.references as number[]).length === (w.imageCalls.find((c) => c.prompt === x.text)?.references.length ?? -1)));
+    check("LX4 the admin's log per shot: active flags, the image rule sent (critical), prompt B b2, a quality plan asking for a review (LCD, probe)",
+      out.length === 3 && out.every((x) => JSON.stringify(x.active_flags) === '["ekran"]' && ((x.included_image_rules as Row[])[0]?.flag === "ekran")
+        && x.prompt_b_version === "b2" && (x.qc as Row)?.quality_status === "unverified" && (x.qc as Row)?.review === true), out.map((x) => ({ f: x.active_flags, qc: x.qc })));
+    const rounds = stepsOf(r.runId, P.round).map((x) => (x.output as Row)?.quality as Row);
+    check("LX5 each round records delivery apart from quality: image_received + unverified (an ok order is not a quality pass)",
+      rounds.length === 3 && rounds.every((q) => q?.delivery_status === "image_received" && q?.quality_status === "unverified"));
+    check("LX6 the outdoor shot gets the outdoor light line; the indoor ones keep theirs",
+      w.imageCalls.some((c) => c.prompt.includes("Prawdziwy plener")) && w.imageCalls.filter((c) => c.prompt.includes("Wnętrza europejskie")).length === 1);
+    const pc = (run.progress as Row).plan_check as Row;
+    check("LX7 progress.plan_check: nothing blocked, recorded once", Array.isArray(pc?.blocked_shots) && (pc.blocked_shots as unknown[]).length === 0);
+    check("LX8 billing and the library unchanged: delivered images charged once each, quality 'skipped' in generations as before",
+      tableRows("generations").length === 3 && tableRows("generations").every((g) => g.quality_status === "skipped") && db().wallet.balance === 179, db().wallet.balance);
+  }
+  for (const variant of ["b", "a"] as const) {
+    // A state the photos do not have, on both plan answers: the shot would be invented.
+    const w = await lsWorld({ photos: 7, card: () => lxCard(7), plan: (_i, shots) => lxPlan(shots, 7, (n) => (n === 2 ? { stan: "rozłożony" } : {})) });
+    lxKb(); lxVariant(variant);
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) { check(`LX9${variant} order accepted`, false, r); continue; }
+    await lsDrive(w, r.runId);
+    const run = runOf(r.runId);
+    const settle2 = stepsOf(r.runId, P.settle).find((x) => x.item_index === 1);
+    const pc = (run.progress as Row).plan_check as Row;
+    const before = ((run.progress as Row).plan_violations ?? []) as Row[];
+    check(`LX9 [prompt ${variant}] a hard violation the correction cannot fix (unknown state): the plan was asked again once with it, then shot 2 is NOT generated and NOT charged`,
+      w.stageCalls.filter((c) => c.key === "grovshot_shot_plan").length === 2 && w.imageCalls.length === 2 && charges().length === 2
+      && settle2?.status === "failed" && settle2?.error_code === "plan_hard_violation" && run.status === "partial" && db().wallet.balance === 186,
+      { calls: w.imageCalls.length, charges: charges().length, settle: settle2?.error_code, st: run.status, bal: db().wallet.balance });
+    check(`LX10 [prompt ${variant}] the admin's record: violations BEFORE (hard, typed) and the gate AFTER (shot 2: state_unknown), never „verified”`,
+      before.some((v) => v.code === "state_unknown" && v.severity === "hard")
+      && JSON.stringify(pc?.blocked_shots) === '[{"shot":2,"codes":["state_unknown"]}]' && pc?.verified === false, { before, pc });
+    const n = { calls: w.imageCalls.length, charges: charges().length, stage: w.stageCalls.length };
+    await lsDrive(w, r.runId);
+    check(`LX11 [prompt ${variant}] driven again after the end: no call, no charge (idempotent)`,
+      w.imageCalls.length === n.calls && charges().length === n.charges && w.stageCalls.length === n.stage);
+  }
+  {
+    // A hero planned with a fragment only (hard before) — the code's reference correction fixes it.
+    const w = await lsWorld({ photos: 7, card: () => lxCard(7), plan: (_i, shots) => lxPlan(shots, 7, (n) => (n === 1 ? { referencje: ["Z4"] } : {})) });
+    lxKb(); lxVariant("b");
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) { check("LX12 order accepted", false, r); return; }
+    await lsDrive(w, r.runId);
+    const run = runOf(r.runId);
+    const before = ((run.progress as Row).plan_violations ?? []) as Row[];
+    const pc = (run.progress as Row).plan_check as Row;
+    check("LX12 hard BEFORE (whole_with_fragment) but fixed by the reference correction: NOT blocked, 3 of 3 delivered, the hero sent with whole-product photos",
+      before.some((v) => v.code === "whole_with_fragment" && v.severity === "hard") && (pc?.blocked_shots as unknown[])?.length === 0
+      && delivered(r.runId) === 3 && w.imageCalls.length === 3, { before, pc, st: run.status });
+  }
+  {
+    // Copies the listing does not sell (one item → three identical): honesty — stopped.
+    const w = await lsWorld({ photos: 7, card: () => lxCard(7), plan: (_i, shots) => lxPlan(shots, 7, (n) => (n === 2 ? { egzemplarze: "kilka_identycznych", liczba_egzemplarzy: 3 } : {})) });
+    lxKb(); lxVariant("b");
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) { check("LX13 order accepted", false, r); return; }
+    await lsDrive(w, r.runId);
+    const pc = (runOf(r.runId).progress as Row).plan_check as Row;
+    check("LX13 one item sold, three planned: count_not_offered stops that shot (no call, no charge); the rest delivered",
+      JSON.stringify(pc?.blocked_shots) === '[{"shot":2,"codes":["count_not_offered"]}]' && w.imageCalls.length === 2 && charges().length === 2
+      && w.imageCalls.every((c) => !c.prompt.includes("identyczne egzemplarze")), pc);
+  }
+}
+
+partE().then(partL).then(partLX).then(() => {
   console.log(`\n${passed} passed, ${failures} failed`);
   if (failures > 0) process.exit(1);
 }).catch((e) => { console.error(e); process.exit(1); });

@@ -34,7 +34,8 @@ import {
   CARD_SCHEMA, FRAMES, LIGHTS, PLAN_SCHEMA, PRODUCT_SCHEMA, SCENES_SCHEMA, SHOT_ENGINE_VERSION, contractText, wrapData,
 } from "@/lib/grovshot-shot/contract";
 import { checkCard, photoId, validationFeedback, type ProductCard } from "@/lib/grovshot-shot/card";
-import { checkPlan, parseUserPlan, planFeedback, planForPrompt, renderUserPlan, type PlanShot, type UserPlanRow, type Violation } from "@/lib/grovshot-shot/plan";
+import { checkPlan, parseUserPlan, planFeedback, planForPrompt, planGate, planViolations, renderUserPlan, type PlanGate, type PlanShot, type UserPlanRow, type Violation } from "@/lib/grovshot-shot/plan";
+import { shotQualityPlan } from "@/lib/grovshot-shot/quality";
 import { assemblePrompt, checkProductModules, checkSceneModules, PRODUCT_PREFIX, type AssembledPrompt, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
 import { referenceProblem, selectReferences, selectReferencesV2, wholeCandidates, type RefDecision, type RefDecisionV2 } from "@/lib/grovshot-shot/refs";
 import { assemblePromptB } from "@/lib/grovshot-shot/prompt-b";
@@ -52,7 +53,8 @@ import {
  *
  *   1  · -1        pin: the photos' hashes, the official image price, the order's spend cap
  *   2  · 0…7       step 2, the product card (a repeat with the validation errors; transient retries)
- *   3  · 0…7       step 3, the shot plan (a repeat with the violations; then it goes on, recorded)
+ *   3  · 0…7       step 3, the shot plan (a repeat with the violations; then the GATE: after the
+ *                  references are corrected, a shot with a HARD violation is not generated)
  *   10 · 0…7       step 4, call 1: PRODUKT + SKALA
  *   10 · 10…17     step 4, call 2: the scene modules of every shot at once
  *   10 · 30        the assembled prompt of every shot (text, modules, sha256)
@@ -270,10 +272,15 @@ async function driveLifestyle(ctx: LCtx, state: Awaited<ReturnType<typeof readEn
   const decided = decideReferences(ctx, card, planned);
   const plan = decided.plan;
   if (ctx.progress.planned !== plan.length) await setProgress(ctx, { planned: plan.length, recipe: card.przepis_stylu });
+  // THE GATE (23.11.2026): the plan's rules once more, on the references code
+  // just chose — what the correction fixed is not held against the plan; a
+  // hard violation left stops its shot before any paid image call.
+  const gate = gatePlan(ctx, card, plan, decided.decisions);
+  await recordGate(ctx, gate);
 
   // ── krok 4 · moduły + składanie ──
   await setProgress(ctx, { stage: "scenes" });
-  const prompts = await promptSteps(ctx, card, plan, decided.decisions);
+  const prompts = await promptSteps(ctx, card, plan, decided.decisions, gate);
   if (typeof prompts === "string") return prompts;
 
   if (ctx.test && ctx.input.test_mode === "prompts") {
@@ -558,10 +565,11 @@ async function planStep(ctx: LCtx, card: ProductCard): Promise<PlanShot[] | Driv
   });
   if (typeof r === "string") return r;
   if ("failed" in r) { await close(ctx, "failed", r.failed === "invalid_output" ? "plan_invalid" : "analysis_unavailable"); return "finished"; }
-  // Violations left after the repeat are recorded (the admin's log), the plan goes on.
+  // Violations left after the repeat are recorded (the admin's log) — the
+  // state BEFORE the reference correction; the gate judges the plan after it.
   if (r.value.violations.length > 0 || r.value.conflicts.length > 0) {
     await setProgress(ctx, {
-      plan_violations: r.value.violations.map((v) => ({ code: v.code, shots: v.shots })) as unknown as Json,
+      plan_violations: r.value.violations.map((v) => ({ code: v.code, shots: v.shots, severity: v.severity ?? "soft" })) as unknown as Json,
       plan_conflicts: r.value.conflicts.length,
     });
   }
@@ -573,7 +581,7 @@ function planUser(ctx: LCtx, card: ProductCard, userPlan: UserPlanRow[] | null, 
     `Liczba ujęć do zaplanowania: dokładnie ${ctx.input.shots}. Format całego zestawu: ${ctx.input.aspect_ratio}.`,
     `Karta produktu (JSON):\n${JSON.stringify(card)}`,
     ctx.kb.directions.length ? `Pole „kierunek” = dokładnie jedna nazwa z listy: ${ctx.kb.directions.join(" | ")}.` : "",
-    `Pole „kadr”: ${FRAMES.join(", ")}. Pole „swiatlo_typ”: ${LIGHTS.join(", ")}. Pole „stan”: dokładnie jeden ze stanów karty. „skala_cm”: największy wymiar produktu w cm wynikający z kotwic skali tej sceny (null, gdy scena go nie ustala).`,
+    `Pole „kadr”: ${FRAMES.join(", ")}. Pole „swiatlo_typ”: ${LIGHTS.join(", ")}. Pole „stan”: dokładnie jeden ze stanów karty. „skala_cm”: w ujęciu całego produktu – jego największy wymiar w cm wynikający z kotwic skali tej sceny; w ujęciu detalu – rozmiar pokazanego fragmentu (nie jest porównywany z całością); null, gdy scena go nie ustala.`,
     userPlan ? `Pozycje ustalone przez administratora (wiążące, przepisz bez zmian):\n${renderUserPlan(userPlan)}` : "",
     ctx.input.notes ? wrapData("uwagi_klienta", ctx.input.notes) : "",
     feedback ?? "",
@@ -582,7 +590,7 @@ function planUser(ctx: LCtx, card: ProductCard, userPlan: UserPlanRow[] | null, 
 
 /* ══ krok 4 · moduły promptu + składanie ══════════════════════════════════*/
 
-type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null };
+type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null };
 type Prompts = Map<number, ShotPrompt>;
 
 function promptsFrom(o: Record<string, unknown>): Prompts {
@@ -593,6 +601,7 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
         text: x.text, sha256: String(x.sha256), modules: (x.modules ?? []) as AssembledPrompt["modules"], footer: String(x.footer ?? ""),
         pattern: x.pattern === "detail" ? "detail" : "full", references: Array.isArray(x.references) ? x.references as number[] : [],
         blocked: typeof x.blocked === "string" ? x.blocked : null,
+        qc: x.qc && typeof x.qc === "object" ? x.qc as Json : null,
       });
     }
   }
@@ -615,7 +624,30 @@ function decideReferences(ctx: LCtx, card: ProductCard, plan: PlanShot[]): { pla
   return { plan: out, decisions };
 }
 
-async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decisions: Map<number, ShotRefs>): Promise<Prompts | Drive> {
+/** The plan's rules on the references code chose; shots refs.ts already stopped are not judged again. Deterministic. */
+function gatePlan(ctx: LCtx, card: ProductCard, plan: PlanShot[], decisions: Map<number, ShotRefs>): PlanGate {
+  const live = plan.filter((s) => !decisions.get(s.numer)?.blocked);
+  return planGate(planViolations(live, { card, kb: ctx.kb, shots: ctx.input.shots }));
+}
+
+const packViolations = (xs: Violation[]) =>
+  xs.map((v) => ({ code: v.code, shots: v.shots, severity: v.severity ?? "soft", ...(v.override ? { override: true } : {}) }));
+
+/** The admin's record of the gate (progress.plan_check), written once per change. */
+async function recordGate(ctx: LCtx, g: PlanGate) {
+  const blocked = [...g.blocked.entries()].sort((a, b) => a[0] - b[0]).map(([shot, codes]) => ({ shot, codes }));
+  const after = packViolations([...g.hard, ...g.soft, ...g.overridden]);
+  const sig = JSON.stringify([g.verified, blocked, after]);
+  const cur = ctx.progress.plan_check;
+  if (cur && typeof cur === "object" && !Array.isArray(cur) && (cur as Record<string, Json>).sig === sig) return;
+  await setProgress(ctx, {
+    plan_check: {
+      sig, verified: g.verified, blocked_shots: blocked, violations_after: after, warnings: g.soft.length, overridden: packViolations(g.overridden),
+    } as unknown as Json,
+  });
+}
+
+async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decisions: Map<number, ShotRefs>, gate: PlanGate): Promise<Prompts | Drive> {
   const done = stepOf(ctx, POS.assemble, ITEM.assemble);
   if (done?.status === "succeeded") return promptsFrom(outputOf(done));
   // One system text for both calls: the second reads it from the prompt cache.
@@ -727,8 +759,22 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
       });
       continue;
     }
+    const stop = gate.blocked.get(shot.numer);
+    if (stop) {
+      // A hard violation left after the reference correction: the image would
+      // show a wrong product — no image call, no charge (the shot settles failed).
+      shots.push({
+        numer: shot.numer, text: "", sha256: "", modules: [], footer: "", pattern: shot.typ === "detal" ? "detail" : "full", references: [],
+        blocked: "plan_hard_violation", plan_violations: stop, corrections: d.corrections as unknown as Json, planned_references: d.planned,
+        kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+      });
+      continue;
+    }
     const m = modules.get(shot.numer);
     if (!m) continue;
+    // What a delivered image of this shot will need: never "passed" before someone looked (quality.ts).
+    const warnings = [...new Set(gate.soft.filter((v) => v.shots.includes(shot.numer)).map((v) => v.code))];
+    const qc = shotQualityPlan({ card, shot, warnings }) as unknown as Json;
     if (variantOf(ctx) === "b") {
       // Prompt B (13.11.2026): the same modules, the photos first, one source of size.
       const b = assemblePromptB({ kb: ctx.kb, card, shot, product: product.value, scene: m, refs: d, aspectRatio: ctx.input.aspect_ratio });
@@ -737,6 +783,9 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
         references: d.refs, aux_references: d.aux, planned_references: d.planned, corrections: d.corrections as unknown as Json,
         ref_reasons: (d.reasons ?? []) as unknown as Json, ref_dropped: (d.dropped ?? []) as unknown as Json, ref_state_fallback: Boolean(d.stateFallback),
         binding: b.binding, binding_source: "code", prompt_variant: "b", prompt_b_version: b.version, prompt_notes: b.notes as unknown as Json,
+        // The admin's log of the image rules (never shown to a customer).
+        active_flags: b.notes.active_flags, included_image_rules: b.notes.included_image_rules as unknown as Json,
+        dropped_rules_reasons: b.notes.dropped_rules_reasons as unknown as Json, plan_warnings: warnings, qc,
         kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
       });
       continue;
@@ -746,7 +795,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
       numer: shot.numer, text: a.text, sha256: sha256(a.text), modules: a.modules as unknown as Json, footer: a.footer, pattern: a.pattern,
       references: d.refs, aux_references: d.aux, planned_references: d.planned,
       corrections: [...d.corrections, ...(a.productTrimmed ? [{ code: "product_trimmed", photos: [] }] : [])] as unknown as Json,
-      binding: a.binding, binding_source: a.bindingSource, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
+      binding: a.binding, binding_source: a.bindingSource, plan_warnings: warnings, qc, kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
     });
   }
   const out = {
@@ -1058,6 +1107,8 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: ShotPrompt | null, mir
           reference_check: referenceCheck(references, prepared, sink.requests, prompt.text) as unknown as Json,
           boundary: boundaryRecord(sink) as unknown as Json, boundary_summary: boundarySummary(sink) as unknown as Json,
           aspect_ratio: ctx.input.aspect_ratio, resolution: ctx.input.resolution, attempt: roundIndex + 1,
+          // An image came back — that is delivery, not quality (quality.ts): unverified until someone looks.
+          quality: { delivery_status: image ? "image_received" : "no_image", ...(prompt.qc && typeof prompt.qc === "object" ? prompt.qc as Record<string, Json> : { quality_status: "unverified", review: false, reasons: [] }) } as unknown as Json,
         };
         const ok = await finish(ctx, P.round, item, {
           status: "succeeded", attempts: b.attempts + 1, providerSlug: ctx.input.model.provider, model: ctx.input.model.identifier,
