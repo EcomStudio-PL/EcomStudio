@@ -157,7 +157,8 @@ check("200 cm → a door", /drzwi/.test(codeAnchor(200) ?? ""), codeAnchor(200))
 check("8 cm → a fraction of a hand or a mug", /dłoni|kubka/.test(codeAnchor(8) ?? ""), codeAnchor(8));
 check("the proportion claim is removed, the frame stays", (() => {
   const r = stripProportionClaims(scenes[4].kadr);
-  return r.removed.length === 1 && /45% wysokości kadru/.test(r.text);
+  // 24.11.2026: cut clause by clause — both relative claims go, the frame and the camera stay.
+  return r.removed.length === 2 && !/sięga|razy wyższa/.test(r.text) && /45% wysokości kadru/.test(r.text) && /obiektyw 35 mm/.test(r.text);
 })());
 check("frame arithmetic: 45% of a 16:9 frame at 3 m / 35 mm = ~78 cm for a 50 cm product → the share is dropped", (() => {
   const r = framingCheck(scenes[4].kadr, 50, "16:9");

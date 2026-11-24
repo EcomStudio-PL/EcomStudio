@@ -24,13 +24,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { parseKb, readKb, type KbParsed } from "@/lib/grovshot-shot/kb";
-import { assemblePromptB, countLine, PROMPT_B_VERSION, SETTING_LINE } from "@/lib/grovshot-shot/prompt-b";
+import { assemblePromptB, countLine, PROMPT_B_VERSION, SETTING_LINE, stripProportionClaims } from "@/lib/grovshot-shot/prompt-b";
 import {
   CRITICAL_IMAGE_FLAGS, FLAG_IMAGE_POLICY, IMAGE_BLOCK_MAX_WORDS, IMAGE_RULES_MAX_WORDS, imageBlockIssues, selectImageRules, words,
 } from "@/lib/grovshot-shot/image-rules";
 import { checkPlan, HARD_VIOLATIONS, planGate, planViolations, severityOf, type PlanShot, type Violation } from "@/lib/grovshot-shot/plan";
 import { selectReferencesV2 } from "@/lib/grovshot-shot/refs";
 import { checkCard, type ProductCard } from "@/lib/grovshot-shot/card";
+import { DEFAULT_SHOT_SETTINGS } from "@/lib/grovshot-shot/settings";
 import { applyReview, shotQualityPlan } from "@/lib/grovshot-shot/quality";
 import { CARD_SCHEMA, PLAN_SCHEMA, contractText, wrapData } from "@/lib/grovshot-shot/contract";
 import { PRODUCT_PREFIX, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
@@ -98,10 +99,13 @@ function promptFor(kb: KbParsed, card: ProductCard, shot: ShotIn) {
 }
 const names = (b: ReturnType<typeof assemblePromptB>) => b.modules.map((m) => m.name);
 const blockOf = (kb: KbParsed, flag: string) => kb.special.find((s) => s.flag === flag)?.block ?? "";
+const blockOf2 = (flag: string) => blockOf(KB43, flag);
+const LCD_RULE = "identyczny podział na strefy";
 
 /* ══ K · the knowledge file ═══════════════════════════════════════════════*/
 section("K. THE KNOWLEDGE FILE (v4.3 candidate, a version without image blocks, the old stored ones)");
-check("K1 the candidate is byte for byte the one delivered (sha256 c5c5604a…)", sha(CANDIDATE) === "c5c5604ab2ab948dc8fd770cfcd2b98055836a06062da6a738d7da67e83de742", sha(CANDIDATE));
+check("K1 the candidate = the delivered c5c5604a… with ONE fix: the ladder block no longer forces a person (sha256 0511ed50…)",
+  sha(CANDIDATE) === "0511ed50b5516979e7cd93d5bf516bb4d85c9d7ed950a10d1850359f45a01fde" && blockOf2("drabinka").includes("jeśli w scenie jest osoba") && !blockOf2("drabinka").includes("a osoba korzysta"), sha(CANDIDATE));
 const blocks = KB43.special.map((s) => ({ flag: s.flag, words: words(s.block ?? "") }));
 check("K2 13 flags, each with its own image block", KB43.special.length === 13 && KB43.special.every((s) => Boolean(s.block)), blocks);
 check(`K3 every block is ONE short paragraph (≤ ${IMAGE_BLOCK_MAX_WORDS} words; here ≤ 43) — the rules written under it are not in it`,
@@ -165,7 +169,7 @@ check("B4 ekran in a DETAIL of the screen too (legible content at any scale), th
   ekranDetail.text.includes("identyczny podział na strefy") && JSON.stringify(names(ekranDetail)) === JSON.stringify(ORDER_DETAIL), names(ekranDetail));
 const ladder = promptFor(KB43, LADDER, HERO).b;
 check("B5 drabinka: the exact number and order of steps and the frame geometry are in the final prompt",
-  ladder.text.includes("Zachowaj DOKŁADNĄ liczbę stopni i ich kolejność") && ladder.text.includes("krzyżaków") && ladder.text.includes("osoba korzysta z właściwych stopni"));
+  ladder.text.includes("Zachowaj DOKŁADNĄ liczbę stopni i ich kolejność") && ladder.text.includes("krzyżaków") && ladder.text.includes("stoi na właściwych stopniach"));
 const ladderDetail = promptFor(KB43, LADDER, DETAIL).b;
 check("B6 …but not in a close-up of one step (it would ask for the whole ladder): dropped as not_for_detail",
   !ladderDetail.text.includes("DOKŁADNĄ liczbę stopni") && ladderDetail.notes.dropped_rules_reasons.some((d) => d.flag === "drabinka" && d.reason === "not_for_detail"));
@@ -338,6 +342,71 @@ const cardOk = checkCard({ ...JSON.parse(JSON.stringify(HTC2)), oferta: { typ: "
 const cardOld = checkCard({ ...JSON.parse(JSON.stringify(HTC2)), oferta: undefined }, { photoCount: 5, kb: KB43 });
 check("I5 the card: N identical without N is an error back to the model; a card without the field (older contract) passes",
   !cardOk.ok && cardOk.errors.some((e) => e.startsWith("oferta.sztuk")) && cardOld.ok && !cardOld.card.oferta, { cardOk, cardOld: cardOld.ok });
+
+/* ══ V · 24.11.2026 — references by the scene's state (Philips BHD530), the kept prompt, Opus ══*/
+section("V. 24.11.2026 — PHILIPS BHD530 (7 photos): the scene's state photo is kept; the prompt keeps the camera and sizes");
+const PH_ST = { bare: "bez nasadek", diff: "z dyfuzorem", narrow: "z wąską nasadką", set: "z akcesoriami obok" };
+const ph = (n: number, rola: ProductCard["zdjecia"][number]["rola"], ujecie: "przod" | "3_4" | "gora" | "bok", stan: string, widok: string, forma: "zdjecie" | "grafika" = "zdjecie") =>
+  ({ id: `Z${n}`, n, rola, forma, ujecie, stan, widok, nie_kopiowac: [] });
+const PHILIPS: ProductCard = {
+  ...cardOf({ name: "Suszarka do włosów Philips BHD530/00", flags: [], dims: [8.5, 21, 26], elements: ["dyfuzor", "wąska nasadka koncentratora", "przyciski temperatury i nawiewu"], offer: { typ: "komplet", sztuk: null } }),
+  stany: [{ stan: PH_ST.bare, zdjecia: ["Z1", "Z4"] }, { stan: PH_ST.set, zdjecia: ["Z2", "Z3"] }, { stan: PH_ST.diff, zdjecia: ["Z5"] }, { stan: PH_ST.narrow, zdjecia: ["Z6"] }],
+  zdjecia: [
+    ph(1, "calosc", "przod", PH_ST.bare, "suszarka bez nasadek, przód"), ph(2, "calosc", "3_4", PH_ST.set, "suszarka i zdjęte nasadki"),
+    ph(3, "calosc", "gora", PH_ST.set, "suszarka z akcesoriami na blacie"), ph(4, "detal", "przod", PH_ST.bare, "detal przycisków"),
+    ph(5, "uzycie", "bok", PH_ST.diff, "suszarka z zamontowanym dyfuzorem podczas użycia"), ph(6, "uzycie", "bok", PH_ST.narrow, "suszarka z wąską nasadką podczas użycia"),
+    ph(7, "uzycie", "przod", "", "grafika poglądowa jonizacji", "grafika"),
+  ],
+};
+const phShot = (typ: "hero" | "uzycie" | "detal", stan: string, refs: number[], whole: boolean): ShotIn =>
+  ({ typ, ludzie: typ === "uzycie" ? "postacie" : "brak", caly_produkt: whole, referencje: refs, stan, otoczenie: "wnetrze", egzemplarze: whole && stan === PH_ST.set ? "komplet" : "jeden" });
+const PH_SHOTS = {
+  hero: phShot("hero", PH_ST.bare, [1], true), diffuser: phShot("uzycie", PH_ST.diff, [5, 2], true),
+  narrow: phShot("uzycie", PH_ST.narrow, [6, 2], true), buttons: phShot("detal", PH_ST.bare, [4], false), set: phShot("hero", PH_ST.set, [3], true),
+};
+const phRefs = Object.fromEntries(Object.entries(PH_SHOTS).map(([k, sh]) => [k, selectReferencesV2(sh, PHILIPS, { max: 5 })])) as Record<keyof typeof PH_SHOTS, ReturnType<typeof selectReferencesV2>>;
+check("V1 diffuser shot: Z5 (the mounted diffuser) is KEPT and mandatory, with one clean whole photo for identity (Z2 + Z5)",
+  JSON.stringify(phRefs.diffuser.refs) === "[2,5]" && phRefs.diffuser.mandatory?.includes(5) === true && phRefs.diffuser.requiredState === PH_ST.diff, phRefs.diffuser);
+check("V2 narrow-nozzle shot: Z6 kept (Z2 + Z6) — no shot is sent with whole photos of another state only",
+  JSON.stringify(phRefs.narrow.refs) === "[2,6]" && phRefs.narrow.mandatory?.includes(6) === true, phRefs.narrow);
+check("V3 buttons detail: Z4 leads, Z1 as context", JSON.stringify(phRefs.buttons.refs) === "[4,1]", phRefs.buttons.refs);
+check("V4 hero without attachments: Z1 only (the one clean photo of that state)", JSON.stringify(phRefs.hero.refs) === "[1]", phRefs.hero.refs);
+check("V5 the set: both photos of the set (Z2, Z3), nothing of another state", [...phRefs.set.refs].sort().join() === "2,3", phRefs.set.refs);
+check("V6 the graphic (Z7) never leads a whole-product shot", Object.values(phRefs).every((r) => r.refs[0] !== 7));
+const unplanned = selectReferencesV2(phShot("uzycie", PH_ST.diff, [1], true), PHILIPS, { max: 5 });
+check("V7 even when the plan forgot it, the photo of the needed state is found on the card (not hard-coded numbers)", unplanned.refs.includes(5) && unplanned.mandatory?.includes(5) === true, unplanned.refs);
+const tight = selectReferencesV2(PH_SHOTS.diffuser, PHILIPS, { max: 1 });
+check("V8 the reference limit never drops the state photo", JSON.stringify(tight.refs) === "[5]", tight.refs);
+const phPlan = (["hero", "diffuser", "narrow", "buttons", "set"] as const).map((k, i) => ({ ...PH_SHOTS[k], numer: i + 1, referencje: phRefs[k].refs,
+  argument: "a", kierunek: "", miejsce: `m${i}`, swiatlo: "", swiatlo_typ: "dzienne", kadr: (["hero", "szeroki", "sredni", "ciasny", "z_gory"] as const)[i], opis: `s${i}`, skala_cm: null, fixed: false } as PlanShot));
+const phGate = planGate(planViolations(phPlan, { card: PHILIPS, kb: KB43, shots: 5 }));
+check("V9 the gate does not block the corrected campaign (a whole photo of another state next to the state photo is identity, not a conflict)",
+  phGate.blocked.size === 0, { blocked: [...phGate.blocked], hard: phGate.hard });
+const missing: ProductCard = { ...PHILIPS, zdjecia: PHILIPS.zdjecia.filter((p) => p.n !== 5), stany: PHILIPS.stany.filter((x) => x.stan !== PH_ST.diff).concat([{ stan: PH_ST.diff, zdjecia: [] }]) };
+const noPhoto = selectReferencesV2(PH_SHOTS.diffuser, missing, { max: 5 });
+const noPhotoGate = planGate(planViolations([{ ...phPlan[1], referencje: noPhoto.refs }], { card: missing, kb: KB43, shots: 1 }));
+check("V10 no photo of the needed state anywhere: not swapped silently — the shot is stopped (ref_state_mismatch), never invented",
+  !noPhoto.refs.includes(5) && noPhotoGate.blocked.get(2)?.includes("ref_state_mismatch") === true, { refs: noPhoto.refs, blocked: [...noPhotoGate.blocked] });
+const diffPrompt = assemblePromptB({ kb: KB43, card: PHILIPS, shot: PH_SHOTS.diffuser, product: PRODUCT, scene: SCENE, refs: phRefs.diffuser, aspectRatio: "16:9" });
+check("V11 the binding names what was really sent: photo 1 = the product, photo 2 = the required state (mounted diffuser), no people/interior copied",
+  diffPrompt.binding.startsWith("Zdjęcie 1 to fotografia dokładnie tego produktu") && diffPrompt.binding.includes(`Zdjęcie 2 pokazuje ten sam produkt w stanie wymaganym w tej scenie (${PH_ST.diff})`)
+  && diffPrompt.binding.includes("nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów"), diffPrompt.binding);
+const KADR = "Format 16:9, szeroki kadr, kamera na wysokości ramion, nieco zza framugi drzwi, obiektyw 28 mm.";
+const keepScene: SceneModules = { ...SCENE, kadr: KADR, scenografia: "Suszarka ma 26 cm długości, dyfuzor ma 12 cm średnicy, wąska nasadka 9 cm. Toaletka z lustrem." };
+const kept = assemblePromptB({ kb: KB43, card: PHILIPS, shot: PH_SHOTS.diffuser, product: PRODUCT, scene: keepScene, refs: phRefs.diffuser, aspectRatio: "16:9" });
+check("V12 the 24.11 frame sentence survives whole: format 16:9, camera at shoulder height, behind the door frame, 28 mm",
+  kept.text.includes(KADR) && kept.notes.removed_proportion.length === 0, kept.notes.removed_proportion);
+check("V13 the accessories' and the dryer's sizes in cm survive", kept.text.includes("dyfuzor ma 12 cm średnicy") && kept.text.includes("wąska nasadka 9 cm") && kept.text.includes("26 cm długości"));
+const rel = stripProportionClaims("Suszarka leży na blacie, sięga do połowy wysokości lustra, obok szczotka. Kamera na wysokości ramion, obiektyw 35 mm.");
+check("V14 a relative size claim is cut as a CLAUSE — the rest of the sentence and the camera stay",
+  rel.text === "Suszarka leży na blacie, obok szczotka. Kamera na wysokości ramion, obiektyw 35 mm." && rel.removed.length === 1, rel);
+const ladderNoPeople = promptFor(KB43, LADDER, HERO).b;
+check("V15 drabinka in a shot without people: the block no longer tells the model a person is there", ladderNoPeople.text.includes("jeśli w scenie jest osoba") && !ladderNoPeople.text.includes("a osoba korzysta"));
+const htcAll = promptFor(KB43, HTC2, USE).b;
+check("V16 HTC-2: the LCD rule and the probe/cable stay in every pattern, with one size source (no contradiction)",
+  htcAll.text.includes(LCD_RULE) && htcAll.text.includes("sondę lub przewód") && (htcAll.text.match(/Rzeczywisty rozmiar produktu/g) ?? []).length === 1);
+check("V17 GrovShot's card, plan and prompts default to Opus 5.5 at medium effort, no fallback",
+  Object.values(DEFAULT_SHOT_SETTINGS.models).every((m) => m.provider === "anthropic" && m.model === "claude-opus-5-5" && m.effort === "medium" && !m.fallback));
 
 /* ── the report file ──────────────────────────────────────────────────────*/
 mkdirSync("test-results", { recursive: true });

@@ -55,8 +55,10 @@ import { PRODUCT_PREFIX, wordCount, type PromptModule, type ProductModules, type
 import { selectImageRules, type DroppedImageRule, type IncludedImageRule } from "@/lib/grovshot-shot/image-rules";
 
 export const PROMPT_B_VERSION = "b2";
+/** Word caps per module (whole sentences only). Raised 24.11.2026: completeness over brevity — the caps
+ *  only stop a runaway module, they must never cut the frame, the angle or an accessory's size. */
 export const B_LIMITS = {
-  product: 60, genre: 45, moment: 45, person: 30, set: 55, state: 30, frame: 60, detail: 110, dims: 25,
+  product: 90, genre: 45, moment: 70, person: 45, set: 80, state: 45, frame: 90, detail: 150, dims: 25,
 } as const;
 /** The light line of a whole-product shot, by the plan's typed setting (23.11.2026). */
 export const SETTING_LINE = {
@@ -96,11 +98,26 @@ export function capSentences(t: string, max: number): string {
   return out.join(" ");
 }
 
-/** Size claims the text model writes into scene modules; in B the size has ONE source (scaleBlock). */
-const PROPORTION = /(propor|razy (wy[żz]sz|ni[żz]sz|wi[ęe]ksz|mniejsz|d[łl]u[żz]sz)|si[ęe]ga (do|mniej|wy)|po[łl]ow[aęy] (wysoko|d[łl]ugo|szeroko)|wysoko[śs]ci (drzwi|klamki|okna|ramy|sto[łl]u|blatu|kolan|pasa|bioder|ramion|podbr)|wielko[śs]ci (talerza|d[łl]oni|kubka|fili[żz]anki|jab[łl]ka|kartki))/i;
+/**
+ * Size claims RELATIVE to everyday objects the text model writes into scene
+ * modules ("half the height of a door") — in B the size has ONE source
+ * (scaleBlock). 24.11.2026: only the CLAUSE holding such a claim goes, never
+ * the sentence around it; a clause about the camera (format, angle, height,
+ * lens, distance) or with explicit centimetres (an accessory's size) stays.
+ * "kamera na wysokości ramion" is a camera height, not a size.
+ */
+const PROPORTION = /(propor\w*\s+(do|wzgl[ęe]dem)\b|razy (wy[żz]sz|ni[żz]sz|wi[ęe]ksz|mniejsz|d[łl]u[żz]sz)|si[ęe]ga (do|mniej|wy)|po[łl]ow[aęy] (wysoko|d[łl]ugo|szeroko)|wysoko[śs]ci (drzwi|klamki|okna|ramy|sto[łl]u|blatu)|wielko[śs]ci (talerza|d[łl]oni|kubka|fili[żz]anki|jab[łl]ka|kartki))/i;
+const KEEP_CLAUSE = /(kamer|obiektyw|kadr|perspektyw|aparat|format\s*\d|\d+\s*mm\b|\d+([.,]\d+)?\s*cm\b)/i;
 export function stripProportionClaims(t: string): { text: string; removed: string[] } {
   const removed: string[] = [];
-  const kept = sentences(t).filter((x) => { if (PROPORTION.test(x)) { removed.push(x); return false; } return true; });
+  const kept = sentences(t).map((x) => {
+    if (!PROPORTION.test(x)) return x;
+    const clauses = x.split(/(?:,\s+|;\s+|\s+[–—]\s+)/);
+    const out = clauses.filter((c) => { if (PROPORTION.test(c) && !KEEP_CLAUSE.test(c)) { removed.push(c.trim()); return false; } return true; });
+    if (out.length === 0) return "";
+    const joined = out.join(", ").trim();
+    return /[.!?]$/.test(joined) ? joined : `${joined}.`;
+  }).filter(Boolean);
   return { text: kept.join(" "), removed };
 }
 
@@ -190,7 +207,7 @@ const listPl = (ns: number[]) => (ns.length <= 1 ? String(ns[0] ?? "") : `${ns.s
 const opisOf = (p: CardPhoto | undefined) => (p?.widok ?? "").replace(/[()]/g, "").split(/[,;]/)[0].slice(0, 70).trim();
 
 /** Which picture is what — built from the card, for ANY reference list (also prompt A's, for a like-for-like test). */
-export function bindingB(card: ProductCard, refs: number[], aux: number[], pattern: "full" | "detail"): string {
+export function bindingB(card: ProductCard, refs: number[], aux: number[], pattern: "full" | "detail", state: { photos: number[]; name: string | null } = { photos: [], name: null }): string {
   const byN = new Map(card.zdjecia.map((p) => [p.n, p]));
   const pos = (n: number) => refs.indexOf(n) + 1;
   const name = shortName(card);
@@ -212,8 +229,12 @@ export function bindingB(card: ProductCard, refs: number[], aux: number[], patte
     for (const n of refs) {
       if (wholes.includes(n) || aux.includes(n)) continue;
       const p = byN.get(n);
+      if (state.photos.includes(n)) {
+        lines.push(`Zdjęcie ${pos(n)} pokazuje ten sam produkt w stanie wymaganym w tej scenie${state.name ? ` (${state.name})` : ""}: ${opisOf(p)}. Odwzoruj z niego dokładnie zamontowane elementy – ich kształt, kolor, rozmiar i położenie na produkcie; nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów.`);
+        continue;
+      }
       lines.push(p?.rola === "uzycie"
-        ? `Zdjęcie ${pos(n)} pokazuje sposób użycia tego samego produktu (${opisOf(p)}) – odwzoruj ułożenie, wygląd produktu bierz ze zdjęć całości.`
+        ? `Zdjęcie ${pos(n)} pokazuje sposób użycia tego samego produktu (${opisOf(p)}) – odwzoruj ułożenie, wygląd produktu bierz ze zdjęć całości; nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów.`
         : `Zdjęcie ${pos(n)} pokazuje fragment tego samego produktu (${opisOf(p)}) – to część tego jednego przedmiotu, nie osobny obiekt.`);
     }
   }
@@ -240,7 +261,7 @@ export function assemblePromptB(o: {
   kb: KbParsed; card: ProductCard;
   shot: Pick<PlanShot, "typ" | "ludzie" | "caly_produkt"> & Partial<Pick<PlanShot, "otoczenie" | "egzemplarze" | "liczba_egzemplarzy">>;
   product: ProductModules; scene: SceneModules;
-  refs: Pick<RefDecisionV2, "refs" | "aux">;
+  refs: Pick<RefDecisionV2, "refs" | "aux"> & Partial<Pick<RefDecisionV2, "mandatory" | "requiredState">>;
   /** The order's format ("16:9") — the frame arithmetic needs it. */
   aspectRatio?: string | null;
 }): AssembledPromptB {
@@ -256,7 +277,7 @@ export function assemblePromptB(o: {
     removed.push(...r.removed);
     return capSentences(r.text, max);
   };
-  const binding = bindingB(card, o.refs.refs, o.refs.aux, pattern);
+  const binding = bindingB(card, o.refs.refs, o.refs.aux, pattern, { photos: o.refs.mandatory ?? [], name: o.refs.requiredState ?? null });
   // The recipe's genre line + "a real photo" — its light rules stay with the scene writer.
   const genre = capSentences(recipe.direction, B_LIMITS.genre);
   const modules: PromptModule[] = [{ name: "WIĄZANIE ZDJĘĆ", source: "code", text: binding }];

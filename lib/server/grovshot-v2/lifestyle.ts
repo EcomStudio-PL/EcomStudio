@@ -590,7 +590,7 @@ function planUser(ctx: LCtx, card: ProductCard, userPlan: UserPlanRow[] | null, 
 
 /* ══ krok 4 · moduły promptu + składanie ══════════════════════════════════*/
 
-type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null };
+type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null; mandatory: number[] };
 type Prompts = Map<number, ShotPrompt>;
 
 function promptsFrom(o: Record<string, unknown>): Prompts {
@@ -602,6 +602,7 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
         pattern: x.pattern === "detail" ? "detail" : "full", references: Array.isArray(x.references) ? x.references as number[] : [],
         blocked: typeof x.blocked === "string" ? x.blocked : null,
         qc: x.qc && typeof x.qc === "object" ? x.qc as Json : null,
+        mandatory: Array.isArray(x.mandatory_references) ? (x.mandatory_references as unknown[]).filter((n): n is number => typeof n === "number") : [],
       });
     }
   }
@@ -609,7 +610,7 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
 }
 
 /** The plan with each shot's references replaced by the code's decision (refs.ts). Deterministic. */
-type ShotRefs = RefDecision & { planned: number[] } & Partial<Pick<RefDecisionV2, "reasons" | "dropped" | "stateFallback">>;
+type ShotRefs = RefDecision & { planned: number[] } & Partial<Pick<RefDecisionV2, "reasons" | "dropped" | "stateFallback" | "requiredState" | "mandatory">>;
 
 const variantOf = (ctx: LCtx): "a" | "b" => (ctx.input.prompt_variant === "b" ? "b" : "a");
 
@@ -782,6 +783,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
         numer: shot.numer, text: b.text, sha256: sha256(b.text), modules: b.modules as unknown as Json, footer: b.footer, pattern: b.pattern,
         references: d.refs, aux_references: d.aux, planned_references: d.planned, corrections: d.corrections as unknown as Json,
         ref_reasons: (d.reasons ?? []) as unknown as Json, ref_dropped: (d.dropped ?? []) as unknown as Json, ref_state_fallback: Boolean(d.stateFallback),
+        required_state: d.requiredState ?? null, mandatory_references: d.mandatory ?? [],
         binding: b.binding, binding_source: "code", prompt_variant: "b", prompt_b_version: b.version, prompt_notes: b.notes as unknown as Json,
         // The admin's log of the image rules (never shown to a customer).
         active_flags: b.notes.active_flags, included_image_rules: b.notes.included_image_rules as unknown as Json,
@@ -1102,6 +1104,8 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: ShotPrompt | null, mir
           // THE REFERENCE MANIFEST: what the engine handed the adapter, in send order ("zdjęcie 1" = entry 1).
           references_sent: refs.map((p, i) => ({ n: i + 1, photo: p.number, sha256: p.sha256 })) as unknown as Json,
           references_planned: references as unknown as Json,
+          // The scene's state photo(s) the shot cannot do without: were they in this very call?
+          mandatory_references: prompt.mandatory, mandatory_sent: prompt.mandatory.every((m) => refs.some((p) => p.number === m)),
           references_prepared: prepared as unknown as Json,
           // …and what the network boundary shows was really in the request.
           reference_check: referenceCheck(references, prepared, sink.requests, prompt.text) as unknown as Json,

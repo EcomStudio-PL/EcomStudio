@@ -377,7 +377,7 @@ check("R7 the order statuses of the PDF", [
   orderStatus({ status: "ok" }), orderStatus({ status: "partial" }), orderStatus({ status: "failed" }),
 ].join() === "nowe,karta,plan,prompty,generacja,gotowe,czesciowo_gotowe,nieudane");
 check("R8 default settings: Sonnet 5.5 for card, plan and prompts (no Opus), lifestyle on, advertising off",
-  Object.values(DEFAULT_SHOT_SETTINGS.models).every((m) => m.model === "claude-sonnet-5-5") && DEFAULT_SHOT_SETTINGS.scenarios.lifestyle && !DEFAULT_SHOT_SETTINGS.scenarios.reklamowa);
+  Object.values(DEFAULT_SHOT_SETTINGS.models).every((m) => m.model === "claude-opus-5-5" && m.effort === "medium" && !m.fallback) && DEFAULT_SHOT_SETTINGS.scenarios.lifestyle && !DEFAULT_SHOT_SETTINGS.scenarios.reklamowa);
 check("R9 settings out of range are refused, not clamped", !parseShotSettings({ limits: { image_concurrency: 0 } }).ok && !parseShotSettings({ models: { card: { provider: "openai", model: "gpt-5" } } }).ok);
 
 check("R10 diagnostics settings: 30-day retention and a $2 daily experiment ceiling by default; out of range refused",

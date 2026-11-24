@@ -274,10 +274,24 @@ export function planViolations(shots: PlanShot[], ctx: { card: ProductCard; kb: 
     if (!states.has(normState(x.stan))) add("state_unknown", [x], `ujęcie ${x.numer}: stan „${x.stan}” nie występuje w karcie (${ctx.card.stany.map((y) => y.stan).join(", ")})`);
     for (const k of x.referencje) {
       const p = photo(k);
-      if (!p) continue;
-      if (p.rola === "inny_wariant") add("ref_other_variant", [x], `ujęcie ${x.numer}: ${p.id} pokazuje inny wariant produktu`);
-      else if (p.rola !== "opakowanie" && p.stan && states.has(normState(x.stan)) && normState(p.stan) !== normState(x.stan)) {
-        add("ref_state_mismatch", [x], `ujęcie ${x.numer}: ${p.id} pokazuje stan „${p.stan}”, scena – „${x.stan}”`);
+      if (p?.rola === "inny_wariant") add("ref_other_variant", [x], `ujęcie ${x.numer}: ${p.id} pokazuje inny wariant produktu`);
+    }
+    // The scene's state must be SHOWN by at least one reference (24.11.2026):
+    // a clean whole photo of another state next to the photo of the right
+    // state is identity, not a conflict; no photo of the state at all is.
+    const stated = x.referencje.map(photo).filter((p): p is NonNullable<typeof p> => !!p && p.rola !== "opakowanie" && p.rola !== "inny_wariant" && !!p.stan);
+    // Another state is allowed ONLY as a clean whole photo standing in for a
+    // whole view the card does not have in the scene's state (identity next
+    // to the state photo); a part or usage photo of another state, or a whole
+    // of another state when one of the right state exists, makes a hybrid.
+    const sceneSt = normState(x.stan);
+    if (states.has(sceneSt) && stated.length > 0) {
+      const wholeInState = ctx.card.zdjecia.some((p) => p.rola === "calosc" && (p.forma ?? "zdjecie") === "zdjecie" && !!p.stan && normState(p.stan) === sceneSt);
+      const foreign = stated.filter((p) => normState(p.stan) !== sceneSt && (p.rola !== "calosc" || wholeInState));
+      if (!stated.some((p) => normState(p.stan) === sceneSt)) {
+        add("ref_state_mismatch", [x], `ujęcie ${x.numer}: żadne zdjęcie (${stated.map((p) => `${p.id}: „${p.stan}”`).join(", ")}) nie pokazuje stanu sceny „${x.stan}”`);
+      } else if (foreign.length) {
+        add("ref_state_mismatch", [x], `ujęcie ${x.numer}: ${foreign.map((p) => `${p.id} pokazuje stan „${p.stan}”`).join(", ")}, scena – „${x.stan}”`);
       }
     }
     const roles = x.referencje.map((k) => photo(k)?.rola);

@@ -375,7 +375,7 @@ Włączane flagą z karty albo zawsze obowiązujące (oznaczone „zawsze”).
 ### Drabinki i podesty domowe (flaga: drabinka)
 
 #### Blok do promptu
-Zachowaj DOKŁADNĄ liczbę stopni i ich kolejność, rzeczywistą geometrię ramy, pałąka, stopek i krzyżaków zgodnie z referencjami. Drabinka jest stabilnie rozłożona, a osoba korzysta z właściwych stopni. Styl: prawdziwa fotografia kinowej kampanii z konkretną paletą kolorów.
+Zachowaj DOKŁADNĄ liczbę stopni i ich kolejność, rzeczywistą geometrię ramy, pałąka, stopek i krzyżaków zgodnie z referencjami. Drabinka jest stabilnie rozłożona; jeśli w scenie jest osoba, stoi na właściwych stopniach. Styl: prawdziwa fotografia kinowej kampanii z konkretną paletą kolorów.
 
 - Karta: każdy stopień z wysokością od podłogi, materiał i kolor maty na KAŻDYM stopniu, kształt poręczy/pałąka, gdzie dokładnie są krzyżaki i listwy (na jakiej wysokości i po której stronie), nasadki przednie vs stopki tylne, jednostronna/dwustronna.
 - Bezpieczeństwo: najwyżej 1 osoba, przodem do stopni, nogi oparte o pałąk; nikt na pałąku; dziecko tylko na podłodze; drabinka zawsze w pełni rozłożona. Osoba MUSI stać na drabince, nie obok niej (model potrafi postawić ją na krześle) – „w pobliżu drabinki nie ma krzeseł”.

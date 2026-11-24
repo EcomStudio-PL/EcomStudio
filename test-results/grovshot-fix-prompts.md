@@ -48,10 +48,10 @@ Tylko ten fragment produktu, ostry i dokładnie jak na zdjęciu 1. Rekwizyty gł
 
 ## drabinka — hero
 
-- sha256: `b7f4280160bc265872b1c7b36d0d6eeccd3d6c7b240118d0f50f5df832c0d23d`
+- sha256: `a4cee4d039441035550d2d8e20b7f9bab9751b046eb938e809729be38e4703be`
 - referencje (kolejność wysyłki): Z1, Z3
 - moduły: WIĄZANIE ZDJĘĆ → PRODUKT → REGUŁY PRODUKTU → SCENA → KADR I SKALA → OGRANICZENIA
-- reguły obrazu: drabinka (critical, 36 sł.)
+- reguły obrazu: drabinka (critical, 39 sł.)
 - pominięte: —
 
 ```text
@@ -59,7 +59,7 @@ Zdjęcia 1 i 2 to fotografie dokładnie tego produktu: Drabinka domowa 4-stopnio
 
 Cechy, których nie wolno pomylić: Napisy i liczba elementów dokładnie jak na zdjęciach.
 
-Zachowaj DOKŁADNĄ liczbę stopni i ich kolejność, rzeczywistą geometrię ramy, pałąka, stopek i krzyżaków zgodnie z referencjami. Drabinka jest stabilnie rozłożona, a osoba korzysta z właściwych stopni. Styl: prawdziwa fotografia kinowej kampanii z konkretną paletą kolorów.
+Zachowaj DOKŁADNĄ liczbę stopni i ich kolejność, rzeczywistą geometrię ramy, pałąka, stopek i krzyżaków zgodnie z referencjami. Drabinka jest stabilnie rozłożona; jeśli w scenie jest osoba, stoi na właściwych stopniach. Styl: prawdziwa fotografia kinowej kampanii z konkretną paletą kolorów.
 
 kampania lifestyle marki wyposażenia domu w stylu IKEA – jasny, ciepły, zamieszkany dom, ludzie w trakcie codziennej czynności. Prawdziwe zdjęcie, nie render (raw photo). Chwila codziennego użycia. Jasne wnętrze, drewniany blat, rośliny w tle. Stoi stabilnie.
 
