@@ -8,7 +8,7 @@
  * (validationFeedback) and a second failure stops the order (nothing paid
  * for an image). Pure.
  */
-import { DIM_SOURCES, PHOTO_FORMS, PHOTO_ROLES, PHOTO_VIEWS, type PhotoForm, type PhotoRole, type PhotoView } from "@/lib/grovshot-shot/contract";
+import { DIM_SOURCES, OFFER_TYPES, PHOTO_FORMS, PHOTO_ROLES, PHOTO_VIEWS, type OfferType, type PhotoForm, type PhotoRole, type PhotoView } from "@/lib/grovshot-shot/contract";
 import type { KbParsed } from "@/lib/grovshot-shot/kb";
 
 export type CardPhoto = {
@@ -32,6 +32,8 @@ export type ProductCard = {
   ryzyka: string[];
   flagi: string[];
   przepis_stylu: string;
+  /** What the listing sells (23.11.2026). Absent on cards written before: no count check then. */
+  oferta?: { typ: OfferType; sztuk: number | null };
 };
 
 export type CardCheck = { ok: true; card: ProductCard; notes: string[] } | { ok: false; errors: string[] };
@@ -119,6 +121,17 @@ export function checkCard(raw: unknown, ctx: { photoCount: number; kb: KbParsed 
     errors.push(`przepis_stylu: „${przepis}” nie istnieje (dozwolone: ${ctx.kb.recipes.map((x) => x.id).join(", ")})`);
   }
 
+  // The offer: typed, checked; a card without it (an older contract) has none.
+  let oferta: ProductCard["oferta"];
+  if (r.oferta !== undefined && r.oferta !== null) {
+    const of = o(r.oferta);
+    const typ = (OFFER_TYPES as readonly string[]).includes(String(of.typ)) ? of.typ as OfferType : null;
+    if (!typ) errors.push(`oferta.typ: musi być jednym z ${OFFER_TYPES.join(", ")}`);
+    const sztuk = typeof of.sztuk === "number" && Number.isInteger(of.sztuk) && of.sztuk >= 2 && of.sztuk <= 100 ? of.sztuk : null;
+    if (typ === "kilka_sztuk" && sztuk === null) errors.push("oferta.sztuk: przy „kilka_sztuk” podaj liczbę sztuk z opisu (2–100)");
+    if (typ) oferta = { typ, sztuk: typ === "kilka_sztuk" ? sztuk : null };
+  }
+
   if (errors.length > 0) return { ok: false, errors: errors.slice(0, 30) };
   const budowa = o(r.budowa);
   const sezon = o(r.sezon);
@@ -141,6 +154,7 @@ export function checkCard(raw: unknown, ctx: { photoCount: number; kb: KbParsed 
       ryzyka: ss(r.ryzyka, 20),
       flagi,
       przepis_stylu: przepis,
+      ...(oferta ? { oferta } : {}),
     },
   };
 }

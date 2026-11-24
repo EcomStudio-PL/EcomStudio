@@ -26,6 +26,8 @@
  * never in a component.
  */
 
+import { imageBlockIssues } from "@/lib/grovshot-shot/image-rules";
+
 export const KB_STAGES = ["karta", "plan", "produkt", "sceny"] as const;
 export type KbStage = (typeof KB_STAGES)[number];
 
@@ -240,6 +242,17 @@ function stagesOf(b: Block, issues: KbIssue[]): KbStage[] {
 }
 
 const child = (b: Block, title: string) => b.children.find((c) => norm(c.title) === norm(title));
+
+/** „Blok do promptu”: its first paragraph is the image block; whatever follows (paragraphs, lists, sub-headings) is rules. */
+function splitPromptBlock(b: Block): { block: string; tail: string } {
+  const lines = ownLines(b);
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  const first: string[] = [];
+  while (i < lines.length && lines[i].trim()) first.push(lines[i++]);
+  const tail = tidy([lines.slice(i).join("\n"), ...b.children.map((c) => render(c, true))].filter((x) => x.trim()).join("\n\n"));
+  return { block: first.join("\n"), tail };
+}
 const yes = (v: string | undefined) => Boolean(v && /^(tak|yes|true)/i.test(v.trim()));
 const list = (v: string | undefined) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 /** A list written in a sentence: "a, b, c." → [a, b, c]. */
@@ -451,10 +464,16 @@ export function parseKb(source: string): KbParseResult {
     } else if (derivedTitle) notes.push({ code: "flag_changed", detail: title });
     const blockB = child(b, KB_FORMAT.blocks.promptBlock);
     const rulesB = child(b, KB_FORMAT.blocks.rules);
-    const block = blockB ? oneLine(render(blockB, false)) : "";
+    // The image block is the FIRST paragraph under „Blok do promptu”. A file
+    // that writes the flag's rules straight under it (no „Zasady” heading —
+    // the 23.11.2026 candidate) keeps them as rules, never in the image prompt.
+    // Files whose block is one paragraph (07–08.11) read exactly as before.
+    const split = blockB ? splitPromptBlock(blockB) : { block: "", tail: "" };
+    const block = oneLine(split.block);
     if (block.length > KB_FORMAT.limits.promptBlock) notes.push({ code: "block_too_long", detail: `${id}: blok` });
+    if (split.tail) notes.push({ code: "block_rules_split", detail: id });
     const others = b.children.filter((c) => c !== blockB && c !== rulesB).map((c) => render(c, true));
-    const rules = tidy([tidy(rest.join("\n")), rulesB ? render(rulesB, false) : "", ...others].filter(Boolean).join("\n\n"));
+    const rules = tidy([tidy(rest.join("\n")), split.tail, rulesB ? render(rulesB, false) : "", ...others].filter(Boolean).join("\n\n"));
     if (special.some((s) => s.flag === id) || (!block && !rules)) {
       specialExtra.push(render(b, true));
       notes.push({ code: !block && !rules ? "flag_empty" : "flag_duplicate", detail: id });
@@ -639,6 +658,9 @@ export function parseKb(source: string): KbParseResult {
     format: 1, title: titleOf, recipes, special, footers, negativeBase, negativeItems, planRules, directions, peopleTable, sections,
     ...(binding ? { binding } : {}),
   };
+  // Notes, never blockers: a version written before image blocks existed
+  // (v4.2, active 23.11.2026) stays activatable and keeps running.
+  notes.push(...imageBlockIssues(special));
   const blockers = kbBlockers(kb);
   return { ok: true, kb, warnings: notes, ready: blockers.length === 0, blockers, always };
 }

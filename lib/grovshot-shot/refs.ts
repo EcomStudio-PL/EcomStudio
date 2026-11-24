@@ -143,7 +143,7 @@ export function selectReferences(shot: Pick<PlanShot, "typ" | "referencje">, car
  *   anywhere: never a collage, a photo with other products, another variant.
  * No clean whole-product photo → blocked (never drawn from a description).
  */
-export type RefReason = "calosc_najlepsza" | "calosc_inny_kat" | "detal_ujecia" | "kontekst_calosc" | "uzycie_poza" | "grafika_pomocnicza";
+export type RefReason = "calosc_najlepsza" | "calosc_inny_kat" | "detal_ujecia" | "kontekst_calosc" | "uzycie_poza" | "grafika_pomocnicza" | "stan_ujecia";
 export type RefDrop =
   | "fragment_w_ujeciu_calosci" | "uzycie_w_ujeciu_calosci" | "opakowanie" | "inny_wariant" | "inny_stan"
   | "grafika_w_ujeciu_calosci" | "kolaz_lub_inne_produkty" | "limit";
@@ -152,7 +152,19 @@ export type RefDecisionV2 = RefDecision & {
   dropped: { photo: number; reason: RefDrop }[];
   /** The scene's state could not be matched to any whole-product photo: the best one of any state is used. */
   stateFallback: boolean;
+  /** The state the scene needs (as the card names it), null when the plan's state is unknown. */
+  requiredState?: string | null;
+  /** References the shot cannot do without (the photo showing the scene's state). */
+  mandatory?: number[];
 };
+
+/** A real photo (not a graphic, collage, packaging or another variant) showing the product in `state`: planned ones first. */
+function statePhoto(card: ProductCard, planned: number[], state: string): number | null {
+  const ok = (p: CardPhoto | undefined) => !!p && formOf(p) === "zdjecie" && (p.rola === "uzycie" || p.rola === "calosc")
+    && !!p.stan && normSt(p.stan) === state;
+  const byN = new Map(card.zdjecia.map((p) => [p.n, p]));
+  return planned.find((n) => ok(byN.get(n))) ?? card.zdjecia.find((p) => ok(p))?.n ?? null;
+}
 
 const normSt = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/\s+/g, " ").trim();
 
@@ -169,6 +181,7 @@ export function selectReferencesV2(
   const cleanWhole = (p: CardPhoto) => p.rola === "calosc" && formOf(p) === "zdjecie";
   const rank = (a: CardPhoto, b: CardPhoto) => VIEW_RANK[viewOf(a)] - VIEW_RANK[viewOf(b)] || a.n - b.n;
   let stateFallback = false;
+  const mandatory: number[] = [];
   let wholes = card.zdjecia.filter((p) => cleanWhole(p) && sameState(p)).sort(rank);
   if (wholes.length === 0 && state) { wholes = card.zdjecia.filter(cleanWhole).sort(rank); stateFallback = wholes.length > 0; }
   const lead = (k: number): number[] => {
@@ -203,10 +216,21 @@ export function selectReferencesV2(
     aux = graphics.filter((n) => n !== main);
     for (const n of usable) if (!refs.includes(n) && !aux.includes(n)) drop(n, sameState(byN.get(n) as CardPhoto) ? "limit" : "inny_stan");
   } else {
-    const ld = lead(2);
-    if (ld.length === 0) return { refs: [], aux: [], corrections: [{ code: "blocked_no_whole", photos: [] }], blocked: true, reasons, dropped, stateFallback };
+    // THE SCENE'S STATE (24.11.2026, a hair dryer with a fitted diffuser):
+    // when no clean whole-product photo shows the state the scene needs, the
+    // photo that DOES show it (a mounted attachment, an unfolded frame) is the
+    // shot's mandatory reference, kept after ONE clean whole photo (identity,
+    // colours, geometry) — never replaced by a whole photo of another state.
+    const stateRef = stateFallback && state ? statePhoto(card, usable, state) : null;
+    let ld = lead(2);
+    if (stateRef !== null) {
+      const plannedWhole = usable.find((n) => wholes.some((p) => p.n === n));
+      ld = [plannedWhole ?? ld[0]].filter((n): n is number => n !== undefined);
+    }
+    if (ld.length === 0 && stateRef === null) return { refs: [], aux: [], corrections: [{ code: "blocked_no_whole", photos: [] }], blocked: true, reasons, dropped, stateFallback };
     refs = [...ld];
     ld.forEach((n, i) => reasons.push({ photo: n, position: i + 1, reason: i === 0 ? "calosc_najlepsza" : "calosc_inny_kat" }));
+    if (stateRef !== null) { refs.push(stateRef); reasons.push({ photo: stateRef, position: refs.length, reason: "stan_ujecia" }); mandatory.push(stateRef); }
     for (const n of usable) {
       if (refs.includes(n)) continue;
       const p = byN.get(n) as CardPhoto;
@@ -228,15 +252,17 @@ export function selectReferencesV2(
   const max = Math.max(1, opts.max);
   const all = [...refs, ...aux];
   if (all.length > max) {
-    for (const n of all.slice(max)) drop(n, "limit");
-    const keep = new Set(all.slice(0, max));
+    // The limit never takes the scene's state photo.
+    const ordered = [...all.filter((n) => mandatory.includes(n)), ...all.filter((n) => !mandatory.includes(n))];
+    for (const n of ordered.slice(max)) drop(n, "limit");
+    const keep = new Set(ordered.slice(0, max));
     refs = refs.filter((n) => keep.has(n));
     aux = aux.filter((n) => keep.has(n));
   }
   const final = [...refs, ...aux];
   aux.forEach((n) => reasons.push({ photo: n, position: final.indexOf(n) + 1, reason: "grafika_pomocnicza" }));
   return {
-    refs: final, aux, blocked: false, stateFallback,
+    refs: final, aux, blocked: false, stateFallback, requiredState: state ? card.stany.find((x) => normSt(x.stan) === state)?.stan ?? shot.stan : null, mandatory,
     reasons: reasons.filter((r) => final.includes(r.photo)).map((r) => ({ ...r, position: final.indexOf(r.photo) + 1 })),
     dropped,
     corrections: dropped.length ? [{ code: "dropped_v2", photos: dropped.map((d) => d.photo) }] : [],

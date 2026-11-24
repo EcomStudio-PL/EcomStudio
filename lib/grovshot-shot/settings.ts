@@ -47,12 +47,13 @@ export function orderPromptVariant(setting: PromptVariantSetting, admin: boolean
   return setting === "b" || (setting === "b_admin" && admin) ? "b" : "a";
 }
 
-/** The defaults: Sonnet 5.5 for the card, the plan and the prompts (no Opus by default). */
+/** The defaults (24.11.2026): Opus 5.5 at medium effort for the card, the plan and the prompts —
+ *  the setting the reference campaigns were made with. No fallback: Opus unavailable = a visible failure. */
 export const DEFAULT_SHOT_SETTINGS: ShotSettings = {
   models: {
-    card: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
-    plan: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
-    prompt: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
+    card: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" },
+    plan: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" },
+    prompt: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" },
   },
   // Until the accounts' real limits are read (Anthropic rate-limit headers,
   // Google AI Studio quota): the per-instance limits the app already runs with.

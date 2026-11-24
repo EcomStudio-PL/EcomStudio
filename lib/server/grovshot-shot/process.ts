@@ -140,13 +140,18 @@ export async function readProcess(supabase: Client, runId: string): Promise<Proc
   const planRows = at(P.plan, 0, ROWS);
   const planChosen = chosenRow(planRows);
   const viol = arr(progress.plan_violations).map(obj);
+  // The gate after the reference correction (23.11.2026): shots it stopped before any image call.
+  const gateBlocked = new Set(arr(obj(progress.plan_check).blocked_shots).map(obj).map((x) => Number(x.shot)).filter(Boolean));
   const plan: ShotPlanView[] = arr(obj(obj(planChosen?.output).raw).ujecia).map(obj).map((u) => {
     const numer = Number(u.numer) || 0;
     return {
       numer, typ: str(u.typ), opis: str(u.opis), referencje: arr(u.referencje).map((x) => Number(String(x).replace(/\D/g, "")) || 0).filter(Boolean),
       kadr: str(u.kadr), ludzie: str(u.ludzie), swiatlo: str(u.swiatlo_typ) || str(u.swiatlo), miejsce: str(u.miejsce), kierunek: str(u.kierunek),
       caly_produkt: u.caly_produkt === true,
-      violations: viol.filter((v) => arr(v.shots).map(Number).includes(numer)).map((v) => str(v.code)),
+      violations: [
+        ...viol.filter((v) => arr(v.shots).map(Number).includes(numer)).map((v) => str(v.code)),
+        ...(gateBlocked.has(numer) ? ["plan_blocked"] : []),
+      ],
     };
   });
 
