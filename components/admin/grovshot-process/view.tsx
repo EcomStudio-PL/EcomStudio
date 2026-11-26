@@ -27,7 +27,7 @@ export function ProcessView({ runId, initialShot }: { runId: string; initialShot
   const [data, setData] = useState<ProcessData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(initialShot ? `shot-${initialShot}` : null);
-  const [editor, setEditor] = useState<{ shot: number; prompt: string; refs: number[] } | null>(null);
+  const [editor, setEditor] = useState<{ shot: number; prompt: string; refs: number[]; planned: number[] } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -109,10 +109,10 @@ export function ProcessView({ runId, initialShot }: { runId: string; initialShot
       </div>
       {data && node && (
         <NodePanel data={data} node={node} onClose={() => setSelected(null)} reload={() => void load()}
-          onExperiment={(shot, prompt, refs) => setEditor({ shot, prompt, refs })} />
+          onExperiment={(shot, prompt, refs, _pattern, planned) => setEditor({ shot, prompt, refs, planned })} />
       )}
       {data && editor && (
-        <ExperimentEditor data={data} shot={editor.shot} prompt={editor.prompt} refs={editor.refs}
+        <ExperimentEditor data={data} shot={editor.shot} prompt={editor.prompt} refs={editor.refs} planned={editor.planned}
           promptB={data.promptB?.find((b) => b.numer === editor.shot) ?? null} onClose={() => setEditor(null)}
           onDone={() => { setEditor(null); void load(); }} />
       )}

@@ -128,7 +128,7 @@ function peopleRowFor(table: PeopleRow[] | null, n: number): PeopleRow {
   return t.find((r) => n >= r.from && n <= r.to) ?? t[t.length - 1];
 }
 
-export function checkPlan(raw: unknown, ctx: { card: ProductCard; kb: KbParsed; shots: number; userPlan: UserPlanRow[] | null }): PlanCheck {
+export function checkPlan(raw: unknown, ctx: { card: ProductCard; kb: KbParsed; shots: number; userPlan: UserPlanRow[] | null; exactRefs?: boolean }): PlanCheck {
   const photoCount = ctx.card.zdjecia.length;
   const structural: string[] = [];
   const list = Array.isArray(o(raw).ujecia) ? o(raw).ujecia as unknown[] : null;
@@ -207,11 +207,15 @@ const auto = (xs: PlanShot[]) => xs.filter((x) => !x.fixed);
  * an admin fixed comes back as an `override` (never sent to the model as a
  * correction).
  */
-export function planViolations(shots: PlanShot[], ctx: { card: ProductCard; kb: KbParsed; shots: number }): Violation[] {
+export function planViolations(shots: PlanShot[], ctx: { card: ProductCard; kb: KbParsed; shots: number; exactRefs?: boolean }): Violation[] {
   const v: Violation[] = [];
+  // Exact references (26.11.2026): the plan's photos ARE what is sent, so a
+  // fragment next to the whole view in a whole-product shot is the plan's
+  // deliberate choice (labelled by the binding) — a warning, not a stop.
+  const SOFT_IN_EXACT = new Set(["whole_with_fragment"]);
   const add = (code: string, involved: PlanShot[], detail: string) => {
     const a = auto(involved);
-    const severity = severityOf(code);
+    const severity = ctx.exactRefs && SOFT_IN_EXACT.has(code) ? "soft" : severityOf(code);
     if (a.length > 0) v.push({ code, shots: a.map((x) => x.numer), detail, severity });
     else if (involved.length > 0) v.push({ code, shots: involved.map((x) => x.numer), detail, severity, override: true });
   };
@@ -287,7 +291,9 @@ export function planViolations(shots: PlanShot[], ctx: { card: ProductCard; kb: 
     const sceneSt = normState(x.stan);
     if (states.has(sceneSt) && stated.length > 0) {
       const wholeInState = ctx.card.zdjecia.some((p) => p.rola === "calosc" && (p.forma ?? "zdjecie") === "zdjecie" && !!p.stan && normState(p.stan) === sceneSt);
-      const foreign = stated.filter((p) => normState(p.stan) !== sceneSt && (p.rola !== "calosc" || wholeInState));
+      // Exact references: a clean whole photo of another state next to the
+      // state photo is the plan's identity reference, whatever else the card has.
+      const foreign = stated.filter((p) => normState(p.stan) !== sceneSt && (p.rola !== "calosc" || (wholeInState && !ctx.exactRefs)));
       if (!stated.some((p) => normState(p.stan) === sceneSt)) {
         add("ref_state_mismatch", [x], `ujęcie ${x.numer}: żadne zdjęcie (${stated.map((p) => `${p.id}: „${p.stan}”`).join(", ")}) nie pokazuje stanu sceny „${x.stan}”`);
       } else if (foreign.length) {

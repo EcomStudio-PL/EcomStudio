@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, Download, FlaskConical, Loader2, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { geminiParts } from "@/lib/grovshot-shot/diagnostics";
@@ -171,7 +171,10 @@ function RoundSection({ data, node, t }: { data: ProcessData; node: ProcessNode;
   const prompt = parts?.texts.join("\n") ?? "";
   const check = obj(out.reference_check);
   const issues = arr(check.issues).map(String);
-  const planned = arr(out.references_planned).map(Number);
+  // Stage A = Opus' plan (stage_checks, 26.11.2026); older rounds only stored the final list.
+  const sc = obj(out.stage_checks);
+  const opusPlan = arr(sc.opus_plan).map(Number);
+  const planned = opusPlan.length ? opusPlan : arr(out.references_planned).map(Number);
   const prepared = arr(out.references_prepared).map(obj);
   const sentMap = arr(check.sent).map(obj);
   const res = obj(r?.response);
@@ -192,6 +195,20 @@ function RoundSection({ data, node, t }: { data: ProcessData; node: ProcessNode;
         <Download size={13} aria-hidden /> {t("gsp.pack")}
       </a>
       {!r && <NoBoundary t={t} />}
+      {Object.keys(sc).length > 0 && (
+        <Block title={t("gsp.stage.title")} tone={sc.prepared_matches_request === false || sc.prompt_intact === false || sc.images_complete === false ? "danger" : sc.plan_kept === false && opusPlan.length ? "warning" : undefined}>
+          <Kv rows={[
+            [t("gsp.stage.mode"), t(`gsp.stage.mode_${str(sc.reference_mode) || "auto"}`)],
+            [t("gsp.stage.a"), opusPlan.map((n) => `Z${n}`).join(" + ") || "—"],
+            [t("gsp.stage.b"), arr(sc.prepared).map((n) => `Z${Number(n)}`).join(" + ") || "—"],
+            [t("gsp.stage.c"), arr(sc.sent).map((n) => `Z${Number(n)}`).join(" + ") || "—"],
+            ...(["plan_kept", "prepared_matches_request", "prompt_intact", "images_complete", "image_received"] as const).map((k): [string, ReactNode] => [
+              t(`gsp.stage.${k}`),
+              <Badge key={k} tone={sc[k] === true ? "success" : sc[k] === false ? (k === "plan_kept" ? "warning" : "danger") : "info"}>{sc[k] === true ? t("gsp.stage.yes") : sc[k] === false ? t("gsp.stage.no") : "—"}</Badge>,
+            ]),
+          ]} />
+        </Block>
+      )}
       {issues.length > 0 && (
         <Block title={t("gsp.refs.mismatchTitle")} tone="danger">
           <ul className="list-disc pl-4 text-[11.5px] text-danger">{issues.map((i) => <li key={i}>{t(`gsp.issue.${i}`)}</li>)}</ul>
@@ -266,7 +283,7 @@ function RoundSection({ data, node, t }: { data: ProcessData; node: ProcessNode;
 }
 
 /* ── a shot ────────────────────────────────────────────────────────────────*/
-function ShotSection({ data, node, t, onExperiment }: { data: ProcessData; node: ProcessNode; t: T; onExperiment: (shot: number, prompt: string, refs: number[], pattern: string) => void }) {
+function ShotSection({ data, node, t, onExperiment }: { data: ProcessData; node: ProcessNode; t: T; onExperiment: (shot: number, prompt: string, refs: number[], pattern: string, planned: number[]) => void }) {
   const isDerived = Boolean(data.run.experimentOf || data.run.regenOf);
   const { step } = useStep(data.run.id, { pos: 10, item: 30, status: "", error: null });
   const shots = arr(obj(step?.output).shots).map(obj);
@@ -293,7 +310,7 @@ function ShotSection({ data, node, t, onExperiment }: { data: ProcessData; node:
             [t("gsp.shot.refsPlanned"), arr(mine?.planned_references).map((r) => `Z${Number(r)}`).join(", ") || "—"],
             [t("gsp.shot.refsFinal"), refs.map((r, i) => `${i + 1}: Z${r}${arr(mine?.aux_references).map(Number).includes(r) ? ` (${t("gsp.shot.aux")})` : ""}`).join(", ") || "—"],
             [t("gsp.shot.corrections"), corrections.length ? corrections.map((c) => `${t(`gsp.corr.${str(c.code)}`)}${arr(c.photos).length ? `: ${arr(c.photos).map((n) => `Z${Number(n)}`).join(", ")}` : ""}`).join(" · ") : "—"],
-            [t("gsp.shot.binding"), mine?.blocked ? t("gsp.corr.blocked_no_whole") : mine?.binding_source === "kb" ? t("gsp.shot.bindingKb") : t("gsp.shot.bindingDefault")],
+            [t("gsp.shot.binding"), mine?.blocked ? t(typeof mine.blocked === "string" && mine.blocked !== "no_whole_reference" ? `gsp.corr.${mine.blocked}` : "gsp.corr.blocked_no_whole") : mine?.binding_source === "kb" ? t("gsp.shot.bindingKb") : t("gsp.shot.bindingDefault")],
           ]} />
         </Block>
       )}
@@ -308,7 +325,7 @@ function ShotSection({ data, node, t, onExperiment }: { data: ProcessData; node:
         </Block>
       )}
       {!isDerived && prompt && node.shot !== null && (
-        <Button size="sm" onClick={() => onExperiment(node.shot as number, prompt, refs, str(mine?.pattern))}>
+        <Button size="sm" onClick={() => onExperiment(node.shot as number, prompt, refs, str(mine?.pattern), arr(mine?.planned_references).map(Number).filter((n) => Number.isInteger(n) && n > 0))}>
           <FlaskConical size={14} aria-hidden /> {t("gsp.exp.rerun")}
         </Button>
       )}
@@ -395,7 +412,7 @@ function FormSection({ data, t }: { data: ProcessData; t: T }) {
 
 export function NodePanel({ data, node, onClose, onExperiment, reload }: {
   data: ProcessData; node: ProcessNode; onClose: () => void; reload: () => void;
-  onExperiment: (shot: number, prompt: string, refs: number[], pattern: string) => void;
+  onExperiment: (shot: number, prompt: string, refs: number[], pattern: string, planned: number[]) => void;
 }) {
   const { t } = useI18n();
   return (

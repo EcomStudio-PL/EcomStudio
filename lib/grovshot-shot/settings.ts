@@ -38,8 +38,17 @@ export type ShotSettings = {
      *  everyone; "b_admin" prompt B + references V2 for admins' orders only;
      *  "b" for every order. Pinned on the order when it starts. */
     variant: PromptVariantSetting;
+    /** How references are chosen (26.11.2026): "auto" = references V2 (ranked,
+     *  state-corrected); "exact_admin" = the plan's references unchanged for
+     *  admins' orders; "exact" = for every order. Pinned when an order starts. */
+    references: ReferenceModeSetting;
   };
 };
+export const REFERENCE_MODES = ["auto", "exact_admin", "exact"] as const;
+export type ReferenceModeSetting = (typeof REFERENCE_MODES)[number];
+export function orderReferenceMode(setting: ReferenceModeSetting, admin: boolean): "auto" | "exact" {
+  return setting === "exact" || (setting === "exact_admin" && admin) ? "exact" : "auto";
+}
 export const PROMPT_VARIANTS = ["a", "b_admin", "b"] as const;
 export type PromptVariantSetting = (typeof PROMPT_VARIANTS)[number];
 /** The variant ONE order runs with, decided once when it starts. */
@@ -62,7 +71,7 @@ export const DEFAULT_SHOT_SETTINGS: ShotSettings = {
   description_min_chars: 80,
   scenarios: { lifestyle: true, reklamowa: false },
   diagnostics: { retention_days: 30, experiment_daily_budget_usd: 2 },
-  prompt: { product_max_words: 60, scale_max_words: 45, max_references: 5, variant: "a" },
+  prompt: { product_max_words: 60, scale_max_words: 45, max_references: 5, variant: "a", references: "auto" },
 };
 
 export const LIMIT_RANGE = { min: 1, max: 20 } as const;
@@ -116,7 +125,12 @@ export function parseShotSettings(raw: unknown): { ok: true; settings: ShotSetti
     // Nano Banana Pro takes at most 6 reference images.
     max_references: ranged(pr.max_references, DEFAULT_SHOT_SETTINGS.prompt.max_references, 1, 6, "prompt.max_references"),
     variant: DEFAULT_SHOT_SETTINGS.prompt.variant as PromptVariantSetting,
+    references: DEFAULT_SHOT_SETTINGS.prompt.references as ReferenceModeSetting,
   };
+  if (pr.references !== undefined) {
+    if ((REFERENCE_MODES as readonly unknown[]).includes(pr.references)) prompt.references = pr.references as ReferenceModeSetting;
+    else errors.push("prompt.references");
+  }
   if (pr.variant !== undefined) {
     if ((PROMPT_VARIANTS as readonly unknown[]).includes(pr.variant)) prompt.variant = pr.variant as PromptVariantSetting;
     else errors.push("prompt.variant");

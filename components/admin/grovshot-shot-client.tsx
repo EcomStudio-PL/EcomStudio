@@ -464,6 +464,12 @@ export function ShotTestsPanel({ settings, settingsErrors, model, versions, test
               <option value="b_admin">{t("gss.settings.promptVariantBAdmin")}</option>
               <option value="b">{t("gss.settings.promptVariantB")}</option>
             </Select></div>
+          <div><Label htmlFor="gss-rm">{t("gss.settings.referenceMode")}</Label>
+            <Select id="gss-rm" value={s.prompt.references} onChange={(e) => setS({ ...s, prompt: { ...s.prompt, references: e.target.value as ShotSettings["prompt"]["references"] } })}>
+              <option value="auto">{t("gss.settings.referenceModeAuto")}</option>
+              <option value="exact_admin">{t("gss.settings.referenceModeExactAdmin")}</option>
+              <option value="exact">{t("gss.settings.referenceModeExact")}</option>
+            </Select></div>
         </div>
         <p className="text-xs text-muted">{t("gss.settings.help")}</p>
         <Button size="sm" onClick={saveSettings} disabled={pending}>{t("gss.settings.save")}</Button>

@@ -33,7 +33,7 @@ import { PHOTO_FORMS, PHOTO_VIEWS, type PhotoForm, type PhotoView } from "@/lib/
 export { PHOTO_FORMS, PHOTO_VIEWS };
 
 export type RefCorrection = {
-  code: "added_whole" | "moved_whole_first" | "moved_after_whole" | "aux_graphic" | "skipped_graphic" | "limited" | "blocked_no_whole" | "dropped_v2";
+  code: "added_whole" | "moved_whole_first" | "moved_after_whole" | "aux_graphic" | "skipped_graphic" | "limited" | "blocked_no_whole" | "dropped_v2" | "exact_invalid";
   photos: number[];
 };
 export type RefDecision = { refs: number[]; aux: number[]; corrections: RefCorrection[]; blocked: boolean };
@@ -143,7 +143,7 @@ export function selectReferences(shot: Pick<PlanShot, "typ" | "referencje">, car
  *   anywhere: never a collage, a photo with other products, another variant.
  * No clean whole-product photo → blocked (never drawn from a description).
  */
-export type RefReason = "calosc_najlepsza" | "calosc_inny_kat" | "detal_ujecia" | "kontekst_calosc" | "uzycie_poza" | "grafika_pomocnicza" | "stan_ujecia";
+export type RefReason = "calosc_najlepsza" | "calosc_inny_kat" | "detal_ujecia" | "kontekst_calosc" | "uzycie_poza" | "grafika_pomocnicza" | "stan_ujecia" | "plan_opus";
 export type RefDrop =
   | "fragment_w_ujeciu_calosci" | "uzycie_w_ujeciu_calosci" | "opakowanie" | "inny_wariant" | "inny_stan"
   | "grafika_w_ujeciu_calosci" | "kolaz_lub_inne_produkty" | "limit";
@@ -157,6 +157,36 @@ export type RefDecisionV2 = RefDecision & {
   /** References the shot cannot do without (the photo showing the scene's state). */
   mandatory?: number[];
 };
+
+/**
+ * EXACT REFERENCES (26.11.2026, order f23e0676): the plan's references, the
+ * SAME photos in the SAME order — no ranking, no state-based replacement, no
+ * "limit" drop. The 24.11 Philips order lost Opus' Z2 in three of five shots
+ * to that machinery (another state, a detail's context ranked by view). What
+ * stays: a photo that cannot be a reference at all (another variant, a
+ * collage or other products) stops the shot EXPLICITLY — never a silent swap.
+ * Graphics stay where the plan put them, labelled auxiliary by the binding.
+ */
+export function selectReferencesExact(
+  shot: Pick<PlanShot, "referencje" | "stan">, card: ProductCard, opts: { max: number },
+): RefDecisionV2 & { blockedReason?: string } {
+  const byN = new Map(card.zdjecia.map((p) => [p.n, p]));
+  const planned = [...shot.referencje];
+  const bad = planned.filter((n) => {
+    const p = byN.get(n);
+    return !p || p.rola === "inny_wariant" || formOf(p) === "kolaz" || formOf(p) === "inne_produkty";
+  });
+  const state = shot.stan ? card.stany.find((x) => normSt(x.stan) === normSt(shot.stan))?.stan ?? shot.stan : null;
+  const base = { aux: [] as number[], reasons: [] as RefDecisionV2["reasons"], dropped: [] as RefDecisionV2["dropped"], stateFallback: false, requiredState: state, mandatory: [] as number[] };
+  if (planned.length === 0 || bad.length > 0 || planned.length > Math.max(1, opts.max)) {
+    return { ...base, refs: [], corrections: [{ code: "exact_invalid", photos: bad }], blocked: true,
+      blockedReason: planned.length > opts.max ? "reference_limit" : "reference_invalid_plan" };
+  }
+  return {
+    ...base, refs: planned, aux: planned.filter((n) => formOf(byN.get(n) as CardPhoto) === "grafika"), blocked: false, corrections: [],
+    reasons: planned.map((n, i) => ({ photo: n, position: i + 1, reason: "plan_opus" as const })),
+  };
+}
 
 /** A real photo (not a graphic, collage, packaging or another variant) showing the product in `state`: planned ones first. */
 function statePhoto(card: ProductCard, planned: number[], state: string): number | null {

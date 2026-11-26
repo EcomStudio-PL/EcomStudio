@@ -64,6 +64,8 @@ import { startShotOrder, startShotRegen } from "@/lib/server/grovshot-v2/start-s
 import { usedVersion, zipName, type SetShot } from "@/lib/server/grovshot-shot/sets";
 import { canonicalJson, parseKb } from "@/lib/grovshot-shot/kb";
 import { DEFAULT_SHOT_SETTINGS } from "@/lib/grovshot-shot/settings";
+import { itemOf } from "@/lib/grovshot-v2/steps";
+import { buildGeminiImageRequest, pickGeminiFinalImage } from "@/lib/ai/providers/google-request";
 import type { SlotStore } from "@/lib/server/grovshot-v2/run";
 
 let failures = 0;
@@ -2226,6 +2228,26 @@ async function partL() {
       { st: runOf(ok).status, e: runOf(ok).error, calls: w.imageCalls.length - before.calls, prep: round.references_prepared });
     check("L34 …its round records the reference manifest and the network-boundary fields (a fake provider: nothing observed, never called matching)",
       Array.isArray(round.references_planned) && (round.reference_check as Row)?.observed === false && (round.boundary_summary as Row)?.requests === 0);
+    {
+      // EXACT REPLAY (26.11.2026): the source shot's final prompt + the references it really sent, unchanged.
+      const srcAsm = ((stepsOf(r.runId, P.write).find((x) => x.item_index === 30)?.output as Row)?.shots ?? []) as Row[];
+      const s2 = srcAsm.find((x) => Number(x.numer) === 2) as Row;
+      const srcRound = stepsOf(r.runId, P.round).find((x) => x.item_index === itemOf(1, 0))?.output as Row;
+      const srcSent = ((srcRound?.references_sent ?? []) as Row[]);
+      const srcCall = w.imageCalls.find((c) => c.prompt === s2?.text);
+      const replay = experimentRun(String(s2?.text ?? ""));
+      ((db().runs.get(replay) as Row).input as Row).experiment = { source_run_id: r.runId, shot: 2, prompt: String(s2?.text ?? ""), references: srcSent.map((x) => Number(x.photo)), pattern: String(s2?.pattern ?? "full") };
+      const stage0 = w.stageCalls.length;
+      await lsDrive(w, replay);
+      const rc = w.imageCalls[w.imageCalls.length - 1];
+      const rr = (stepsOf(replay, P.round)[0]?.output ?? {}) as Row;
+      const bshaR = (b64: string) => createHash("sha256").update(Buffer.from(b64, "base64")).digest("hex");
+      check("L34b EXACT REPLAY: the replayed request = the source shot's request — prompt byte for byte (same sha), same photos, same order, same bytes; no Claude call",
+        runOf(replay).status === "ok" && Boolean(srcCall) && rc.prompt === srcCall!.prompt && sha(rc.prompt) === String((srcRound?.prompt as Row)?.sha256)
+        && rc.references.length === srcCall!.references.length && rc.references.every((x, i) => bshaR(x.base64) === bshaR(srcCall!.references[i].base64))
+        && JSON.stringify(((rr.references_sent ?? []) as Row[]).map((x) => x.photo)) === JSON.stringify(srcSent.map((x) => x.photo)) && w.stageCalls.length === stage0,
+        { st: runOf(replay).status, e: runOf(replay).error, refs: rc?.references.length });
+    }
     const bad = experimentRun("EKSPERYMENT FAIL");
     const n0 = w.imageCalls.length;
     await lsDrive(w, bad);
@@ -2354,7 +2376,111 @@ async function partLX() {
   }
 }
 
-partE().then(partL).then(partLX).then(() => {
+/* ══ LXE · 26.11.2026 — EXACT REFERENCES through the whole engine (synthetic, mocked image model) ═══*/
+function lxRefMode(references: "auto" | "exact_admin" | "exact") {
+  const row = tableRows("app_settings").find((x) => x.key === "grovshot_shot") as Row;
+  row.value = { ...DEFAULT_SHOT_SETTINGS, limits: { ...DEFAULT_SHOT_SETTINGS.limits, image_concurrency: 5 }, prompt: { ...DEFAULT_SHOT_SETTINGS.prompt, variant: "b", references } };
+}
+const bsha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+/** Opus' references per shot, in his order — some the auto selection would reorder (the detail planned whole-first). */
+const LXE_REFS: Record<number, string[]> = { 1: ["Z2", "Z1"], 2: ["Z1"], 3: ["Z1", "Z4"], 4: ["Z7", "Z1"], 5: ["Z2", "Z5"] };
+async function partLXE() {
+  section("LXE. EXACT REFERENCES — the engine sends exactly the plan's photos (5 shots in parallel, mocked Nano Banana, SYNTHETIC)");
+  const shotImages = await Promise.all([1, 2, 3, 4, 5].map((n) => solidPng(COLORS[n - 1], 48 + n)));
+  for (const mode of ["exact", "auto"] as const) {
+    const w = await lsWorld({ photos: 7, card: () => lxCard(7), plan: (_i, shots) => lxPlan(shots, 7, (n) => ({ referencje: LXE_REFS[n] ?? ["Z1"] })) });
+    lxKb(); lxRefMode(mode);
+    // Each call answers with ITS shot's image, out of order (later shots return first): the assignment must follow the request, not arrival.
+    const base = w.deps.callImage!;
+    const seen: { shot: number; input: ImageCallInput }[] = [];
+    w.deps.callImage = async (sv, input) => {
+      const m = /Scenografia (\d+)\.|Detal (\d+) 1:1/.exec(input.prompt);
+      const shot = Number(m?.[1] ?? m?.[2] ?? 0);
+      seen.push({ shot, input });
+      await new Promise((r) => setTimeout(r, (6 - shot) * 4));
+      const r = await base(sv, input);
+      return r.ok && shot ? { ...r, image: { base64: shotImages[shot - 1].toString("base64"), mime: "image/png" } as never } : r;
+    };
+    const r = await lsStart(w, 7, { shots: 5 });
+    if (!r.ok) { check(`LXE0 [${mode}] order accepted`, false, r); continue; }
+    await lsDrive(w, r.runId);
+    const run = runOf(r.runId);
+    const rounds = [1, 2, 3, 4, 5].map((n) => stepsOf(r.runId, P.round).find((x) => x.item_index === itemOf(n - 1, 0))?.output as Row | undefined);
+    const sentOf = (o: Row | undefined) => ((o?.references_sent ?? []) as Row[]).map((x) => Number(x.photo));
+    const planOf = (n: number) => (LXE_REFS[n] ?? []).map((z) => Number(z.slice(1)));
+    if (mode === "exact") {
+      check("LXE1 [exact] pinned on the order: input.reference_mode = exact; 5 of 5 delivered",
+        (run.input as Row).reference_mode === "exact" && run.status === "ok" && delivered(r.runId) === 5, { st: run.status, e: run.error, mode: (run.input as Row).reference_mode });
+      check("LXE2 [exact] every shot sent EXACTLY the plan's photos in the plan's order (Z2+Z1, Z1, Z1+Z4, Z7+Z1, Z2+Z5)",
+        [1, 2, 3, 4, 5].every((n) => JSON.stringify(sentOf(rounds[n - 1])) === JSON.stringify(planOf(n))), rounds.map(sentOf));
+      check("LXE3 [exact] stage checks: A (Opus) = B (backend) on every shot, the mode recorded, the final image received",
+        rounds.every((o) => { const sc = o?.stage_checks as Row; return sc?.plan_kept === true && sc?.reference_mode === "exact" && sc?.image_received === true; }),
+        rounds.map((o) => o?.stage_checks));
+      // C: what the adapter receives → the body it serialises (same function as the Google adapter).
+      const bodies = seen.map(({ shot, input }) => {
+        const wire = JSON.stringify(buildGeminiImageRequest({ supported_resolutions: ["1K", "2K", "4K"] }, { prompt: input.prompt, aspectRatio: input.aspectRatio, resolution: "2K", referenceImages: input.references }).body);
+        const parts = (JSON.parse(wire) as { contents: { parts: { text?: string; inlineData?: { data: string } }[] }[] }).contents[0].parts;
+        const o = rounds[shot - 1];
+        const refsSent = (o?.references_sent ?? []) as Row[];
+        return { shot, ok: parts.length === refsSent.length + 1
+          && refsSent.every((x, i) => parts[i].inlineData && bsha(Buffer.from(parts[i].inlineData.data, "base64")) === String(x.sha256))
+          && sha(parts[parts.length - 1].text ?? "") === String((o?.prompt as Row)?.sha256) };
+      });
+      check("LXE4 [exact] the serialised request of every shot: the recorded photos byte for byte (sha256) in order, then the prompt whose sha the panel shows",
+        bodies.length === 5 && bodies.every((b) => b.ok), bodies);
+      check("LXE5 [exact] parallel calls answered out of order: each shot keeps ITS image (round sha = that shot's image), none swapped",
+        [1, 2, 3, 4, 5].every((n) => rounds[n - 1]?.sha256 === bsha(shotImages[n - 1])) && new Set(rounds.map((o) => o?.sha256)).size === 5,
+        rounds.map((o) => String(o?.sha256).slice(0, 8)));
+      check("LXE6 [exact] cost and credits unchanged: one paid call per shot, 5 charges, no extra call",
+        w.imageCalls.length === 5 && charges().length === 5, { calls: w.imageCalls.length, charges: charges().length });
+      const n0 = { calls: w.imageCalls.length, charges: charges().length };
+      await lsDrive(w, r.runId);
+      check("LXE7 [exact] driven again: no new call, no new charge (idempotent)", w.imageCalls.length === n0.calls && charges().length === n0.charges);
+    } else {
+      check("LXE8 [auto] the default is unchanged: input.reference_mode = auto, and the selector still reorders the detail planned whole-first (stage A ≠ B recorded)",
+        (run.input as Row).reference_mode === "auto" && JSON.stringify(sentOf(rounds[2])) !== JSON.stringify(planOf(3))
+        && (rounds[2]?.stage_checks as Row)?.plan_kept === false, { sent3: sentOf(rounds[2]), sc: rounds[2]?.stage_checks });
+    }
+  }
+  {
+    // exact_admin: an admin's order is exact, a customer's stays auto.
+    const w = await lsWorld({ photos: 7, card: () => lxCard(7), plan: (_i, shots) => lxPlan(shots, 7) });
+    lxKb(); lxRefMode("exact_admin");
+    const a = await lsStart(w, 7, { shots: 3 });
+    tableRows("profiles")[0].role = "user";
+    db().tables.feature_flags![0].roles = null;
+    const c = await lsStart(w, 7, { shots: 3 });
+    // (A customer's start stops earlier here, at the margin gate of this harness — the mapping itself is X14 in test:grovshot-fix.)
+    check("LXE9 exact_admin: the admin's order is pinned exact; a customer's order is never exact (auto, or not started)",
+      a.ok && (runOf(a.runId).input as Row).reference_mode === "exact" && (!c.ok || (runOf(c.runId).input as Row).reference_mode === "auto"),
+      { a: a.ok ? (runOf(a.runId).input as Row).reference_mode : a, c: c.ok ? (runOf(c.runId).input as Row).reference_mode : c });
+  }
+  {
+    // A plan naming a photo another variant shows: blocked explicitly, no call, no charge.
+    const card = (): Row => { const x = lxCard(7); (x.zdjecia as Row[])[4] = { ...(x.zdjecia as Row[])[4], rola: "inny_wariant" }; return x; };
+    const w = await lsWorld({ photos: 7, card, plan: (_i, shots) => lxPlan(shots, 7, (n) => (n === 2 ? { referencje: ["Z1", "Z5"] } : {})) });
+    lxKb(); lxRefMode("exact");
+    const r = await lsStart(w, 7, { shots: 3 });
+    if (!r.ok) { check("LXE10 order accepted", false, r); return; }
+    await lsDrive(w, r.runId);
+    const settle2 = stepsOf(r.runId, P.settle).find((x) => x.item_index === 1);
+    check("LXE10 [exact] the plan names another variant's photo: that shot is blocked (no swap, no silent drop), no call, no charge; the others delivered",
+      settle2?.status === "failed" && w.imageCalls.length === 2 && charges().length === 2 && w.imageCalls.every((cl) => cl.references.length >= 1),
+      { settle: settle2?.error_code, calls: w.imageCalls.length });
+  }
+  {
+    // The final image of a response with interim "thought" drafts: the LAST non-thought image, never a draft.
+    const pick = pickGeminiFinalImage({ candidates: [{ content: { parts: [
+      { inlineData: { mimeType: "image/png", data: "DRAFT1" }, thought: true }, { text: "x", thought: true },
+      { inlineData: { mimeType: "image/png", data: "DRAFT2" }, thought: true }, { inlineData: { mimeType: "image/png", data: "FINAL" } },
+    ] }, finishReason: "STOP" }] } as never);
+    const none = pickGeminiFinalImage({ candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "D" }, thought: true }] } }] } as never);
+    check("LXE11 intermediate + final image: the final one is kept (2 drafts counted); drafts only → no image (error + refund path)",
+      pick.image?.data === "FINAL" && pick.thoughtImages === 2 && pick.imageParts === 3 && none.image === null);
+  }
+}
+
+partE().then(partL).then(partLX).then(partLXE).then(() => {
   console.log(`\n${passed} passed, ${failures} failed`);
   if (failures > 0) process.exit(1);
 }).catch((e) => { console.error(e); process.exit(1); });

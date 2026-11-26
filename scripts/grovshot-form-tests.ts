@@ -84,11 +84,14 @@ console.log("\nB. the lifestyle engine's start route (unchanged by this fix)");
   // reference correction, logs the image rules and the quality plan per shot;
   // 24.11.2026: the scene-state references are logged and checked per call;
   // 26.11.2026: the scene writer sees every shot photo, preflight before the paid call.
+  // 26.11.2026 (V2.3, decided): Exact References — start-shot.ts pins the order's
+  // reference mode, lifestyle.ts sends the plan's references unchanged in exact
+  // mode and records the A/B/C stage checks per call.
   const CENNIK_V2: Record<string, string> = {
     "lib/server/grovshot-v2/run.ts": "cac4a128d009fc1ca2b7f950fa8164dd9d5b8ab96282b0c5ea90d21719bf7758",
-    "lib/server/grovshot-v2/start-shot.ts": "8ee3f60c21a6f950af3c6a312202cc217726ad85e470475ba43f3c8d0519c18e",
+    "lib/server/grovshot-v2/start-shot.ts": "0c0a94ee28faafb3968a34898e981ea68ebdf41aecf172b4557150aaee6a01bd",
     "lib/server/grovshot-v2/start.ts": "eabfc587b8cc77af09ae1a9f64ca1aa5e033be0d425f36def2090027e19de01f",
-    "lib/server/grovshot-v2/lifestyle.ts": "2edf261eb8c8c2b1777fadee9d3cb5557cc269fd721c0dd6809137ba72d94134",
+    "lib/server/grovshot-v2/lifestyle.ts": "f12997d02e41c23a2e7fad9527ebfd3c7318a9179fec30522fadc2ef6b1dd121",
   };
 
   const { createHash } = require("node:crypto") as typeof import("node:crypto");

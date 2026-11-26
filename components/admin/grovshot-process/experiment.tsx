@@ -8,6 +8,13 @@ import { Textarea } from "@/components/ui/input";
 import { usd } from "@/components/admin/grovshot-process/bits";
 
 /**
+ * "Exact Replay — ponów identyczne żądanie" (26.11.2026): opens with the
+ * shot's final prompt and the references exactly as they were sent; one click
+ * loads Opus' planned references instead. The run is image-only (no Opus, no
+ * selector, no assembler — `experiment()` in lifestyle.ts sends the text and
+ * the list verbatim). Indicators show whether the text and the list are still
+ * identical to the original request.
+ *
  * "Uruchom ponownie to ujęcie" — the admin's experiment editor: the shot's
  * final prompt, the reference list in send order (only this order's photos:
  * reorder, remove, add, at most 6 — Nano Banana Pro's limit), the estimated
@@ -17,8 +24,10 @@ import { usd } from "@/components/admin/grovshot-process/bits";
  */
 const MAX_REFS = 6;
 
-export function ExperimentEditor({ data, shot, prompt, refs, promptB, onClose, onDone }: {
+export function ExperimentEditor({ data, shot, prompt, refs, planned = [], promptB, onClose, onDone }: {
   data: ProcessData; shot: number; prompt: string; refs: number[];
+  /** Opus' planned references for this shot (the plan's `referencje`, in order). */
+  planned?: number[];
   /** Prompt B of this shot (13.11.2026) — same references as A, so the A/B changes one thing. */
   promptB?: PromptBView | null;
   onClose: () => void; onDone: (runId: string) => void;
@@ -44,6 +53,13 @@ export function ExperimentEditor({ data, shot, prompt, refs, promptB, onClose, o
     return c;
   });
   const url = (n: number) => data.photos[n - 1]?.url ?? null;
+  const same = (a: number[], b: number[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const zs = (l: number[]) => l.map((n) => `Z${n}`).join(" + ") || "—";
+  const validPlanned = planned.filter((n) => data.photos.some((p) => p.n === n)).slice(0, MAX_REFS);
+  const [copied, setCopied] = useState(false);
+  const copyPrompt = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  };
   const run = async () => {
     if (!estimate || !confirmed || list.length === 0 || !text.trim()) return;
     setBusy(true);
@@ -72,6 +88,31 @@ export function ExperimentEditor({ data, shot, prompt, refs, promptB, onClose, o
         </div>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 text-[12.5px]">
           <p className="text-muted">{t("gsp.exp.intro")}</p>
+          <div className="rounded-lg border border-line p-2" data-exact-replay>
+            <p className="font-semibold">{t("gsp.replay.title")}</p>
+            <p className="mt-0.5 text-[11.5px] text-muted">{t("gsp.replay.hint")}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={() => { setVariant("a"); setText(prompt); setList(refs); }}
+                className={`rounded-md px-2 py-1 text-[11.5px] ${text === prompt && same(list, refs) ? "bg-accent-soft text-accent" : "hover:bg-raised"}`}>
+                {t("gsp.replay.sent", { list: zs(refs) })}
+              </button>
+              {validPlanned.length > 0 && (
+                <button type="button" onClick={() => { setVariant("a"); setText(prompt); setList(validPlanned); }}
+                  className={`rounded-md px-2 py-1 text-[11.5px] ${text === prompt && same(list, validPlanned) && !same(refs, validPlanned) ? "bg-accent-soft text-accent" : "hover:bg-raised"}`}>
+                  {t("gsp.replay.planned", { list: zs(validPlanned) })}
+                </button>
+              )}
+              <button type="button" onClick={() => void copyPrompt()} className="rounded-md px-2 py-1 text-[11.5px] hover:bg-raised">
+                {copied ? t("gsp.copied") : t("gsp.replay.copy")}
+              </button>
+            </div>
+            <p className="mt-1 text-[11px]">
+              <span className={text === prompt ? "text-success" : "text-warning"}>{text === prompt ? t("gsp.replay.promptSame") : t("gsp.replay.promptChanged")}</span>
+              {" · "}
+              <span className={same(list, refs) ? "text-success" : "text-warning"}>{same(list, refs) ? t("gsp.replay.refsSame") : t("gsp.replay.refsChanged", { list: zs(list) })}</span>
+              {validPlanned.length > 0 && !same(refs, validPlanned) && <>{" · "}<span className="text-warning">{t("gsp.replay.planDiffers", { plan: zs(validPlanned), sent: zs(refs) })}</span></>}
+            </p>
+          </div>
           {promptB && (
             <div className="rounded-lg border border-line p-2">
               <div className="flex flex-wrap items-center gap-1.5">

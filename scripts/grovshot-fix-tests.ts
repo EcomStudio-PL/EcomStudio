@@ -29,9 +29,9 @@ import {
   CRITICAL_IMAGE_FLAGS, FLAG_IMAGE_POLICY, IMAGE_BLOCK_MAX_WORDS, IMAGE_RULES_MAX_WORDS, imageBlockIssues, selectImageRules, words,
 } from "@/lib/grovshot-shot/image-rules";
 import { checkPlan, HARD_VIOLATIONS, planGate, planViolations, severityOf, type PlanShot, type Violation } from "@/lib/grovshot-shot/plan";
-import { selectReferencesV2 } from "@/lib/grovshot-shot/refs";
+import { selectReferencesExact, selectReferencesV2 } from "@/lib/grovshot-shot/refs";
 import { checkCard, type ProductCard } from "@/lib/grovshot-shot/card";
-import { DEFAULT_SHOT_SETTINGS } from "@/lib/grovshot-shot/settings";
+import { DEFAULT_SHOT_SETTINGS, orderReferenceMode, parseShotSettings } from "@/lib/grovshot-shot/settings";
 import { applyReview, shotQualityPlan } from "@/lib/grovshot-shot/quality";
 import { CARD_SCHEMA, PLAN_SCHEMA, contractText, wrapData } from "@/lib/grovshot-shot/contract";
 import { PRODUCT_PREFIX, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
@@ -452,6 +452,97 @@ for (const [label, scene, photo, must] of [
 }
 const lost = lostSentences(["Zdanie pierwsze. Zdanie drugie o chwycie."], "Zdanie pierwsze.", []);
 check("F8 the fidelity check names a dropped sentence (what blocks the paid call)", lost.length === 1 && lost[0].includes("chwycie"), lost);
+
+/* ══ X · 26.11.2026 — EXACT REFERENCES on PROD order f23e0676 (Philips BHD530, 7 photos, Opus' real plan) ══*/
+section("X. EXACT REFERENCES — order f23e0676: Nano Banana receives exactly the photos Opus planned, in his order (serialised request)");
+// The card's photos as Opus described them (roles, states, forms — the fields the selector reads), PROD step 2.
+const FX_ST = { set: "komplet obok siebie", bare: "bez nasadki", diff: "z dyfuzorem w użyciu", narrow: "z wąską nasadką w użyciu" };
+const FX_VIEW = ["", "suszarka z boku, obok koncentrator i dyfuzor", "sama suszarka z lewego boku", "suszarka od strony dyszy", "komplet z góry na blacie",
+  "kobieta suszy włosy z dyfuzorem", "kobieta modeluje włosy z wąską nasadką", "makro przycisków na rączce"];
+const fx = (n: number, rola: ProductCard["zdjecia"][number]["rola"], forma: "zdjecie" | "grafika", ujecie: "bok" | "przod" | "gora" | "3_4" | "inne", stan: string) =>
+  ({ id: `Z${n}`, n, rola, forma, ujecie, stan, widok: FX_VIEW[n], nie_kopiowac: [] });
+const F23: ProductCard = {
+  ...cardOf({ name: "Suszarka do włosów Philips seria 5000 BHD530/00", flags: ["reczne_wielotrybowe"], dims: [24, 8, 27], offer: { typ: "komplet", sztuk: null }, recipe: "beauty" }),
+  stany: [{ stan: FX_ST.set, zdjecia: ["Z1", "Z4"] }, { stan: FX_ST.bare, zdjecia: ["Z2", "Z3", "Z7"] }, { stan: FX_ST.diff, zdjecia: ["Z5"] }, { stan: FX_ST.narrow, zdjecia: ["Z6"] }],
+  zdjecia: [fx(1, "calosc", "zdjecie", "bok", FX_ST.set), fx(2, "calosc", "zdjecie", "bok", FX_ST.bare), fx(3, "calosc", "zdjecie", "przod", FX_ST.bare),
+    fx(4, "calosc", "grafika", "gora", FX_ST.set), fx(5, "uzycie", "zdjecie", "inne", FX_ST.diff), fx(6, "uzycie", "zdjecie", "inne", FX_ST.narrow), fx(7, "detal", "zdjecie", "3_4", FX_ST.bare)],
+};
+// Opus' plan (PROD step 3 item 1): type, state, people, whole product, references — verbatim.
+const fxShot = (numer: number, typ: PlanShot["typ"], stan: string, ludzie: PlanShot["ludzie"], caly: boolean, referencje: number[], kadr: PlanShot["kadr"]): PlanShot => ({
+  numer, typ, stan, ludzie, caly_produkt: caly, referencje, kadr, argument: `a${numer}`, kierunek: "", miejsce: `m${numer}`, swiatlo: "", swiatlo_typ: "dzienne",
+  opis: `s${numer}`, skala_cm: null, fixed: false, otoczenie: "wnetrze", egzemplarze: numer === 1 ? "komplet" : "jeden", liczba_egzemplarzy: null,
+} as PlanShot);
+const F23_PLAN: PlanShot[] = [
+  fxShot(1, "hero", FX_ST.set, "brak", true, [2, 1], "hero"), fxShot(2, "uzycie", FX_ST.diff, "postacie", true, [2, 5], "sredni"),
+  fxShot(3, "uzycie", FX_ST.narrow, "postacie", true, [2, 6], "szeroki"), fxShot(4, "detal", FX_ST.bare, "dlonie", false, [7, 2], "ciasny"),
+  fxShot(5, "detal", FX_ST.bare, "brak", false, [3, 2], "ciasny"),
+];
+const EXPECTED = ["[2,1]", "[2,5]", "[2,6]", "[7,2]", "[3,2]"];
+const autoF23 = F23_PLAN.map((s) => selectReferencesV2(s, F23, { max: 5 }));
+check("X0 BEFORE (auto selection V2, what PROD did): the backend changed Opus' references on shots 1, 4 and 5 — the cause of the regression",
+  [0, 3, 4].every((i) => JSON.stringify(autoF23[i].refs) !== EXPECTED[i]), autoF23.map((d) => d.refs));
+const exactF23 = F23_PLAN.map((s) => selectReferencesExact(s, F23, { max: 6 }));
+check("X1 AFTER (exact): shots 1–5 = Z2+Z1, Z2+Z5, Z2+Z6, Z7+Z2, Z3+Z2 — the plan's numbers, the plan's order, nothing dropped, nothing added",
+  exactF23.every((d, i) => JSON.stringify(d.refs) === EXPECTED[i] && !d.blocked && d.dropped.length === 0 && d.corrections.length === 0), exactF23.map((d) => d.refs));
+check("X2 every position is explained as „plan_opus” (the admin sees why each photo is there)",
+  exactF23.every((d) => d.reasons.length === d.refs.length && d.reasons.every((r, i) => r.reason === "plan_opus" && r.position === i + 1 && r.photo === d.refs[i])));
+const gateExact = planGate(planViolations(F23_PLAN, { card: F23, kb: KB43, shots: 5, exactRefs: true }));
+check("X3 the gate on Opus' own references (exact): no shot blocked (a whole photo of another state next to the state photo is identity)",
+  gateExact.blocked.size === 0, { blocked: [...gateExact.blocked] });
+// The serialised Gemini body for each shot: [photos in plan order, byte for byte] + ONE text part = the final prompt.
+const photoBytes = (n: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), png(n * 13)]);
+const serialised = F23_PLAN.map((s, i) => {
+  const refs = exactF23[i];
+  const b = assemblePromptB({ kb: KB43, card: F23, shot: s, product: PRODUCT, scene: { ...SCENE, numer: s.numer }, refs, aspectRatio: "16:9" });
+  const bytes = refs.refs.map(photoBytes);
+  const wire = JSON.stringify(buildGeminiImageRequest({ supported_resolutions: ["1K", "2K", "4K"] }, {
+    prompt: b.text, aspectRatio: "16:9", resolution: "2K", referenceImages: bytes.map((x) => ({ base64: x.toString("base64"), mime: "image/png" })),
+  }).body);
+  const parts = (JSON.parse(wire) as { contents: { parts: { text?: string; inlineData?: { data: string; mimeType: string } }[] }[] }).contents[0].parts;
+  return { b, bytes, wire, parts, refs };
+});
+check("X4 the HTTP body of every shot: exactly the planned photos first, in the plan's order, each byte for byte (sha256), then the prompt",
+  serialised.every(({ parts, bytes, refs }) => parts.length === refs.refs.length + 1 && bytes.every((x, i) => parts[i].inlineData && sha(Buffer.from(parts[i].inlineData.data, "base64")) === sha(x) && parts[i].inlineData.mimeType === "image/png")),
+  serialised.map((x) => x.parts.length));
+check("X5 the prompt is identical in the panel, the adapter input and the HTTP body (same sha256), and the binding numbers the planned photos",
+  serialised.every(({ b, parts, wire }) => sha(parts[parts.length - 1].text ?? "") === sha(b.text) && wire.includes(JSON.stringify(b.text).slice(1, 200))
+    && /^Zdjęci[ea] 1/.test(b.binding) && (b.binding.includes("Zdjęcie 2") || b.binding.includes("Zdjęcia 1 i 2"))), serialised.map(({ b }) => b.binding.slice(0, 120)));
+check("X6 the image config sent: IMAGE only, 2K, 16:9 — no other parameter added", serialised.every(({ wire }) => {
+  const g = (JSON.parse(wire) as { generationConfig: { responseModalities: string[]; imageConfig: Record<string, string> } }).generationConfig;
+  return JSON.stringify(g.responseModalities) === '["IMAGE"]' && g.imageConfig.imageSize === "2K" && g.imageConfig.aspectRatio === "16:9" && Object.keys(g).length === 2;
+}));
+// Invalid choices are BLOCKED explicitly — never swapped or dropped silently.
+const otherVariant: ProductCard = { ...F23, zdjecia: F23.zdjecia.map((p) => (p.n === 6 ? { ...p, rola: "inny_wariant" as const } : p)) };
+const collage: ProductCard = { ...F23, zdjecia: F23.zdjecia.map((p) => (p.n === 5 ? { ...p, forma: "kolaz" as const } : p)) };
+const bv = selectReferencesExact(F23_PLAN[2], otherVariant, { max: 6 });
+const bc = selectReferencesExact(F23_PLAN[1], collage, { max: 6 });
+const bm = selectReferencesExact({ ...F23_PLAN[0], referencje: [2, 9] }, F23, { max: 6 });
+const be = selectReferencesExact({ ...F23_PLAN[0], referencje: [] }, F23, { max: 6 });
+const bl = selectReferencesExact({ ...F23_PLAN[0], referencje: [1, 2, 3, 4, 5, 6, 7] }, F23, { max: 6 });
+check("X7 another variant's photo in the plan → blocked (reference_invalid_plan), no refs, the photo named", bv.blocked && bv.blockedReason === "reference_invalid_plan" && bv.refs.length === 0 && JSON.stringify(bv.corrections[0]?.photos) === "[6]", bv);
+check("X8 a collage in the plan → blocked (never sent as a reference)", bc.blocked && bc.blockedReason === "reference_invalid_plan" && JSON.stringify(bc.corrections[0]?.photos) === "[5]", bc);
+check("X9 a photo number that does not exist (missing file) → blocked, not dropped", bm.blocked && bm.blockedReason === "reference_invalid_plan" && JSON.stringify(bm.corrections[0]?.photos) === "[9]", bm);
+check("X10 an empty plan list → blocked (nothing invented)", be.blocked && be.refs.length === 0, be);
+check("X11 more photos than the limit → blocked (reference_limit), never cut silently", bl.blocked && bl.blockedReason === "reference_limit", bl);
+for (const list of [[2], [7, 2], [3, 1, 2], [6, 5, 4, 3, 2, 1]]) {
+  const d = selectReferencesExact({ ...F23_PLAN[0], referencje: list }, F23, { max: 6 });
+  check(`X12 ${list.length} reference(s) ${list.join(",")}: kept exactly, in the same order (a graphic stays where Opus put it, marked aux)`,
+    JSON.stringify(d.refs) === JSON.stringify(list) && !d.blocked && JSON.stringify(d.aux) === JSON.stringify(list.filter((n) => n === 4)), d.refs);
+}
+const htcExact = selectReferencesExact(DETAIL, HTC2, { max: 6 });
+const htcAuto = selectReferencesV2(DETAIL, HTC2, { max: 5 });
+check("X13 another product (HTC-2 screen detail Z4 + Z1): exact sends Z4, Z1 as planned; auto keeps its own ranking (unchanged behaviour)",
+  JSON.stringify(htcExact.refs) === "[4,1]" && !htcExact.blocked && Array.isArray(htcAuto.refs) && htcAuto.refs.length > 0, { exact: htcExact.refs, auto: htcAuto.refs });
+check("X14 the mode per order: auto → auto for everyone; exact_admin → exact only for an admin's order; exact → everyone",
+  orderReferenceMode("auto", true) === "auto" && orderReferenceMode("auto", false) === "auto" && orderReferenceMode("exact_admin", true) === "exact"
+  && orderReferenceMode("exact_admin", false) === "auto" && orderReferenceMode("exact", false) === "exact");
+const parsedRefs = (v: unknown) => parseShotSettings({ ...DEFAULT_SHOT_SETTINGS, prompt: { ...DEFAULT_SHOT_SETTINGS.prompt, references: v } });
+const pOk = parsedRefs("exact_admin");
+const pBad = parsedRefs("exact_everyone");
+const pOld = parseShotSettings({ ...DEFAULT_SHOT_SETTINGS, prompt: { ...DEFAULT_SHOT_SETTINGS.prompt, references: undefined } });
+check("X15 settings: exact_admin accepted; an unknown value is an error (not silently auto); a stored setting without the key reads as auto",
+  pOk.ok && pOk.settings.prompt.references === "exact_admin" && !pBad.ok && pBad.errors.includes("prompt.references") && pOld.ok && pOld.settings.prompt.references === "auto"
+  && DEFAULT_SHOT_SETTINGS.prompt.references === "auto");
 
 /* ── the report file ──────────────────────────────────────────────────────*/
 mkdirSync("test-results", { recursive: true });

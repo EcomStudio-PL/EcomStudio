@@ -34,10 +34,10 @@ import {
   CARD_SCHEMA, FRAMES, LIGHTS, PLAN_SCHEMA, PRODUCT_SCHEMA, SCENES_SCHEMA, SHOT_ENGINE_VERSION, contractText, wrapData,
 } from "@/lib/grovshot-shot/contract";
 import { checkCard, photoId, validationFeedback, type ProductCard } from "@/lib/grovshot-shot/card";
-import { checkPlan, parseUserPlan, planFeedback, planForPrompt, planGate, planViolations, renderUserPlan, type PlanGate, type PlanShot, type UserPlanRow, type Violation } from "@/lib/grovshot-shot/plan";
+import { checkPlan, MAX_REFS as MAX_PLAN_REFS, parseUserPlan, planFeedback, planForPrompt, planGate, planViolations, renderUserPlan, type PlanGate, type PlanShot, type UserPlanRow, type Violation } from "@/lib/grovshot-shot/plan";
 import { shotQualityPlan } from "@/lib/grovshot-shot/quality";
 import { assemblePrompt, checkProductModules, checkSceneModules, PRODUCT_PREFIX, type AssembledPrompt, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
-import { referenceProblem, selectReferences, selectReferencesV2, wholeCandidates, type RefDecision, type RefDecisionV2 } from "@/lib/grovshot-shot/refs";
+import { referenceProblem, selectReferences, selectReferencesExact, selectReferencesV2, wholeCandidates, type RefDecision, type RefDecisionV2 } from "@/lib/grovshot-shot/refs";
 import { assemblePromptB } from "@/lib/grovshot-shot/prompt-b";
 import {
   classifyImageError, nextImageAttempt, parseShotSettings, type ImageErrorClass, type ShotSettings, type ShotStep,
@@ -113,6 +113,8 @@ export type ShotInput = CoreInput & {
    *  decided once at start): "b" = prompt B + references V2 (13.11.2026).
    *  Absent = "a", the prompt every order had before. */
   prompt_variant?: "a" | "b";
+  /** "exact" (26.11.2026): the plan's references go to the image model unchanged. Absent = "auto". */
+  reference_mode?: "auto" | "exact";
 };
 export type ShotExperiment = { source_run_id: string; shot: number; prompt: string; references: number[]; pattern: "full" | "detail" };
 
@@ -557,7 +559,7 @@ async function planStep(ctx: LCtx, card: ProductCard): Promise<PlanShot[] | Driv
       images: [], schema: PLAN_SCHEMA, cacheSystem: true,
     }),
     check: (raw) => {
-      const c = checkPlan(raw, { card, kb: ctx.kb, shots: ctx.input.shots, userPlan });
+      const c = checkPlan(raw, { card, kb: ctx.kb, shots: ctx.input.shots, userPlan, exactRefs: exactRefs(ctx) });
       if (c.structural.length > 0) return { value: null, errors: c.structural };
       return { value: { shots: c.shots, violations: c.violations, conflicts: c.conflicts }, errors: c.violations.map((v) => v.detail) };
     },
@@ -590,7 +592,7 @@ function planUser(ctx: LCtx, card: ProductCard, userPlan: UserPlanRow[] | null, 
 
 /* ══ krok 4 · moduły promptu + składanie ══════════════════════════════════*/
 
-type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null; mandatory: number[]; lost: string[] };
+type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null; mandatory: number[]; lost: string[]; planned: number[] };
 type Prompts = Map<number, ShotPrompt>;
 
 function promptsFrom(o: Record<string, unknown>): Prompts {
@@ -602,6 +604,7 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
         pattern: x.pattern === "detail" ? "detail" : "full", references: Array.isArray(x.references) ? x.references as number[] : [],
         blocked: typeof x.blocked === "string" ? x.blocked : null,
         qc: x.qc && typeof x.qc === "object" ? x.qc as Json : null,
+        planned: Array.isArray(x.planned_references) ? (x.planned_references as unknown[]).filter((n): n is number => typeof n === "number") : [],
         mandatory: Array.isArray(x.mandatory_references) ? (x.mandatory_references as unknown[]).filter((n): n is number => typeof n === "number") : [],
         lost: Array.isArray((x.prompt_notes as Record<string, unknown> | undefined)?.lost_sentences) ? ((x.prompt_notes as Record<string, unknown>).lost_sentences as unknown[]).map(String) : [],
       });
@@ -611,15 +614,17 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
 }
 
 /** The plan with each shot's references replaced by the code's decision (refs.ts). Deterministic. */
-type ShotRefs = RefDecision & { planned: number[] } & Partial<Pick<RefDecisionV2, "reasons" | "dropped" | "stateFallback" | "requiredState" | "mandatory">>;
+type ShotRefs = RefDecision & { planned: number[]; blockedReason?: string } & Partial<Pick<RefDecisionV2, "reasons" | "dropped" | "stateFallback" | "requiredState" | "mandatory">>;
 
 const variantOf = (ctx: LCtx): "a" | "b" => (ctx.input.prompt_variant === "b" ? "b" : "a");
+const exactRefs = (ctx: LCtx) => ctx.input.reference_mode === "exact";
 
 function decideReferences(ctx: LCtx, card: ProductCard, plan: PlanShot[]): { plan: PlanShot[]; decisions: Map<number, ShotRefs> } {
   const decisions = new Map<number, ShotRefs>();
   const out = plan.map((shot) => {
     const max = ctx.settings.prompt.max_references;
-    const d: RefDecision | RefDecisionV2 = variantOf(ctx) === "b" ? selectReferencesV2(shot, card, { max }) : selectReferences(shot, card, { max });
+    const d: RefDecision | RefDecisionV2 = exactRefs(ctx) ? selectReferencesExact(shot, card, { max: MAX_PLAN_REFS })
+      : variantOf(ctx) === "b" ? selectReferencesV2(shot, card, { max }) : selectReferences(shot, card, { max });
     decisions.set(shot.numer, { ...d, planned: shot.referencje });
     return d.blocked ? shot : { ...shot, referencje: d.refs };
   });
@@ -629,7 +634,7 @@ function decideReferences(ctx: LCtx, card: ProductCard, plan: PlanShot[]): { pla
 /** The plan's rules on the references code chose; shots refs.ts already stopped are not judged again. Deterministic. */
 function gatePlan(ctx: LCtx, card: ProductCard, plan: PlanShot[], decisions: Map<number, ShotRefs>): PlanGate {
   const live = plan.filter((s) => !decisions.get(s.numer)?.blocked);
-  return planGate(planViolations(live, { card, kb: ctx.kb, shots: ctx.input.shots }));
+  return planGate(planViolations(live, { card, kb: ctx.kb, shots: ctx.input.shots, exactRefs: exactRefs(ctx) }));
 }
 
 const packViolations = (xs: Violation[]) =>
@@ -760,7 +765,7 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
     if (d.blocked) {
       // No clean photo of the whole product: never generated from a description alone.
       shots.push({
-        numer: shot.numer, text: "", sha256: "", modules: [], footer: "", pattern: "full", references: [], blocked: "no_whole_reference",
+        numer: shot.numer, text: "", sha256: "", modules: [], footer: "", pattern: "full", references: [], blocked: d.blockedReason ?? "no_whole_reference",
         corrections: d.corrections as unknown as Json, planned_references: d.planned,
         kb_version: ctx.kbVersion, engine_version: SHOT_ENGINE_VERSION,
       });
@@ -1108,6 +1113,7 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: ShotPrompt | null, mir
         // The image door (lib/server/engine, frozen for Retusz/Miniaturka) does not
         // pass Google's RetryInfo out: the PDF's fixed gaps (10 s, 30 s) apply.
         const retryAfter: number | null = null;
+        const rc = referenceCheck(references, prepared, sink.requests, prompt.text);
         const out: Record<string, Json> = {
           ok: Boolean(image), error, cls: error ? classifyImageError(error) : null, retry_after_ms: retryAfter, at: ctx.deps.now(),
           ms: ctx.deps.now() - t0, sha256: image?.sha256 ?? null, width: image?.width ?? null, height: image?.height ?? null, mime: image?.mime ?? null,
@@ -1120,7 +1126,20 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: ShotPrompt | null, mir
           mandatory_references: prompt.mandatory, mandatory_sent: prompt.mandatory.every((m) => refs.some((p) => p.number === m)),
           references_prepared: prepared as unknown as Json,
           // …and what the network boundary shows was really in the request.
-          reference_check: referenceCheck(references, prepared, sink.requests, prompt.text) as unknown as Json,
+          reference_check: rc as unknown as Json,
+          // THREE STAGES (26.11.2026): A = the plan's (Opus') references, B = what the
+          // backend prepared, C = the request Google received. `reference_check.ok`
+          // alone compares B with C — it never said the plan was kept.
+          stage_checks: {
+            opus_plan: prompt.planned, prepared: prepared.map((p) => p.photo), sent: rc.sent.map((x) => x.photo),
+            plan_kept: prompt.planned.length > 0 && JSON.stringify(prompt.planned) === JSON.stringify(prepared.map((p) => p.photo)),
+            // null = the request was not observed (no boundary): unknown, never "ok".
+            prepared_matches_request: rc.observed ? rc.ok : null,
+            prompt_intact: rc.prompt_matches === null ? null : rc.prompt_matches === true && sha256(prompt.text) === prompt.sha256,
+            images_complete: rc.observed ? rc.sent.length === references.length && prompt.mandatory.every((m) => refs.some((p) => p.number === m)) : null,
+            image_received: Boolean(image),
+            reference_mode: ctx.input.reference_mode ?? "auto",
+          } as unknown as Json,
           boundary: boundaryRecord(sink) as unknown as Json, boundary_summary: boundarySummary(sink) as unknown as Json,
           aspect_ratio: ctx.input.aspect_ratio, resolution: ctx.input.resolution, attempt: roundIndex + 1,
           // An image came back — that is delivery, not quality (quality.ts): unverified until someone looks.
