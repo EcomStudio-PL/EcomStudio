@@ -590,7 +590,7 @@ function planUser(ctx: LCtx, card: ProductCard, userPlan: UserPlanRow[] | null, 
 
 /* ══ krok 4 · moduły promptu + składanie ══════════════════════════════════*/
 
-type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null; mandatory: number[] };
+type ShotPrompt = AssembledPrompt & { sha256: string; references: number[]; blocked: string | null; qc: Json | null; mandatory: number[]; lost: string[] };
 type Prompts = Map<number, ShotPrompt>;
 
 function promptsFrom(o: Record<string, unknown>): Prompts {
@@ -603,6 +603,7 @@ function promptsFrom(o: Record<string, unknown>): Prompts {
         blocked: typeof x.blocked === "string" ? x.blocked : null,
         qc: x.qc && typeof x.qc === "object" ? x.qc as Json : null,
         mandatory: Array.isArray(x.mandatory_references) ? (x.mandatory_references as unknown[]).filter((n): n is number => typeof n === "number") : [],
+        lost: Array.isArray((x.prompt_notes as Record<string, unknown> | undefined)?.lost_sentences) ? ((x.prompt_notes as Record<string, unknown>).lost_sentences as unknown[]).map(String) : [],
       });
     }
   }
@@ -685,7 +686,11 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
   if (typeof product === "string") return product;
   if ("failed" in product) { await close(ctx, "failed", "prompt_invalid"); return "finished"; }
 
-  const detailRefs = [...new Set(plan.filter((s) => s.typ === "detal").map((s) => s.referencje[0]))].slice(0, 4);
+  // 26.11.2026: the scene writer SEES the photos each shot is made from (the
+  // final references after the code's correction: the usage pose, the mounted
+  // attachment, the detail) — deduplicated, in first-use order, one call for
+  // all shots. Before, only the detail shots' first photos were attached.
+  const detailRefs = [...new Set(plan.flatMap((s) => s.referencje))].slice(0, 10);
   const detailShots = plan.filter((s) => s.typ === "detal").map((s) => s.numer);
   const scenes = await stageRows<{ modules: Map<number, SceneModules>; missing: number[] }>(ctx, {
     pos: POS.write, base: ITEM.scenes, name: "scenes", key: "grovshot_shot_scenes", step: "prompt", timeoutMs: TIMEOUT_MS.scenes,
@@ -700,8 +705,9 @@ async function promptSteps(ctx: LCtx, card: ProductCard, plan: PlanShot[], decis
             "Ujęcie typu detal: wypełnij „detal” (detal skopiowany 1:1 z jego pierwszej referencji, zmienione tylko tło, światło i jeden element) i „kadr” (kąt z referencji); pozostałe pola puste.",
             detailShots.length ? `Ujęcia typu detal w tym planie: ${detailShots.join(", ")} – w każdym z nich oba pola „detal” i „kadr” muszą być wypełnione.` : "",
             "Pozostałe ujęcia: „stan_chwyt”, „moment”, „kadr”, „postac” (pusta, gdy ludzie = brak), „scenografia”; „detal” pusty. Do zdjęć odwołuj się „zdjęcie 1”, „zdjęcie 2” według listy referencji ujęcia.",
+            "„stan_chwyt” w ujęciu z użyciem: opisz kompletnie mechanikę zgodną z dołączonym zdjęciem użycia – orientację produktu i kierunek jego działania, chwyt i położenie każdej dłoni, odległość od miejsca działania, przewody i akcesoria. Te zdania trafiają do modelu obrazu w całości.",
             `Format kadru: ${ctx.input.aspect_ratio}.`,
-            detailRefs.length ? `Dołączone zdjęcia detali: ${detailRefs.map(photoId).join(", ")}.` : "",
+            detailRefs.length ? `Dołączone obrazy (w tej kolejności): ${detailRefs.map((n, i) => `obraz ${i + 1} = ${photoId(n)}`).join(", ")}. W modułach ujęcia „zdjęcie N” oznacza N-tą referencję TEGO ujęcia (lista „referencje” w planie), nie numer obrazu powyżej – nie myl numeracji między ujęciami.` : "",
             `Karta produktu (JSON):\n${JSON.stringify(card)}`,
             `Moduły PRODUKT i SKALA (już napisane – nie powtarzaj ich):\nPRODUKT: ${product.value.produkt}\nSKALA: ${product.value.skala}`,
             `Plan ujęć (JSON):\n${planForPrompt(plan)}`,
@@ -988,6 +994,12 @@ async function runShot(ctx: LCtx, shot: PlanShot, prompt: ShotPrompt | null, mir
       if (r === "delivered") return "settled";
     }
     if (prompt?.blocked) return settle(ctx, n, false, prompt.blocked);
+    // PREFLIGHT (26.11.2026), before any paid call: a sentence of the model's
+    // modules that did not reach the prompt, or a mandatory reference that is
+    // not among the photos to send, stops the shot — no call, no charge.
+    if (prompt && (prompt.lost.length > 0 || !prompt.mandatory.every((m) => references.includes(m)))) {
+      return settle(ctx, n, false, prompt.lost.length > 0 ? "prompt_fidelity_failed" : "reference_missing");
+    }
     if (!prompt) return settle(ctx, n, false, "prompt_invalid");
     const rounds = rowsOf(ctx, P.round, n);
     const last = rounds[rounds.length - 1];

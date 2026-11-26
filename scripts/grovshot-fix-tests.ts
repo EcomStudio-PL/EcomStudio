@@ -24,7 +24,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { parseKb, readKb, type KbParsed } from "@/lib/grovshot-shot/kb";
-import { assemblePromptB, countLine, PROMPT_B_VERSION, SETTING_LINE, stripProportionClaims } from "@/lib/grovshot-shot/prompt-b";
+import { assemblePromptB, countLine, lostSentences, PROMPT_B_VERSION, SETTING_LINE, stripProportionClaims } from "@/lib/grovshot-shot/prompt-b";
 import {
   CRITICAL_IMAGE_FLAGS, FLAG_IMAGE_POLICY, IMAGE_BLOCK_MAX_WORDS, IMAGE_RULES_MAX_WORDS, imageBlockIssues, selectImageRules, words,
 } from "@/lib/grovshot-shot/image-rules";
@@ -153,9 +153,10 @@ check("K11 the candidate's rules for the text steps are byte for byte those of P
 
 /* ══ B · prompt B ═════════════════════════════════════════════════════════*/
 section("B. PROMPT B — the image rules reach the IMAGE model (not only Claude)");
-const ORDER_FULL = ["WIĄZANIE ZDJĘĆ", "PRODUKT", "REGUŁY PRODUKTU", "SCENA", "KADR I SKALA", "OGRANICZENIA"];
-const ORDER_DETAIL = ["WIĄZANIE ZDJĘĆ", "DETAL", "REGUŁY PRODUKTU", "SCENA", "KADR", "OGRANICZENIA"];
-check("B0 prompt B version b2", PROMPT_B_VERSION === "b2");
+// 26.11.2026 authority: identity → state & use → scale & frame → scenery/style.
+const ORDER_FULL = ["WIĄZANIE ZDJĘĆ", "PRODUKT", "REGUŁY PRODUKTU", "STAN I UŻYCIE", "SKALA I KADR", "SCENA", "OGRANICZENIA"];
+const ORDER_DETAIL = ["WIĄZANIE ZDJĘĆ", "DETAL", "REGUŁY PRODUKTU", "KADR", "SCENA", "OGRANICZENIA"];
+check("B0 prompt B version b3 (full fidelity)", PROMPT_B_VERSION === "b3");
 const ekranHero = promptFor(KB43, HTC2, HERO).b;
 check("B1 ekran (HTC-2, hero): the LCD zones, icons, digits and the probe/cable rule are IN the final prompt",
   ekranHero.text.includes("identyczny podział na strefy") && ekranHero.text.includes("położenie ikon, cyfr, napisów") && ekranHero.text.includes("sondę lub przewód")
@@ -390,7 +391,7 @@ check("V10 no photo of the needed state anywhere: not swapped silently — the s
 const diffPrompt = assemblePromptB({ kb: KB43, card: PHILIPS, shot: PH_SHOTS.diffuser, product: PRODUCT, scene: SCENE, refs: phRefs.diffuser, aspectRatio: "16:9" });
 check("V11 the binding names what was really sent: photo 1 = the product, photo 2 = the required state (mounted diffuser), no people/interior copied",
   diffPrompt.binding.startsWith("Zdjęcie 1 to fotografia dokładnie tego produktu") && diffPrompt.binding.includes(`Zdjęcie 2 pokazuje ten sam produkt w stanie wymaganym w tej scenie (${PH_ST.diff})`)
-  && diffPrompt.binding.includes("nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów"), diffPrompt.binding);
+  && diffPrompt.binding.includes("Zachowaj z niego mechanikę użycia") && diffPrompt.binding.includes("osobę, ubranie, wnętrze, światło i styl możesz zmienić"), diffPrompt.binding);
 const KADR = "Format 16:9, szeroki kadr, kamera na wysokości ramion, nieco zza framugi drzwi, obiektyw 28 mm.";
 const keepScene: SceneModules = { ...SCENE, kadr: KADR, scenografia: "Suszarka ma 26 cm długości, dyfuzor ma 12 cm średnicy, wąska nasadka 9 cm. Toaletka z lustrem." };
 const kept = assemblePromptB({ kb: KB43, card: PHILIPS, shot: PH_SHOTS.diffuser, product: PRODUCT, scene: keepScene, refs: phRefs.diffuser, aspectRatio: "16:9" });
@@ -407,6 +408,50 @@ check("V16 HTC-2: the LCD rule and the probe/cable stay in every pattern, with o
   htcAll.text.includes(LCD_RULE) && htcAll.text.includes("sondę lub przewód") && (htcAll.text.match(/Rzeczywisty rozmiar produktu/g) ?? []).length === 1);
 check("V17 GrovShot's card, plan and prompts default to Opus 5.5 at medium effort, no fallback",
   Object.values(DEFAULT_SHOT_SETTINGS.models).every((m) => m.provider === "anthropic" && m.model === "claude-opus-5-5" && m.effort === "medium" && !m.fallback));
+
+/* ══ F · 26.11.2026 — FULL FIDELITY on the real Opus answers of PROD order c2b4adf8 (Philips) ══*/
+section("F. FULL PROMPT FIDELITY — the real Opus modules of order c2b4adf8 (shots 2 and 3) reach Nano Banana whole");
+const REAL = {
+  narrow: { numer: 2, stan_chwyt: "Suszarka z założoną WYŁĄCZNIE wąską nasadką: wygląd suszarki ze zdjęcia 1, kształt nasadki i sposób trzymania ze zdjęcia 2. Prawa dłoń kobiety zaciśnięta na rączce, palce obejmują ją w całości, kciuk przy przyciskach. Suszarka trzymana pionowo wylotem w dół, ok. 5 cm nad pasmem nawiniętym na okrągłą szczotkę. Do kamery zwrócony bok korpusu: widać falę linii różowego złota w kształcie S i napis PHILIPS 2300W. Lewa dłoń prowadzi gładką okrągłą szczotkę bez logo wzdłuż pasma. Biały przewód podłączony, opada łukiem do gniazdka przy podłodze.",
+    moment: "Poranek przed wyjściem do pracy. Kobieta kończy modelowanie: szczotka zjeżdża w dół pasma, a pasmo wychodzi spod niej gładkie i lśniące, z wyraźnym połyskiem w kontrze.",
+    kadr: "16:9, plan średni od pasa w górę, kamera na wysokości ramion, z boku pod kątem ok. 45°, obiektyw 50 mm. Suszarka wyraźnie mniejsza niż głowa kobiety.",
+    postac: "Kobieta ok. 30 lat, ciemnoblond proste włosy do łopatek. Nie patrzy w obiektyw.", scenografia: "Sypialnia w loftowej kamienicy, lniane firany. Gniazdko przy listwie przypodłogowej.", detal: "",
+    negative_dopiski: ["dyfuzor", "obie nasadki naraz", "suszarka bezprzewodowa"] },
+  diffuser: { numer: 3, stan_chwyt: "Suszarka z założonym WYŁĄCZNIE dyfuzorem: wygląd suszarki ze zdjęcia 1, kształt dyfuzora z ok. 20–25 wypustkami i chwyt uniesioną ręką ze zdjęcia 2. Prawa ręka kobiety uniesiona, dłoń zaciśnięta na rączce, palce obejmują ją w całości. Dyfuzor wypustkami dociśnięty od dołu do loków przy czubku głowy. Do kamery zwrócony tył korpusu z perforowaną kratką wlotu (drobne okrągłe otworki) i fragment boku z falą linii różowego złota. Biały przewód podłączony, biegnie po dywanie do gniazdka.",
+    moment: "Niedzielny poranek. Kobieta podrzuca loki dyfuzorem, sprężyste pukle odbijają się i nabierają objętości.",
+    kadr: "16:9, plan szeroki, kamera nisko (ok. 60 cm) zza oparcia kanapy, obiektyw 28 mm. Suszarka z dyfuzorem wyraźnie mniejsza niż głowa z włosami.",
+    postac: "Kobieta ok. 26 lat, brązowe kręcone włosy do ramion. Nie patrzy w obiektyw.", scenografia: "Salon, ściana w kolorze kobaltu, wzorzysty dywan. Gniazdko przy listwie.", detal: "",
+    negative_dopiski: ["wąska nasadka", "zmieniona liczba wypustek dyfuzora"] },
+};
+const PH2: ProductCard = { ...PHILIPS,
+  stany: [{ stan: PH_ST.bare, zdjecia: ["Z1", "Z4"] }, { stan: PH_ST.set, zdjecia: ["Z2", "Z3"] }, { stan: PH_ST.diff, zdjecia: ["Z6"] }, { stan: PH_ST.narrow, zdjecia: ["Z7"] }],
+  zdjecia: [...PHILIPS.zdjecia.filter((p) => p.n <= 4), ph(5, "uzycie", "przod", "", "grafika poglądowa jonizacji", "grafika"),
+    ph(6, "uzycie", "bok", PH_ST.diff, "Kobieta z prostymi ciemnobrązowymi włosami suszy włosy przy czubku głowy dyfuzorem"),
+    ph(7, "uzycie", "bok", PH_ST.narrow, "Kobieta modeluje proste ciemne włosy okrągłą szczotką")] };
+for (const [label, scene, photo, must] of [
+  ["narrow (shot 2)", REAL.narrow, 7, ["pionowo wylotem w dół, ok. 5 cm nad pasmem nawiniętym na okrągłą szczotkę", "Lewa dłoń prowadzi gładką okrągłą szczotkę", "Biały przewód podłączony, opada łukiem", "kciuk przy przyciskach", "obiektyw 50 mm"]],
+  ["diffuser (shot 3)", REAL.diffuser, 6, ["Dyfuzor wypustkami dociśnięty od dołu do loków", "Biały przewód podłączony, biegnie po dywanie", "Prawa ręka kobiety uniesiona", "obiektyw 28 mm"]],
+] as const) {
+  const shot = phShot("uzycie", photo === 7 ? PH_ST.narrow : PH_ST.diff, [photo, 2], true);
+  const refs = selectReferencesV2(shot, PH2, { max: 5 });
+  const b = assemblePromptB({ kb: KB43, card: PH2, shot, product: PRODUCT, scene, refs, aspectRatio: "16:9" });
+  check(`F1 ${label}: references Z2 + Z${photo} (the usage photo is mandatory)`, JSON.stringify(refs.refs) === `[2,${photo}]` && refs.mandatory?.includes(photo) === true, refs.refs);
+  check(`F2 ${label}: EVERY sentence Opus wrote is in the final prompt (lost_sentences = [])`, b.notes.lost_sentences.length === 0 && must.every((m) => b.text.includes(m)), { lost: b.notes.lost_sentences, missing: must.filter((m) => !b.text.includes(m)) });
+  check(`F3 ${label}: the usage photo is bound as state AND pose (grip, orientation, each hand), person/clothes/interior free`,
+    b.binding.includes("Zachowaj z niego mechanikę użycia: orientację produktu i kierunek jego działania, chwyt, położenie każdej dłoni") && !/czubku gło\.|szczotką\.\./.test(b.binding), b.binding);
+  check(`F4 ${label}: state & use come before scale/frame and before the scenery and style`,
+    b.text.indexOf(scene.stan_chwyt.slice(0, 40)) < b.text.indexOf("Rzeczywisty rozmiar") && b.text.indexOf("Rzeczywisty rozmiar") < b.text.indexOf(scene.scenografia.slice(0, 20)));
+  check(`F5 ${label}: a hand on the handle is allowed — no „niczym niezasłonięty” forcing an unnatural pose`, !b.text.includes("niczym niezasłonięty") && b.text.includes("dłoń może naturalnie obejmować uchwyt"));
+  check(`F6 ${label}: negative_dopiski are not named to the image model (recorded instead)`, scene.negative_dopiski.every((x) => !b.text.includes(`${x},`) && !b.text.includes(`Bez: ${x}`)) && b.notes.negative_not_sent.length === scene.negative_dopiski.length);
+  const bytes = refs.refs.map((n) => png(n));
+  const body = JSON.parse(JSON.stringify(buildGeminiImageRequest({ supported_resolutions: ["1K", "2K", "4K"] }, { prompt: b.text, aspectRatio: "16:9", resolution: "2K",
+    referenceImages: bytes.map((x) => ({ base64: x.toString("base64"), mime: "image/png" })) }).body)) as { contents: { parts: { text?: string; inlineData?: { data: string } }[] }[] };
+  const parts = body.contents[0].parts;
+  check(`F7 ${label}: the serialised Gemini body = photos Z2, Z${photo} byte for byte, then the full prompt with the grip sentences`,
+    parts.length === 3 && sha(Buffer.from(parts[1].inlineData!.data, "base64")) === sha(bytes[1]) && parts[2].text === b.text && must.every((m) => (parts[2].text ?? "").includes(m)));
+}
+const lost = lostSentences(["Zdanie pierwsze. Zdanie drugie o chwycie."], "Zdanie pierwsze.", []);
+check("F8 the fidelity check names a dropped sentence (what blocks the paid call)", lost.length === 1 && lost[0].includes("chwycie"), lost);
 
 /* ── the report file ──────────────────────────────────────────────────────*/
 mkdirSync("test-results", { recursive: true });
