@@ -2290,9 +2290,9 @@ async function partLX() {
       w.imageCalls.map((c) => c.prompt.slice(0, 80)));
     check("LX3 …with its photos: each call sends the references code chose (hero opens with the whole product, the detail with its detail)",
       w.imageCalls.every((c) => c.references.length >= 1) && out.every((x) => Array.isArray(x.references) && (x.references as number[]).length === (w.imageCalls.find((c) => c.prompt === x.text)?.references.length ?? -1)));
-    check("LX4 the admin's log per shot: active flags, the image rule sent (critical), prompt B b2, a quality plan asking for a review (LCD, probe)",
+    check("LX4 the admin's log per shot: active flags, the image rule sent (critical), prompt B b3, a quality plan asking for a review (LCD, probe)",
       out.length === 3 && out.every((x) => JSON.stringify(x.active_flags) === '["ekran"]' && ((x.included_image_rules as Row[])[0]?.flag === "ekran")
-        && x.prompt_b_version === "b2" && (x.qc as Row)?.quality_status === "unverified" && (x.qc as Row)?.review === true), out.map((x) => ({ f: x.active_flags, qc: x.qc })));
+        && x.prompt_b_version === "b3" && (x.qc as Row)?.quality_status === "unverified" && (x.qc as Row)?.review === true), out.map((x) => ({ f: x.active_flags, qc: x.qc })));
     const rounds = stepsOf(r.runId, P.round).map((x) => (x.output as Row)?.quality as Row);
     check("LX5 each round records delivery apart from quality: image_received + unverified (an ok order is not a quality pass)",
       rounds.length === 3 && rounds.every((q) => q?.delivery_status === "image_received" && q?.quality_status === "unverified"));

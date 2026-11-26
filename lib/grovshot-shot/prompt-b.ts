@@ -54,7 +54,7 @@ import { formOf, type RefDecisionV2 } from "@/lib/grovshot-shot/refs";
 import { PRODUCT_PREFIX, wordCount, type PromptModule, type ProductModules, type SceneModules } from "@/lib/grovshot-shot/prompt";
 import { selectImageRules, type DroppedImageRule, type IncludedImageRule } from "@/lib/grovshot-shot/image-rules";
 
-export const PROMPT_B_VERSION = "b2";
+export const PROMPT_B_VERSION = "b3";
 /** Word caps per module (whole sentences only). Raised 24.11.2026: completeness over brevity — the caps
  *  only stop a runaway module, they must never cut the frame, the angle or an accessory's size. */
 export const B_LIMITS = {
@@ -204,7 +204,12 @@ export function scaleBlock(card: ProductCard): string {
 const shortName = (card: ProductCard) =>
   card.produkt.nazwa.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().slice(0, 90).replace(/[,;:\s]+$/, "");
 const listPl = (ns: number[]) => (ns.length <= 1 ? String(ns[0] ?? "") : `${ns.slice(0, -1).join(", ")} i ${ns[ns.length - 1]}`);
-const opisOf = (p: CardPhoto | undefined) => (p?.widok ?? "").replace(/[()]/g, "").split(/[,;]/)[0].slice(0, 70).trim();
+/** What a photo shows, from the card — its first clause, cut at a word (never mid-word), at most ~160 characters. */
+const opisOf = (p: CardPhoto | undefined) => {
+  const t = (p?.widok ?? "").replace(/[()]/g, "").split(/[;]/)[0].trim();
+  if (t.length <= 160) return t.replace(/[.\s]+$/, "");
+  return t.slice(0, 160).replace(/\s+\S*$/, "").replace(/[,.\s]+$/, "");
+};
 
 /** Which picture is what — built from the card, for ANY reference list (also prompt A's, for a like-for-like test). */
 export function bindingB(card: ProductCard, refs: number[], aux: number[], pattern: "full" | "detail", state: { photos: number[]; name: string | null } = { photos: [], name: null }): string {
@@ -229,12 +234,17 @@ export function bindingB(card: ProductCard, refs: number[], aux: number[], patte
     for (const n of refs) {
       if (wholes.includes(n) || aux.includes(n)) continue;
       const p = byN.get(n);
+      // Roles (26.11.2026): a photo may be PRODUCT_STATE and USAGE_POSE at once —
+      // a person using the product shows how it is held and pointed, not only what is mounted.
+      const pose = p?.rola === "uzycie"
+        ? " Zachowaj z niego mechanikę użycia: orientację produktu i kierunek jego działania, chwyt, położenie każdej dłoni i odległość od miejsca działania; osobę, ubranie, wnętrze, światło i styl możesz zmienić."
+        : "";
       if (state.photos.includes(n)) {
-        lines.push(`Zdjęcie ${pos(n)} pokazuje ten sam produkt w stanie wymaganym w tej scenie${state.name ? ` (${state.name})` : ""}: ${opisOf(p)}. Odwzoruj z niego dokładnie zamontowane elementy – ich kształt, kolor, rozmiar i położenie na produkcie; nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów.`);
+        lines.push(`Zdjęcie ${pos(n)} pokazuje ten sam produkt w stanie wymaganym w tej scenie${state.name ? ` (${state.name})` : ""}: ${opisOf(p)}. Odwzoruj z niego dokładnie zamontowane elementy – ich kształt, kolor, rozmiar i położenie na produkcie.${pose || " Nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów."}`);
         continue;
       }
       lines.push(p?.rola === "uzycie"
-        ? `Zdjęcie ${pos(n)} pokazuje sposób użycia tego samego produktu (${opisOf(p)}) – odwzoruj ułożenie, wygląd produktu bierz ze zdjęć całości; nie przenoś z niego osób, ubrań, wnętrza ani rekwizytów.`
+        ? `Zdjęcie ${pos(n)} pokazuje sposób użycia tego samego produktu (${opisOf(p)}); wygląd produktu bierz ze zdjęć całości.${pose}`
         : `Zdjęcie ${pos(n)} pokazuje fragment tego samego produktu (${opisOf(p)}) – to część tego jednego przedmiotu, nie osobny obiekt.`);
     }
   }
@@ -253,6 +263,10 @@ export type AssembledPromptB = {
     dropped_rules_reasons: DroppedImageRule[];
     setting: "wnetrze" | "plener" | "legacy" | null;
     count: string | null;
+    /** The scene's negative_dopiski — never sent (no negative channel), recorded for the admin. */
+    negative_not_sent: string[];
+    /** Sentences of the model's modules that did NOT reach the final text (must be []; checked before a paid call). */
+    lost_sentences: string[];
   };
 };
 
@@ -271,11 +285,18 @@ export function assemblePromptB(o: {
   const footer = pickFooter(kb, { type: shot.typ, people: shot.ludzie }, { recipeId: recipe.id, flags: card.flagi });
   const pattern: "full" | "detail" = shot.typ === "detal" ? "detail" : "full";
   const removed: string[] = [];
-  const clean = (t: string, max: number) => {
+  // FULL FIDELITY (26.11.2026): the model's modules reach the image model WHOLE.
+  // Only the card's internal photo ids and proven relative-size clauses go
+  // (both recorded); no word cap cuts a sentence about grip, orientation,
+  // the second hand, the cable or the frame (the 24.11 Philips order lost
+  // „pionowo wylotem w dół, ok. 5 cm nad pasmem” to a 45-word cap).
+  const sources: string[] = [];
+  const clean = (t: string) => {
+    sources.push(t);
     // "(Z4)" is the card's internal photo id — the image model knows only "zdjęcie N".
     const r = stripProportionClaims(t.replace(/\s*\(Z\d{1,2}\)/g, "").replace(/\bZ\d{1,2}\b/g, "").replace(/[ \t]{2,}/g, " "));
     removed.push(...r.removed);
-    return capSentences(r.text, max);
+    return r.text;
   };
   const binding = bindingB(card, o.refs.refs, o.refs.aux, pattern, { photos: o.refs.mandatory ?? [], name: o.refs.requiredState ?? null });
   // The recipe's genre line + "a real photo" — its light rules stay with the scene writer.
@@ -288,39 +309,51 @@ export function assemblePromptB(o: {
   const productRules = rules.included.filter((r) => r.role !== "scene").map((r) => r.text).join(" ");
   const sceneRules = rules.included.filter((r) => r.role === "scene").map((r) => r.text);
   let productWords = 0;
+  const negDropped: string[] = [];
   let setting: AssembledPromptB["notes"]["setting"] = null;
   let count: string | null = null;
   if (pattern === "detail") {
-    modules.push({ name: "DETAL", source: "model", text: clean(scene.detal, B_LIMITS.detail) });
+    modules.push({ name: "DETAL", source: "model", text: clean(scene.detal) });
     if (productRules) modules.push({ name: "REGUŁY PRODUKTU", source: "kb", text: productRules });
+    modules.push({ name: "KADR", source: "model", text: clean(scene.kadr) });
     modules.push({ name: "SCENA", source: "kb", text: genre });
-    modules.push({ name: "KADR", source: "model", text: clean(scene.kadr, B_LIMITS.frame) });
     modules.push({ name: "OGRANICZENIA", source: "code", text: `Tylko ten fragment produktu, ostry i dokładnie jak na zdjęciu 1. Rekwizyty gładkie, bez napisów i logo. ${footer.text}` });
   } else {
     const body = o.product.produkt.startsWith(PRODUCT_PREFIX) ? o.product.produkt.slice(PRODUCT_PREFIX.length).trim() : o.product.produkt;
-    const product = capSentences(body.split(/(?<=[.!?])\s+/).filter((x) => !/(nie jest|to nie|nie mylić|nie pomylić)/i.test(x)).join(" "), B_LIMITS.product);
+    const product = body.split(/(?<=[.!?])\s+/).filter((x) => !/(nie jest|to nie|nie mylić|nie pomylić)/i.test(x)).join(" ");
     productWords = wordCount(product);
     if (product) modules.push({ name: "PRODUKT", source: "model", text: `Cechy, których nie wolno pomylić: ${product}` });
     if (productRules) modules.push({ name: "REGUŁY PRODUKTU", source: "kb", text: productRules });
+    // Authority (26.11.2026): identity → state & mounted parts → how it is USED
+    // → scale and frame → scenery, people, light and style (style last: it
+    // never overrides a correct use of the product).
+    const usage = [scene.stan_chwyt ? clean(scene.stan_chwyt) : "", clean(scene.moment)].filter(Boolean).join(" ");
+    if (usage) modules.push({ name: "STAN I UŻYCIE", source: "model", text: usage });
+    const scale = scaleBlock(card);
+    const framed = framingCheck(clean(scene.kadr), card.wymiary.wysokosc_cm, o.aspectRatio ?? null);
+    removed.push(...framed.removed);
+    modules.push({ name: "SKALA I KADR", source: "model", text: [scale, framed.text].filter(Boolean).join(" ") });
     const sceneText = [
       genre,
-      clean(scene.moment, B_LIMITS.moment),
-      shot.ludzie !== "brak" && scene.postac ? clean(scene.postac, B_LIMITS.person) : "",
-      clean(scene.scenografia, B_LIMITS.set),
-      scene.stan_chwyt ? clean(scene.stan_chwyt, B_LIMITS.state) : "",
+      shot.ludzie !== "brak" && scene.postac ? clean(scene.postac) : "",
+      clean(scene.scenografia),
       ...sceneRules,
     ].filter(Boolean).join(" ");
     modules.push({ name: "SCENA", source: "model", text: sceneText });
-    const scale = scaleBlock(card);
-    const framed = framingCheck(clean(scene.kadr, B_LIMITS.frame), card.wymiary.wysokosc_cm, o.aspectRatio ?? null);
-    removed.push(...framed.removed);
-    modules.push({ name: "KADR I SKALA", source: "model", text: [framed.text, scale].filter(Boolean).join(" ") });
     const whole = shot.typ === "hero" || shot.caly_produkt;
+    // The scene's negative_dopiski are NOT sent: the image model has no
+    // negative channel — every named object is context ("druga figurka" drew a
+    // second figurine, 13.11 diagnosis). What they guard (count, state, size,
+    // cable) is carried positively by STAN I UŻYCIE, the count line and the
+    // scale. Recorded for the admin.
+    for (const n of scene.negative_dopiski ?? []) { const item = n.replace(/\s+/g, " ").trim(); if (item) negDropped.push(item); }
     setting = shot.otoczenie === "plener" ? "plener" : shot.otoczenie === "wnetrze" ? "wnetrze" : "legacy";
     count = countLine(shot, flags);
     const constraints = [
       count,
-      whole ? "Produkt widoczny w całości, niczym niezasłonięty, ostry." : "Produkt ostry i rozpoznawalny.",
+      whole && shot.ludzie !== "brak"
+        ? "Produkt widoczny w całości i ostry; dłoń może naturalnie obejmować uchwyt – nie zmieniaj chwytu ani ustawienia produktu, żeby go odsłonić."
+        : whole ? "Produkt widoczny w całości, niczym niezasłonięty, ostry." : "Produkt ostry i rozpoznawalny.",
       shot.ludzie !== "brak" ? "Ludzie naturalni, z poprawnymi dłońmi, nie patrzą w obiektyw." : "",
       `Rekwizyty gładkie, bez napisów i logo. ${SETTING_LINE[setting]}`,
       footer.text,
@@ -335,6 +368,26 @@ export function assemblePromptB(o: {
       removed_proportion: removed, flags_dropped: rules.dropped.map((d) => d.flag), flags_kept: rules.included.map((r) => r.flag),
       product_words: productWords, active_flags: rules.active,
       included_image_rules: rules.included.map((r) => ({ flag: r.flag, role: r.role, words: r.words, trimmed: r.trimmed })), dropped_rules_reasons: rules.dropped, setting, count,
+      negative_not_sent: negDropped,
+      lost_sentences: lostSentences(sources, final.map((m) => m.text).join("\n\n"), removed),
     },
   };
 }
+
+/** Every sentence of the model's modules is in the final text — whole, or with only a recorded clause / photo id taken out. */
+export function lostSentences(sources: string[], finalText: string, removedClauses: string[]): string[] {
+  const norm = (x: string) => x.replace(/\s*\(Z\d{1,2}\)/g, "").replace(/\bZ\d{1,2}\b/g, "").replace(/\s+/g, " ").trim();
+  const text = norm(finalText);
+  const lost: string[] = [];
+  for (const src of sources) {
+    for (const sentence of sentences(src)) {
+      const n = norm(sentence).replace(/[.!?]+$/, "");
+      if (!n || text.includes(n)) continue;
+      if (removedClauses.some((c) => c && sentence.includes(c.replace(/[.!?]+$/, "").trim()))) continue;
+      lost.push(sentence);
+    }
+  }
+  return lost;
+}
+
+

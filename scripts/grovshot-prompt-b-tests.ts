@@ -141,8 +141,9 @@ for (const n of [1, 2, 4]) {
   check(`shot ${n}: the grow-lamp rule ("świecą jednolitym…") and the cool-light electronics rule are left out`,
     !/jednolitym, nasyconym kolorem/.test(b.text) && !/neutralne lub chłodne/.test(b.text) && b.notes.flags_dropped.includes("swieci"));
   if (shot.typ !== "detal") {
-    check(`shot ${n}: order of authority — binding → product → scene → frame & scale → constraints`,
-      b.modules.map((m) => m.name).join(">") === "WIĄZANIE ZDJĘĆ>PRODUKT>SCENA>KADR I SKALA>OGRANICZENIA", b.modules.map((m) => m.name));
+    // 26.11.2026: identity → state & use → scale & frame → scenery and style.
+    check(`shot ${n}: order of authority — binding → product → state & use → scale & frame → scene → constraints`,
+      b.modules.map((m) => m.name).join(">") === "WIĄZANIE ZDJĘĆ>PRODUKT>STAN I UŻYCIE>SKALA I KADR>SCENA>OGRANICZENIA", b.modules.map((m) => m.name));
     check(`shot ${n}: the size comes from the card's numbers (50 cm) with a correct anchor`, /wysokość 50 cm/.test(b.text) && /butelki wody 1,5 l \(33 cm\)/.test(b.text), scaleBlock(card));
     check(`shot ${n}: the wrong anchors are gone ("połowa drzwi" = 100 cm, "dwa razy filiżanka" = 16 cm)`, !/drzwi wewnętrznych/.test(b.text) && !/filiżank/.test(b.text));
     const names = (t: string) => (t.match(/dziad(ek|ka) do orzechów|figurk/gi) ?? []).length;
