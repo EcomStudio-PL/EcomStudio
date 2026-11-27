@@ -11462,7 +11462,31 @@
         "tablet": "Tablet",
         "phone": "Smartphone",
         "tools": "Werkzeugkatalog"
-      }
+      },
+      "kindAnyGif": "Bild, GIF oder Video",
+      "inherits": "Diese Kachel hat eigene Medien nur auf der Startseite. Solange sie leer ist, zeigt die Kachel das Bild des Tools aus /tools. Eine Änderung hier ändert den Tab „Tools“ nicht.",
+      "devices": "Gerät",
+      "device": {
+        "desktop": "Desktop",
+        "tablet": "Tablet",
+        "phone": "Telefon"
+      },
+      "tabletHint": "Optionaler Hintergrund für Tablets (768–1279 px), Format {ratio}, empfohlen 1600 × 340 px. Ohne ihn zeigt ein Tablet den Desktop-Hintergrund.",
+      "phoneHint": "Optionaler Hintergrund für Telefone (unter 768 px), Format {ratio}. Ohne ihn zeigt ein Telefon den Desktop-Hintergrund, um den gewählten Punkt zugeschnitten.",
+      "deviceInherits": "Keine eigene Datei — der Desktop-Hintergrund wird in diesem Format verwendet.",
+      "phoneRatio": "Seitenverhältnis auf dem Telefon",
+      "phoneRatio11": "1:1 — 1080 × 1080 px",
+      "phoneRatio54": "5:4 — 1080 × 864 px",
+      "overlay": "Abdunkelung des Hintergrunds",
+      "overlayValue": "{n} %",
+      "overlayHint": "0 % — keine Abdunkelung, 100 % — die bisherige Stärke. Gilt auf allen Geräten, Live-Vorschau auf der Seite, gespeichert mit „Speichern“.",
+      "overlayReset": "Auf 100 % zurücksetzen",
+      "gifStill": "Erstes Bild des GIFs (für reduzierte Bewegung)",
+      "posterMaking": "Wird erstellt…",
+      "posterMake": "Aus dem ersten Bild erstellen",
+      "posterFailed": "Aus dem ersten Bild konnte kein Poster erstellt werden. Wähle ein Poster aus der Bibliothek.",
+      "posterMissing": "Kein Poster — bis das Video lädt, bleibt das Feld leer.",
+      "posterMissingTile": "Kein Poster — bei reduzierter Bewegung zeigt die Kachel kein Bild. Erstelle es aus dem ersten Bild oder wähle eines aus der Bibliothek."
     },
     "library": {
       "title": "Mediathek",
@@ -11832,7 +11856,8 @@
         "rightBottom": "Unten rechts"
       },
       "x": "Horizontal",
-      "y": "Vertikal"
+      "y": "Vertikal",
+      "frameTablet": "Ausschnitt auf dem Tablet"
     },
     "pair": {
       "title": "Vergleich bearbeiten",

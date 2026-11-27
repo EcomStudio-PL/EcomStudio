@@ -13,11 +13,13 @@ import s from "./editor.module.css";
  * name, size in pixels and bytes, and where it is used. Deleting files stays
  * in Admin → Media, where the usage warning lives; nothing here removes a file.
  */
-export function LibraryPicker({ ctx, kind, sample, onPick, onClose }: {
+export function LibraryPicker({ ctx, kind, sample, gif = false, onPick, onClose }: {
   ctx: EditorCtx;
   /** Only this kind can be picked (a picture slot, a clip slot). */
   kind?: "image" | "video";
   sample?: boolean;
+  /** The place takes an animated GIF (a /home carousel tile). */
+  gif?: boolean;
   onPick: (asset: IceAsset) => void;
   onClose: () => void;
 }) {
@@ -79,7 +81,7 @@ export function LibraryPicker({ ctx, kind, sample, onPick, onClose }: {
     setUploading(true);
     let last: IceAsset | null = null;
     for (const file of Array.from(files)) {
-      const res = await uploadOne(transport, file, { sample, kind });
+      const res = await uploadOne(transport, file, { sample, kind, gif });
       if (res.ok) last = res.asset;
       else notify.error(`${file.name}: ${errorText(t, res.error)}`);
     }
@@ -117,7 +119,7 @@ export function LibraryPicker({ ctx, kind, sample, onPick, onClose }: {
             )}
             <Btn onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? t("ice.media.uploading") : t("ice.media.upload")}</Btn>
             <input ref={fileRef} type="file" hidden multiple
-              accept={kind === "video" ? "video/mp4,video/webm" : kind === "image" ? "image/jpeg,image/png,image/webp,image/avif" : "image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"}
+              accept={`${kind === "video" ? "video/mp4,video/webm" : kind === "image" ? "image/jpeg,image/png,image/webp,image/avif" : "image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"}${gif && kind !== "video" ? ",image/gif" : ""}`}
               onChange={(e) => { void upload(e.target.files); e.target.value = ""; }} />
           </div>
           {chosen && (

@@ -11466,7 +11466,31 @@
         "tablet": "Tablet",
         "phone": "Telefon",
         "tools": "Katalog narzędzi"
-      }
+      },
+      "kindAnyGif": "Zdjęcie, GIF lub wideo",
+      "inherits": "Ten kafel ma własne medium tylko na stronie głównej. Dopóki jest puste, kafel pokazuje grafikę narzędzia z /tools. Zmiana tutaj nie zmienia zakładki Narzędzia.",
+      "devices": "Urządzenie",
+      "device": {
+        "desktop": "Desktop",
+        "tablet": "Tablet",
+        "phone": "Telefon"
+      },
+      "tabletHint": "Opcjonalne tło dla tabletów (768–1279 px), kadr {ratio}, zalecane 1600 × 340 px. Bez niego tablet pokaże tło desktopowe.",
+      "phoneHint": "Opcjonalne tło dla telefonów (poniżej 768 px), kadr {ratio}. Bez niego telefon pokaże tło desktopowe przycięte wokół wybranego punktu.",
+      "deviceInherits": "Brak osobnego pliku — używane jest tło desktopowe w tym kadrze.",
+      "phoneRatio": "Proporcja na telefonie",
+      "phoneRatio11": "1:1 — 1080 × 1080 px",
+      "phoneRatio54": "5:4 — 1080 × 864 px",
+      "overlay": "Przyciemnienie tła",
+      "overlayValue": "{n}%",
+      "overlayHint": "0% — bez przyciemnienia, 100% — dotychczasowa intensywność. Działa na każdym urządzeniu, podgląd na stronie na żywo, zapis po „Zapisz”.",
+      "overlayReset": "Przywróć 100%",
+      "gifStill": "Pierwsza klatka GIF-a (dla ograniczonego ruchu)",
+      "posterMaking": "Tworzę…",
+      "posterMake": "Utwórz z pierwszej klatki",
+      "posterFailed": "Nie udało się utworzyć postera z pierwszej klatki. Wybierz poster z biblioteki.",
+      "posterMissing": "Brak postera — do czasu załadowania wideo widać puste pole.",
+      "posterMissingTile": "Brak postera — przy ograniczonym ruchu kafel nie pokaże obrazu. Utwórz go z pierwszej klatki lub wybierz z biblioteki."
     },
     "library": {
       "title": "Biblioteka mediów",
@@ -11836,7 +11860,8 @@
         "rightBottom": "Prawy dolny róg"
       },
       "x": "Poziomo",
-      "y": "Pionowo"
+      "y": "Pionowo",
+      "frameTablet": "Kadr na tablecie"
     },
     "pair": {
       "title": "Edytuj porównanie",

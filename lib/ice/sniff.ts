@@ -59,6 +59,50 @@ export function sniff(bytes: Uint8Array): IceMime | null {
   return null;
 }
 
+/* ── GIF (27.11.2026): the /home carousel tiles only ─────────────────────── */
+
+/**
+ * An animated GIF is a LIBRARY format of the visual editor, not one of the
+ * six: `sniff`, `isIceMime` and the lists above stay exactly as they were, so
+ * every other reader of them (contact attachments, samples, the pickers of
+ * every other slot) keeps refusing a GIF. Only the editor's own upload path
+ * asks `sniffUpload` / `isIceUploadMime`, and only a slot that declares `gif`
+ * (lib/ice/registry.ts) accepts one — checked again by the server on save.
+ */
+export const ICE_GIF_MIME = "image/gif" as const;
+export type IceUploadMime = IceMime | typeof ICE_GIF_MIME;
+
+/** GIF87a / GIF89a — the header is the whole signature. */
+export function isGifBytes(bytes: Uint8Array): boolean {
+  if (bytes.length < 6) return false;
+  const head = ascii(bytes, 0, 6);
+  return head === "GIF87a" || head === "GIF89a";
+}
+
+/** The six, or a GIF — for the editor's library uploads only. */
+export function sniffUpload(bytes: Uint8Array): IceUploadMime | null {
+  return sniff(bytes) ?? (isGifBytes(bytes) ? ICE_GIF_MIME : null);
+}
+
+export function isIceUploadMime(value: unknown): value is IceUploadMime {
+  return isIceMime(value) || value === ICE_GIF_MIME;
+}
+
+export function uploadKindOf(mime: IceUploadMime): "image" | "video" {
+  return mime === ICE_GIF_MIME ? "image" : kindOf(mime);
+}
+
+export function uploadMaxBytes(mime: IceUploadMime): number {
+  return mime === ICE_GIF_MIME ? ICE_MAX_IMAGE_BYTES : maxBytesFor(mime);
+}
+
+/** A GIF's object name always ends in .gif — what the page reads to keep it
+ *  animated (no resized still copies in its srcset). */
+export function gifName(name: string): string {
+  const base = safeName(name);
+  return /\.gif$/i.test(base) ? base : `${base.replace(/\.[a-zA-Z0-9]{1,5}$/, "").slice(0, 75) || "plik"}.gif`;
+}
+
 /** A safe object name: letters, digits, dot, dash, underscore; starts with a
  *  letter or digit; ≤ 80 characters (the tail is kept — it has the
  *  extension). Trimmed AFTER the cut, so the cut can never leave a leading

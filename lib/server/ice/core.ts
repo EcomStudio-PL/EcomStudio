@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
-import { ICE_IMAGE_MIMES, ICE_MAX_SAMPLE_BYTES, ICE_VIDEO_MIMES, maxBytesFor } from "@/lib/ice/sniff";
+import { ICE_GIF_MIME, ICE_IMAGE_MIMES, ICE_MAX_SAMPLE_BYTES, ICE_VIDEO_MIMES, maxBytesFor } from "@/lib/ice/sniff";
 import { isLegalSlug } from "@/lib/legal/docs";
 import type { IceAsset, IceLocale, IceResult } from "@/lib/ice/types";
 
@@ -154,13 +154,17 @@ export function toAsset(supabase: Client, a: AssetRow, usage = 0): IceAsset {
 export type AssetFacts = Pick<AssetRow, "kind" | "mime" | "size_bytes" | "storage_path" | "external_url">;
 
 /** A library file may fill a slot of this kind: same kind, one of the six
- *  formats, within the size limit (a sample: ≤ 10 MiB, what a tool takes). */
-export function checkAsset(a: AssetFacts | undefined | null, kind: "image" | "video", sample: boolean): void {
+ *  formats, within the size limit (a sample: ≤ 10 MiB, what a tool takes).
+ *  A GIF only where the slot says so (`gif`: the /home carousel tiles) —
+ *  never a sample, never anywhere else. */
+export function checkAsset(a: AssetFacts | undefined | null, kind: "image" | "video", sample: boolean, opts: { gif?: boolean } = {}): void {
   if (!a) throw new IceRefusal("asset_missing");
   if (a.kind !== kind) throw new IceRefusal("asset_kind");
   if (!a.storage_path && !a.external_url) throw new IceRefusal("asset_missing");
-  const allowed = kind === "image" ? ICE_IMAGE_MIMES : ICE_VIDEO_MIMES;
-  if (!a.mime || !(allowed as readonly string[]).includes(a.mime)) throw new IceRefusal("asset_format");
+  const allowed: readonly string[] = kind === "image"
+    ? (opts.gif && !sample ? [...ICE_IMAGE_MIMES, ICE_GIF_MIME] : ICE_IMAGE_MIMES)
+    : ICE_VIDEO_MIMES;
+  if (!a.mime || !allowed.includes(a.mime)) throw new IceRefusal("asset_format");
   const cap = sample ? ICE_MAX_SAMPLE_BYTES : kind === "image" ? maxBytesFor("image/jpeg") : maxBytesFor("video/mp4");
   if (a.size_bytes !== null && a.size_bytes > cap) throw new IceRefusal("asset_too_large");
 }

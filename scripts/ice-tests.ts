@@ -48,9 +48,10 @@ import {
 import { MARK_END, MARK_START, hasInvisible, stegaLocate, stegaMark, stegaRead, stegaStrip } from "@/lib/ice/stega";
 import { altProblem, normaliseText, softLimit, textProblem } from "@/lib/ice/validate";
 import {
-  ICE_IMAGE_MIMES, ICE_MAX_IMAGE_BYTES, ICE_MAX_SAMPLE_BYTES, ICE_MAX_VIDEO_BYTES, ICE_VIDEO_MIMES, isIceMime, kindOf,
-  maxBytesFor, safeName, sniff,
+  ICE_IMAGE_MIMES, ICE_MAX_IMAGE_BYTES, ICE_MAX_SAMPLE_BYTES, ICE_MAX_VIDEO_BYTES, ICE_VIDEO_MIMES, gifName, isIceMime, isIceUploadMime, kindOf,
+  maxBytesFor, safeName, sniff, sniffUpload,
 } from "@/lib/ice/sniff";
+import { carouselSlotKey } from "@/lib/home-layout";
 import type { IceCmsField, IceLocale, IcePage, IceSlotSpec, IceSlotWrite, IceTextState } from "@/lib/ice/types";
 import {
   BANNER_FRAME, BEFORE_AFTER, BEFORE_AFTER_SIZE, CAROUSEL, FEATURED, PROMO_BANNERS, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
@@ -291,8 +292,9 @@ async function sectionA() {
     && baSlots.every((s) => s.ratio === ratioOf(BEFORE_AFTER_SIZE) && s.width === BEFORE_AFTER_SIZE.width && s.height === BEFORE_AFTER_SIZE.height),
     `ratio ${baSlots[0]?.ratio} vs ${ratioOf(BEFORE_AFTER_SIZE)}`);
   note(`BEFORE_AFTER_SIZE is currently ${BEFORE_AFTER_SIZE.width}×${BEFORE_AFTER_SIZE.height} (ratio "${ratioOf(BEFORE_AFTER_SIZE)}")`);
-  check("A7i the /home global slots are exactly thumbnails 20 + sessions 16 + showcase 13 + promo 3 + samples 15 + pairs 12, + 48 product photos (20 + 16 + 12)",
-    homeGlobals.filter((s) => !isRef(s)).length === 20 + 16 + 13 + 3 + 15 + 12 && homeGlobals.filter(isRef).length === 20 + 16 + 12, `got ${homeGlobals.length}`);
+  // 27.11.2026 (decided): each carousel tile has its own /home slot (+ CAROUSEL.length).
+  check(`A7i the /home global slots are exactly carousel tiles ${CAROUSEL.length} + thumbnails 20 + sessions 16 + showcase 13 + promo 3 + samples 15 + pairs 12, + 48 product photos (20 + 16 + 12)`,
+    homeGlobals.filter((s) => !isRef(s)).length === CAROUSEL.length + 20 + 16 + 13 + 3 + 15 + 12 && homeGlobals.filter(isRef).length === 20 + 16 + 12, `got ${homeGlobals.length}`);
 
   const cardSlots = allElements(HOME).flatMap((e) => e.slots ?? []).filter((s) => s.entityType !== "global");
   const cardKeys = new Set(cardSlots.map((s) => s.key));
@@ -340,7 +342,9 @@ async function sectionA() {
     const [cat, wf] = item.split(".");
     return wf && findCategory(cat) ? workflowSlotKey(cat, wf) : toolSlotKey(item);
   };
-  const tiles = [...CAROUSEL.map((t, i) => ({ t, i, section: "carousel" })), ...FEATURED.map((t, i) => ({ t, i, section: "featured" }))];
+  // 27.11.2026 (decided): only the FEATURED tiles still edit the tool-card
+  // slot they share with /tools; a CAROUSEL tile edits a slot of its own.
+  const tiles = FEATURED.map((t, i) => ({ t, i, section: "featured" }));
   const tileBad: string[] = [];
   for (const { t, section } of tiles) {
     const el = HOME.sections.find((s) => s.key === section)?.elements.find((e) => e.kind === "media" && e.dom === `[data-config-key="${t.media.configKey}"]`);
@@ -351,8 +355,33 @@ async function sectionA() {
       tileBad.push(`${section}:${t.item}→${slot?.key}≠${want}`);
     }
   }
-  check(`A8 every CAROUSEL/FEATURED tile uses the tool-card slot (positionOnly, sharedWith /tools) whose key = ${adminSlotKey ? "seller-home adminSlotKey" : "the lib/media-slots builders"}(item)`,
-    tileBad.length === 0 && tiles.length === CAROUSEL.length + FEATURED.length, short(tileBad));
+  check(`A8 every FEATURED tile uses the tool-card slot (positionOnly, sharedWith /tools) whose key = ${adminSlotKey ? "seller-home adminSlotKey" : "the lib/media-slots builders"}(item)`,
+    tileBad.length === 0 && tiles.length === FEATURED.length, short(tileBad));
+  {
+    const layout = defaultHomeLayout();
+    const own: string[] = [];
+    CAROUSEL.forEach((t, i) => {
+      const el = HOME.sections.find((s) => s.key === "carousel")?.elements.find((e) => e.kind === "media" && e.dom === `[data-config-key="${t.media.configKey}"]`);
+      const slot = el?.slots?.[0];
+      const want = adminSlotKey ? adminSlotKey(t.item) : independent(t.item);
+      if (!slot || slot.key !== t.media.configKey || slot.key !== carouselSlotKey(layout.carousel[i]) || slot.entityType !== "global" || slot.entityId !== "sellerHome"
+        || !slot.video || !slot.gif || slot.positionOnly || slot.sharedWith || slot.inherits !== want || slot.ratio !== ratioOf(TOOL_TILE)) {
+        own.push(`${t.item}→${slot?.key}`);
+      }
+    });
+    check("A8c every CAROUSEL tile has its OWN /home slot (= its data-config-key): global/sellerHome, picture + GIF + clip, focal point and zoom, falling back to the tool-card slot /tools shows (inherits = adminSlotKey)",
+      own.length === 0, short(own));
+    const dyn = slotSpec("homeMedia.carousel.c-x1a2");
+    check("A8d a carousel tile the layout added (its id) is a known slot of the same shape; a malformed key is not",
+      Boolean(dyn && dyn.gif && dyn.video && dyn.entityType === "global" && dyn.slotName === "carousel.c-x1a2")
+      && !slotSpec("homeMedia.carousel.bad key") && !slotSpec("homeMedia.carousel.") && !slotSpec("homeMedia.carousel.1abc"));
+    check("A8e no other /home slot takes a GIF (featured cards, samples, banners, grids, pairs)",
+      allElements(HOME).flatMap((e) => e.slots ?? []).filter((x) => x.gif).every((x) => x.key.startsWith("homeMedia.carousel.")));
+    const promoSpecs = Object.values(PROMO_BANNERS).map((b) => slotSpec(b.media.configKey));
+    check("A8f the three promo banners (and only they) take a tablet file, a phone shape and the dimming",
+      promoSpecs.every((x) => x?.tablet && x?.banner && x?.mobile && x?.video)
+      && allElements(HOME).flatMap((e) => e.slots ?? []).filter((x) => x.tablet || x.banner).length === 3);
+  }
   if (adminSlotKey) {
     const fn = adminSlotKey;
     const differ = [...CAROUSEL, ...FEATURED].map((t) => t.item).filter((it) => cardSlotKey(it) !== fn(it));
@@ -739,6 +768,12 @@ function sectionE() {
   check("E10 EBML with DocType webm → video/webm", sniff(asBytes([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x84], "webm")) === "video/webm");
   check("E11 EBML matroska → null", sniff(asBytes([0x1a, 0x45, 0xdf, 0xa3, 0xa3, 0x42, 0x82, 0x88], "matroska")) === null);
   check("E12 GIF89a / GIF87a → null", sniff(GIF) === null && sniff(asBytes("GIF87a")) === null);
+  check("E12b sniffUpload (the editor's own upload path only): GIF87a / GIF89a → image/gif; the six as sniff; others null",
+    sniffUpload(GIF) === "image/gif" && sniffUpload(asBytes("GIF87a", [0, 0, 0, 0, 0, 0])) === "image/gif" && sniffUpload(PNG) === "image/png"
+    && sniffUpload(asBytes("<svg xmlns=\"http://www.w3.org/2000/svg\">")) === null && sniffUpload(asBytes("GIF88a", [0, 0, 0, 0, 0, 0])) === null);
+  check("E12c isIceMime still refuses a GIF (contact attachments, samples, every other picker); isIceUploadMime takes it; a GIF is always named .gif",
+    !isIceMime("image/gif") && isIceUploadMime("image/gif") && !isIceUploadMime("image/svg+xml")
+    && gifName("anim.GIF") === "anim.GIF" && gifName("anim.png") === "anim.gif" && gifName("") === "plik.gif");
   check("E13 '<svg' and '<?xml' → null", sniff(asBytes("<svg xmlns=\"http://www.w3.org/2000/svg\">")) === null && sniff(asBytes("<?xml version=\"1.0\"?><svg")) === null);
   check("E14 a buffer shorter than 12 bytes → null (even a JPEG start)", sniff(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0])) === null && sniff(new Uint8Array(0)) === null);
   check("E15 limits: image 15 MiB, video 50 MiB, sample 10 MiB",
@@ -1341,6 +1376,16 @@ async function sectionI() {
     ["crop `m` without a mobile file", [write(P1, { mediaType: "video", mediaId: VID, crop: { x: 1, y: 2, zoom: 1, m: { x: 3, y: 4, zoom: 1.5 } }, base: BASE_TS })], "crop"],
     ["crop `m` on a slot with no mobile file allowed", [write(T1, { crop: { x: 1, y: 2, zoom: 1, m: { x: 3, y: 4, zoom: 1.5 } } })], "crop"],
     ["a poster on an image", [write(T1, { posterMediaId: POSTER })], "poster"],
+    ["a gif into a banner", [write(P1, { mediaId: GIFA, base: BASE_TS })], "asset_format"],
+    ["a gif into a sample", [write(S1, { mediaId: GIFA })], "asset_format"],
+    ["a gif as a banner's phone file", [write(P1, { mobileMediaId: GIFA, base: BASE_TS })], "asset_format"],
+    ["crop `t` without a tablet file", [write(P1, { tabletMediaId: null, crop: { x: 1, y: 2, zoom: 1, t: { x: 3, y: 4, zoom: 1.5 } }, base: BASE_TS })], "crop"],
+    ["crop `t` on a slot with no tablet file allowed", [write(T1, { crop: { x: 1, y: 2, zoom: 1, t: { x: 3, y: 4, zoom: 1.5 } } })], "crop"],
+    ["a phone shape on a slot that is not a banner", [write(T1, { crop: { x: 50, y: 50, zoom: 1, pr: "5:4" } })], "crop"],
+    ["an unknown phone shape", [write(P1, { crop: { x: 50, y: 50, zoom: 1, pr: "4:3" as "5:4" }, base: BASE_TS })], "crop"],
+    ["a dimming above 100", [write(P1, { crop: { x: 50, y: 50, zoom: 1, ov: 101 }, base: BASE_TS })], "crop"],
+    ["a fractional dimming", [write(P1, { crop: { x: 50, y: 50, zoom: 1, ov: 40.5 }, base: BASE_TS })], "crop"],
+    ["a dimming on a slot that is not a banner", [write(T1, { crop: { x: 50, y: 50, zoom: 1, ov: 40 } })], "crop"],
     ["alt with '<'", [write(T1, { altI18n: { pl: "a<b" } })], "alt_markup"],
     ["alt with an invisible char", [write(T1, { altI18n: { en: "a\u200Bb" } })], "alt_invisible"],
     ["alt in an unknown locale", [write(T1, { altI18n: { fr: "x" } as unknown as IceSlotWrite["altI18n"] })], "alt"],
@@ -1379,6 +1424,32 @@ async function sectionI() {
     check("I10b slotSave: an unknown action → bad_action", refusedNoRpc(x, "bad_action"));
     const ok12 = await slotRun([write(T1, { mediaId: IMG12 })]);
     check("I10c a 12 MiB image is fine in an ordinary image slot (15 MiB cap)", ok12.r.ok);
+  }
+  {
+    // 27.11.2026 — a carousel tile's own slot, a banner's three devices.
+    const K = carouselSlotKey(defaultHomeLayout().carousel[0]);
+    const g = await slotRun([write(K, { mediaId: GIFA, posterMediaId: POSTER, crop: { x: 30, y: 40, zoom: 1.2 } })]);
+    const gp = g.payload?.[0];
+    check("I16 a GIF fills a carousel tile's own slot, with its first frame as the still (poster), framed; the row is global/sellerHome",
+      g.r.ok && gp?.media_id === GIFA && gp?.poster_media_id === POSTER && gp?.entity_type === "global" && gp?.entity_id === "sellerHome"
+      && same(gp?.crop, { x: 30, y: 40, zoom: 1.2 }), JSON.stringify(g.r).slice(0, 160));
+    const v = await slotRun([write(K, { mediaType: "video", mediaId: VID, posterMediaId: POSTER })]);
+    check("I16b a clip (MP4) with its poster fills a carousel tile's own slot", v.r.ok && v.payload?.[0]?.media_type === "video" && v.payload?.[0]?.poster_media_id === POSTER);
+    const still = await slotRun([write(K, { mediaId: IMG, posterMediaId: POSTER })]);
+    check("I16c …but a still on a NON-GIF picture is refused there too (poster)", !still.r.ok && still.r.error === "poster");
+    const b = await slotRun([write(P1, { mediaId: IMG, tabletMediaId: NEWIMG, base: BASE_TS,
+      crop: { x: 50, y: 50, zoom: 1, t: { x: 10, y: 20, zoom: 1.5 }, pr: "5:4", ov: 40 } })]);
+    const bp = b.payload?.[0];
+    check("I16d a banner: its own tablet file, the tablet frame (t), the phone shape 5:4 (pr) and 40 % dimming (ov) reach media_slots_write",
+      b.r.ok && bp?.tablet_media_id === NEWIMG && same(bp?.crop, { x: 50, y: 50, zoom: 1, t: { x: 10, y: 20, zoom: 1.5 }, pr: "5:4", ov: 40 }), JSON.stringify(bp));
+    const rm = await slotRun([write(P1, { mediaId: IMG, tabletMediaId: null, base: BASE_TS })]);
+    check("I16e a banner write that names no tablet file removes it (same main file) — explicit, not the old keep-with-picture rule",
+      rm.r.ok && rm.payload?.[0]?.tablet_media_id === null, JSON.stringify(rm.payload?.[0]));
+    const old = await slotRun([write(P1, { mediaId: IMG, base: BASE_TS, crop: { x: 20, y: 20, zoom: 1, ov: 0 } })]);
+    check("I16f an editor that sends no tabletMediaId keeps the stored tablet file (backwards compatible); 0 % dimming is stored as 0",
+      old.r.ok && old.payload?.[0]?.tablet_media_id === TABLET && (old.payload?.[0]?.crop as Row)?.ov === 0, JSON.stringify(old.payload?.[0]));
+    const t1 = await slotRun([write(T1, { tabletMediaId: NEWIMG })]);
+    check("I16g a tablet file sent for a slot without one is ignored", t1.r.ok && t1.payload?.[0]?.tablet_media_id === null);
   }
   {
     const evil = { ...write(P1, { mediaType: "video", mediaId: VID, mobileMediaId: VIDM, posterMediaId: POSTER, base: BASE_TS, fit: "contain", position: "left top",
@@ -1432,7 +1503,9 @@ async function sectionI() {
   {
     freshDb();
     const t = async (input: { name: string; size: number; type: string }) => actions.uploadTicket(input);
-    const gif = await t({ name: "a.gif", size: 100, type: "image/gif" });
+    const gif = await t({ name: "a.svg", size: 100, type: "image/svg+xml" });
+    const gifOk = await t({ name: "anim.gif", size: 100, type: "image/gif" });
+    const gifRenamed = await t({ name: "anim.png", size: 100, type: "image/gif" });
     const big = await t({ name: "a.png", size: ICE_MAX_IMAGE_BYTES + 1, type: "image/png" });
     const edge = await t({ name: "a.png", size: ICE_MAX_IMAGE_BYTES, type: "image/png" });
     const vid = await t({ name: "a.mp4", size: ICE_MAX_VIDEO_BYTES, type: "video/mp4" });
@@ -1440,6 +1513,9 @@ async function sectionI() {
     const zero = await t({ name: "a.png", size: 0, type: "image/png" });
     const str = await t({ name: "a.png", size: "100" as unknown as number, type: "image/png" });
     check("I15 uploadTicket refuses a non-allowed type → format", !gif.ok && gif.error === "format");
+    check("I15g uploadTicket takes a GIF into the LIBRARY (27.11.2026) — always under a .gif name (where it may go is the slot's check)",
+      gifOk.ok && (gifOk.data as { path: string }).path.endsWith("/anim.gif") && gifRenamed.ok && (gifRenamed.data as { path: string }).path.endsWith("/anim.gif")
+      && UPLOAD_PATH.test((gifRenamed.data as { path: string }).path));
     check("I15b uploadTicket refuses oversize / zero / non-numeric sizes → too_large (15 MiB image, 50 MiB video are the edges)",
       !big.ok && big.error === "too_large" && edge.ok && vid.ok && !vidBig.ok && vidBig.error === "too_large" && !zero.ok && !str.ok);
     const names = ["../../evil photo.png", "zdjęcie.jpg", "", "...", ".htaccess", "C:\\x\\y.webp", `${"a".repeat(120)}.jpg`];

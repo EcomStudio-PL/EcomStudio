@@ -18,12 +18,13 @@ import {
 import { readHomeLayout } from "@/lib/server/home-layout";
 import { altProblem, normaliseText, textProblem } from "@/lib/ice/validate";
 import { hasInvisible } from "@/lib/ice/stega";
-import { isIceMime, kindOf, maxBytesFor, safeName, sniff } from "@/lib/ice/sniff";
+import { ICE_GIF_MIME, gifName, isIceUploadMime, safeName, sniffUpload, uploadKindOf, uploadMaxBytes } from "@/lib/ice/sniff";
+import { slotCrop } from "@/lib/media-slots";
 import { disallowedTokens } from "@/lib/launch/fields";
 import { isLegalSlug } from "@/lib/legal/docs";
 import {
   ICE_LOCALES,
-  type IceAsset, type IceCmsMoveInput, type IceCmsPage, type IceCmsVisibilityInput, type IceCrop, type IceLocale, type IcePageInfo, type IceResult,
+  type IceAsset, type IceCmsMoveInput, type IceCmsPage, type IceCmsVisibilityInput, type IceCrop, type IceFrame, type IceLocale, type IcePageInfo, type IceResult,
   type IceSlotState, type IceSlotWrite, type IceTextInfo, type IceTextState, type IceUsage, type IceVersion,
 } from "@/lib/ice/types";
 import { CONTENT_TAG } from "./overrides";
@@ -278,18 +279,9 @@ async function readAssets(supabase: Client, ids: string[]): Promise<Map<string, 
   return new Map((data ?? []).map((a) => [a.id, a as AssetRow]));
 }
 
-function readCrop(v: unknown): (IceCrop & { m?: IceCrop }) | null {
-  const one = (c: unknown): IceCrop | null => {
-    if (!c || typeof c !== "object") return null;
-    const { x, y, zoom } = c as Record<string, unknown>;
-    if (typeof x !== "number" || typeof y !== "number" || typeof zoom !== "number") return null;
-    if (x < 0 || x > 100 || y < 0 || y > 100 || zoom < 1 || zoom > 2.5) return null;
-    return { x, y, zoom };
-  };
-  const main = one(v);
-  if (!main) return null;
-  const m = one((v as Record<string, unknown>).m);
-  return m ? { ...main, m } : main;
+/** The same reader the page uses (lib/media-slots.ts slotCrop). */
+function readCrop(v: unknown): IceFrame | null {
+  return slotCrop(v) ?? null;
 }
 
 function readAltI18n(v: unknown): Partial<Record<IceLocale, string>> {
@@ -324,7 +316,7 @@ function registeredSlots(keys: unknown, max = 60): string[] {
 
 async function slotStates(supabase: Client, keys: string[]): Promise<IceSlotState[]> {
   const rows = await readSlotRows(supabase, keys);
-  const assets = await readAssets(supabase, [...rows.values()].flatMap((r) => [r.media_id, r.mobile_media_id, r.poster_media_id].filter((x): x is string => Boolean(x))));
+  const assets = await readAssets(supabase, [...rows.values()].flatMap((r) => [r.media_id, r.mobile_media_id, r.tablet_media_id, r.poster_media_id].filter((x): x is string => Boolean(x))));
   const asset = (id: string | null) => (id && assets.has(id) ? toAsset(supabase, assets.get(id)!) : null);
   return keys.map((key) => {
     const r = rows.get(key);
@@ -335,6 +327,7 @@ async function slotStates(supabase: Client, keys: string[]): Promise<IceSlotStat
       mediaType: r?.media_type === "video" ? "video" : "image",
       media: asset(r?.media_id ?? null),
       mobile: asset(r?.mobile_media_id ?? null),
+      tablet: asset(r?.tablet_media_id ?? null),
       poster: asset(r?.poster_media_id ?? null),
       alt: r?.alt_text ?? null,
       altI18n: readAltI18n(r?.alt_i18n),
@@ -353,15 +346,28 @@ export function slotState(rawKeys: string[]): Promise<IceResult<IceSlotState[]>>
   });
 }
 
-function checkCrop(c: unknown, allowMobile: boolean): (IceCrop & { m?: IceCrop }) | null {
+/** The editor's frame of one write — refused, never quietly trimmed, when it
+ *  carries a part the slot does not have: a phone frame without a phone file,
+ *  a tablet frame without a tablet file, a phone shape or a dimming on a slot
+ *  that is not a banner (0186). */
+function checkCrop(c: unknown, allow: { mobile: boolean; tablet: boolean; banner: boolean }): IceFrame | null {
   if (c === null || c === undefined) return null;
   const crop = readCrop(c);
   if (!crop) throw new IceRefusal("crop");
-  const keys = Object.keys(c as object);
-  if (keys.some((k) => !["x", "y", "zoom", "m"].includes(k))) throw new IceRefusal("crop");
-  if ((c as Record<string, unknown>).m !== undefined && (!crop.m || !allowMobile)) throw new IceRefusal("crop");
-  const round = (o: IceCrop): IceCrop => ({ x: Math.round(o.x * 100) / 100, y: Math.round(o.y * 100) / 100, zoom: Math.round(o.zoom * 1000) / 1000 });
-  return crop.m ? { ...round(crop), m: round(crop.m) } : round(crop);
+  const o = c as Record<string, unknown>;
+  if (Object.keys(o).some((k) => !["x", "y", "zoom", "m", "t", "pr", "ov"].includes(k))) throw new IceRefusal("crop");
+  if (o.m !== undefined && (!crop.m || !allow.mobile)) throw new IceRefusal("crop");
+  if (o.t !== undefined && (!crop.t || !allow.tablet)) throw new IceRefusal("crop");
+  if (o.pr !== undefined && (!crop.pr || !allow.banner)) throw new IceRefusal("crop");
+  if (o.ov !== undefined && (crop.ov === undefined || !allow.banner)) throw new IceRefusal("crop");
+  const round = (v: IceCrop): IceCrop => ({ x: Math.round(v.x * 100) / 100, y: Math.round(v.y * 100) / 100, zoom: Math.round(v.zoom * 1000) / 1000 });
+  return {
+    ...round(crop),
+    ...(crop.m ? { m: round(crop.m) } : {}),
+    ...(crop.t ? { t: round(crop.t) } : {}),
+    ...(crop.pr ? { pr: crop.pr } : {}),
+    ...(crop.ov !== undefined ? { ov: crop.ov } : {}),
+  };
 }
 
 export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "restore" | "clear" | "bulk" }): Promise<IceResult<{ updatedAt: Record<string, string> }>> {
@@ -373,7 +379,7 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
     if (keys.length !== writes.length) throw new IceRefusal("bad_keys");
 
     const current = await readSlotRows(supabase, keys);
-    const assets = await readAssets(supabase, writes.flatMap((w) => [w.mediaId, w.mobileMediaId, w.posterMediaId].filter((x): x is string => typeof x === "string")));
+    const assets = await readAssets(supabase, writes.flatMap((w) => [w.mediaId, w.mobileMediaId, w.tabletMediaId, w.posterMediaId].filter((x): x is string => typeof x === "string")));
 
     const payload = writes.map((w) => {
       const spec = slotSpec(w.key)!;
@@ -394,14 +400,29 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
       const mobileId = clear ? null
         : spec.mobile || input.action === "restore" ? w.mobileMediaId ?? null
         : sameMain ? cur?.mobile_media_id ?? null : null;
+      // A banner's tablet file (27.11.2026) is the editor's to set: the write
+      // names it (null = none). Everywhere else — and from an older editor
+      // that does not send it — the rule stays: kept with its picture.
+      const tabletId = clear ? null
+        : spec.tablet && w.tabletMediaId !== undefined ? w.tabletMediaId ?? null
+        : sameMain ? cur?.tablet_media_id ?? null : null;
       const posterId = clear ? null : w.posterMediaId ?? null;
-      if (mediaId !== null) checkAsset(assets.get(mediaId), mediaType, Boolean(spec.sample));
+      const gif = Boolean(spec.gif);
+      if (mediaId !== null) checkAsset(assets.get(mediaId), mediaType, Boolean(spec.sample), { gif });
       if (mobileId !== null && (spec.mobile || input.action === "restore")) checkAsset(assets.get(mobileId), mediaType, false);
+      if (tabletId !== null && spec.tablet && w.tabletMediaId !== undefined) checkAsset(assets.get(tabletId), mediaType, false);
       if (posterId !== null) {
-        if (mediaType !== "video") throw new IceRefusal("poster");
+        // A clip's still — or an animated GIF's first frame, shown instead of
+        // the animation to someone who asked for less motion (a `gif` slot).
+        const gifStill = mediaType === "image" && gif && mediaId !== null && assets.get(mediaId)?.mime === ICE_GIF_MIME;
+        if (mediaType !== "video" && !gifStill) throw new IceRefusal("poster");
         checkAsset(assets.get(posterId), "image", false);
       }
-      const crop = clear || spec.positionOnly ? null : checkCrop(w.crop, Boolean(spec.mobile) && mobileId !== null);
+      const crop = clear || spec.positionOnly ? null : checkCrop(w.crop, {
+        mobile: Boolean(spec.mobile) && mobileId !== null,
+        tablet: Boolean(spec.tablet) && tabletId !== null,
+        banner: Boolean(spec.banner),
+      });
       const altI18n: Partial<Record<IceLocale, string>> = {};
       for (const [l, v] of Object.entries(w.altI18n ?? {})) {
         if (!isLocale(l) || typeof v !== "string") throw new IceRefusal("alt");
@@ -417,8 +438,7 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
         slot_name: spec.slotName,
         media_type: mediaType,
         media_id: mediaId,
-        // The tablet file is managed in Admin → Media; kept with its picture.
-        tablet_media_id: clear || !sameMain ? null : cur?.tablet_media_id ?? null,
+        tablet_media_id: tabletId,
         mobile_media_id: mobileId,
         poster_media_id: posterId,
         // The single alt the shared renderers read: the Polish one.
@@ -442,7 +462,7 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
     }
     await logAudit(supabase, {
       actorId: adminId, action: "ice.slot.saved", entityType: "media_slot", entityId: keys.join(",").slice(0, 300),
-      after: { action: input.action, slots: payload.map((p) => ({ key: p.key, media: p.media_id, mobile: p.mobile_media_id, poster: p.poster_media_id, crop: p.crop })) },
+      after: { action: input.action, slots: payload.map((p) => ({ key: p.key, media: p.media_id, mobile: p.mobile_media_id, tablet: p.tablet_media_id, poster: p.poster_media_id, crop: p.crop })) },
     });
     revalidateTag(MEDIA_SLOT_TAG);
     const out: Record<string, string> = {};
@@ -579,9 +599,11 @@ const UPLOAD_PATH = /^ice\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3
 export function uploadTicket(input: { name: string; size: number; type: string }): Promise<IceResult<{ path: string }>> {
   return run(async () => {
     await requireIceAdmin();
-    if (!input || !isIceMime(input.type)) throw new IceRefusal("format");
-    if (typeof input.size !== "number" || input.size <= 0 || input.size > maxBytesFor(input.type)) throw new IceRefusal("too_large");
-    return { path: `ice/${crypto.randomUUID()}/${safeName(String(input.name ?? ""))}` };
+    if (!input || !isIceUploadMime(input.type)) throw new IceRefusal("format");
+    if (typeof input.size !== "number" || input.size <= 0 || input.size > uploadMaxBytes(input.type)) throw new IceRefusal("too_large");
+    // A GIF's object always ends in .gif (registerUpload holds it to that).
+    const name = input.type === ICE_GIF_MIME ? gifName(String(input.name ?? "")) : safeName(String(input.name ?? ""));
+    return { path: `ice/${crypto.randomUUID()}/${name}` };
   });
 }
 
@@ -617,19 +639,22 @@ export function registerUpload(input: { path: string; name: string }): Promise<I
         total = NaN;
       }
     }
-    const mime = sniff(head);
+    const mime = sniffUpload(head);
 
     const refuse = async (code: string): Promise<never> => {
       await supabase.storage.from("media").remove([path]);
       throw new IceRefusal(code);
     };
     if (!mime) return refuse("format");
+    // A GIF only under a .gif name (and nothing else under one): the page keeps
+    // a .gif animated — no still derivatives in its srcset.
+    if ((mime === ICE_GIF_MIME) !== /\.gif$/i.test(path)) return refuse("format");
     if (!Number.isFinite(total) || total <= 0) return refuse("upload_missing");
-    if (total > maxBytesFor(mime)) return refuse("too_large");
+    if (total > uploadMaxBytes(mime)) return refuse("too_large");
 
     const title = safeName(String(input.name ?? path.split("/").pop() ?? "")).slice(0, 120);
     const { data, error } = await supabase.from("media_assets").insert({
-      kind: kindOf(mime), storage_path: path, title, mime, size_bytes: total, created_by: adminId, folder: "edytor-wizualny",
+      kind: uploadKindOf(mime), storage_path: path, title, mime, size_bytes: total, created_by: adminId, folder: "edytor-wizualny",
     }).select(ASSET_COLUMNS).single();
     if (error || !data) throw new Error(error?.message ?? "insert failed");
     await logAudit(supabase, {

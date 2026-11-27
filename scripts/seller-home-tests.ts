@@ -238,8 +238,18 @@ for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync
 // The shared media components are pinned against git, not a literal: the
 // redesign reuses them and must not edit them.
 check("…the shared media components and tool-thumb are byte-identical to the last release",
-  ["components/tools/tool-thumb.tsx", "components/media/slot-media.tsx", "components/media/slot-video.tsx"]
+  ["components/tools/tool-thumb.tsx", "components/media/slot-media.tsx"]
     .every((f) => !gitChanged(f)));
+// 27.11.2026 (/home upgrade, decided): SlotVideo gained two OPT-IN props —
+// the /home banners' own breakpoints and the carousel tiles' "poster only
+// under reduced motion". Every other caller passes neither, so its defaults
+// must be exactly what it always did: 639 / 1023 px, poster + control when calm.
+{
+  const sv = read("components/media/slot-video.tsx");
+  check("…SlotVideo: its defaults are unchanged (phone ≤ 639, tablet ≤ 1023, controls when calm); the new props are opt-in",
+    /const phoneMax = maxWidths\?\.mobile \?\? 639;/.test(sv) && /const tabletMax = maxWidths\?\.tablet \?\? 1023;/.test(sv)
+    && /stillOnCalm = false/.test(sv) && /controls=\{still \? false : controls \|\| calm\}/.test(sv) && /const still = stillOnCalm && calm;/.test(sv));
+}
 // globals.css moved to a literal when Pre-launch Landing V2 edited it — inside
 // `[data-launch-page]` only (the status colours of its dark ramp, the
 // --hero-overlap token, a floor under --hero-art for phones in landscape).
@@ -329,8 +339,12 @@ check("…a whole live tile is the link; small name + one line under the picture
 /* ── 3b. the endless loop ─────────────────────────────────────────────────*/
 
 section("3b. THE TOOL CAROUSEL GOES ROUND — BOTH WAYS, NO END");
-check("five or more tools: the looping rail; fewer: the plain Rail, no copies",
-  /const LOOP_MIN = 5;/.test(carousel) && /tiles\.length >= LOOP_MIN\s*\? <LoopRail /.test(carousel) && /: <Rail \{\.\.\.rail\}>/.test(carousel));
+// 27.11.2026: the count is the tiles a CUSTOMER sees (an admin's greyed or
+// badged tiles are drawn but not counted), and a list that fits one view
+// fills its width (RAIL_SHAPE: cols = n where n whole tiles fit).
+check("five or more tools a customer sees: the looping rail; fewer: the plain Rail, no copies",
+  /const LOOP_MIN = 5;/.test(carousel) && /const loop = visible >= LOOP_MIN;/.test(carousel) && /\{loop\s*\? <LoopRail /.test(carousel) && /: <Rail \{\.\.\.rail\}>/.test(carousel)
+  && /const visible = tiles\.filter\(\(x\) => customerTile\(x\.tile\)\)\.length;/.test(carousel));
 check("…the before/after row and the featured tools keep the plain Rail", (sections.match(/<Rail /g) ?? []).length === 2 && !/LoopRail/.test(sections));
 check("the loop is one copy of the list on either side of the real cards: [copies] [cards] [copies]",
   /\{ready && copy\("before"\)\}/.test(loopRail) && /data-loop-item=\{i\}/.test(loopRail) && /\{copy\("after"\)\}/.test(loopRail));
@@ -433,6 +447,152 @@ check("no carousel library: native scrolling and scroll-snap, like Rail", !/from
     !/data-loop-rail/.test(few) && !/data-carousel-clone/.test(few) && (few.match(/data-carousel-tile="/g) ?? []).length === 4);
 }
 
+/* ── 3c. the adaptive carousel (27.11.2026) ───────────────────────────────*/
+
+section("3c. THE CAROUSEL FILLS ITS WIDTH WHEN EVERY TILE FITS — RENDERED FOR 0…11 TILES");
+{
+  const live = (item: string) => S(item, `/t/${item}`, "live", 4);
+  // n tiles a customer sees: the first n of the default carousel, the rest off.
+  const dataN = (n: number, o: { editing?: boolean; hiddenTool?: string; hideEntries?: number } = {}) => {
+    const layout = defaultHomeLayout();
+    layout.carousel = layout.carousel.map((e, i) => (i >= n && i < n + (o.hideEntries ?? 0) ? { ...e, hidden: true } : e))
+      .filter((e, i) => i < n + (o.hideEntries ?? 0));
+    const items = Object.fromEntries(CAROUSEL.map((c) => [c.item, c.item === o.hiddenTool ? { ...live(c.item), customerHidden: true } : live(c.item)]));
+    return { ...D(items), layout, editing: Boolean(o.editing) } as unknown as Parameters<typeof ToolCarousel>[0]["data"];
+  };
+  const render = (d: Parameters<typeof ToolCarousel>[0]["data"]) => html(createElement(ToolCarousel, { data: d, t: T, locale: "pl" }));
+  const cols = (out: string) => /class="flex snap-x[^"]*"/.exec(out)?.[0] ?? "";
+  const shape = (out: string) => {
+    const c = cols(out);
+    const v = (bp: string) => new RegExp(`${bp}\\[--rail-cols:([0-9.]+)\\]`).exec(c)?.[1] ?? null;
+    return { phone: /(?:^|\s|")\[--rail-cols:([0-9.]+)\]/.exec(c)?.[1] ?? null, tablet: v("sm:"), desktop: v("lg:") };
+  };
+  const WANT: Record<number, { phone: string; tablet: string; desktop: string }> = {
+    1: { phone: "1", tablet: "1", desktop: "1" },
+    2: { phone: "1.18", tablet: "2", desktop: "2" },
+    3: { phone: "1.18", tablet: "2.5", desktop: "3" },
+    4: { phone: "1.18", tablet: "2.5", desktop: "4" },
+  };
+  check("0 tiles a customer sees: no section at all (no empty space, no gap)", render(dataN(0)) === "");
+  for (const n of [1, 2, 3, 4]) {
+    const out = render(dataN(n));
+    const sh = shape(out);
+    check(`${n} tile(s): the plain Rail, no copies; phone ${WANT[n].phone} · tablet ${WANT[n].tablet} · desktop ${WANT[n].desktop} tiles across (equal widths, the same gaps)`,
+      !/data-loop-rail/.test(out) && !/data-carousel-clone/.test(out) && (out.match(/data-carousel-tile="/g) ?? []).length === n
+      && sh.phone === WANT[n].phone && sh.tablet === WANT[n].tablet && sh.desktop === WANT[n].desktop
+      && /\[--rail-gap:10px\]/.test(cols(out)) && /sm:\[--rail-gap:12px\]/.test(cols(out)) && /lg:\[--rail-gap:14px\]/.test(cols(out))
+      && new RegExp(`data-carousel-visible="${n}"`).test(out) && /data-carousel-mode="rail"/.test(out), JSON.stringify(sh));
+  }
+  for (const n of [5, 6, 11]) {
+    const out = render(dataN(n));
+    const sh = shape(out);
+    check(`${n} tiles: exactly the carousel as before — the loop, 1.18 / 2.5 / 4.5 across`,
+      /data-loop-rail/.test(out) && (out.match(/data-carousel-tile="/g) ?? []).length === n && sh.phone === "1.18" && sh.tablet === "2.5" && sh.desktop === "4.5"
+      && /data-carousel-mode="loop"/.test(out), JSON.stringify(sh));
+  }
+  const sizes1 = /sizes="([^"]*)"/.exec(render(dataN(1)))?.[1] ?? "";
+  const sizes3 = /sizes="([^"]*)"/.exec(render(dataN(3)))?.[1] ?? "";
+  check("…the files' sizes follow the shape (1 tile ≈ 100vw everywhere; 3 tiles ≈ 33vw desktop) — a full-width tile is not a blurred 22vw file",
+    sizes1 === "" || /100vw/.test(sizes1), sizes1);
+  void sizes3;
+  const edit = render(dataN(3, { editing: true, hideEntries: 2 }));
+  check("edit mode: 3 visible + 2 switched off → the shape is the CUSTOMER's 3, and the 2 hidden tiles are still drawn (greyed, flagged) to be brought back",
+    shape(edit).desktop === "3" && (edit.match(/data-carousel-tile="/g) ?? []).length === 5 && (edit.match(/data-home-flag="item"/g) ?? []).length === 2
+    && !/data-loop-rail/.test(edit) && /data-carousel-visible="3"/.test(edit), JSON.stringify(shape(edit)));
+  const editLoop = render(dataN(4, { editing: true, hideEntries: 3 }));
+  check("…4 visible + 3 hidden in edit mode: no loop (the customer has 4), every tile still editable",
+    !/data-loop-rail/.test(editLoop) && (editLoop.match(/data-carousel-tile="/g) ?? []).length === 7 && shape(editLoop).desktop === "4");
+  const first = CAROUSEL[0].item;
+  const adminView = { ...dataN(2, { hiddenTool: first }), isAdmin: true } as Parameters<typeof ToolCarousel>[0]["data"];
+  const adm = render(adminView);
+  check("an admin's badged tool (customerHidden) is drawn but not counted: 2 drawn, 1 a customer sees → the 1-tile shape",
+    (adm.match(/data-carousel-tile="/g) ?? []).length === 2 && /data-carousel-visible="1"/.test(adm) && shape(adm).desktop === "1");
+  check("source: the shape is chosen from literal class strings (Tailwind sees each), keyed by the customer count; the loop at five",
+    /const RAIL_SHAPE: Record<1 \| 2 \| 3 \| 4, string>/.test(carousel) && /const LOOP_SHAPE = "\[--rail-cols:1\.18\]/.test(carousel)
+    && /!x\.flags\.includes\("item"\) && !x\.state\.customerHidden/.test(carousel));
+  check("…a Rail shows arrows only while there is something to scroll to (none in a view that fits)",
+    /const \[edge, setEdge\] = useState\(\{ start: true, end: true \}\);/.test(code("components/seller-home/rail.tsx"))
+    && /\{!edge\.start && \(/.test(code("components/seller-home/rail.tsx")) && /\{!edge\.end && \(/.test(code("components/seller-home/rail.tsx")));
+}
+
+/* ── 3d. banners on three devices, the dimming; GIF / clip tiles (27.11.2026) ──*/
+
+section("3d. BANNERS: DESKTOP / TABLET / PHONE, PHONE SHAPE, DIMMING — AND A TILE'S OWN GIF OR CLIP (rendered)");
+{
+  const U = "https://x.supabase.co/storage/v1/object/public/media/";
+  const slotOf = (o: Partial<ResolvedSlot> = {}): ResolvedSlot => ({
+    key: PROMO_BANNERS.second.media.configKey, mediaType: "image", alt: "", fit: "cover", position: "center center",
+    autoplay: true, muted: true, loop: true, controls: false, desktop: `${U}d.jpg`, variants: { 1024: `${U}d-1024.webp`, 2048: `${U}d-2048.webp` }, ...o,
+  });
+  const homeOf = (slot: ResolvedSlot): HomeSlots => ({ slots: { [slot.key]: slot }, locale: "pl" });
+  const banner = (slot: ResolvedSlot) => html(createElement(PromoBanner, {
+    def: PROMO_BANNERS.second, items: { custom: S("custom", "/generator", "live", 4) }, t: T, home: homeOf(slot) }));
+  const overlayTag = (out: string) => /<span aria-hidden="true" data-promo-overlay[^>]*>/.exec(out)?.[0] ?? "";
+  const plain = banner(slotOf());
+  check("a saved banner without the new settings: the overlay has no style (the shipped gradient, unchanged), the phone frame is 1:1, one <img> (no <picture>)",
+    !/style=/.test(overlayTag(plain)) && /--ar-phone:1080\/1080/.test(plain) && /--ar-tablet:1600\/340/.test(plain) && /--ar-wide:2400\/510/.test(plain)
+    && (plain.match(/<img /g) ?? []).length === 1 && !/<picture>/.test(plain), overlayTag(plain));
+  for (const [ov, want] of [[0, "opacity:0"], [25, "opacity:0.25"], [50, "opacity:0.5"], [75, "opacity:0.75"], [100, null]] as const) {
+    const out = banner(slotOf({ crop: { x: 50, y: 50, zoom: 1, ov } }));
+    check(`dimming ${ov}%: ${want ?? "no style (= the gradient as it has always been)"} on the overlay layer only — the copy and the button keep full opacity`,
+      (want ? overlayTag(out).includes(`style="${want}"`) : !/style=/.test(overlayTag(out))) && /bg-\[radial-gradient\(70%_90%_at_50%_50%/.test(overlayTag(out))
+      && !/data-promo-cta="promo2"[^>]*opacity/.test(out) && !/<h2[^>]*opacity/.test(out), overlayTag(out));
+  }
+  const r54 = banner(slotOf({ crop: { x: 50, y: 50, zoom: 1, pr: "5:4" } }));
+  check("phone shape 5:4: the banner's phone frame (its height) becomes 1080/864; tablet and desktop unchanged", /--ar-phone:1080\/864/.test(r54) && /--ar-tablet:1600\/340/.test(r54));
+  const three = banner(slotOf({ tablet: `${U}t.jpg`, mobile: `${U}m.jpg`, crop: { x: 40, y: 30, zoom: 1.2, m: { x: 10, y: 20, zoom: 1 }, t: { x: 60, y: 70, zoom: 1.5 } } }));
+  const sources = three.match(/<source [^>]*>/g) ?? [];
+  check("three files: ONE <picture> — the phone source (≤ 767 px) first, then the tablet's (≤ 1279 px), the desktop <img> last; one file is fetched",
+    /<picture>/.test(three) && sources.length === 2 && /media="\(max-width: 767px\)"[^>]*srcSet="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/m\.jpg"/i.test(sources[0])
+    && /media="\(max-width: 1279px\)"[^>]*srcSet="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/t\.jpg"/i.test(sources[1])
+    && (three.match(/<img /g) ?? []).length === 1 && /<img [^>]*src="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/d\.jpg"/.test(three), sources.join(" | "));
+  check("…each device keeps its own frame: desktop inline (40% 30%, ×1.2), phone 10% 20%, tablet 60% 70% ×1.5 — classes on the banners' own md / xl edges",
+    /object-position:40% 30%/.test(three) && /--bn-pos-p:10% 20%/.test(three) && /--bn-pos-t:60% 70%/.test(three) && /--bn-tf-t:scale\(1\.5\)/.test(three) && /--bn-tf-p:none/.test(three)
+    && /max-md:!\[object-position:var\(--bn-pos-p\)\]/.test(three) && /md:max-xl:!\[object-position:var\(--bn-pos-t\)\]/.test(three));
+  const tabletOnly = banner(slotOf({ tablet: `${U}t.jpg` }));
+  const tsrc = tabletOnly.match(/<source [^>]*>/g) ?? [];
+  check("only a tablet file: a phone still gets the DESKTOP file (the phone source comes first) — never the tablet file in a square",
+    tsrc.length === 2 && /max-width: 767px/.test(tsrc[0]) && /d-1024\.webp/.test(tsrc[0]) && /max-width: 1279px/.test(tsrc[1]) && /t\.jpg/.test(tsrc[1]), tsrc.join(" | "));
+  const noTablet = banner(slotOf({ mobile: `${U}m.jpg` }));
+  check("only a phone file: tablet and desktop use the desktop file (no empty tablet banner)",
+    (noTablet.match(/<source /g) ?? []).length === 1 && /max-width: 767px/.test(noTablet) && !/max-width: 1279px/.test(noTablet));
+  const clip = banner(slotOf({ mediaType: "video", desktop: `${U}d.mp4`, tablet: `${U}t.mp4`, mobile: `${U}m.mp4`, poster: `${U}p.jpg`, variants: undefined }));
+  check("a clip banner: SlotVideo with the poster, the desktop file in the server markup, not fetched yet (preload none); the clip wrapper carries the device frames",
+    /<video [^>]*poster="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/p\.jpg"/.test(clip) && /preload="none"/.test(clip) && /data-banner-clip/.test(clip) && !/<img /.test(clip));
+  const bm = read("components/seller-home/banner-media.tsx");
+  check("…its source is picked with the banners' own edges (767 / 1279), the same as the pictures' <source media>",
+    /maxWidths=\{\{ mobile: PHONE_MAX, tablet: TABLET_MAX \}\}/.test(bm) && /const PHONE_MAX = BANNER_BREAKPOINTS\.tablet - 1;/.test(bm) && /const TABLET_MAX = BANNER_BREAKPOINTS\.desktop - 1;/.test(bm));
+  const empty = html(createElement(PromoBanner, { def: PROMO_BANNERS.second, items: { custom: S("custom", "/generator", "live", 4) }, t: T }));
+  check("an empty banner keeps its gradient art and copy (no overlay, no picture), with the size hint per device",
+    /data-media-slot="empty"/.test(empty) && !/data-promo-overlay/.test(empty) && /1080×1080|1080,1080/.test(empty) && /1600,340/.test(empty) && /2400,510/.test(empty));
+  check("slotCrop keeps a valid tablet frame, phone shape and dimming; drops invalid ones (never CSS from a bad value)",
+    JSON.stringify(slotCrop({ x: 1, y: 2, zoom: 1, t: { x: 3, y: 4, zoom: 1.5 }, pr: "5:4", ov: 40 })) === JSON.stringify({ x: 1, y: 2, zoom: 1, t: { x: 3, y: 4, zoom: 1.5 }, pr: "5:4", ov: 40 })
+    && JSON.stringify(slotCrop({ x: 1, y: 2, zoom: 1, t: { x: 300, y: 4, zoom: 1 }, pr: "4:3", ov: 101 })) === JSON.stringify({ x: 1, y: 2, zoom: 1 })
+    && slotCrop({ x: 1, y: 2, zoom: 1, ov: 0 })?.ov === 0);
+
+  // A carousel tile's own slot: a GIF (its first frame under reduced motion), a clip.
+  const tileMedia: MediaSrc = { configKey: CAROUSEL[0].media.configKey, kind: "image", src: null, width: 2336, height: 1744 };
+  const tile = (slot: ResolvedSlot) => html(createElement(MediaSlot, { media: tileMedia, ratio: "2336/1744", label: "x", hint: "y", sizes: "22vw", home: homeOf(slot), tile: true }));
+  const gif = tile(slotOf({ key: tileMedia.configKey, desktop: `${U}a.gif`, poster: `${U}a-poster.jpg`, variants: { 640: `${U}a-640.webp` } }));
+  check("a GIF tile: the .gif itself (no still WebP copies in a srcset), lazy, cover, in the tile's frame; under reduced motion the browser takes its first frame",
+    /<img [^>]*src="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/a\.gif"/.test(gif) && !/srcSet="[^"]*a-640\.webp/i.test(gif)
+    && /loading="lazy"/.test(gif) && /object-fit:cover/.test(gif) && /aspect-ratio:2336\/1744/.test(gif)
+    && /<source media="\(prefers-reduced-motion: reduce\)" srcSet="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/a-poster\.jpg"/i.test(gif), gif.slice(0, 400));
+  const vtile = tile(slotOf({ key: tileMedia.configKey, mediaType: "video", desktop: `${U}v.webm`, poster: `${U}v.jpg`, controls: true, autoplay: false, variants: undefined }));
+  check("a clip tile: muted, looping, inline, no controls (even if the row says so), poster first, nothing fetched before it is near",
+    /<video [^>]*/.test(vtile) && !/controls=""/.test(vtile) && /loop=""/.test(vtile) && /playsInline=""|playsinline=""/i.test(vtile) && /muted=""/.test(vtile)
+    && /poster="https:\/\/x\.supabase\.co\/storage\/v1\/object\/public\/media\/v\.jpg"/.test(vtile) && /preload="none"/.test(vtile) && !/ src="/.test(vtile.replace(/poster="[^"]*"/, "")), vtile.slice(0, 400));
+  const sv = read("components/media/slot-video.tsx");
+  check("…under reduced motion a tile shows its poster ONLY: no src, no controls (opt-in stillOnCalm; other clips keep poster + control)",
+    /src=\{near && !still \? src : undefined\}/.test(sv) && /preload=\{near && !still \? "metadata" : "none"\}/.test(sv) && /stillOnCalm=\{tile\}/.test(read("components/seller-home/ice-slot-image.tsx")));
+  check("…and it pauses off screen, resumes on screen (the shared SlotVideo's own observer, unchanged)",
+    /if \(entry\.isIntersecting\) void el\.play\(\)\.catch\(\(\) => \{\}\);\s*else el\.pause\(\);/.test(sv));
+  const empty1 = html(createElement(MediaSlot, { media: tileMedia, ratio: "2336/1744", label: "x", hint: "y", sizes: "22vw", tile: true,
+    admin: { slot: "tools.generator.card", slots: new Map([["tools.generator.card", slotOf({ key: "tools.generator.card", desktop: `${U}card.jpg` })]]) } }));
+  check("no own picture yet: the tile falls back to its tool's card picture (/tools) — nothing to upload again",
+    /data-media-slot="admin"/.test(empty1));
+}
+
 /* ── 4. media slots ───────────────────────────────────────────────────────*/
 
 section("4. MEDIA SLOTS — CONFIG, ADMIN, SHIPPED, EMPTY; IMAGE AND VIDEO");
@@ -508,9 +668,12 @@ const bannerLive = html(createElement(PromoBanner, {
   def: PROMO_BANNERS.second, items: { custom: S("custom", "/generator", "live", 4) }, t: T,
 }));
 check("…a live one links its button to the tool", /data-promo-cta="promo2"/.test(bannerLive) && /href="\/generator"/.test(bannerLive));
-check("…banners: about 4.7:1 desktop, 5:2 tablet, square phone — frames from the config",
-  ratioOf(BANNER_FRAME.wide) === "2400/510" && ratioOf(BANNER_FRAME.tablet) === "2000/800" && ratioOf(BANNER_FRAME.phone) === "1080/1080"
-  && /aspect-\[var\(--ar-phone\)\][^"]*sm:aspect-\[var\(--ar-tablet\)\][^"]*lg:aspect-\[var\(--ar-wide\)\]/.test(sections)
+// 27.11.2026 (decided): the tablet is the desktop's own 80 : 17 (1600 × 340),
+// on the banners' own breakpoints — tablet from 768 (md), desktop from 1280 (xl).
+check("…banners: 80:17 desktop (2400 × 510) and tablet (1600 × 340), square phone by default — frames from the config, breakpoints md / xl",
+  ratioOf(BANNER_FRAME.wide) === "2400/510" && ratioOf(BANNER_FRAME.tablet) === "1600/340" && ratioOf(BANNER_FRAME.phone) === "1080/1080"
+  && 2400 * 340 === 1600 * 510
+  && /aspect-\[var\(--ar-phone\)\][^"]*md:aspect-\[var\(--ar-tablet\)\][^"]*xl:aspect-\[var\(--ar-wide\)\]/.test(sections)
   && /"--ar-wide": ratioOf\(BANNER_FRAME\.wide\)/.test(sections) && /aspect-\[var\(--ar-phone\)\]/.test(html(createElement(PromoBanner, {
     def: PROMO_BANNERS.second, items: { custom: S("custom", "/generator", "live", 4) }, t: T }))));
 check("…the copy layer lets pointers through to a clip; only its button takes them",
@@ -1023,6 +1186,8 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
 
   // (e) — which keys, and how they are read.
   const expected = [
+    // 27.11.2026: each carousel tile's own /home slot (= its frame's config key).
+    ...CAROUSEL.map((c) => c.media),
     ...UPLOAD_TOOLS.flatMap((u) => u.samples), ...BEFORE_AFTER.flatMap((b) => [b.media.before, b.media.after]),
     ...Object.values(PROMO_BANNERS).map((b) => b.media), SHOWCASE.visual, ...SHOWCASE.gallery,
     ...THUMBNAILS.tiles.map((x) => x.media), ...SESSIONS.tiles.map((x) => x.media),
@@ -1030,20 +1195,22 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
   // …plus, since the layout (0170), each grid photo's optional product photo
   // (`<slot>.ref`): showcase 12 + Miniaturki 20 + Sesje 16 = 48.
   const refKeys = [...SHOWCASE.gallery, ...THUMBNAILS.tiles.map((x) => x.media), ...SESSIONS.tiles.map((x) => x.media)].map((m) => `${m.configKey}.ref`);
-  check("(e) the section slots /home reads are the editor registry's „global” ones: 79 = samples 15 + before/after 12 + banners 3 + showcase 13 + Miniaturki 20 + Sesje 16, + 48 product photos",
-    expected.length === 79 && refKeys.length === 48 && HOME_SECTION_SLOT_KEYS.length === 127 && new Set(HOME_SECTION_SLOT_KEYS).size === 127
-    && [...expected, ...refKeys].every((k) => HOME_SECTION_SLOT_KEYS.includes(k)) && globalSpecs.length === 127
+  const OWN = 79 + CAROUSEL.length;
+  const TOTAL = OWN + 48;
+  check(`(e) the section slots /home reads are the editor registry's „global” ones: ${OWN} = carousel tiles ${CAROUSEL.length} + samples 15 + before/after 12 + banners 3 + showcase 13 + Miniaturki 20 + Sesje 16, + 48 product photos`,
+    expected.length === OWN && refKeys.length === 48 && HOME_SECTION_SLOT_KEYS.length === TOTAL && new Set(HOME_SECTION_SLOT_KEYS).size === TOTAL
+    && [...expected, ...refKeys].every((k) => HOME_SECTION_SLOT_KEYS.includes(k)) && globalSpecs.length === TOTAL
     && globalSpecs.every((s) => HOME_SECTION_SLOT_KEYS.includes(s.key) && s.entityId === "sellerHome")
     && HOME_SECTION_SLOT_KEYS.every((k) => expected.includes(k) || refKeys.includes(k))
     && layoutSlotKeys(defaultHomeLayout()).every((k) => HOME_SECTION_SLOT_KEYS.includes(k)),
     String(HOME_SECTION_SLOT_KEYS.length));
-  check("…not the carousel or featured tiles — they keep the tool-card slot they share with /tools",
-    [...CAROUSEL, ...FEATURED].every((c) => !HOME_SECTION_SLOT_KEYS.includes(c.media.configKey)));
+  check("…the carousel tiles' own slots are read; the featured tiles are not — they keep the tool-card slot they share with /tools",
+    CAROUSEL.every((c) => HOME_SECTION_SLOT_KEYS.includes(c.media.configKey)) && FEATURED.every((c) => !HOME_SECTION_SLOT_KEYS.includes(c.media.configKey)));
   const cardKeys = REFERENCED.map(cardSlotKey);
   const bannerKeys = ["banner.a.media", "banner.b.media", "banner.c.media"];
   const batches = slotReadBatches([...cardKeys, ...bannerKeys], HOME_SECTION_SLOT_KEYS);
   const readAll = batches.flat();
-  check("…batched reads: every tool card, the 3 campaign banners and all 127 section slots, no call past 200 keys (the resolver's bound), each key once",
+  check(`…batched reads: every tool card, the 3 campaign banners and all ${TOTAL} section slots, no call past 200 keys (the resolver's bound), each key once`,
     SLOT_READ_CAP === 200 && batches.every((b) => b.length > 0 && b.length <= SLOT_READ_CAP) && new Set(readAll).size === readAll.length
     && HOME_SECTION_SLOT_KEYS.every((k) => readAll.includes(k)) && [...cardKeys, ...bannerKeys].every((k) => batches[0].includes(k))
     && /array_length\(p_keys, 1\) <= 200/.test(read("supabase/migrations/0141_inline_content_editor.sql")), batches.map((b) => b.length).join("+"));
@@ -1053,7 +1220,7 @@ section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DI
   {
     const many = slotReadBatches(Array.from({ length: 150 }, (_, i) => `tool.x${i}.card`), HOME_SECTION_SLOT_KEYS);
     check("…a list past the bound adds a call instead of dropping anything: the cards stay in the first",
-      many.length === 2 && many.every((b) => b.length <= SLOT_READ_CAP) && many.flat().length === 277
+      many.length === 2 && many.every((b) => b.length <= SLOT_READ_CAP) && many.flat().length === 150 + TOTAL
       && Array.from({ length: 150 }, (_, i) => `tool.x${i}.card`).every((k) => many[0].includes(k)));
   }
 

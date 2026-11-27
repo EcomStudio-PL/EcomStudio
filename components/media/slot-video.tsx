@@ -39,11 +39,21 @@ type Props = {
   /** The admin's alt text. A decorative clip has none and is hidden from
    *  assistive technology rather than announced as "video". */
   label?: string;
+  /** Where the phone and tablet files take over: the widest viewport (px)
+   *  that still gets each. Default 639 / 1023 — every slot as before; the
+   *  /home banners pass their own 767 / 1279 (27.11.2026). */
+  maxWidths?: { mobile: number; tablet: number };
+  /** OPT-IN (the /home carousel tiles): under prefers-reduced-motion show the
+   *  poster ALONE — no controls and the clip never fetched. Without it the
+   *  default stays: the poster and a control. */
+  stillOnCalm?: boolean;
 };
 
 export function SlotVideo({
-  desktop, tablet, mobile, poster, autoplay, muted, loop, controls, fit, position, label,
+  desktop, tablet, mobile, poster, autoplay, muted, loop, controls, fit, position, label, maxWidths, stillOnCalm = false,
 }: Props) {
+  const phoneMax = maxWidths?.mobile ?? 639;
+  const tabletMax = maxWidths?.tablet ?? 1023;
   const ref = useRef<HTMLVideoElement>(null);
   const [src, setSrc] = useState(desktop);
   const [near, setNear] = useState(false);
@@ -54,8 +64,8 @@ export function SlotVideo({
   // nothing on the wire.
   useEffect(() => {
     const pick = () => {
-      if (mobile && window.matchMedia("(max-width: 639px)").matches) return mobile;
-      if (tablet && window.matchMedia("(max-width: 1023px)").matches) return tablet;
+      if (mobile && window.matchMedia(`(max-width: ${phoneMax}px)`).matches) return mobile;
+      if (tablet && window.matchMedia(`(max-width: ${tabletMax}px)`).matches) return tablet;
       return desktop;
     };
     setSrc(pick());
@@ -64,7 +74,7 @@ export function SlotVideo({
     const onResize = () => setSrc(pick());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [desktop, tablet, mobile]);
+  }, [desktop, tablet, mobile, phoneMax, tabletMax]);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -94,6 +104,8 @@ export function SlotVideo({
   // less motion. A muted autoplay is the only kind a browser will honour, so
   // the two travel together.
   const plays = autoplay && near && !calm;
+  // The opt-in still: a calm viewer of a /home tile gets the poster only.
+  const still = stillOnCalm && calm;
 
   // ONLY WHILE IT IS SEEN. A page with several clips (the Home's galleries)
   // would otherwise keep every one it ever scrolled past looping for the rest
@@ -117,13 +129,13 @@ export function SlotVideo({
       // `key` on the src so a breakpoint change genuinely reloads the element
       // rather than leaving the old buffer playing.
       key={src}
-      src={near ? src : undefined}
+      src={near && !still ? src : undefined}
       poster={poster}
-      preload={near ? "metadata" : "none"}
+      preload={near && !still ? "metadata" : "none"}
       autoPlay={plays}
       muted={muted || plays}
       loop={loop}
-      controls={controls || calm}
+      controls={still ? false : controls || calm}
       playsInline
       // A clip with no alt text is decoration; one with alt text is content.
       {...(label ? { "aria-label": label } : { "aria-hidden": true })}

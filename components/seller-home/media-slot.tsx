@@ -17,9 +17,10 @@ import { RefSwap } from "./ref-swap";
  *               image, lazy unless `priority`) or a clip (SlotVideo: fetched
  *               only near the viewport, muted, looping, paused off-screen,
  *               poster for reduced motion);
- *   2. GLOBAL   the library picture or clip an admin assigned to THIS
+ *   2. GLOBAL   the library picture, GIF or clip an admin assigned to THIS
  *               position in the visual editor (a media_slots row keyed by the
- *               config's `configKey`), framed with the editor's crop
+ *               config's `configKey` — for a carousel tile its own /home
+ *               slot, 27.11.2026), framed with the editor's crop
  *               (./ice-slot-image.tsx) — only when the page is handed one;
  *   3. ADMIN    the picture an admin put on this TOOL's card in Admin → Media
  *               (the existing media-slot system), for tool tiles;
@@ -61,12 +62,15 @@ type Props = {
   /** A grid tile's product photo slot (`<slot>.ref`): when it is filled the
    *  result swaps to it on hover / a held finger (./ref-swap.tsx). */
   refKey?: string;
+  /** A /home carousel tile (27.11.2026): its own clip plays muted, looping,
+   *  without controls; under reduced motion its poster only. */
+  tile?: boolean;
   className?: string;
 };
 
 export function MediaSlot({
   media, ratio, fill = false, label, hint, tone = 0, sizes, priority = false,
-  home = null, admin = null, shipped = null, dim = false, bare = false, refKey, className,
+  home = null, admin = null, shipped = null, dim = false, bare = false, refKey, tile = false, className,
 }: Props) {
   const shape = ratio ?? ratioOf(media);
   const frame = cn(
@@ -97,7 +101,7 @@ export function MediaSlot({
   if (assigned && home) {
     const result = (
       <IceSlotImage slot={assigned} locale={home.locale} alt={media.alt} label={label || undefined}
-        sizes={sizes} priority={priority} />
+        sizes={sizes} priority={priority} tile={tile} />
     );
     // The product photo it was made from, swapped in on hover / a held finger.
     // Images only on both sides; no product photo → exactly as before.

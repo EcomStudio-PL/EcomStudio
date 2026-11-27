@@ -496,8 +496,25 @@ export function layoutItems(l: HomeLayout): string[] {
 }
 
 /** Every /home section slot the layout paints, with the grids' product photos. */
+/**
+ * A /home carousel tile's OWN picture slot (27.11.2026) — the key the page
+ * has always given the tile's frame (`data-config-key`), now a media_slots
+ * row of its own (global / sellerHome). Empty, the tile paints its tool's
+ * card picture from /tools exactly as before; filled, only /home changes.
+ * Keyed by the tile, not the tool: two tiles of one tool are two slots, and
+ * moving a tile keeps its picture.
+ */
+export function carouselSlotKey(e: Pick<HomeToolEntry, "id" | "from">): string {
+  return `homeMedia.carousel.${e.from ?? e.id}`;
+}
+/** The tile a carousel slot key names (its `from` or its id), or null. */
+export function carouselSlotName(key: string): string | null {
+  return /^homeMedia\.carousel\.([a-zA-Z][a-zA-Z0-9-]{0,39})$/.exec(key)?.[1] ?? null;
+}
+
 export function layoutSlotKeys(l: HomeLayout): string[] {
   const keys: string[] = [];
+  l.carousel.forEach((e) => keys.push(carouselSlotKey(e)));
   l.beforeAfter.forEach((e) => keys.push(...pairSlotKeys(e.n)));
   for (const k of GRID_LISTS) l[k].forEach((e) => { const s = gridSlotKey(k, e.n); keys.push(s, refSlotKey(s)); });
   return keys;

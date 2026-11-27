@@ -1,15 +1,17 @@
 "use client";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type {
-  IceAsset, IceCrop, IceElement, IceLocale, IceResult, IceSlotSpec, IceSlotState, IceSlotWrite, IceTransport, IceVersion,
+  IceAsset, IceCrop, IceElement, IceFrame, IceLocale, IcePhoneRatio, IceResult, IceSlotSpec, IceSlotState, IceSlotWrite, IceTransport, IceVersion,
 } from "@/lib/ice/types";
-import { ICE_LOCALES } from "@/lib/ice/types";
+import { ICE_LOCALES, ICE_PHONE_RATIOS } from "@/lib/ice/types";
 import { altProblem, normaliseText } from "@/lib/ice/validate";
-import { ICE_MAX_SAMPLE_BYTES, isIceMime } from "@/lib/ice/sniff";
+import { ICE_GIF_MIME, ICE_MAX_SAMPLE_BYTES, isIceMime } from "@/lib/ice/sniff";
+import { BANNER_FRAME, BANNER_PHONE_5_4, ratioOf } from "@/lib/seller-home-config";
 import { notify } from "@/lib/notify";
 import { CENTER, CropEditor, MediaPaint, PHONE_REF_WIDTH, PositionGrid, frameBox, isCenter, isPosition, zoomCap } from "./crop";
 import { LibraryPicker } from "./library";
 import { uploadOne } from "./upload";
+import { makeStill } from "./poster";
 import {
   Btn, LocaleTabs, Sheet, bytes, call, cls, errorText, fitWarnings, previewUrl, roleLabel, sectionLabel, when,
   type EditorCtx, type T,
@@ -35,13 +37,23 @@ export type AltDraft = Record<IceLocale, string>;
 export type Draft = {
   media: IceAsset | null;
   mobile: IceAsset | null;
+  /** A banner's tablet file (27.11.2026). */
+  tablet: IceAsset | null;
   poster: IceAsset | null;
   alt: AltDraft;
   position: string;
   crop: IceCrop;
   /** The phone file's own frame (crop.m). */
   cropM: IceCrop;
+  /** The tablet file's own frame (crop.t). */
+  cropT: IceCrop;
+  /** A banner's phone shape (crop.pr) and dimming in % (crop.ov). */
+  phoneRatio: IcePhoneRatio;
+  overlay: number;
 };
+
+/** The dimming a banner has always had (the shipped gradient, unscaled). */
+export const OVERLAY_DEFAULT = 100;
 
 const plain = (c: IceCrop): IceCrop => ({ x: c.x, y: c.y, zoom: c.zoom });
 
@@ -59,6 +71,31 @@ export function draftOf(st: IceSlotState): Draft {
     position: st.position,
     crop: st.crop ? plain(st.crop) : CENTER,
     cropM: st.crop?.m ? plain(st.crop.m) : CENTER,
+    tablet: st.tablet,
+    cropT: st.crop?.t ? plain(st.crop.t) : CENTER,
+    phoneRatio: st.crop?.pr ?? "1:1",
+    overlay: st.crop?.ov ?? OVERLAY_DEFAULT,
+  };
+}
+
+/** A GIF where the slot takes one: its first frame is the "poster". */
+const isGif = (a: IceAsset | null | undefined) => a?.mime === ICE_GIF_MIME;
+/** The still a write carries: a clip's poster, or a GIF's first frame. */
+const stillAllowed = (spec: IceSlotSpec, media: IceAsset | null) => media?.kind === "video" || (Boolean(spec.gif) && isGif(media));
+
+/** The slot's frame as stored: every part only where the slot has it, and
+ *  nothing at all when it is all default (what the renderers paint anyway). */
+export function draftFrame(spec: IceSlotSpec, d: Pick<Draft, "crop" | "cropM" | "cropT" | "phoneRatio" | "overlay">, has: { mobile: boolean; tablet: boolean }): IceFrame | null {
+  const pr = spec.banner && d.phoneRatio !== "1:1" ? d.phoneRatio : undefined;
+  const ov = spec.banner && d.overlay !== OVERLAY_DEFAULT ? Math.round(Math.min(100, Math.max(0, d.overlay))) : undefined;
+  const trivial = isCenter(d.crop) && (!has.mobile || isCenter(d.cropM)) && (!has.tablet || isCenter(d.cropT)) && pr === undefined && ov === undefined;
+  if (trivial) return null;
+  return {
+    ...d.crop,
+    ...(has.mobile ? { m: d.cropM } : {}),
+    ...(has.tablet ? { t: d.cropT } : {}),
+    ...(pr ? { pr } : {}),
+    ...(ov !== undefined ? { ov } : {}),
   };
 }
 
@@ -82,20 +119,19 @@ export function writeOf(spec: IceSlotSpec, d: Draft, st: IceSlotState): IceSlotW
   const media = d.media;
   const video = media?.kind === "video";
   const mobile = media && spec.mobile ? d.mobile : null;
+  const tablet = media && spec.tablet ? d.tablet : null;
   const altI18n = cleanAlt(d.alt);
-  let crop: IceSlotWrite["crop"] = null;
   // Position-only slots are painted by the frozen tool-card renderer, which
   // knows no crop: the server refuses one there.
-  if (media && !spec.positionOnly) {
-    if (mobile) crop = isCenter(d.crop) && isCenter(d.cropM) ? null : { ...d.crop, m: d.cropM };
-    else crop = isCenter(d.crop) ? null : d.crop;
-  }
+  const crop: IceSlotWrite["crop"] = media && !spec.positionOnly ? draftFrame(spec, d, { mobile: Boolean(mobile), tablet: Boolean(tablet) }) : null;
   return {
     key: spec.key,
     mediaType: video ? "video" : "image",
     mediaId: media?.id ?? null,
     mobileMediaId: mobile?.id ?? null,
-    posterMediaId: video ? d.poster?.id ?? null : null,
+    // Only a slot with its own tablet file names one (older slots: the server keeps it).
+    ...(spec.tablet ? { tabletMediaId: tablet?.id ?? null } : {}),
+    posterMediaId: stillAllowed(spec, media) ? d.poster?.id ?? null : null,
     alt: altI18n.pl ?? null,
     altI18n,
     fit: st.fit,
@@ -115,11 +151,12 @@ export type Snap = {
   mediaType: "image" | "video";
   mediaId: string | null;
   mobileId: string | null;
+  tabletId: string | null;
   posterId: string | null;
   altI18n: Partial<Record<IceLocale, string>>;
   fit: "cover" | "contain" | null;
   position: string | null;
-  crop: (IceCrop & { m?: IceCrop }) | null;
+  crop: IceFrame | null;
   updatedAt: string | null;
 };
 
@@ -146,16 +183,21 @@ export function readSnapshot(v: unknown): Snap | null {
   if (legacy) altI18n.pl = legacy;
   else delete altI18n.pl;
   const main = cropValue(o.crop);
-  const m = main ? cropValue((o.crop as Record<string, unknown>).m) : null;
+  const raw = (main ? o.crop : {}) as Record<string, unknown>;
+  const m = main ? cropValue(raw.m) : null;
+  const tc = main ? cropValue(raw.t) : null;
+  const pr = (ICE_PHONE_RATIOS as readonly unknown[]).includes(raw.pr) ? raw.pr as IcePhoneRatio : null;
+  const ov = typeof raw.ov === "number" && Number.isInteger(raw.ov) && raw.ov >= 0 && raw.ov <= 100 ? raw.ov : null;
   return {
     mediaType: o.media_type === "video" ? "video" : "image",
     mediaId: str(o.media_id),
     mobileId: str(o.mobile_media_id),
+    tabletId: str(o.tablet_media_id),
     posterId: str(o.poster_media_id),
     altI18n,
     fit: o.object_fit === "contain" || o.object_fit === "cover" ? o.object_fit : null,
     position: str(o.object_position),
-    crop: main ? (m ? { ...main, m } : main) : null,
+    crop: main ? { ...main, ...(m ? { m } : {}), ...(tc ? { t: tc } : {}), ...(pr ? { pr } : {}), ...(ov !== null ? { ov } : {}) } : null,
     updatedAt: str(o.updated_at),
   };
 }
@@ -169,25 +211,37 @@ export function snapshotWrite(spec: IceSlotSpec, snap: Snap | null, st: IceSlotS
   // one (a tool card's file from Admin → Media); its crop.m only where the
   // editor frames phone files.
   const mobile = mediaId ? snap?.mobileId ?? null : null;
+  const tablet = mediaId && spec.tablet ? snap?.tabletId ?? null : null;
   const altI18n = { ...(snap?.altI18n ?? {}) };
   const c = snap?.crop ?? null;
+  // crop.m only with a phone file, crop.t only with a tablet file, the phone
+  // shape and the dimming only on a banner — what the server accepts.
+  const frame: IceFrame | null = !mediaId || spec.positionOnly || !c ? null : {
+    ...plain(c),
+    ...(c.m && mobile && spec.mobile ? { m: c.m } : {}),
+    ...(c.t && tablet ? { t: c.t } : {}),
+    ...(c.pr && spec.banner ? { pr: c.pr } : {}),
+    ...(c.ov !== undefined && spec.banner ? { ov: c.ov } : {}),
+  };
+  // A snapshot's still: a clip's poster, or (in a GIF slot) an image's still.
+  const posterId = mediaId && (video || spec.gif) ? snap?.posterId ?? null : null;
   return {
     key: spec.key,
     mediaType: video ? "video" : "image",
     mediaId,
     mobileMediaId: mobile,
-    posterMediaId: video ? snap?.posterId ?? null : null,
+    ...(spec.tablet ? { tabletMediaId: tablet } : {}),
+    posterMediaId: posterId,
     alt: altI18n.pl ?? null,
     altI18n,
     fit: snap?.fit ?? st.fit,
     position: isPosition(snap?.position) ? snap.position : st.position,
-    // crop.m is only accepted together with a phone file.
-    crop: !mediaId || spec.positionOnly || !c ? null : mobile && spec.mobile ? c : plain(c),
+    crop: frame,
     base: st.updatedAt,
   };
 }
 
-const idsOf = (w: IceSlotWrite) => [w.mediaId, w.mobileMediaId, w.posterMediaId];
+const idsOf = (w: IceSlotWrite) => [w.mediaId, w.mobileMediaId, w.tabletMediaId ?? null, w.posterMediaId];
 
 function refused<R>(r: IceResult<R>): r is { ok: false; error: string; current?: unknown } {
   return !r.ok;
@@ -311,6 +365,7 @@ export function useSlotWriter(ctx: EditorCtx, reload: () => Promise<void>, done:
     if (!window.confirm(t(confirmKey))) return;
     await commit(slots.map(({ spec, state }) => ({
       ...writeOf(spec, draftOf(state), state), mediaType: "image", mediaId: null, mobileMediaId: null, posterMediaId: null, crop: null,
+      ...(spec.tablet ? { tabletMediaId: null } : {}),
     })), "clear");
   };
 
@@ -336,7 +391,7 @@ export function SlotFacts({ spec, t, locale }: { spec: IceSlotSpec; t: T; locale
     <div className={s.row}>
       <span className={s.chip}>{t("ice.media.size", { w: spec.width, h: spec.height })}</span>
       <span className={s.chip}>{t("ice.media.ratio", { ratio: ratioText(spec.ratio, locale) })}</span>
-      <span className={s.chip}>{t(spec.video && !spec.sample ? "ice.media.kindAny" : "ice.media.kindImage")}</span>
+      <span className={s.chip}>{t(spec.gif ? "ice.media.kindAnyGif" : spec.video && !spec.sample ? "ice.media.kindAny" : "ice.media.kindImage")}</span>
     </div>
   );
 }
@@ -365,9 +420,10 @@ export function Warnings({ items }: { items: string[] }) {
 }
 
 /** Why a library file cannot fill this place — the server checks again. */
-function pickProblem(a: IceAsset, kind: "image" | "video" | undefined, sample: boolean): string | null {
+function pickProblem(a: IceAsset, kind: "image" | "video" | undefined, sample: boolean, gif = false): string | null {
   if (a.kind === "file" || (kind && a.kind !== kind)) return "asset_kind";
-  if (!a.mime || !isIceMime(a.mime)) return "asset_format";
+  // A GIF only where the place takes one (a /home carousel tile, never a sample).
+  if (!a.mime || !(isIceMime(a.mime) || (gif && !sample && a.mime === ICE_GIF_MIME))) return "asset_format";
   if (sample && a.sizeBytes !== null && a.sizeBytes > ICE_MAX_SAMPLE_BYTES) return "asset_too_large";
   return null;
 }
@@ -376,12 +432,16 @@ const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
 const VIDEO_ACCEPT = "video/mp4,video/webm";
 
 /** "Wgraj nowe" + "Wybierz z biblioteki" (+ "Usuń" when given) for one file. */
-export function AssetChooser({ ctx, kind, sample, onPick, onRemove, disabled }: {
+export function AssetChooser({ ctx, kind, sample, gif = false, onPick, onRemove, disabled }: {
   ctx: EditorCtx;
   /** Only this kind may be chosen; none = picture or clip. */
   kind?: "image" | "video";
   sample?: boolean;
-  onPick: (asset: IceAsset) => void;
+  /** The place takes an animated GIF too (a /home carousel tile). */
+  gif?: boolean;
+  /** `file`: the file just uploaded (read locally for a still), absent for a
+   *  library pick. */
+  onPick: (asset: IceAsset, file?: File) => void;
   onRemove?: () => void;
   disabled?: boolean;
 }) {
@@ -390,18 +450,18 @@ export function AssetChooser({ ctx, kind, sample, onPick, onRemove, disabled }: 
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const take = (a: IceAsset): boolean => {
-    const problem = pickProblem(a, kind, Boolean(sample));
+  const take = (a: IceAsset, file?: File): boolean => {
+    const problem = pickProblem(a, kind, Boolean(sample), gif);
     if (problem) notify.error(errorText(t, problem));
-    else onPick(a);
+    else onPick(a, file);
     return !problem;
   };
   const upload = async (file: File | undefined) => {
     if (!file) return;
     setUploading(true);
-    const res = await uploadOne(ctx.transport, file, { sample, kind });
+    const res = await uploadOne(ctx.transport, file, { sample, kind, gif });
     setUploading(false);
-    if (res.ok) take(res.asset);
+    if (res.ok) take(res.asset, file);
     else notify.error(`${file.name}: ${errorText(t, res.error)}`);
   };
 
@@ -411,12 +471,12 @@ export function AssetChooser({ ctx, kind, sample, onPick, onRemove, disabled }: 
         {uploading ? t("ice.media.uploading") : t("ice.media.upload")}
       </Btn>
       <input ref={fileRef} type="file" hidden aria-label={t("ice.media.upload")}
-        accept={kind === "video" ? VIDEO_ACCEPT : kind === "image" ? IMAGE_ACCEPT : `${IMAGE_ACCEPT},${VIDEO_ACCEPT}`}
+        accept={`${kind === "video" ? VIDEO_ACCEPT : kind === "image" ? IMAGE_ACCEPT : `${IMAGE_ACCEPT},${VIDEO_ACCEPT}`}${gif && kind !== "video" ? ",image/gif" : ""}`}
         onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
       <Btn small onClick={() => setLibrary(true)} disabled={disabled || uploading}>{t("ice.media.fromLibrary")}</Btn>
       {onRemove && <Btn small kind="ghost" onClick={onRemove} disabled={disabled || uploading}>{t("ice.media.remove")}</Btn>}
       {library && (
-        <LibraryPicker ctx={ctx} kind={kind} sample={sample} onClose={() => setLibrary(false)}
+        <LibraryPicker ctx={ctx} kind={kind} sample={sample} gif={gif} onClose={() => setLibrary(false)}
           onPick={(a) => { if (take(a)) setLibrary(false); }} />
       )}
     </div>
@@ -491,7 +551,7 @@ export function SlotHistory({ ctx, slots, busy, onRestore }: {
         .sort((a, b) => Date.parse(b.v.createdAt) - Date.parse(a.v.createdAt));
       setRows(merged);
       const snaps = merged.flatMap(({ v }) => [readSnapshot(v.before), readSnapshot(v.after)]);
-      const found = await resolveAssets(transport, snaps.flatMap((x) => (x ? [x.mediaId, x.mobileId, x.posterId] : [])));
+      const found = await resolveAssets(transport, snaps.flatMap((x) => (x ? [x.mediaId, x.mobileId, x.tabletId, x.posterId] : [])));
       if (!live) return;
       if (refused(found)) setProblem(found.error);
       else setFiles(found.data);
@@ -512,7 +572,7 @@ export function SlotHistory({ ctx, slots, busy, onRestore }: {
         const before = readSnapshot(v.before);
         const after = readSnapshot(v.after);
         const restoreIds = after
-          ? [after.mediaId, slot.spec.mobile ? after.mobileId : null, after.mediaType === "video" ? after.posterId : null]
+          ? [after.mediaId, slot.spec.mobile ? after.mobileId : null, slot.spec.tablet ? after.tabletId : null, after.mediaType === "video" || slot.spec.gif ? after.posterId : null]
           : [];
         const gone = files !== null && restoreIds.some((id) => id && !files.has(id));
         const current = Boolean(after?.updatedAt && slot.state.updatedAt && Date.parse(after.updatedAt) === Date.parse(slot.state.updatedAt));
@@ -577,6 +637,37 @@ export function MediaPanel({ ctx, element, spec, onClose, onBack, onDone, label 
   return <SlotPanel ctx={ctx} element={element} spec={slot} onClose={onClose} onBack={onBack} onDone={onDone ?? onClose} label={label} />;
 }
 
+type Device = "desktop" | "tablet" | "phone";
+
+/**
+ * A /home banner's LIVE PREVIEW on the page itself (27.11.2026): the dimming
+ * (the overlay layer's opacity) and the phone shape (the frame's --ar-phone),
+ * while the panel is open. Nothing is written until "Zapisz"; closing the
+ * panel puts the page back exactly as it was (after a save the page is
+ * re-rendered with the saved values anyway).
+ */
+function useBannerPreview(dom: string | undefined, on: boolean, overlay: number, phoneRatio: IcePhoneRatio) {
+  const original = useRef<{ overlay: string; ar: string } | null>(null);
+  useEffect(() => {
+    if (!on || !dom) return;
+    const root = document.querySelector<HTMLElement>(dom);
+    const layer = root?.querySelector<HTMLElement>("[data-promo-overlay]");
+    const frame = root?.querySelector<HTMLElement>("[data-promo-frame]");
+    if (!original.current) original.current = { overlay: layer?.style.opacity ?? "", ar: frame?.style.getPropertyValue("--ar-phone") ?? "" };
+    if (layer) layer.style.opacity = String(Math.min(100, Math.max(0, overlay)) / 100);
+    if (frame) frame.style.setProperty("--ar-phone", ratioOf(phoneRatio === "5:4" ? BANNER_PHONE_5_4 : BANNER_FRAME.phone));
+  }, [dom, on, overlay, phoneRatio]);
+  useEffect(() => () => {
+    const was = original.current;
+    if (!was || !dom) return;
+    const root = document.querySelector<HTMLElement>(dom);
+    const layer = root?.querySelector<HTMLElement>("[data-promo-overlay]");
+    const frame = root?.querySelector<HTMLElement>("[data-promo-frame]");
+    if (layer) layer.style.opacity = was.overlay;
+    if (frame) frame.style.setProperty("--ar-phone", was.ar);
+  }, [dom]);
+}
+
 function SlotPanel({ ctx, element, spec, onClose, onBack, onDone, label }: {
   ctx: EditorCtx; element: IceElement; spec: IceSlotSpec; onClose: () => void; onBack?: () => void; onDone: () => void; label?: string;
 }) {
@@ -592,37 +683,63 @@ function SlotPanel({ ctx, element, spec, onClose, onBack, onDone, label }: {
     });
   const writer = useSlotWriter(ctx, load, onDone);
   const [showHistory, setShowHistory] = useState(false);
+  const [device, setDevice] = useState<Device>("desktop");
+  const [stilling, setStilling] = useState(false);
   const historyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (showHistory) historyRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [showHistory]);
+  const overlayId = useId();
+  useBannerPreview(element.dom, Boolean(spec.banner && view), view?.overlay ?? OVERLAY_DEFAULT, view?.phoneRatio ?? "1:1");
 
   const role = roleLabel(t, element);
   const title = label ?? role;
   const crumbs = [ctx.pageLabel, sectionLabel(t, ctx.info, element.id), role, label].filter(Boolean).join(" · ");
   const group = ctx.info.kind === "registry" ? ctx.info.page.bulk?.find((g) => g.slots.includes(spec.key)) : undefined;
-  const phoneRatio = spec.frames?.find((f) => f.label === "phone")?.ratio ?? spec.ratio;
+  // A banner's phone frame follows the shape chosen in the draft.
+  const phoneRatio = spec.banner
+    ? ratioOf(view?.phoneRatio === "5:4" ? BANNER_PHONE_5_4 : BANNER_FRAME.phone)
+    : spec.frames?.find((f) => f.label === "phone")?.ratio ?? spec.ratio;
+  const tabletRatio = spec.frames?.find((f) => f.label === "tablet")?.ratio ?? spec.ratio;
   const media = view?.media ?? null;
   const mobile = spec.mobile && media ? view?.mobile ?? null : null;
+  const tablet = spec.tablet && media ? view?.tablet ?? null : null;
 
   const write = state && view ? writeOf(spec, view, state) : null;
   const dirty = Boolean(state && write && !sameWrite(write, writeOf(spec, draftOf(state), state)));
   const invalid = view ? altInvalid(view.alt) : false;
 
-  const setMain = (a: IceAsset) => edit((d) => {
-    const keepMobile = d.mobile?.kind === a.kind;
-    return {
-      ...d,
-      media: a,
-      // A new file starts centred: the old frame was chosen for another picture.
-      crop: CENTER,
-      // A clip keeps its cover; a phone file must be the same kind as the main one.
-      poster: a.kind === "video" ? d.poster : null,
-      mobile: keepMobile ? d.mobile : null,
-      cropM: keepMobile ? d.cropM : CENTER,
-      alt: d.alt.pl.trim() || !a.alt ? d.alt : { ...d.alt, pl: a.alt },
-    };
-  });
+  /** A clip's poster / a GIF's first frame, made in the browser and put in
+   *  the library (./poster.ts) — once, when the file is chosen. */
+  const autoStill = async (a: IceAsset, file?: File) => {
+    setStilling(true);
+    const res = await makeStill(ctx.transport, a, file);
+    setStilling(false);
+    if (res.ok) edit((d) => (d.media?.id === a.id ? { ...d, poster: res.poster } : d));
+    else notify.error(t("ice.media.posterFailed"));
+  };
+
+  const setMain = (a: IceAsset, file?: File) => {
+    edit((d) => {
+      const keepMobile = d.mobile?.kind === a.kind;
+      const keepTablet = d.tablet?.kind === a.kind;
+      return {
+        ...d,
+        media: a,
+        // A new file starts centred: the old frame was chosen for another picture.
+        crop: CENTER,
+        // A new file gets its own still (made below); a phone / tablet file
+        // must be the same kind as the main one.
+        poster: null,
+        mobile: keepMobile ? d.mobile : null,
+        cropM: keepMobile ? d.cropM : CENTER,
+        tablet: keepTablet ? d.tablet : null,
+        cropT: keepTablet ? d.cropT : CENTER,
+        alt: d.alt.pl.trim() || !a.alt ? d.alt : { ...d.alt, pl: a.alt },
+      };
+    });
+    if (a.kind === "video" || (spec.gif && isGif(a))) void autoStill(a, file);
+  };
 
   const footer = state && view ? (
     <>
@@ -635,11 +752,45 @@ function SlotPanel({ ctx, element, spec, onClose, onBack, onDone, label }: {
       </Btn>
       <span className={s.grow} />
       <Btn onClick={onBack ?? onClose} disabled={writer.busy}>{t("ice.cancel")}</Btn>
-      <Btn kind="primary" disabled={writer.busy || !dirty || invalid || !media} onClick={() => { if (write) void writer.commit([write], "save"); }}>
+      <Btn kind="primary" disabled={writer.busy || stilling || !dirty || invalid || !media} onClick={() => { if (write) void writer.commit([write], "save"); }}>
         {writer.busy ? t("ice.media.saving") : t("ice.save")}
       </Btn>
     </>
   ) : undefined;
+
+  /** One device's own file of a banner: chooser, its frame, or the note that
+   *  the desktop file stands in (shown in that device's shape). */
+  const deviceFile = (which: "tablet" | "phone") => {
+    if (!view || !state) return null;
+    const own = which === "tablet" ? tablet : mobile;
+    const ratio = which === "tablet" ? tabletRatio : phoneRatio;
+    const crop = which === "tablet" ? view.cropT : view.cropM;
+    return (
+      <div className={s.field} data-banner-device={which}>
+        <p className={s.meta}>{t(which === "tablet" ? "ice.media.tabletHint" : "ice.media.phoneHint", { ratio: ratioText(ratio, ctx.locale) })}</p>
+        <AssetChooser ctx={ctx} kind={media?.kind === "video" ? "video" : "image"} disabled={!media}
+          onPick={(a) => edit((d) => (which === "tablet" ? { ...d, tablet: a, cropT: CENTER } : { ...d, mobile: a, cropM: CENTER }))}
+          onRemove={own ? () => edit((d) => (which === "tablet" ? { ...d, tablet: null, cropT: CENTER } : { ...d, mobile: null, cropM: CENTER })) : undefined} />
+        {!media && <p className={s.meta}>{t("ice.media.mobileNeedsMain")}</p>}
+        {own ? (
+          <>
+            <AssetLine asset={own} />
+            <CropEditor asset={own} crop={crop} onChange={(c) => edit((d) => (which === "tablet" ? { ...d, cropT: c } : { ...d, cropM: c }))}
+              ratio={ratio} fit={state.fit} t={t} maxZoom={zoomCap(own, which === "tablet" ? { width: BANNER_FRAME.tablet.width } : { width: PHONE_REF_WIDTH })}
+              label={t(which === "tablet" ? "ice.crop.frameTablet" : "ice.crop.framePhone")} />
+            <Warnings items={fitWarnings(t, own, { width: 0, height: 0, ratio })} />
+          </>
+        ) : media && (
+          <>
+            <p className={s.note}>{t("ice.media.deviceInherits")}</p>
+            <div className={s.frame} style={frameBox(ratio)}>
+              <MediaPaint asset={media} crop={view.crop} fit={state.fit} min={640} />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <Sheet t={t} title={title} crumbs={crumbs} onClose={onClose} footer={footer}>
@@ -654,84 +805,135 @@ function SlotPanel({ ctx, element, spec, onClose, onBack, onDone, label }: {
         <>
           <SlotFacts spec={spec} t={t} locale={ctx.locale} />
           {spec.sharedWith && <p className={s.note}>{t("ice.media.shared", { page: spec.sharedWith })}</p>}
+          {spec.inherits && <p className={s.note}>{t("ice.media.inherits")}</p>}
           {spec.positionOnly && <p className={s.note}>{t("ice.media.positionOnly")}</p>}
           {spec.sample && <p className={s.note}>{t("ice.samples.note")}</p>}
           {!state.enabled && <p className={s.warn}>{t("ice.media.disabled")}</p>}
           {writer.problem && <p className={s.error} role="alert">{writer.problem}</p>}
 
-          {!media ? (
-            <div className={s.frame} style={frameBox(spec.ratio)}>
-              <span className={s.frameEmpty}>{t("ice.media.empty")}</span>
+          {spec.banner && (
+            <div className={s.row} role="tablist" aria-label={t("ice.media.devices")} data-banner-devices>
+              {(["desktop", "tablet", "phone"] as const).map((d) => (
+                <Btn key={d} small kind={device === d ? "primary" : "ghost"} onClick={() => setDevice(d)}
+                  aria-selected={device === d} role="tab" data-device={d}>
+                  {t(`ice.media.device.${d}`)}
+                </Btn>
+              ))}
             </div>
-          ) : spec.positionOnly ? (
-            <div className={s.posWrap}>
-              <div className={cls(s.frame, s.posPreview)} style={{ aspectRatio: spec.ratio }}>
-                <MediaPaint asset={media} fit={state.fit} position={view.position} />
-              </div>
+          )}
+
+          {spec.banner && device === "tablet" ? deviceFile("tablet") : spec.banner && device === "phone" ? (
+            <>
               <div className={s.field}>
-                <span className={s.label}>{t("ice.crop.position")}</span>
-                <PositionGrid value={view.position} onChange={(p) => edit((d) => ({ ...d, position: p }))} t={t} />
+                <span className={s.label}>{t("ice.media.phoneRatio")}</span>
+                <div className={s.row} data-phone-ratio>
+                  {ICE_PHONE_RATIOS.map((r) => (
+                    <Btn key={r} small kind={view.phoneRatio === r ? "primary" : "ghost"} aria-pressed={view.phoneRatio === r}
+                      onClick={() => edit((d) => ({ ...d, phoneRatio: r }))} data-ratio={r}>
+                      {t(r === "5:4" ? "ice.media.phoneRatio54" : "ice.media.phoneRatio11")}
+                    </Btn>
+                  ))}
+                </div>
               </div>
-            </div>
+              {deviceFile("phone")}
+            </>
           ) : (
-            <CropEditor asset={media} crop={view.crop} onChange={(c) => edit((d) => ({ ...d, crop: c }))}
-              ratio={spec.ratio} fit={state.fit} t={t} maxZoom={zoomCap(media, spec)} />
+            <>
+              {!media ? (
+                <div className={s.frame} style={frameBox(spec.ratio)}>
+                  <span className={s.frameEmpty}>{t("ice.media.empty")}</span>
+                </div>
+              ) : spec.positionOnly ? (
+                <div className={s.posWrap}>
+                  <div className={cls(s.frame, s.posPreview)} style={{ aspectRatio: spec.ratio }}>
+                    <MediaPaint asset={media} fit={state.fit} position={view.position} />
+                  </div>
+                  <div className={s.field}>
+                    <span className={s.label}>{t("ice.crop.position")}</span>
+                    <PositionGrid value={view.position} onChange={(p) => edit((d) => ({ ...d, position: p }))} t={t} />
+                  </div>
+                </div>
+              ) : (
+                <CropEditor asset={media} crop={view.crop} onChange={(c) => edit((d) => ({ ...d, crop: c }))}
+                  ratio={spec.ratio} fit={state.fit} t={t} maxZoom={zoomCap(media, spec)} />
+              )}
+
+              {media && spec.frames && spec.frames.length > 0 && (
+                <div className={s.field}>
+                  <span className={s.label}>{t("ice.media.frames")}</span>
+                  <div className={s.frames}>
+                    {spec.frames.map((f) => {
+                      // A device with its own file paints it, with its own frame.
+                      const own = f.label === "phone" ? mobile : f.label === "tablet" && spec.tablet ? tablet : null;
+                      const ratio = f.label === "phone" ? phoneRatio : f.ratio;
+                      const crop = own ? (f.label === "phone" ? view.cropM : view.cropT) : view.crop;
+                      return (
+                        <figure key={f.label} className={s.figure}>
+                          <div className={s.frame} style={{ aspectRatio: ratio }}>
+                            {spec.positionOnly
+                              ? <MediaPaint asset={media} fit={state.fit} position={view.position} min={320} />
+                              : <MediaPaint asset={own ?? media} crop={crop} fit={state.fit} min={320} />}
+                          </div>
+                          <figcaption className={s.frameCaption}>{t(`ice.media.frame.${f.label}`)}</figcaption>
+                        </figure>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <AssetChooser ctx={ctx} kind={mainKind(spec)} sample={spec.sample} gif={spec.gif} onPick={setMain} />
+              {media && <AssetLine asset={media} />}
+              {media && <Warnings items={fitWarnings(t, media, spec)} />}
+
+              {media && stillAllowed(spec, media) && (
+                <div className={s.field} data-slot-still>
+                  <span className={s.label}>{t(media.kind === "video" ? "ice.media.poster" : "ice.media.gifStill")}</span>
+                  <div className={s.assetRow}>
+                    <span className={s.histThumb}>{view.poster ? <AssetThumb asset={view.poster} /> : stilling ? t("ice.media.posterMaking") : t("ice.history.noFile")}</span>
+                    <AssetChooser ctx={ctx} kind="image" onPick={(a) => edit((d) => ({ ...d, poster: a }))}
+                      onRemove={view.poster ? () => edit((d) => ({ ...d, poster: null })) : undefined} disabled={stilling} />
+                    <Btn small kind="ghost" disabled={stilling} onClick={() => void autoStill(media)}>{t("ice.media.posterMake")}</Btn>
+                  </div>
+                  {!view.poster && !stilling && <p className={s.warn}>{t(spec.gif ? "ice.media.posterMissingTile" : "ice.media.posterMissing")}</p>}
+                  {media.kind === "video" && <p className={s.meta}>{t("ice.media.videoNote")}</p>}
+                </div>
+              )}
+
+              {spec.mobile && !spec.banner && (
+                <div className={s.field}>
+                  <span className={s.label}>{t("ice.media.mobile")}</span>
+                  <p className={s.meta}>{t("ice.media.mobileHint", { ratio: ratioText(phoneRatio, ctx.locale) })}</p>
+                  <AssetChooser ctx={ctx} kind={media?.kind === "video" ? "video" : "image"} disabled={!media}
+                    onPick={(a) => edit((d) => ({ ...d, mobile: a, cropM: CENTER }))}
+                    onRemove={mobile ? () => edit((d) => ({ ...d, mobile: null, cropM: CENTER })) : undefined} />
+                  {!media && <p className={s.meta}>{t("ice.media.mobileNeedsMain")}</p>}
+                  {mobile && (
+                    <>
+                      <AssetLine asset={mobile} />
+                      <CropEditor asset={mobile} crop={view.cropM} onChange={(c) => edit((d) => ({ ...d, cropM: c }))}
+                        ratio={phoneRatio} fit={state.fit} t={t} maxZoom={zoomCap(mobile, { width: PHONE_REF_WIDTH })} label={t("ice.crop.framePhone")} />
+                      {/* No recommended phone size in the registry: the shape is what matters. */}
+                      <Warnings items={fitWarnings(t, mobile, { width: 0, height: 0, ratio: phoneRatio })} />
+                    </>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
-          {media && spec.frames && spec.frames.length > 0 && (
-            <div className={s.field}>
-              <span className={s.label}>{t("ice.media.frames")}</span>
-              <div className={s.frames}>
-                {spec.frames.map((f) => {
-                  // The phone frame paints the phone file, with its own frame, when there is one.
-                  const phone = f.label === "phone" && mobile !== null;
-                  return (
-                    <figure key={f.label} className={s.figure}>
-                      <div className={s.frame} style={{ aspectRatio: f.ratio }}>
-                        {spec.positionOnly
-                          ? <MediaPaint asset={media} fit={state.fit} position={view.position} min={320} />
-                          : <MediaPaint asset={phone && mobile ? mobile : media} crop={phone ? view.cropM : view.crop} fit={state.fit} min={320} />}
-                      </div>
-                      <figcaption className={s.frameCaption}>{t(`ice.media.frame.${f.label}`)}</figcaption>
-                    </figure>
-                  );
-                })}
+          {spec.banner && (
+            <div className={s.field} data-banner-overlay>
+              <div className={s.between}>
+                <label className={s.label} htmlFor={overlayId}>{t("ice.media.overlay")}</label>
+                <span className={s.meta} data-overlay-value>{t("ice.media.overlayValue", { n: view.overlay })}</span>
               </div>
-            </div>
-          )}
-
-          <AssetChooser ctx={ctx} kind={mainKind(spec)} sample={spec.sample} onPick={setMain} />
-          {media && <AssetLine asset={media} />}
-          {media && <Warnings items={fitWarnings(t, media, spec)} />}
-
-          {media?.kind === "video" && (
-            <div className={s.field}>
-              <span className={s.label}>{t("ice.media.poster")}</span>
-              <div className={s.assetRow}>
-                <span className={s.histThumb}>{view.poster ? <AssetThumb asset={view.poster} /> : t("ice.history.noFile")}</span>
-                <AssetChooser ctx={ctx} kind="image" onPick={(a) => edit((d) => ({ ...d, poster: a }))}
-                  onRemove={view.poster ? () => edit((d) => ({ ...d, poster: null })) : undefined} />
-              </div>
-              <p className={s.meta}>{t("ice.media.videoNote")}</p>
-            </div>
-          )}
-
-          {spec.mobile && (
-            <div className={s.field}>
-              <span className={s.label}>{t("ice.media.mobile")}</span>
-              <p className={s.meta}>{t("ice.media.mobileHint", { ratio: ratioText(phoneRatio, ctx.locale) })}</p>
-              <AssetChooser ctx={ctx} kind={media?.kind === "video" ? "video" : "image"} disabled={!media}
-                onPick={(a) => edit((d) => ({ ...d, mobile: a, cropM: CENTER }))}
-                onRemove={mobile ? () => edit((d) => ({ ...d, mobile: null, cropM: CENTER })) : undefined} />
-              {!media && <p className={s.meta}>{t("ice.media.mobileNeedsMain")}</p>}
-              {mobile && (
-                <>
-                  <AssetLine asset={mobile} />
-                  <CropEditor asset={mobile} crop={view.cropM} onChange={(c) => edit((d) => ({ ...d, cropM: c }))}
-                    ratio={phoneRatio} fit={state.fit} t={t} maxZoom={zoomCap(mobile, { width: PHONE_REF_WIDTH })} label={t("ice.crop.framePhone")} />
-                  {/* No recommended phone size in the registry: the shape is what matters. */}
-                  <Warnings items={fitWarnings(t, mobile, { width: 0, height: 0, ratio: phoneRatio })} />
-                </>
+              <input id={overlayId} type="range" min={0} max={100} step={1} value={view.overlay}
+                onChange={(e) => edit((d) => ({ ...d, overlay: Number(e.target.value) }))}
+                aria-valuetext={t("ice.media.overlayValue", { n: view.overlay })} />
+              <p className={s.meta}>{t("ice.media.overlayHint")}</p>
+              {view.overlay !== OVERLAY_DEFAULT && (
+                <div><Btn small kind="ghost" onClick={() => edit((d) => ({ ...d, overlay: OVERLAY_DEFAULT }))}>{t("ice.media.overlayReset")}</Btn></div>
               )}
             </div>
           )}

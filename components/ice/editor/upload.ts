@@ -1,7 +1,7 @@
 "use client";
 import { createClient } from "@/lib/supabase/client";
 import { deriveMedia } from "@/lib/media-derive";
-import { isIceMime, maxBytesFor, ICE_MAX_SAMPLE_BYTES } from "@/lib/ice/sniff";
+import { ICE_GIF_MIME, isIceMime, maxBytesFor, uploadMaxBytes, ICE_MAX_SAMPLE_BYTES, type IceMime } from "@/lib/ice/sniff";
 import type { IceAsset, IceTransport } from "@/lib/ice/types";
 
 /**
@@ -21,17 +21,22 @@ import type { IceAsset, IceTransport } from "@/lib/ice/types";
 
 export type UploadOutcome = { ok: true; asset: IceAsset } | { ok: false; error: string };
 
-export function precheck(file: File, opts: { sample?: boolean; kind?: "image" | "video" } = {}): string | null {
-  if (!isIceMime(file.type)) return "format";
+/** `gif`: the place being filled takes an animated GIF (a /home carousel
+ *  tile) — everywhere else a GIF is refused here as before. */
+export type UploadOpts = { sample?: boolean; kind?: "image" | "video"; gif?: boolean };
+
+export function precheck(file: File, opts: UploadOpts = {}): string | null {
+  const gif = file.type === ICE_GIF_MIME && Boolean(opts.gif) && !opts.sample;
+  if (!gif && !isIceMime(file.type)) return "format";
   if (opts.kind && !file.type.startsWith(`${opts.kind}/`)) return "asset_kind";
-  if (file.size > (opts.sample ? ICE_MAX_SAMPLE_BYTES : maxBytesFor(file.type))) return "too_large";
+  if (file.size > (opts.sample ? ICE_MAX_SAMPLE_BYTES : gif ? uploadMaxBytes(ICE_GIF_MIME) : maxBytesFor(file.type as IceMime))) return "too_large";
   return null;
 }
 
 export async function uploadOne(
   transport: IceTransport,
   file: File,
-  opts: { sample?: boolean; kind?: "image" | "video" } = {},
+  opts: UploadOpts = {},
 ): Promise<UploadOutcome> {
   const early = precheck(file, opts);
   if (early) return { ok: false, error: early };
@@ -50,7 +55,9 @@ export async function uploadOne(
     const reg = await transport.registerUpload({ path: ticket.data.path, name: file.name });
     if (!reg.ok) return { ok: false, error: reg.error };
     let asset = reg.data;
-    if (asset.kind === "image") {
+    // A GIF keeps its animation only as itself: no still WebP copies (they
+    // would land in its srcset and the page would paint a frozen frame).
+    if (asset.kind === "image" && asset.mime !== ICE_GIF_MIME) {
       if (!transport.putFile) await deriveMedia(asset.id);
       const fresh = await transport.assets([asset.id]);
       if (fresh.ok && fresh.data[0]) asset = fresh.data[0];

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  BEFORE_AFTER_SIZE, BANNER_FRAME, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
+  BEFORE_AFTER_SIZE, BANNER_FRAME, BANNER_PHONE_5_4, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
   industryKey, ratioOf,
   type MediaSrc, type PromoBannerDef,
 } from "@/lib/seller-home-config";
@@ -13,6 +13,7 @@ import type { SellerHomeData } from "@/lib/server/seller-home";
 import { BeforeAfter } from "./before-after";
 import { homeSlot, iceImage, type HomeSlots, type IceImage } from "./ice-slot-image";
 import { MediaSlot } from "./media-slot";
+import { BannerMedia } from "./banner-media";
 import { Rail } from "./rail";
 import { GalleryCta, SectionHead, StatusBadge, ToolLink, TryLink } from "./parts";
 import { EditFlags, flagged, gridTiles, pairCards, toolTiles, type GridTile } from "./home-view";
@@ -102,17 +103,32 @@ const BANNER_TONES: readonly string[] = [
 ];
 
 /**
+ * The banner's background dimming over a picture or clip, as a share of the
+ * shipped gradient (crop.ov, 27.11.2026): 100 % (or nothing saved) = exactly
+ * the gradient every banner has always had; 0 % = none at all. Opacity of
+ * the gradient layer alone — the copy and the button never fade with it.
+ */
+export function bannerOverlay(ov: number | undefined): CSSProperties | undefined {
+  if (ov === undefined || ov === 100 || !Number.isFinite(ov)) return undefined;
+  return { opacity: Math.min(100, Math.max(0, ov)) / 100 };
+}
+
+/**
  * PROMO BANNER — one reusable wide banner: a picture or a clip behind, and an
  * optional badge, short title, one-line subtitle and one button, centred.
- * Desktop about 4.7 : 1, a tablet 5 : 2, a phone square (its own file when
- * `mobileSrc` is set — a phone crop is a different picture, not a squeeze).
+ *
+ * THREE DEVICES (27.11.2026), the banners' own breakpoints:
+ *   desktop ≥ 1280   80 : 17 (2400 × 510)  — the desktop file;
+ *   tablet 768–1279  80 : 17 (1600 × 340)  — its own file, else the desktop's;
+ *   phone   < 768    1 : 1 or 5 : 4, as the admin chose — its own file, else
+ *                    the desktop file (./banner-media.tsx).
  * The button is drawn only while its tool runs.
  *
- * With media the copy is white over a scrim; with none yet the banner is the
- * old GrovBase banner — the surface lit by brand light, a gradient title —
- * finished, quiet, and never louder than a real picture would be. "Media" is
- * the config's file OR the picture / clip an admin assigned in the visual
- * editor (MediaSlot paints whichever wins).
+ * With media the copy is white over a scrim whose strength the admin sets
+ * (bannerOverlay); with none yet the banner is the old GrovBase banner — the
+ * surface lit by brand light, a gradient title — finished, quiet, and never
+ * louder than a real picture would be. "Media" is the config's file OR the
+ * picture / clip an admin assigned in the visual editor.
  */
 export function PromoBanner({ def, items, t, home, item }: {
   def: PromoBannerDef; items: ItemStates; t: T; home?: HomeSlots;
@@ -125,39 +141,52 @@ export function PromoBanner({ def, items, t, home, item }: {
   // is not drawn at all — it would advertise something that is not there.
   if (tool && !state) return null;
   const live = state?.status === "live";
-  const hasMedia = Boolean(def.media.src) || Boolean(homeSlot(home, def.media.configKey));
+  const assigned = def.media.src ? undefined : homeSlot(home, def.media.configKey);
+  const hasMedia = Boolean(def.media.src) || Boolean(assigned);
   const title = def.titleKey ? t(def.titleKey) : null;
+  const label = title ?? t("sellerHome.promo.label");
+  const phone = assigned?.crop?.pr === "5:4" ? BANNER_PHONE_5_4 : BANNER_FRAME.phone;
   return (
-    <section className="relative" aria-label={title ?? t("sellerHome.promo.label")} data-promo={def.key}>
-      <div className={cn(
-        "relative isolate aspect-[var(--ar-phone)] overflow-hidden rounded-2xl sm:aspect-[var(--ar-tablet)] lg:aspect-[var(--ar-wide)]",
+    <section className="relative" aria-label={label} data-promo={def.key}>
+      <div data-promo-frame className={cn(
+        "relative isolate aspect-[var(--ar-phone)] overflow-hidden rounded-2xl md:aspect-[var(--ar-tablet)] xl:aspect-[var(--ar-wide)]",
         !hasMedia && "border border-[rgb(var(--accent)/0.26)] bg-surface",
       )} style={{
-        "--ar-phone": ratioOf(BANNER_FRAME.phone), "--ar-tablet": ratioOf(BANNER_FRAME.tablet), "--ar-wide": ratioOf(BANNER_FRAME.wide),
+        "--ar-phone": ratioOf(phone), "--ar-tablet": ratioOf(BANNER_FRAME.tablet), "--ar-wide": ratioOf(BANNER_FRAME.wide),
       } as CSSProperties}>
         {hasMedia ? (
           <>
-            <MediaSlot media={def.media} fill sizes="100vw" label={title ?? t("sellerHome.promo.label")} hint="" home={home} />
+            {assigned && home
+              ? (
+                <span className="absolute inset-0 isolate overflow-hidden" data-media-slot="global" data-config-key={def.media.configKey}>
+                  <BannerMedia slot={assigned} locale={home.locale} alt={def.media.alt} label={label} />
+                </span>
+              )
+              : <MediaSlot media={def.media} fill sizes="100vw" label={label} hint="" home={home} />}
             {/* Legibility: darker at the edges and behind the centred copy. */}
-            <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_90%_at_50%_50%,rgb(0_0_0/0.42),rgb(0_0_0/0.18)_70%,rgb(0_0_0/0.35))]" />
+            <span aria-hidden data-promo-overlay style={bannerOverlay(assigned?.crop?.ov)}
+              className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_90%_at_50%_50%,rgb(0_0_0/0.42),rgb(0_0_0/0.18)_70%,rgb(0_0_0/0.35))]" />
           </>
         ) : (
           <span aria-hidden className="absolute inset-0" style={{ background: BANNER_TONES[def.tone % BANNER_TONES.length] }} data-media-slot="empty" data-config-key={def.media.configKey}>
             <span className="absolute inset-0 opacity-[0.5] [background-image:linear-gradient(rgb(var(--accent)/0.07)_1px,transparent_1px),linear-gradient(90deg,rgb(var(--accent)/0.07)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(60%_80%_at_50%_50%,black,transparent)]" />
             <span className="absolute bottom-2.5 right-3 text-[10px] tabular-nums text-faint">
-              {t("sellerHome.slot.banner")} · <span className="sm:hidden">{size(t, BANNER_FRAME.phone.width, BANNER_FRAME.phone.height)}</span>
-              <span className="max-sm:hidden">{size(t, BANNER_FRAME.wide.width, BANNER_FRAME.wide.height)}</span>
+              {t("sellerHome.slot.banner")} · <span className="md:hidden">{size(t, phone.width, phone.height)}</span>
+              <span className="max-md:hidden xl:hidden">{size(t, BANNER_FRAME.tablet.width, BANNER_FRAME.tablet.height)}</span>
+              <span className="max-xl:hidden">{size(t, BANNER_FRAME.wide.width, BANNER_FRAME.wide.height)}</span>
             </span>
           </span>
         )}
-        {/* The copy lets pointers through to the clip; only its button takes them. */}
+        {/* The copy lets pointers through to the clip; only its button takes them.
+            On a tablet the banner is as wide as on a desktop but shorter: the
+            copy sits on one line per element there (md … xl). */}
         <div className={cn(
-          "pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center sm:gap-2.5",
+          "pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center sm:gap-2.5 md:gap-1.5 xl:gap-2.5",
           hasMedia ? "text-white" : "text-ink",
         )}>
           {def.badgeKey && (
             <span className={cn(
-              "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] backdrop-blur-sm",
+              "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] backdrop-blur-sm md:py-0.5 xl:py-1",
               hasMedia
                 ? "bg-white/15 ring-1 ring-white/30"
                 : "bg-[rgb(var(--accent)/0.10)] text-accent-strong ring-1 ring-[rgb(var(--accent)/0.30)] dark:text-accent",
@@ -167,7 +196,7 @@ export function PromoBanner({ def, items, t, home, item }: {
           )}
           {title && (
             <h2 className={cn(
-              "max-w-[22ch] text-balance font-display text-[24px] font-bold uppercase leading-[1.02] tracking-[-0.01em] sm:text-[30px] lg:text-[36px]",
+              "max-w-[22ch] text-balance font-display text-[24px] font-bold uppercase leading-[1.02] tracking-[-0.01em] sm:text-[30px] md:max-w-[48ch] md:text-[22px] lg:text-[28px] xl:max-w-[22ch] xl:text-[36px]",
               hasMedia
                 ? "drop-shadow-[0_2px_12px_rgb(0_0_0/0.25)]"
                 : "bg-[linear-gradient(100deg,rgb(var(--accent-glow)),rgb(var(--accent))_48%,rgb(var(--violet)))] bg-clip-text text-transparent",
@@ -176,16 +205,16 @@ export function PromoBanner({ def, items, t, home, item }: {
             </h2>
           )}
           {def.subKey && (
-            <p className={cn("max-w-[46ch] text-[13px] sm:truncate sm:text-[14px]", hasMedia ? "text-white/85" : "font-medium text-muted")}>
+            <p className={cn("max-w-[46ch] text-[13px] sm:text-[14px] md:max-w-[70ch] md:truncate md:text-[13px] xl:max-w-[46ch] xl:text-[14px]", hasMedia ? "text-white/85" : "font-medium text-muted")}>
               {t(def.subKey)}
             </p>
           )}
           {/* Not running: no button — the badge says why. */}
-          {state && !live && <StatusBadge status={state.status} t={t} className="mt-1" />}
+          {state && !live && <StatusBadge status={state.status} t={t} className="mt-1 md:mt-0 xl:mt-1" />}
           {def.ctaKey && live && state && (
             <Link href={state.href} data-promo-cta={def.key}
               className={cn(
-                "pointer-events-auto mt-1 inline-flex h-10 items-center gap-2 rounded-full px-5 text-[13.5px] font-semibold transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                "pointer-events-auto mt-1 inline-flex h-10 items-center gap-2 rounded-full px-5 text-[13.5px] font-semibold transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0 md:mt-0.5 md:h-8 md:px-4 md:text-[12.5px] xl:mt-1 xl:h-10 xl:px-5 xl:text-[13.5px]",
                 hasMedia
                   ? "bg-white text-[rgb(32_22_45)] shadow-[0_10px_26px_-12px_rgb(0_0_0/0.6)]"
                   : "cta",

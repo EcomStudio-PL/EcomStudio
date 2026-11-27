@@ -13,6 +13,22 @@ export const ICE_LOCALES: readonly IceLocale[] = ["pl", "en", "de"];
  *  render time; the file in the library is never changed. */
 export type IceCrop = { x: number; y: number; zoom: number };
 
+/** A /home banner's phone frame: square (default) or 5:4 (27.11.2026). */
+export type IcePhoneRatio = "1:1" | "5:4";
+export const ICE_PHONE_RATIOS: readonly IcePhoneRatio[] = ["1:1", "5:4"];
+
+/**
+ * Everything the editor frames on a slot, stored in media_slots.crop (0141,
+ * widened by 0186 — the column is "how the slot is framed"):
+ *   x/y/zoom  the main (desktop) file's frame;
+ *   m         the phone file's frame (only with a phone file);
+ *   t         the tablet file's frame (only with a tablet file — banners);
+ *   pr        a banner's phone shape (absent = 1:1);
+ *   ov        a banner's background dimming, 0–100 % of the shipped
+ *             gradient (absent = 100, the banner as it always was).
+ */
+export type IceFrame = IceCrop & { m?: IceCrop; t?: IceCrop; pr?: IcePhoneRatio; ov?: number };
+
 /** How a slot is framed on the page. */
 export type IceSlotSpec = {
   /** media_slots.slot_key. */
@@ -34,6 +50,15 @@ export type IceSlotSpec = {
   frames?: { label: "wide" | "tablet" | "phone" | "tools"; ratio: string }[];
   /** A separate phone file is allowed (mobile_media_id). */
   mobile?: boolean;
+  /** A separate tablet file is allowed (tablet_media_id) — the /home banners. */
+  tablet?: boolean;
+  /** A /home banner: three device frames, the phone shape and the dimming. */
+  banner?: boolean;
+  /** An animated GIF may fill it (the /home carousel tiles only). */
+  gif?: boolean;
+  /** The slot this one falls back to while empty (a /home carousel tile →
+   *  its tool's card picture on /tools). */
+  inherits?: string;
   /** Entity columns for a first write. `section` = a CMS page's own
    *  pictures (O nas: entity `about`). */
   entityType: "tool" | "workflow" | "category" | "global" | "section";
@@ -112,12 +137,14 @@ export type IceSlotState = {
   mediaType: "image" | "video";
   media: IceAsset | null;
   mobile: IceAsset | null;
+  /** The tablet file (a banner's; elsewhere Admin → Media's). */
+  tablet: IceAsset | null;
   poster: IceAsset | null;
   alt: string | null;
   altI18n: Partial<Record<IceLocale, string>>;
   fit: "cover" | "contain";
   position: string;
-  crop: (IceCrop & { m?: IceCrop }) | null;
+  crop: IceFrame | null;
   updatedAt: string | null;
 };
 
@@ -335,11 +362,14 @@ export type IceSlotWrite = {
   mediaType: "image" | "video";
   mediaId: string | null;
   mobileMediaId: string | null;
+  /** Only for a slot with `tablet` (a banner). Absent = the server keeps the
+   *  tablet file as before (with its picture). */
+  tabletMediaId?: string | null;
   posterMediaId: string | null;
   alt: string | null;
   altI18n: Partial<Record<IceLocale, string>>;
   fit: "cover" | "contain";
   position: string;
-  crop: (IceCrop & { m?: IceCrop }) | null;
+  crop: IceFrame | null;
   base: string | null;
 };

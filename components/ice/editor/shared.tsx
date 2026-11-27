@@ -124,12 +124,16 @@ export function LocaleTabs({ value, onChange, marked, t }: {
   );
 }
 
-export function Btn({ children, onClick, kind, small, disabled, type = "button", title }: {
+export function Btn({ children, onClick, kind, small, disabled, type = "button", title, role, ...attrs }: {
   children: ReactNode; onClick?: () => void; kind?: "primary" | "ghost" | "danger"; small?: boolean;
   disabled?: boolean; type?: "button" | "submit"; title?: string;
+  /** A tab of a tab list (the banner's devices). */
+  role?: "tab";
+  /** aria-* and data-* pass through (aria-pressed, aria-selected, data-device…). */
+  [attr: `aria-${string}` | `data-${string}`]: string | boolean | undefined;
 }) {
   return (
-    <button type={type} title={title} disabled={disabled} onClick={onClick}
+    <button type={type} title={title} disabled={disabled} onClick={onClick} role={role} {...attrs}
       className={cls(s.btn, kind === "primary" && s.primary, kind === "ghost" && s.ghost, kind === "danger" && s.danger, small && s.small)}>
       {children}
     </button>

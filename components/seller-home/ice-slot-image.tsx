@@ -38,7 +38,7 @@ export function homeSlot(home: HomeSlots | null | undefined, key: string): Resol
 }
 
 /** Where the frame sits on the file, and how far in it is zoomed. */
-type Frame = { position: string; zoom: number };
+export type Frame = { position: string; zoom: number };
 
 /** What one <img> needs — plain JSON, so a client component can take it. */
 export type IceImage = {
@@ -51,10 +51,16 @@ export type IceImage = {
   frame: Frame;
   /** The phone file (max-width: 639px) and ITS frame (`crop.m`). */
   phone?: { src: string; srcSet?: string; frame: Frame };
+  /** An animated GIF's first frame (the slot's poster): what a viewer who
+   *  asked for less motion is shown instead (27.11.2026, carousel tiles). */
+  still?: string;
 };
 
+/** A GIF keeps its animation only as itself: never a resized still copy. */
+export const isGifUrl = (url: string | undefined): boolean => Boolean(url && /\.gif$/i.test(url.split(/[?#]/)[0]));
+
 /** The editor's frame, or the slot's nine-cell position with no zoom. */
-function frameOf(crop: IceCrop | undefined, position: string): Frame {
+export function frameOf(crop: IceCrop | undefined, position: string): Frame {
   return crop ? { position: `${crop.x}% ${crop.y}%`, zoom: crop.zoom } : { position, zoom: 1 };
 }
 
@@ -68,7 +74,7 @@ export function slotAlt(slot: ResolvedSlot, locale: string, fallback?: string): 
 
 /** `url 640w, url 1024w, …` from recorded derivatives, narrowest first;
  *  undefined when there are none (no srcset beats one to missing files). */
-function srcSetOf(variants: Record<string, string> | undefined): string | undefined {
+export function srcSetOf(variants: Record<string, string> | undefined): string | undefined {
   const list = Object.entries(variants ?? {})
     .map(([width, url]) => [Number(width), url] as const)
     .filter(([width]) => Number.isFinite(width) && width > 0)
@@ -86,7 +92,8 @@ function srcSetOf(variants: Record<string, string> | undefined): string | undefi
  * The editor writes no tablet file for these slots, so none is read.
  */
 export function iceImage(slot: ResolvedSlot, locale: string, fallbackAlt?: string): IceImage {
-  const srcSet = srcSetOf(slot.variants);
+  const gif = isGifUrl(slot.desktop);
+  const srcSet = gif ? undefined : srcSetOf(slot.variants);
   const phoneSet = srcSetOf(slot.mobileVariants);
   return {
     src: slot.desktop,
@@ -95,6 +102,7 @@ export function iceImage(slot: ResolvedSlot, locale: string, fallbackAlt?: strin
     alt: slotAlt(slot, locale, fallbackAlt),
     fit: slot.fit === "contain" ? "contain" : "cover",
     frame: frameOf(slot.crop, slot.position),
+    ...(gif && slot.poster ? { still: slot.poster } : {}),
     ...(slot.mobile
       ? { phone: { src: slot.mobile, ...(phoneSet ? { srcSet: phoneSet } : {}), frame: frameOf(slot.crop?.m, slot.position) } }
       : {}),
@@ -102,7 +110,7 @@ export function iceImage(slot: ResolvedSlot, locale: string, fallbackAlt?: strin
 }
 
 /** object-position, and the zoom around the same point when there is one. */
-function frameStyle(frame: Frame): CSSProperties {
+export function frameStyle(frame: Frame): CSSProperties {
   return {
     objectPosition: frame.position,
     ...(frame.zoom > 1 ? { transform: `scale(${frame.zoom})`, transformOrigin: frame.position } : {}),
@@ -110,7 +118,7 @@ function frameStyle(frame: Frame): CSSProperties {
 }
 
 /** The transform part alone — for a wrapper around a clip. */
-function zoomStyle(frame: Frame): CSSProperties {
+export function zoomStyle(frame: Frame): CSSProperties {
   return frame.zoom > 1 ? { transform: `scale(${frame.zoom})`, transformOrigin: frame.position } : {};
 }
 
@@ -155,9 +163,13 @@ export function IcePicture({ image, sizes, priority = false, draggable }: {
         ...frameStyle(image.frame), ...(image.phone ? phoneVars(image.phone.frame) : {}),
       }} />
   );
-  if (!image.phone) return img;
+  // Less motion asked for: the GIF's first frame, chosen by the browser
+  // before anything is fetched (no script, so no flash of the animation).
+  const still = image.still ? <source media="(prefers-reduced-motion: reduce)" srcSet={image.still} /> : null;
+  if (!image.phone) return still ? <picture>{still}{img}</picture> : img;
   return (
     <picture>
+      {still}
       <source media="(max-width: 639px)" srcSet={image.phone.srcSet ?? image.phone.src}
         {...(image.phone.srcSet ? { sizes } : {})} />
       {img}
@@ -171,13 +183,16 @@ export function IcePicture({ image, sizes, priority = false, draggable }: {
  * `label` names a clip to assistive technology when nothing else does — the
  * same rule as a config clip.
  */
-export function IceSlotImage({ slot, locale, alt, label, sizes, priority = false }: {
+export function IceSlotImage({ slot, locale, alt, label, sizes, priority = false, tile = false }: {
   slot: ResolvedSlot;
   locale: string;
   alt?: string;
   label?: string;
   sizes: string;
   priority?: boolean;
+  /** A /home carousel tile (27.11.2026): a clip always plays muted, looping,
+   *  without controls, and under reduced motion shows its poster only. */
+  tile?: boolean;
 }) {
   if (slot.mediaType !== "video") {
     return <IcePicture image={iceImage(slot, locale, alt)} sizes={sizes} priority={priority} />;
@@ -186,7 +201,8 @@ export function IceSlotImage({ slot, locale, alt, label, sizes, priority = false
   const phone = slot.mobile ? frameOf(slot.crop?.m, slot.position) : null;
   const video = (
     <SlotVideo desktop={slot.desktop} mobile={slot.mobile} poster={slot.poster}
-      autoplay={slot.autoplay} muted={slot.muted} loop={slot.loop} controls={slot.controls}
+      autoplay={tile || slot.autoplay} muted={tile || slot.muted} loop={tile || slot.loop} controls={tile ? false : slot.controls}
+      stillOnCalm={tile}
       fit={slot.fit === "contain" ? "contain" : "cover"} position={frame.position}
       label={slotAlt(slot, locale, alt) || label || undefined} />
   );

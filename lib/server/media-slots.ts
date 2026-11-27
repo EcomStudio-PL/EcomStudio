@@ -7,7 +7,7 @@ import {
   isObjectFit, isObjectPosition, isSlotMediaType, slotAltI18n, slotCrop,
   type ObjectFit, type ObjectPosition, type SlotMediaType,
 } from "@/lib/media-slots";
-import type { IceCrop, IceLocale } from "@/lib/ice/types";
+import type { IceFrame, IceLocale } from "@/lib/ice/types";
 
 /**
  * READING A SCREEN'S MEDIA SLOTS.
@@ -63,7 +63,7 @@ export type ResolvedSlot = {
    * runs against a database without the column — the slot then paints with
    * `position` alone, exactly as before.
    */
-  crop?: IceCrop & { m?: IceCrop };
+  crop?: IceFrame;
   /** Alt text per language (0141); absent = `alt` for every language. */
   altI18n?: Partial<Record<IceLocale, string>>;
   /** width → url of the PHONE file's derivatives, for its own srcset. */

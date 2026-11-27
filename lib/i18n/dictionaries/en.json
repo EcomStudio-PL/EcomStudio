@@ -11462,7 +11462,31 @@
         "tablet": "Tablet",
         "phone": "Phone",
         "tools": "Tool catalogue"
-      }
+      },
+      "kindAnyGif": "Image, GIF or video",
+      "inherits": "This tile has its own media on the home page only. While it is empty, the tile shows the tool's picture from /tools. Changing it here does not change the Tools tab.",
+      "devices": "Device",
+      "device": {
+        "desktop": "Desktop",
+        "tablet": "Tablet",
+        "phone": "Phone"
+      },
+      "tabletHint": "Optional background for tablets (768–1279 px), {ratio} frame, 1600 × 340 px recommended. Without it a tablet shows the desktop background.",
+      "phoneHint": "Optional background for phones (under 768 px), {ratio} frame. Without it a phone shows the desktop background cropped around the chosen point.",
+      "deviceInherits": "No separate file — the desktop background is used in this frame.",
+      "phoneRatio": "Phone aspect ratio",
+      "phoneRatio11": "1:1 — 1080 × 1080 px",
+      "phoneRatio54": "5:4 — 1080 × 864 px",
+      "overlay": "Background dimming",
+      "overlayValue": "{n}%",
+      "overlayHint": "0% — no dimming, 100% — the current intensity. Applies on every device, previewed live on the page, saved with “Save”.",
+      "overlayReset": "Reset to 100%",
+      "gifStill": "First frame of the GIF (for reduced motion)",
+      "posterMaking": "Creating…",
+      "posterMake": "Create from the first frame",
+      "posterFailed": "Could not create a poster from the first frame. Choose a poster from the library.",
+      "posterMissing": "No poster — the box stays empty until the video loads.",
+      "posterMissingTile": "No poster — with reduced motion the tile shows no picture. Create one from the first frame or choose one from the library."
     },
     "library": {
       "title": "Media library",
@@ -11832,7 +11856,8 @@
         "rightBottom": "Bottom right"
       },
       "x": "Horizontal",
-      "y": "Vertical"
+      "y": "Vertical",
+      "frameTablet": "Tablet frame"
     },
     "pair": {
       "title": "Edit comparison",

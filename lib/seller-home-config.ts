@@ -86,13 +86,23 @@ export const WIDE_16_9: Size = { width: 1920, height: 1080 };
 export const LANDSCAPE_4_3: Size = { width: 1440, height: 1080 };
 /** Banner, desktop: about 4.7 : 1. */
 export const BANNER_WIDE: Size = { width: 2400, height: 510 };
-/** Banner, tablet: 5 : 2 — the desktop file, cropped around `position`. */
-export const BANNER_TABLET: Size = { width: 2000, height: 800 };
-/** Banner, phone: square (`mobileSrc`; without one the desktop file is
- *  cropped around `position`). */
+/** Banner, tablet (27.11.2026): the desktop's own 80 : 17 at 1600 px — a
+ *  tablet file of its own, or the desktop file in the same shape. */
+export const BANNER_TABLET: Size = { width: 1600, height: 340 };
+/** Banner, phone: square by default (the phone file, or without one the
+ *  desktop file cropped) … */
 export const BANNER_PHONE: Size = { width: 1080, height: 1080 };
-/** The banner's frame per breakpoint — phone / tablet (sm) / desktop (lg). */
+/** …or 5 : 4, chosen per banner in „Edytuj stronę” (crop.pr). */
+export const BANNER_PHONE_5_4: Size = { width: 1080, height: 864 };
+/** The banner's frame per device — phone / tablet / desktop. */
 export const BANNER_FRAME = { phone: BANNER_PHONE, tablet: BANNER_TABLET, wide: BANNER_WIDE } as const;
+/**
+ * THE BANNERS' OWN BREAKPOINTS (27.11.2026) — tablet from 768 px, desktop from
+ * 1280 px (Tailwind's md / xl). Only the three promo banners use them: their
+ * frame, the file the browser picks, the clip's source, the editor's preview.
+ * Every other picture on the page keeps 640 / 1024.
+ */
+export const BANNER_BREAKPOINTS = { tablet: 768, desktop: 1280 } as const;
 /** A sample PRODUCT PHOTO (an input, not a result). */
 export const SAMPLE_PHOTO: Size = { width: 1200, height: 1200 };
 

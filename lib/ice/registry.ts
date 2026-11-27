@@ -4,7 +4,7 @@ import {
   THUMBNAILS, TOOL_TILE, UPLOAD_TOOLS, ratioOf, type MediaSrc,
 } from "@/lib/seller-home-config";
 import {
-  defaultHomeLayout, familySlot, gridMedia, pairMedia, pairSlotKeys, refMedia,
+  carouselSlotKey, carouselSlotName, defaultHomeLayout, familySlot, gridMedia, pairMedia, pairSlotKeys, refMedia,
   type GridListKey, type HomeLayout, type HomeToolEntry, type ToolListKey,
 } from "@/lib/home-layout";
 import { CATEGORIES, findCategory } from "@/lib/categories";
@@ -93,6 +93,31 @@ function cardSlot(item: string): IceSlotSpec {
   };
 }
 
+/**
+ * A /home CAROUSEL TILE'S OWN SLOT (27.11.2026). Until now a tile edited its
+ * tool's card picture, which /tools shows too (cardSlot above: images only,
+ * position only). The tile now has a slot of its own — picture, GIF or clip,
+ * with the editor's focal point and zoom — that only /home paints; while it
+ * is empty the page falls back to the card picture (and on to the shipped
+ * example and the placeholder), so nothing shown today needs uploading again.
+ * The card slot itself is not touched from /home any more.
+ */
+function carouselSlot(e: Pick<HomeToolEntry, "id" | "from" | "item">): IceSlotSpec {
+  const key = carouselSlotKey(e);
+  return {
+    key,
+    ratio: ratioOf(TOOL_TILE),
+    width: TOOL_TILE.width,
+    height: TOOL_TILE.height,
+    video: true,
+    gif: true,
+    ...(e.item ? { inherits: cardSlotKey(e.item) } : {}),
+    entityType: "global",
+    entityId: "sellerHome",
+    slotName: key.slice("homeMedia.".length),
+  };
+}
+
 const media = (slot: IceSlotSpec, role: string, dom: string, index?: number): IceElement => ({
   id: slot.key, kind: "media", role, slots: [slot], dom, ...(index !== undefined ? { index } : {}),
 });
@@ -130,7 +155,7 @@ export function homePage(layout: HomeLayout = defaultHomeLayout()): IcePage {
       key: "carousel",
       elements: layout.carousel.flatMap((e, i) => [
         ...toolTexts(e, "carousel", i),
-        media(cardSlot(e.item), "tileImage", cfg(toolMediaKey(e, "carousel")), i + 1),
+        media(carouselSlot(e), "tileImage", cfg(toolMediaKey(e, "carousel")), i + 1),
       ]),
     },
     {
@@ -177,7 +202,8 @@ export function homePage(layout: HomeLayout = defaultHomeLayout()): IcePage {
         ...(b.subKey ? [text(b.subKey, "sub", LINE)] : []),
         ...(b.ctaKey ? [text(b.ctaKey, "button", SHORT)] : []),
         media(homeSlot(b.media, {
-          video: true, mobile: true,
+          // 27.11.2026: a tablet file of its own, the phone shape and the dimming.
+          video: true, mobile: true, tablet: true, banner: true,
           frames: [
             { label: "wide", ratio: ratioOf(BANNER_FRAME.wide) },
             { label: "tablet", ratio: ratioOf(BANNER_FRAME.tablet) },
@@ -530,7 +556,10 @@ export function slotSpec(key: string): IceSlotSpec | undefined {
   // A numbered /home slot the layout may add (a pair past the sixth, a grid
   // photo past the config's, a product photo): framed like its family.
   const family = familySlot(key);
-  return family ? homeSlot(family.media, { ratio: ratioOf(family.media), width: family.media.width, height: family.media.height }) : undefined;
+  if (family) return homeSlot(family.media, { ratio: ratioOf(family.media), width: family.media.width, height: family.media.height });
+  // A carousel tile the layout added (its id): framed like every tile.
+  const tile = carouselSlotName(key);
+  return tile ? carouselSlot({ id: tile, item: "" }) : undefined;
 }
 
 /** Pages a text key appears on (for "również używane na…"). */

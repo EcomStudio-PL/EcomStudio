@@ -1,6 +1,6 @@
 import { CATEGORIES, offeredWorkflows } from "./categories";
 import { TOOL_CARDS, isVideoCard } from "./tool-cards";
-import { ICE_LOCALES, type IceCrop, type IceLocale } from "./ice/types";
+import { ICE_LOCALES, ICE_PHONE_RATIOS, type IceCrop, type IceFrame, type IceLocale, type IcePhoneRatio } from "./ice/types";
 import { ABOUT_SLOTS } from "./about-page";
 
 /**
@@ -366,9 +366,11 @@ export const isSlotMediaType = (v: unknown): v is SlotMediaType =>
  * reach a style attribute.
  */
 
-/** A crop, or undefined. A bad phone frame drops only `m`; a bad main frame
- *  drops the whole crop (the slot then paints with its position alone). */
-export function slotCrop(value: unknown): (IceCrop & { m?: IceCrop }) | undefined {
+/** A crop, or undefined. A bad phone (or tablet) frame drops only `m` (`t`);
+ *  a bad main frame drops the whole crop (the slot then paints with its
+ *  position alone). A banner's phone shape (`pr`) and dimming (`ov`, 0–100)
+ *  are kept only when valid (0186) — absent, the banner is as it always was. */
+export function slotCrop(value: unknown): IceFrame | undefined {
   const one = (v: unknown): IceCrop | null => {
     if (!v || typeof v !== "object" || Array.isArray(v)) return null;
     const { x, y, zoom } = v as Record<string, unknown>;
@@ -378,8 +380,12 @@ export function slotCrop(value: unknown): (IceCrop & { m?: IceCrop }) | undefine
   };
   const main = one(value);
   if (!main) return undefined;
-  const m = one((value as Record<string, unknown>).m);
-  return m ? { ...main, m } : main;
+  const o = value as Record<string, unknown>;
+  const m = one(o.m);
+  const t = one(o.t);
+  const pr = (ICE_PHONE_RATIOS as readonly unknown[]).includes(o.pr) ? o.pr as IcePhoneRatio : null;
+  const ov = typeof o.ov === "number" && Number.isInteger(o.ov) && o.ov >= 0 && o.ov <= 100 ? o.ov : null;
+  return { ...main, ...(m ? { m } : {}), ...(t ? { t } : {}), ...(pr ? { pr } : {}), ...(ov !== null ? { ov } : {}) };
 }
 
 /** `{ pl, en, de }` → its non-blank strings; nothing usable → undefined. */

@@ -28,9 +28,10 @@ import type { ResolvedSlot, SlotMap } from "@/lib/server/media-slots";
 export const SLOT_READ_CAP = 200;
 
 /** Every /home section slot the editor lists (entity "global"), in registry
- *  order: upload samples, before/after pairs, banners, the showcase,
- *  Miniaturki, Sesje. The carousel and featured tiles are NOT here — they
- *  keep the tool-card slot they share with /tools. */
+ *  order: the carousel tiles' own pictures (27.11.2026 — empty, a tile still
+ *  paints the tool-card slot it shares with /tools), upload samples,
+ *  before/after pairs, banners, the showcase, Miniaturki, Sesje. The
+ *  featured tiles are NOT here — they keep the tool-card slot. */
 export const HOME_SECTION_SLOT_KEYS: readonly string[] = (() => {
   const page = icePageFor("/home");
   const keys = new Set<string>();
